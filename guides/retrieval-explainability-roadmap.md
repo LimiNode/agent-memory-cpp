@@ -30,15 +30,22 @@ persisted
   -> published / visible
   -> eligible
   -> candidate
-  -> selected
+  -> returned
+  -> selected for context
   -> included in ContextPack
   -> provider egress allowed by host
   -> effective provider context (host-reported only)
 ```
 
+The stage meanings are the same as in the context influence contract:
+`candidate` is an admitted route/fusion candidate; `returned` is a member of
+the final ordered `RetrievalResult`; and `selected for context` is a
+host/context-planner choice among returned items.
+
 An explain record may end at any stage. It must not collapse a persisted but
 ineligible unit, an eligible unit not returned by a route, a candidate removed
-by fusion, and a selected item omitted by the context budget into one generic
+by fusion, a returned item not selected for context, and a selected item omitted
+by the context budget into one generic
 "not used" result. A diagnostic can use implementation-specific fields, but
 its omission reason should preserve the relevant distinction, for example:
 `not_published`, `outside_read_frontier`, `ineligible_filter`,
