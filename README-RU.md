@@ -100,6 +100,7 @@ ctest --test-dir build --build-config Release --output-on-failure
 #include <agent_memory.hpp>
 
 #include <iostream>
+#include <optional>
 #include <utility>
 #include <vector>
 
