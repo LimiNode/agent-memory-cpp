@@ -10,7 +10,7 @@
 
 ## 1. Purpose
 
-Multi-context topology is governed by [`storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md#51-multi-context-topology-and-workspace-routing). `MemoryStack` and `MemoryProfileSpec` describe a domain profile within a context; they do not silently route one mutable logical corpus across environments. Cross-context retrieval and publication use the federated/frontier contracts and explicit placement provenance.
+Multi-context topology is governed by [`storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md#51-multi-context-topology-and-workspace-routing). `MemoryProfileSpec` is a declarative, backend/context-independent capability and policy specification. `MemoryStack` is a runtime stack binding within a selected context; its physical context is supplied by explicit placement rather than becoming part of the profile's identity. Neither silently routes one mutable logical corpus across environments. Cross-context retrieval and publication use the federated/frontier contracts and explicit placement provenance.
 
 Этот документ фиксирует архитектурные решения для подсистемы памяти `agent-memory-cpp`:
 
