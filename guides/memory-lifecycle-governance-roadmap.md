@@ -1156,12 +1156,17 @@ Suggested maturity placement:
 
 - M1: keep current `TemporalComponent`, `WritePolicy`, retrieval metrics and
   raw resource support.
-- M2: add bi-temporal component/indexes, policy-selectable mutation model,
-  fail-closed memory admission/external-materialization policy, optional
-  admission audit, and expanded evaluation metrics.
+- M2: add bi-temporal component/indexes and the T0 historical-navigation
+  contract, policy-selectable mutation model, fail-closed
+  memory-admission/external-materialization policy, optional admission audit,
+  and expanded evaluation metrics.
 - M2+: add abstraction/derivation graph, causal relation vocabulary and
   progressive retrieval; add deterministic-first entity resolution, typed
-  query/MCP safety, logical index separation and the optional
-  `TemporalContextGraphMemory` profile/evaluation lane.
+  query/MCP safety, logical index separation, the W0 durable working-context
+  adapter boundary and the optional `TemporalContextGraphMemory`
+  profile/evaluation lane.
+- M2+/research: screen bounded adaptive associative recall and event-centric
+  grounding under the existing retrieval/evaluation contracts; neither lane
+  is a production default or a new storage model.
 - M3/research: application-level mind models and workflow orchestration in
   sibling projects, validated against the same memory trace/eval harness.
