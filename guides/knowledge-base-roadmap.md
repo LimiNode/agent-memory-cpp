@@ -831,9 +831,12 @@ Source revisions remain immutable. Extraction, entity linking and relation
 updates create append-only derived generations with `derived_from`, producer
 revision, source anchors and the applicable policy. A co-occurrence is not
 automatically support, causality, contradiction or independent corroboration.
-Hard causal/evidence links and soft associative links must remain distinguishable
-in the relation class and retrieval trace. Occurrences in two episodes are not
-the same fact merely because they mention the same entity.
+The existing `RelationClass` remains the broad storage classification; specific
+causal, associative, support and contradiction distinctions belong to the
+applicable `EdgeKind` vocabulary, provenance and epistemic/evidence status.
+Causal and associative links may both use `RelationClass::Semantic`; EG0 must
+not require a new relation-class enum. Occurrences in two episodes are not the
+same fact merely because they mention the same entity.
 
 The profile may compare flat chunk retrieval, event-grounded retrieval,
 event-plus-temporal retrieval and bounded graph/associative retrieval. All arms
