@@ -183,7 +183,8 @@ event + bounded graph/associative expansion
 ```
 
 The manifest binds source and extraction revisions, entity/linking policy,
-relation classes, temporal policy, query set, exact oracle, candidate/edge
+broad `RelationClass` values, concrete `EdgeKind` vocabulary, epistemic/evidence
+status policy, temporal policy, query set, exact oracle, candidate/edge
 budgets, model revisions and the canonical-hydration procedure. A comparison
 whose parity manifest differs remains pending rather than being filled by
 prose or a corpus name.
@@ -192,7 +193,7 @@ Report separately:
 
 - event extraction coverage and span/anchor fidelity;
 - entity-link precision/recall and ambiguous-link rate;
-- relation-class precision, contradiction preservation and unresolved rate;
+- relation/`EdgeKind` precision, contradiction preservation, epistemic-status handling and unresolved rate;
 - Recall@K, nDCG@10, MRR and multi-hop/cross-episode recall;
 - candidate/edge work, decoded bytes, latency and context provenance coverage.
 
