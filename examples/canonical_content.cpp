@@ -44,7 +44,9 @@ int main() {
     if (!previous_markdown || !current_markdown ||
         previous_markdown == current_markdown ||
         previous_markdown->find("First draft.") == std::string::npos ||
-        current_markdown->find("Edited paragraph.") == std::string::npos) {
+        previous_markdown->find("Edited paragraph.") != std::string::npos ||
+        current_markdown->find("Edited paragraph.") == std::string::npos ||
+        current_markdown->find("First draft.") != std::string::npos) {
         return 1;
     }
 
