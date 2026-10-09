@@ -210,9 +210,10 @@ public method names and physical indexes remain implementation work.
 The navigation basis must be explicit:
 
 ```text
-valid/event time      = when an observation or claim concerns the world
-recorded/known-at time = when this origin recorded or became able to see it
-origin sequence       = append-only order inside one runtime/replica origin
+valid/event time       = when an observation or claim concerns the world
+recorded time          = when this origin recorded the occurrence
+known-at frontier      = when the querying origin had visibility of it
+origin sequence        = append-only order inside one runtime/replica origin
 ```
 
 These axes are not interchangeable. A late report may have an old event time
