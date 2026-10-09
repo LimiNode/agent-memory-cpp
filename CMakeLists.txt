@@ -162,6 +162,13 @@ endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
+    if(AGENT_MEMORY_BUILD_EXAMPLES)
+        add_test(
+            NAME agent_memory_canonical_content_example
+            COMMAND $<TARGET_FILE:agent_memory_canonical_content>
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+    endif()
     # This audit is a pure-Python fail-closed contract and must run in the
     # default test configuration as well as in benchmark builds.
     find_package(Python3 COMPONENTS Interpreter QUIET)

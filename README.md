@@ -43,7 +43,7 @@ The intended data flow is:
 
 ~~~mermaid
 flowchart TD
-    S["Documents / conversations / events"] --> C["Normalize and retain canonical content"]
+    S["Documents / conversations / events"] --> C["Normalize and retain canonical representations"]
     C --> P["Revisions, provenance and lifecycle"]
     P --> I["Lexical / dense / graph / temporal projections"]
     I --> R["Retrieve and assemble ContextPack"]
@@ -94,57 +94,28 @@ Optional MDBX support is **off by default**. Enable it with `-DAGENT_MEMORY_ENAB
 
 ### Minimal canonical-content example
 
-This is the implemented in-memory reference path: create revision `0`, publish one edit, then read both the historical revision and the current Markdown materialization.
+The executable example is the source of truth for this path: [`examples/canonical_content.cpp`](examples/canonical_content.cpp). It creates revision `0`, commits one edit, materializes both historical and current Markdown, and checks that the two revisions remain distinct.
+
+The public API shape is:
 
 ~~~cpp
-#include <agent_memory.hpp>
+InMemoryCanonicalContentStore store;
+const auto result = store.commit(
+    CanonicalEditRequest{document_id, 0, std::move(operations)}
+);
+const auto previous = store.materialize_markdown(document_id, 0);
+const auto current = store.materialize_markdown(document_id);
+~~~
 
-#include <iostream>
-#include <optional>
-#include <utility>
-#include <vector>
+Build and run the complete example with:
 
-int main() {
-    using namespace agent_memory;
-
-    InMemoryCanonicalContentStore store;
-    const DocumentId document_id{"doc:notes"};
-    const ContentBlockId heading{"heading"};
-    const ContentBlockId body{"body"};
-
-    CanonicalDocumentRevision initial{
-        document_id,
-        0,
-        {},
-        {
-            ContentBlock{heading, 1, ContentBlockKind::Heading,
-                std::nullopt, "Notes"},
-            ContentBlock{body, 1, ContentBlockKind::Paragraph,
-                heading, "First draft."}
-        }
-    };
-
-    if (!store.create_document(std::move(initial))) {
-        return 1;
-    }
-
-    std::vector<CanonicalEditOperation> operations;
-    operations.emplace_back(ReplaceBlockText{body, "Edited paragraph."});
-    const auto result = store.commit(
-        CanonicalEditRequest{document_id, 0, std::move(operations)}
-    );
-    if (result.status != CanonicalEditStatus::Ok) {
-        return 1;
-    }
-
-    const auto old_revision = store.read_revision(document_id, 0);
-    const auto current_markdown = store.materialize_markdown(document_id);
-    if (!old_revision || !current_markdown) {
-        return 1;
-    }
-
-    std::cout << *current_markdown;
-}
+~~~bash
+cmake -S . -B build \
+  -DAGENT_MEMORY_BUILD_TESTS=ON \
+  -DAGENT_MEMORY_BUILD_EXAMPLES=ON
+cmake --build build --config Release
+ctest --test-dir build --build-config Release \
+  -R "^agent_memory_canonical_content_example$" --output-on-failure
 ~~~
 
 For the full semantic cases, see the [canonical-content contract](guides/canonical-content-storage-roadmap.md), the [public header](src/agent_memory/storage/CanonicalContentStore.hpp) and [canonical-content tests](tests/domain/canonical_content_test.cpp).

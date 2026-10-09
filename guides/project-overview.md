@@ -27,11 +27,13 @@ baseline that already meets the deployment budget.
 
 ## Current Status
 
-The repository is in the project-skeleton stage. The current code provides:
+The repository is under active development. It already provides the native foundation and several reference storage, indexing and retrieval primitives listed below. Higher-level multimodal memory stacks and agent-runtime integrations remain staged roadmap work.
 
 - static library target `agent_memory`;
 - public alias `agent_memory::agent_memory`;
 - public aggregate header `agent_memory.hpp`;
+- in-memory canonical-content store with immutable document revisions, stable block identities, net change sets and Markdown materialization;
+- executable canonical-content example with a focused CTest smoke;
 - `core::LibraryInfo` smoke API;
 - dependency-free document, chunk, metadata, and source-kind primitives;
 - dependency-free resource revision and manifest value types;
@@ -55,10 +57,12 @@ The repository is in the project-skeleton stage. The current code provides:
 - exact in-memory BM25 lexical index baseline;
 - planned lexical/BM25 retrieval architecture;
 - opt-in MDBX dependency wiring for future storage backends;
-- optional MDBX-backed document storage adapter;
+- optional MDBX C1 raw/plain canonical-content persistence adapter with shared contexts, historical body bindings and no-reuse ledger;
 - optional MDBX-backed resource manifest storage adapter;
 - CMake options for tests, examples, warnings, and MDBX wiring;
-- smoke/domain/storage/embedding/index tests and one basic example.
+- smoke/domain/storage/embedding/index tests and executable examples for the library and canonical content.
+
+The [retrieval coverage audit](retrieval-roadmap-coverage.md) is the status authority for implemented slices, contracts and research-only work.
 
 ## Core Scope
 
