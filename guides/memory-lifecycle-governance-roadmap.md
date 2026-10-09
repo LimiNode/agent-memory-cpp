@@ -202,31 +202,58 @@ time-travel correctness.
 
 ### AM-13.1: Temporal Navigation And Historical Read Semantics (T0, M2+)
 
-AM-13 defines which temporal frontier a query means. T0 defines how a caller
-navigates that frontier without turning the core into a calendar or a second
-query API. It is a conceptual retrieval contract and evaluation lane; exact
-public method names and physical indexes remain implementation work.
+AM-13 defines which temporal query a caller means. T0 defines how a caller
+navigates that query without turning the core into a calendar or a second query
+API. It is a conceptual retrieval contract and evaluation lane; exact public
+method names and physical indexes remain implementation work.
 
-The navigation basis must be explicit:
+The navigation basis must keep these axes distinct:
 
-```text
-valid/event time       = when an observation or claim concerns the world
-recorded time          = when this origin recorded the occurrence
-known-at frontier      = when the querying origin had visibility of it
-origin sequence        = append-only order inside one runtime/replica origin
-```
+~~~text
+valid time          = source/world interval during which a claim is valid
+event time          = point or interval at which a discrete occurrence happened
+recorded time       = when the selected origin recorded the occurrence/claim
+KnownAt(cutoff)     = existing AM-13 recorded-time view at a recorded cutoff
+origin visibility   = what a querying origin can establish from its
+                      KnowledgeVisibilityReceipt / origin sequence
+~~~
 
-These axes are not interchangeable. A late report may have an old event time
-and a new recorded time. It must become visible to a present-time query without
-rewriting the answer to an earlier `KnownAt` query. Sequence values from two
-origins have no implicit global order; a federated merge must retain origin
-qualification and an explicit merge policy rather than inventing consensus.
+Event time is not automatically valid time: an event may be a point while a
+claim about its consequences remains valid over an interval, and some claims
+have no single event point. Conversely, a source-world validity interval does
+not prove that an observation was recorded or visible at every point in that
+interval. Query tags must state which basis they use rather than silently
+mapping one field to another.
+
+`KnownAt(recorded_cutoff_ms)` keeps the existing AM-13 meaning: it selects the
+record-time view defined by `BiTemporalComponent.recorded_at_ms` and the
+declared read/frontier rules. It is not, by itself, a promise that an arbitrary
+replica or observer had seen the record by that wall-clock time.
+Origin-qualified knowledge uses the existing `KnownAtSequence` semantics and
+an origin-qualified `KnowledgeVisibilityReceipt`; a producer's
+`recorded_sequence` does not imply visibility at another origin. If the
+required receipt or an explicit mapping is unavailable, origin-qualified
+visibility is unavailable/unknown rather than inferred from `recorded_at_ms`.
+
+For example:
+
+~~~text
+10:00  origin A records an occurrence
+10:30  origin B receives/imports it and obtains a visibility receipt
+10:15  a query asks what origin B could know
+~~~
+
+An `ActiveAt` or `KnownAt(recorded_cutoff_ms)` query uses its existing
+source-world or record-time semantics and must not be labelled as B's observed
+knowledge. A `KnownAtSequence(B, sequence_before_receipt)` query excludes the
+import; a sequence after the receipt may include it. This distinction remains
+true even when the imported record's original `recorded_at_ms` is 10:00.
 
 The first navigation intents are:
 
 | Intent | Required binding |
 |---|---|
-| Timeline range | time basis, scope/stream or subject, direction, limit and read frontier |
+| Timeline range | time basis (`valid`, `event`, `recorded`, or receipt-qualified visibility), scope/stream or subject, direction, limit and read frontier |
 | Episode read | episode/source identity, selected revision and detail level |
 | Neighbour read | same stream/episode or an explicit relation channel, direction and edge budget |
 | Event query | typed predicates, temporal query tag, access frontier and deterministic order |
@@ -238,38 +265,47 @@ has a bounded budget and returns completion/unknown information when the
 frontier, time range or adjacency work was not fully inspected.
 
 Navigation order is deterministic within the declared stream and origin. A
-cursor binds at least the normalized temporal query, scope/origin, read
-frontier, lifecycle/projection generations, ordering rule and cursor schema.
-The cursor is rejected when any binding is stale or unavailable; it must not
-silently continue on a newer frontier. Unknown event time is explicit and is
-not sorted into a claimed chronological position. `read_neighbors` returns
-typed relation/episode context and must not treat mere adjacency as support,
-causality or independent evidence.
+cursor binds at least the normalized temporal query and time basis,
+scope/origin, read frontier, lifecycle/projection generations, ordering rule
+and cursor schema. The cursor is rejected when any binding is stale or
+unavailable; it must not silently continue on a newer frontier. Unknown event
+or valid time is explicit and is not sorted into a claimed chronological
+position. `read_neighbors` returns typed relation/episode context and must
+not treat mere adjacency as support, causality or independent evidence.
 
 The historical-read contract is:
 
-```text
-known_at(T)
-  -> only visibility/evidence available to the selected origin by T
+~~~text
+active_at(valid_time)
+  -> source/world validity semantics; event point and valid interval stay distinct
 
-late evidence received now about event time in the past
+known_at(recorded_cutoff_ms)
+  -> existing AM-13 record-time semantics, not arbitrary-observer visibility
+
+known_at_sequence(origin, sequence)
+  -> only knowledge with an origin-qualified KnowledgeVisibilityReceipt by that sequence
+
+late evidence received now about an old event/valid interval
   -> present query may include it
-  -> an earlier known_at(T) result remains unchanged
-```
+  -> an earlier recorded-time or origin-sequence query remains unchanged
+~~~
 
 An audit route may show a historical unit together with a later invalidation,
 reconciliation or resolution receipt, but it must label the result as
 historical. It must not present a record that was unknown at the requested
-cutoff as if it had been known then. Temporal navigation also preserves the
-existing lifecycle and access gates: a neighbour traversal cannot revive an
-erased, inaccessible or stale unit.
+origin-qualified cutoff as if it had been known then. Temporal navigation also
+preserves the existing lifecycle and access gates: a neighbour traversal cannot
+revive an erased, inaccessible or stale unit.
 
 T0 acceptance fixtures should cover:
 
+- a discrete event point and a claim valid over an interval, proving that event
+  time and valid time are not conflated;
 - equal event times with deterministic origin/sequence tie handling;
-- a late observation whose event time precedes its recorded time;
-- `ActiveAt`, `KnownAt` and `ActiveAtKnownAt` returning different, expected
-  frontiers;
+- the late-import example above, with different `KnownAt(recorded_cutoff_ms)`
+  and `KnownAtSequence` outcomes;
+- `ActiveAt`, `KnownAt`, `ActiveAtKnownAt` and
+  `KnownAtSequence` returning their distinct, expected frontiers;
 - unknown time remaining explicit rather than being assigned a false order;
 - cursor rejection after frontier or projection-generation change;
 - previous/next episode navigation scoped to one origin or stream;
@@ -278,8 +314,9 @@ T0 acceptance fixtures should cover:
 - redacted or inaccessible neighbours not leaking through navigation traces.
 
 T0 extends the existing AM-13 `TemporalQuery`, `FilterFrontier`,
-`ReadFrontier` and `RetrievalTrace` contracts. It does not add a global event
-log, a scheduler, a graph database or a durable cursor table.
+`ReadFrontier`, `KnowledgeVisibilityReceipt` and
+`RetrievalTrace` contracts. It does not add a global event log, a scheduler, a graph database
+or a durable cursor table.
 
 ## 4. AM-14: Abstraction And Derivation Graph
 
