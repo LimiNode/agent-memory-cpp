@@ -58,7 +58,7 @@ The repository is in the project-skeleton stage. The current code provides:
 - optional MDBX-backed document storage adapter;
 - optional MDBX-backed resource manifest storage adapter;
 - CMake options for tests, examples, warnings, and MDBX wiring;
-- smoke/domain/storage/embedding/index tests and one basic example.
+- smoke/domain/storage/embedding/index tests and executable examples for the library and canonical content.
 
 ## Core Scope
 

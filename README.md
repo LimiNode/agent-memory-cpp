@@ -43,7 +43,7 @@ The intended data flow is:
 
 ~~~mermaid
 flowchart TD
-    S["Documents / conversations / events"] --> C["Normalize and retain canonical content"]
+    S["Documents / conversations / events"] --> C["Normalize and retain canonical representations"]
     C --> P["Revisions, provenance and lifecycle"]
     P --> I["Lexical / dense / graph / temporal projections"]
     I --> R["Retrieve and assemble ContextPack"]
@@ -94,7 +94,7 @@ Optional MDBX support is **off by default**. Enable it with `-DAGENT_MEMORY_ENAB
 
 ### Minimal canonical-content example
 
-This is the implemented in-memory reference path: create revision `0`, publish one edit, then read both the historical revision and the current Markdown materialization.
+This is the implemented in-memory reference path: create revision `0`, publish one edit, then materialize both the historical revision and the current Markdown. The same source is built as [`examples/canonical_content.cpp`](examples/canonical_content.cpp) when examples are enabled.
 
 ~~~cpp
 #include <agent_memory.hpp>
@@ -137,13 +137,14 @@ int main() {
         return 1;
     }
 
-    const auto old_revision = store.read_revision(document_id, 0);
+    const auto previous_markdown = store.materialize_markdown(document_id, 0);
     const auto current_markdown = store.materialize_markdown(document_id);
-    if (!old_revision || !current_markdown) {
+    if (!previous_markdown || !current_markdown) {
         return 1;
     }
 
-    std::cout << *current_markdown;
+    std::cout << "Before:\n" << *previous_markdown
+              << "\nAfter:\n" << *current_markdown;
 }
 ~~~
 
