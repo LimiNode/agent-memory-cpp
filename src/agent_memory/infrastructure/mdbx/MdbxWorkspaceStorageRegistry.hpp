@@ -91,6 +91,8 @@ class MdbxWorkspacePlacement final {
 /// including when it would reuse a context/table namespace, so callers cannot
 /// silently mutate an existing placement or create an ambiguous route.
 /// `resolve` is exact and fail-closed for unknown or stale generations.
+/// The registry is intentionally composition-root-local; independent registry
+/// instances are not a global physical-placement authority.
 ///
 /// \see `guides/storage-backend-integration-roadmap.md`
 class MdbxWorkspaceStorageRegistry final {

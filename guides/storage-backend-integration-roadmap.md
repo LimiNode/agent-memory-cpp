@@ -378,6 +378,19 @@ bindings, and does not infer routing from filenames. The implementation and
 integration coverage are limited to canonical content in the R0 slice; this is
 not a general federation, relocation or cross-context transaction facility.
 
+`MdbxWorkspaceStorageRegistry` is a composition-root-local registry, not a
+process-global authority. Its namespace collision checks cover the bindings
+known to that registry, including attached wrappers around the same
+`mdbxc::Connection`; two independent registries are not coordinated. The
+registry also cannot prove that two separately created connections refer to
+different filesystem environments because the existing context API does not
+expose a canonical physical-environment identity. Host application composition
+must therefore provide one authoritative placement set and must not bind the
+same physical environment/table namespace independently in another registry.
+Persistent placement authority and startup validation are future work; R0
+rebuilds bindings from host-supplied workspace ID, context, namespace and
+generation after restart.
+
 Cross-context writes use an explicit publication protocol:
 
 ```text
