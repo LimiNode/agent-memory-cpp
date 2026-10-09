@@ -54,6 +54,8 @@ class ScopedTempDirectory final {
     ScopedTempDirectory& operator=(const ScopedTempDirectory&) = delete;
 
     ~ScopedTempDirectory() {
+        if (m_cleaned)
+            return;
         std::error_code ignored;
         std::filesystem::remove_all(m_path, ignored);
     }
@@ -100,11 +102,13 @@ int main() {
 
         expect(router_b.create_document("workspace-b", 11, document("B")), 2);
         expect(router_b.create_document("workspace-b-alt", 3, document("B-alt")), 3);
-        expect(router_b.read_block("workspace-b", 11, shared_id, ContentBlockId{"body"})->text ==
-                   "B",
+        expect(router_b.read_block("workspace-b", 11, shared_id, ContentBlockId{"body"})
+                       .value()
+                       .text == "B",
                5);
-        expect(router_b.read_block("workspace-b-alt", 3, shared_id, ContentBlockId{"body"})->text ==
-                   "B-alt",
+        expect(router_b.read_block("workspace-b-alt", 3, shared_id, ContentBlockId{"body"})
+                       .value()
+                       .text == "B-alt",
                6);
         expect(placement_b->canonical_content() != placement_b_alt->canonical_content(), 8);
 
@@ -114,8 +118,9 @@ int main() {
             const auto placement_a = registry_a.bind("workspace-a", context_a, 7, "workspace_a");
             MdbxCanonicalContentRouter router_a(registry_a);
             expect(router_a.create_document("workspace-a", 7, document("A")), 9);
-            expect(router_a.read_block("workspace-a", 7, shared_id, ContentBlockId{"body"})->text ==
-                       "A",
+            expect(router_a.read_block("workspace-a", 7, shared_id, ContentBlockId{"body"})
+                           .value()
+                           .text == "A",
                    10);
             expect(placement_a->context() != placement_b->context(), 11);
 
@@ -155,8 +160,9 @@ int main() {
                 stale_write = true;
             }
             expect(stale_write, 15);
-            expect(router_a.read_block("workspace-a", 7, shared_id, ContentBlockId{"body"})->text ==
-                       "A2",
+            expect(router_a.read_block("workspace-a", 7, shared_id, ContentBlockId{"body"})
+                           .value()
+                           .text == "A2",
                    16);
 
             bool duplicate = false;
@@ -183,16 +189,25 @@ int main() {
                 attached_namespace_conflict = true;
             }
             expect(attached_namespace_conflict, 19);
+
+            bool normalized_namespace_conflict = false;
+            try {
+                (void)registry_a.bind("workspace-a-normalized", context_a, 1, "workspace-a");
+            } catch (const MdbxPlacementConflictError&) {
+                normalized_namespace_conflict = true;
+            }
+            expect(normalized_namespace_conflict, 20);
         }
 
         // A's context and registry are now destroyed while B remains active.
-        expect(router_b.read_block("workspace-b", 11, shared_id, ContentBlockId{"body"})->text ==
-                   "B2",
-               20);
+        expect(router_b.read_block("workspace-b", 11, shared_id, ContentBlockId{"body"})
+                       .value()
+                       .text == "B2",
+               21);
         const auto edit_b_again = router_b.commit(
             "workspace-b", 11,
             {shared_id, 1, {ReplaceBlockText{ContentBlockId{"body"}, "B3"}}});
-        expect(edit_b_again.status == CanonicalEditStatus::Ok, 21);
+        expect(edit_b_again.status == CanonicalEditStatus::Ok, 22);
 
         // Reopen A independently while B is still active and validate all read
         // surfaces plus the historical revisions in both physical files.
@@ -200,23 +215,29 @@ int main() {
         MdbxWorkspaceStorageRegistry reopened_registry_a;
         const auto reopened_placement_a =
             reopened_registry_a.bind("workspace-a", reopened_a, 7, "workspace_a");
-        expect(reopened_placement_a->generation() == 7, 22);
+        expect(reopened_placement_a->generation() == 7, 23);
         MdbxCanonicalContentRouter reopened_router_a(reopened_registry_a);
-        expect(reopened_router_a.read_current("workspace-a", 7, shared_id)->revision == 1, 23);
-        expect(reopened_router_a.read_revision("workspace-a", 7, shared_id, 0)->blocks.front().text ==
-                   "A",
+        expect(reopened_router_a.read_current("workspace-a", 7, shared_id).value().revision == 1,
                24);
-        expect(reopened_router_a.read_block("workspace-a", 7, shared_id, ContentBlockId{"body"})->text ==
-                   "A2",
+        expect(reopened_router_a.read_revision("workspace-a", 7, shared_id, 0)
+                           .value()
+                           .blocks.front()
+                           .text == "A",
                25);
+        expect(reopened_router_a.read_block("workspace-a", 7, shared_id, ContentBlockId{"body"})
+                           .value()
+                           .text == "A2",
+               26);
         expect(reopened_router_a.materialize_markdown("workspace-a", 7, shared_id).value() ==
                    "A2\n",
-               26);
-        expect(router_b.read_current("workspace-b", 11, shared_id)->revision == 2, 27);
-        expect(router_b.read_revision("workspace-b", 11, shared_id, 1)->blocks.front().text ==
-                   "B2",
-               28);
-        expect(router_b.materialize_markdown("workspace-b", 11, shared_id).value() == "B3\n", 29);
+               27);
+        expect(router_b.read_current("workspace-b", 11, shared_id).value().revision == 2, 28);
+        expect(router_b.read_revision("workspace-b", 11, shared_id, 1)
+                           .value()
+                           .blocks.front()
+                           .text == "B2",
+               29);
+        expect(router_b.materialize_markdown("workspace-b", 11, shared_id).value() == "B3\n", 30);
 
         bool invalid_generation = false;
         try {
@@ -224,7 +245,7 @@ int main() {
         } catch (const MdbxWorkspaceRoutingError&) {
             invalid_generation = true;
         }
-        expect(invalid_generation, 30);
+        expect(invalid_generation, 31);
 
         // The registry is intentionally local to its composition root. This
         // boundary test demonstrates that independent registries do not provide a
@@ -236,13 +257,13 @@ int main() {
             independent_registry_a.bind("independent-a", shared_context, 1, "shared");
         const auto independent_placement_b =
             independent_registry_b.bind("independent-b", shared_context, 1, "shared");
-        expect(independent_placement_a && independent_placement_b, 31);
+        expect(independent_placement_a && independent_placement_b, 32);
     }
 
     // All contexts/stores are destroyed before the temporary directory is
     // removed; cleanup failure is an explicit test failure, not a silent leak.
     if (!temporary.cleanup())
-        return 32;
+        return 33;
     return 0;
 }
 

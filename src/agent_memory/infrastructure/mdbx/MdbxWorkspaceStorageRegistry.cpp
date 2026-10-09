@@ -1,7 +1,6 @@
 #include "MdbxWorkspaceStorageRegistry.hpp"
 
 #if AGENT_MEMORY_HAS_MDBX
-#include <cctype>
 #include <utility>
 
 namespace agent_memory {
@@ -12,7 +11,11 @@ std::string normalize_table_prefix(std::string value) {
     if (value.empty())
         value = "agent_memory";
     for (char& character : value) {
-        if (!std::isalnum(static_cast<unsigned char>(character)))
+        // DBI names must not depend on the process-wide C locale.
+        const bool ascii_alnum =
+            (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+            (character >= '0' && character <= '9');
+        if (!ascii_alnum)
             character = '_';
     }
     return value;
