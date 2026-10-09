@@ -516,20 +516,30 @@ already used by the ADELIA/runtime integration lane.
 An execution-local adaptive search may carry the equivalent of:
 
 ```text
-original plan and plan digest
-current cue/context digest
+original normalized plan, policy/frontier bindings and plan digest
+current cue/context payload or retained replay reference, with digest
 parent step and candidate lineage
+per-step emitted cue/query/transform payload or retained replay reference
 visited units/edges and suppression reasons
+provider/model/policy revisions and deterministic parameters when a transformer is used
 remaining edge, candidate, byte, token, latency and step budgets
 termination/completion reason
 ```
 
-This state is a replayable search receipt, not durable memory. Every explored
-candidate remains subject to the same `FilterFrontier`, `ReadFrontier`,
-lifecycle, provenance and access checks as a one-step query. Exploration must
-not modify canonical relations, refresh `use_count`, promote source trust or
-create an epistemic corroboration merely because several routes reached the
-same unit. Graph-derived routes are retrieval votes, not independent evidence.
+This state is an execution-local audit trace, not durable memory. A trace
+may be called replayable only when the normalized plan and frontiers, all
+adaptive cues or their retained replay references, transformation inputs and
+outputs, provider/model/policy revisions, deterministic parameters, candidate
+ordering/results and required canonical generations are available for
+rematerialization. A digest verifies such material; it does not replace it.
+When any required input is absent, the trace must say that it is audit-only or
+replay-unavailable, and an evaluation must not claim full replayability.
+Every explored candidate remains subject to the same `FilterFrontier`,
+`ReadFrontier`, lifecycle, provenance and access checks as a one-step query.
+Exploration must not modify canonical relations, refresh `use_count`, promote
+source trust or create an epistemic corroboration merely because several routes
+reached the same unit. Graph-derived routes are retrieval votes, not
+independent evidence.
 
 The initial comparison matrix separates:
 
@@ -545,11 +555,13 @@ The initial comparison matrix separates:
 
 The original query route remains available as a recovery/control route.
 Adaptive steps must detect cycles, repeated cues, stale edges, hub expansion,
-query drift and frontier changes. A step may stop with `Complete`, `Partial`,
-`BudgetExhausted`, `Unavailable` or `Unknown` according to the existing route
-completion contract; an empty result is not silently called complete. No
-adaptive arm may hide secondary searches or adjacency work from the declared
-cost envelope.
+query drift and frontier changes. A step may stop with any existing
+`RetrievalRouteCompletion` value: `Complete`, `Partial`, `Unavailable`,
+`BudgetExhausted`, `Dropped` or `RequiredRouteFailed`. Unknown or
+unresolved inputs are diagnostic conditions, not a new completion value; the
+trace records the reason separately. An empty result is not silently called
+complete. No adaptive arm may hide secondary searches or adjacency work from
+the declared cost envelope.
 
 AR0 reports multi-hop Recall@K and nDCG@K, path/edge precision, candidate-set
 recall, query drift, unique units and edges visited, decoded bytes, steps,
