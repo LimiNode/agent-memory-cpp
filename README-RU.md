@@ -94,58 +94,28 @@ ctest --test-dir build --build-config Release --output-on-failure
 
 ### Минимальный пример канонического содержимого
 
-Это реализованный эталонный путь в памяти процесса: создать ревизию `0`, опубликовать изменение, затем материализовать историческую ревизию и текущий Markdown. Тот же исходник собирается как [`examples/canonical_content.cpp`](examples/canonical_content.cpp), если включены примеры.
+Полный исполняемый пример — единственный источник истины для этого сценария: [`examples/canonical_content.cpp`](examples/canonical_content.cpp). Он создаёт ревизию `0`, публикует одно изменение, материализует историческую и текущую Markdown-версии и проверяет, что содержимое ревизий не смешивается.
+
+Основная форма публичного API:
 
 ~~~cpp
-#include <agent_memory.hpp>
+InMemoryCanonicalContentStore store;
+const auto result = store.commit(
+    CanonicalEditRequest{document_id, 0, std::move(operations)}
+);
+const auto previous = store.materialize_markdown(document_id, 0);
+const auto current = store.materialize_markdown(document_id);
+~~~
 
-#include <iostream>
-#include <optional>
-#include <utility>
-#include <vector>
+Собрать и запустить полный пример:
 
-int main() {
-    using namespace agent_memory;
-
-    InMemoryCanonicalContentStore store;
-    const DocumentId document_id{"doc:notes"};
-    const ContentBlockId heading{"heading"};
-    const ContentBlockId body{"body"};
-
-    CanonicalDocumentRevision initial{
-        document_id,
-        0,
-        {},
-        {
-            ContentBlock{heading, 1, ContentBlockKind::Heading,
-                std::nullopt, "Notes"},
-            ContentBlock{body, 1, ContentBlockKind::Paragraph,
-                heading, "Черновик."}
-        }
-    };
-
-    if (!store.create_document(std::move(initial))) {
-        return 1;
-    }
-
-    std::vector<CanonicalEditOperation> operations;
-    operations.emplace_back(ReplaceBlockText{body, "Изменённый текст."});
-    const auto result = store.commit(
-        CanonicalEditRequest{document_id, 0, std::move(operations)}
-    );
-    if (result.status != CanonicalEditStatus::Ok) {
-        return 1;
-    }
-
-    const auto previous_markdown = store.materialize_markdown(document_id, 0);
-    const auto current_markdown = store.materialize_markdown(document_id);
-    if (!previous_markdown || !current_markdown) {
-        return 1;
-    }
-
-    std::cout << "До:\n" << *previous_markdown
-              << "\nПосле:\n" << *current_markdown;
-}
+~~~bash
+cmake -S . -B build \
+  -DAGENT_MEMORY_BUILD_TESTS=ON \
+  -DAGENT_MEMORY_BUILD_EXAMPLES=ON
+cmake --build build --config Release
+ctest --test-dir build --build-config Release \
+  -R "^agent_memory_canonical_content_example$" --output-on-failure
 ~~~
 
 Полный набор семантических сценариев описан в [контракте канонического содержимого](guides/canonical-content-storage-roadmap.md), [публичном заголовке](src/agent_memory/storage/CanonicalContentStore.hpp) и [тестах канонического содержимого](tests/domain/canonical_content_test.cpp).
