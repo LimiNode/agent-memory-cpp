@@ -505,6 +505,60 @@ Acceptance requires reproducible suppression/completion traces and a declared
 quality/cost criterion; a fanout cap alone is not proof of improved retrieval.
 G1 may be screened independently, then combined with G0 as a labelled ablation.
 
+#### AR0: Bounded Adaptive Associative Recall
+
+AR0 is a research lane for multi-step associative retrieval. It extends G0/G1
+and the existing `RetrievalPlan`, `CandidateSet`, `RetrievalTrace` and
+progressive-disclosure contracts; it is not a new graph API, a hidden write
+path or a second memory hierarchy. The name deliberately avoids `A0`, which is
+already used by the ADELIA/runtime integration lane.
+
+An execution-local adaptive search may carry the equivalent of:
+
+```text
+original plan and plan digest
+current cue/context digest
+parent step and candidate lineage
+visited units/edges and suppression reasons
+remaining edge, candidate, byte, token, latency and step budgets
+termination/completion reason
+```
+
+This state is a replayable search receipt, not durable memory. Every explored
+candidate remains subject to the same `FilterFrontier`, `ReadFrontier`,
+lifecycle, provenance and access checks as a one-step query. Exploration must
+not modify canonical relations, refresh `use_count`, promote source trust or
+create an epistemic corroboration merely because several routes reached the
+same unit. Graph-derived routes are retrieval votes, not independent evidence.
+
+The initial comparison matrix separates:
+
+1. one-shot lexical/dense/hybrid retrieval;
+2. graph-derived query expansion over the eligible corpus;
+3. bounded graph expansion followed by scoring an explicit canonical candidate
+   set;
+4. deterministic spreading activation with a declared decay, restart and
+   stopping policy;
+5. iterative cue/context updates with bounded explore/prune steps;
+6. an optional host/LLM query transformer, evaluated separately from the
+   deterministic arms and never required for the baseline.
+
+The original query route remains available as a recovery/control route.
+Adaptive steps must detect cycles, repeated cues, stale edges, hub expansion,
+query drift and frontier changes. A step may stop with `Complete`, `Partial`,
+`BudgetExhausted`, `Unavailable` or `Unknown` according to the existing route
+completion contract; an empty result is not silently called complete. No
+adaptive arm may hide secondary searches or adjacency work from the declared
+cost envelope.
+
+AR0 reports multi-hop Recall@K and nDCG@K, path/edge precision, candidate-set
+recall, query drift, unique units and edges visited, decoded bytes, steps,
+latency, diversity, termination reason and provenance coverage. Fixtures must
+include a useful two-hop path, a wrong seed, a cycle, a high-degree hub, a
+stale/inaccessible endpoint, a disconnected relevant item and an exhausted
+shared budget. Acceptance is a measured relevance/cost/provenance trade-off;
+there is no default adaptive policy until a matched comparison supports one.
+
 ## 10. Milestone Placement
 
 - M0: no activation layer beyond scope/lifecycle/source filters.

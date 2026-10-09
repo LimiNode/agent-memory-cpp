@@ -23,6 +23,10 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | Vector compression | `binary-embeddings-roadmap.md`, `advanced-binary-techniques-roadmap.md` | Docs/tests only | codec/index integration | F32/F16/int8 matrix |
 | Hybrid / RRF | `knowledge-base-roadmap.md`, `retrieval-execution-roadmap.md` | Contract only | route-local pools, hard-filter diagnostics and fusion trace | Gate H0 protocol, then RRF MVP |
 | Graph retrieval | `knowledge-activation-roadmap.md` | Roadmap only | graph substrate/traversal | relation-owned graph gate |
+| Temporal navigation / historical reads | `memory-lifecycle-governance-roadmap.md` AM-13/T0 | Contract only | bounded timeline/episode/neighbor navigation, cursor/frontier validation and origin-aware fixtures | T0 temporal navigation fixture |
+| Durable working context / crash recovery | `agent-runtime-integration-roadmap.md` W0, `context-building.md` | Contract only | host checkpoint/receipt adapter, crash matrix and provider unknown-outcome replay | W0 boundary fixture |
+| Adaptive associative recall | `knowledge-activation-roadmap.md` AR0 | Docs/tests only | bounded multi-step cue/context search and cost/provenance comparison | AR0 research screen |
+| Event-centric grounding | `knowledge-base-roadmap.md` EG0, `evaluation-roadmap.md` | Docs/tests only | extraction/linking fixture and parity-controlled event retrieval runner | EG0 grounding gate |
 | Context compression | `compaction-roadmap.md`, `compression-is-intelligence-roadmap.md` | Roadmap only | budgeted compressor | no-op/extractive baseline |
 | Query transformation | `knowledge-activation-roadmap.md` | Roadmap only | drift/evaluation hooks | no-op + trace contract |
 | Reranking | `retrieval-techniques-roadmap.md` | Roadmap only | bounded reranker API | candidate-depth benchmark |

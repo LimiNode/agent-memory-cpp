@@ -810,6 +810,46 @@ enum class QueryType : uint8_t {
 
 Pre-router (перед retrieval) — per stack configurable. `QALookup` → приоритет `QARetriever`. `TemporalLookup` → `TemporalRetriever` + `LexicalRetriever`. Default `Unknown` — применяются все retrievers по profile. Domain, role, stage, topic, platform, and audience are soft routing signals by default; they should boost or prioritize candidates rather than exclude neighboring domains unless a profile explicitly marks the field as a strict safety filter.
 
+### 7.7. Event-Centric Grounding (EG0, M2+ research)
+
+Event-centric retrieval is a grounding profile over the existing canonical
+objects, not a replacement for `KnowledgeUnitEnvelope`, a new graph database
+or a mandatory event schema. The conceptual crosswalk is:
+
+```text
+ARTICLE / source material
+    -> Source / SourceRevision / CanonicalContent
+EVENT / observation or reported occurrence
+    -> Event / Observation unit with time, origin and evidence
+ENTITY / participant or concept
+    -> `Entity` unit or typed concept metadata with scoped identity
+LINK / relation or co-occurrence
+    -> Relation projection with explicit class and provenance
+```
+
+Source revisions remain immutable. Extraction, entity linking and relation
+updates create append-only derived generations with `derived_from`, producer
+revision, source anchors and the applicable policy. A co-occurrence is not
+automatically support, causality, contradiction or independent corroboration.
+Hard causal/evidence links and soft associative links must remain distinguishable
+in the relation class and retrieval trace. Occurrences in two episodes are not
+the same fact merely because they mention the same entity.
+
+The profile may compare flat chunk retrieval, event-grounded retrieval,
+event-plus-temporal retrieval and bounded graph/associative retrieval. All arms
+use the same source revisions, access/frontier policy, qrels, canonical
+hydration, cost envelope and provenance checks. Extraction providers may
+propose events, entities or relations, but canonical IDs, revisions and
+lifecycle transitions are admitted only through the normal validation and
+publication path. Reflection or graph synthesis never directly upgrades a
+derived relation into source truth.
+
+EG0 is a research/evaluation gate, not a claim that the event profile or a
+particular ontology is implemented. It must report event extraction and entity
+link coverage separately from retrieval quality, and preserve unresolved or
+conflicting interpretations for audit. The detailed parity and fixture
+contract lives in [`evaluation-roadmap.md`](evaluation-roadmap.md#event-centric-grounding-gate-eg0).
+
 ## 8. ContextAssembly with Budgets
 
 `ContextBuilder` превращает ranked hits в budgeted context для downstream consumer.

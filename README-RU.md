@@ -156,6 +156,8 @@ int main() {
 - [Топология хранения](guides/storage-backend-integration-roadmap.md) — контексты, размещение, идентичность и границы федерации.
 - [План оценки](guides/evaluation-roadmap.md) и [эксперименты](guides/experiments/) — базовые линии, receipts и воспроизводимость.
 - [F0: устойчивость обратной связи](guides/experiments/2026-10-07-memory-feedback-stability-protocol.md) — протокол, а не завершённый эксперимент.
+- [Временная навигация и долговечный рабочий контекст](guides/memory-lifecycle-governance-roadmap.md) и [интеграция с runtime](guides/agent-runtime-integration-roadmap.md) — историческое чтение, возобновляемая сборка контекста и семантика восстановления после сбоя.
+- [Активация знаний](guides/knowledge-activation-roadmap.md) и [поиск по базе знаний](guides/knowledge-base-roadmap.md) — исследования ограниченного ассоциативного поиска и событийного grounding.
 - [Сравнение проектов](guides/project-comparison.md) — альтернативы, преимущества, ограничения и области применения.
 
 ## Что не является целью

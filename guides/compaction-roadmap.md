@@ -495,7 +495,9 @@ class SummaryPromotionJob : public ICompactionJob {
     //          title = cluster centroid keywords
     //          body = generated summary
     //          derived_from = source unit_ids
-    //      - Пометить source units: lifecycle = Superseded, superseded_by = article unit_id.
+    //      - Keep source units addressable. Mark them Superseded only when a
+    //        separate semantic-replacement decision proves that the article
+    //        replaces them, not merely because a summary was generated.
     //
     // Требует: CompiledArticles capability (см. memory-stacks-roadmap.md секция 9, validation rule 10).
     // Без LLM: extractive summary через top-K sentences (cheap fallback).
@@ -512,6 +514,16 @@ to the input units; the input generation remains addressable until the normal
 lifecycle/retention policy retires it. Unresolved questions are retained as
 explicit unresolved or escalated units rather than filled with invented
 answers. Read-only retrieval selects an active generation/profile explicitly.
+
+Summary or context consolidation does not by itself make an input
+`Superseded`. `Superseded` means that a separate semantic replacement or
+deduplication decision has retired the input from the default current view.
+Creating a summary generation may change which generation an active retrieval
+profile prefers while leaving the source episodes, facts and citations
+addressable for history, evidence drill-down and later re-materialization.
+Physical reclamation still follows the normal evidence/artifact liveness and
+retention contract. A summary must not be treated as an independent
+observation merely because it is easier to retrieve.
 
 This rule applies equally to extractive and model-generated consolidation and
 is compatible with the existing checkpoint and supersession contracts. It does

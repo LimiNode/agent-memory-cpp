@@ -163,3 +163,47 @@ types, monotonic narrowing, permutation-stable replay, typed `UNCLEAR` for
 insufficient evidence or exhausted shared proof budgets, and provenance for
 typed conclusions, omitted evidence and policy/model revisions. These are
 planned research contracts, not completed quality claims or thresholds.
+
+## Event-Centric Grounding Gate (EG0)
+
+EG0 evaluates whether event/entity grounding improves retrieval for event and
+multi-hop questions without laundering extraction errors into canonical truth.
+It is separate from the encoder E0 gate above. No external article, model or
+reported benchmark score is a release threshold; the project must run its own
+parity-controlled fixture.
+
+Compare at least these arms on the same source revisions, qrels, access policy,
+frontier, embedding/model identity and total work budget:
+
+```text
+flat lexical/dense chunks
+event-grounded units and anchors
+event + temporal filtering
+event + bounded graph/associative expansion
+```
+
+The manifest binds source and extraction revisions, entity/linking policy,
+relation classes, temporal policy, query set, exact oracle, candidate/edge
+budgets, model revisions and the canonical-hydration procedure. A comparison
+whose parity manifest differs remains pending rather than being filled by
+prose or a corpus name.
+
+Report separately:
+
+- event extraction coverage and span/anchor fidelity;
+- entity-link precision/recall and ambiguous-link rate;
+- relation-class precision, contradiction preservation and unresolved rate;
+- Recall@K, nDCG@10, MRR and multi-hop/cross-episode recall;
+- candidate/edge work, decoded bytes, latency and context provenance coverage.
+
+Fixtures must include repeated entities in different occurrences, same-name
+distinct entities, hard versus soft links, a co-occurrence without support, a
+late event correction, conflicting perspectives, stale or inaccessible source
+revisions, a disconnected multi-hop answer and an extraction proposal rejected
+by admission. Derived extraction output may improve navigation or coverage,
+but it is not an independent observation. An unresolved or unknown ancestry
+must remain unknown, not count as corroboration.
+
+EG0 is `Docs/tests only` until a reproducible runner and checked-in fixture
+exist. A passing event-grounding result does not select a graph backend,
+ontology, extraction provider or storage layout.

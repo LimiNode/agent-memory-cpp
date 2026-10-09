@@ -200,6 +200,86 @@ Every profile is measured against the range-index baseline for candidate count,
 segment reads, decoded bytes, p50/p95/p99, update/compaction cost, and
 time-travel correctness.
 
+### AM-13.1: Temporal Navigation And Historical Read Semantics (T0, M2+)
+
+AM-13 defines which temporal frontier a query means. T0 defines how a caller
+navigates that frontier without turning the core into a calendar or a second
+query API. It is a conceptual retrieval contract and evaluation lane; exact
+public method names and physical indexes remain implementation work.
+
+The navigation basis must be explicit:
+
+```text
+valid/event time      = when an observation or claim concerns the world
+recorded/known-at time = when this origin recorded or became able to see it
+origin sequence       = append-only order inside one runtime/replica origin
+```
+
+These axes are not interchangeable. A late report may have an old event time
+and a new recorded time. It must become visible to a present-time query without
+rewriting the answer to an earlier `KnownAt` query. Sequence values from two
+origins have no implicit global order; a federated merge must retain origin
+qualification and an explicit merge policy rather than inventing consensus.
+
+The first navigation intents are:
+
+| Intent | Required binding |
+|---|---|
+| Timeline range | time basis, scope/stream or subject, direction, limit and read frontier |
+| Episode read | episode/source identity, selected revision and detail level |
+| Neighbour read | same stream/episode or an explicit relation channel, direction and edge budget |
+| Event query | typed predicates, temporal query tag, access frontier and deterministic order |
+
+An implementation may expose operations with names such as `scan_timeline`,
+`read_episode`, `read_neighbors` or `query_events`, but those names do not
+create a new public API until their owner and ABI are approved. Every operation
+has a bounded budget and returns completion/unknown information when the
+frontier, time range or adjacency work was not fully inspected.
+
+Navigation order is deterministic within the declared stream and origin. A
+cursor binds at least the normalized temporal query, scope/origin, read
+frontier, lifecycle/projection generations, ordering rule and cursor schema.
+The cursor is rejected when any binding is stale or unavailable; it must not
+silently continue on a newer frontier. Unknown event time is explicit and is
+not sorted into a claimed chronological position. `read_neighbors` returns
+typed relation/episode context and must not treat mere adjacency as support,
+causality or independent evidence.
+
+The historical-read contract is:
+
+```text
+known_at(T)
+  -> only visibility/evidence available to the selected origin by T
+
+late evidence received now about event time in the past
+  -> present query may include it
+  -> an earlier known_at(T) result remains unchanged
+```
+
+An audit route may show a historical unit together with a later invalidation,
+reconciliation or resolution receipt, but it must label the result as
+historical. It must not present a record that was unknown at the requested
+cutoff as if it had been known then. Temporal navigation also preserves the
+existing lifecycle and access gates: a neighbour traversal cannot revive an
+erased, inaccessible or stale unit.
+
+T0 acceptance fixtures should cover:
+
+- equal event times with deterministic origin/sequence tie handling;
+- a late observation whose event time precedes its recorded time;
+- `ActiveAt`, `KnownAt` and `ActiveAtKnownAt` returning different, expected
+  frontiers;
+- unknown time remaining explicit rather than being assigned a false order;
+- cursor rejection after frontier or projection-generation change;
+- previous/next episode navigation scoped to one origin or stream;
+- neighbour expansion that is bounded and distinguishes no-neighbours from
+  policy or budget suppression;
+- redacted or inaccessible neighbours not leaking through navigation traces.
+
+T0 extends the existing AM-13 `TemporalQuery`, `FilterFrontier`,
+`ReadFrontier` and `RetrievalTrace` contracts. It does not add a global event
+log, a scheduler, a graph database or a durable cursor table.
+
 ## 4. AM-14: Abstraction And Derivation Graph
 
 Raw documents, chunks, facts, episodes, summaries and higher-level models are
