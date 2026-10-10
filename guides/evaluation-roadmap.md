@@ -475,21 +475,67 @@ reason the candidate was included, deferred or omitted. Unknown gain or an
 unbounded cost estimate produces an explicit unknown/deferred result rather
 than silent admission or deletion.
 
-### Comparison matrix
+### Evaluation partitions and test independence
 
-Run the following arms on the same source revisions, frontiers, query/task
-set, candidate and decoded-byte budgets:
+Marginal-gain estimation, policy tuning and final evaluation must use
+disjoint, predeclared evidence partitions. Each partition is declared before a
+run with its source/reference scope, task or probe role and access rules.
 
-| Arm | Question |
+| Partition | Purpose |
 |---|---|
-| deterministic baseline | What does the existing retrieval/context policy provide? |
-| novelty-only | Does novelty alone improve optional projection selection? |
-| novelty + measured gain | Does measured held-out benefit justify projection cost? |
-| Value-of-Read | Does marginal selection improve a bounded ContextPack? |
+| training / calibration | fit or calibrate the gain estimator and any representation-level utility features |
+| validation | choose thresholds, coefficients, stopping rules and selection policy |
+| held-out test | perform the final independent evaluation without changing admission, selection or tuning |
 
-The baseline remains mandatory. Query-conditioned selection and
-query-independent retention must be reported separately, consistent with the
-Decision-Relevant Retention Gate.
+Final held-out decision probes and oracle answers must not influence projection
+admission, candidate selection, gain estimation or hyperparameter tuning. A
+query-conditioned arm may use the declared user task, but must not use
+evaluation-only labels, hidden oracle answers or held-out probe content. Test
+results must not be fed back into tuning; if a run is adapted after observing
+them, the adaptation requires a newly declared held-out partition and is
+reported as a new evaluation.
+
+### Experiment isolation
+
+MVA-0 separates the effect of derived-representation admission from the effect
+of selecting another item for a bounded context. Each comparison keeps the
+declared source revisions, frontiers, candidate and decoded-byte budgets fixed.
+
+#### MVA-0A — Derived Representation Admission
+
+Compare the deterministic baseline, novelty-only admission and novelty plus
+measured-gain admission while keeping retrieval, reranking and ContextPack
+selection fixed. Only the admission of optional derived representations may
+vary.
+
+| Arm | Fixed | Variable |
+|---|---|---|
+| deterministic baseline | source, retrieval, context policy and budgets | no optional MVA admission |
+| novelty-only | source, retrieval, context policy and budgets | novelty rule for optional projections |
+| novelty + measured gain | source, retrieval, context policy and budgets | novelty plus calibrated/validated gain gate |
+
+#### MVA-0B — Marginal Context Read
+
+Compare the ordinary deterministic ContextPack builder with Value-of-Read on
+one fixed version of the indexes, projections and available candidate set.
+Only the read-selection policy may vary.
+
+| Arm | Fixed | Variable |
+|---|---|---|
+| deterministic ContextPack | indexes, projections, candidate set, frontiers and budgets | ordinary selection policy |
+| Value-of-Read | indexes, projections, candidate set, frontiers and budgets | marginal-gain selection policy |
+
+#### MVA-0C — Combined Profile
+
+Run the combined admission and read policies only after MVA-0A and MVA-0B have
+independent results. Report the combined profile as its own arm; a combined
+gain cannot be attributed to either component without the isolated comparisons.
+
+The cost of gain estimation, extra model calls, auxiliary storage, index
+changes, update/rebuild work and selection latency is assigned to the arm that
+uses it. Total resource cost remains part of every comparison. Query-conditioned
+selection and query-independent retention remain separately reported, consistent
+with the Decision-Relevant Retention Gate.
 
 ### Required fixtures and metrics
 
