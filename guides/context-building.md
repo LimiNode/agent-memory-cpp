@@ -190,3 +190,14 @@ lifecycle state. It must not create hidden memory writes, silently refresh
 usage feedback or turn prompt inclusion into evidence binding. Provider output
 and task success remain host-owned observations; the library records the
 selection inputs and declared evaluation result when available.
+
+
+Selection diagnostics follow the existing `ContextOmission` and
+`PolicyDecisionTrace` contracts. A candidate denied to the current client
+must not have its canonical ID, score, text, citations, provenance or detailed
+selection reason exposed in a client-visible ContextPack or log. A
+server-side diagnostic record may retain protected details under its own access
+policy, but it must not be confused with client-visible omission metadata.
+For denied candidates, use the aggregate or redacted trace required by those
+contracts; an experimental Value-of-Read implementation must not bypass the
+existing disclosure boundary.
