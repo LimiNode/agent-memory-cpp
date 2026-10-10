@@ -175,3 +175,18 @@ pack, and a shorter pack does not prove less information loss.
 The first implementation should be a dependency-free deterministic builder.
 Provider-specific prompt formatting, compression, or LLM summarization belongs
 behind an adapter and must preserve the same omission/provenance contract.
+
+### Research lane: marginal-value context selection
+
+MVA-0 may evaluate a marginal selection strategy over the existing
+provider-neutral ContextPack contract. The deterministic builder remains the
+reference path. A research arm may choose the next candidate using estimated
+gain per declared token, byte, latency or risk, but it must preserve the same
+candidate identities, revisions, frontiers, omission reasons and provenance
+digest.
+
+Selection score is not evidence status, source trust, action authority or
+lifecycle state. It must not create hidden memory writes, silently refresh
+usage feedback or turn prompt inclusion into evidence binding. Provider output
+and task success remain host-owned observations; the library records the
+selection inputs and declared evaluation result when available.
