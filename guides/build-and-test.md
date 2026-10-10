@@ -24,6 +24,7 @@ All project options use the `AGENT_MEMORY_` prefix.
 | `AGENT_MEMORY_ENABLE_JSON` | `ON` | Enable JSON-backed eval loaders and benchmark report serialization. |
 | `AGENT_MEMORY_ENABLE_WARNINGS` | `ON` | Enable project compiler warnings. |
 | `AGENT_MEMORY_ENABLE_MDBX` | `OFF` | Enable MDBX-backed storage dependencies. |
+| `AGENT_MEMORY_BUILD_RESEARCH_TESTS` | `OFF` | Register experimental and research self-tests in CTest. Core semantic C++ tests remain registered when this is `OFF`. |
 | `AGENT_MEMORY_MDBX_CONTAINERS_SOURCE_DIR` | empty | Optional override for a local `mdbx-containers` source tree. Defaults to `external/mdbx-containers` when present. |
 | `AGENT_MEMORY_MDBX_DEPS_MODE` | `AUTO` | MDBX dependency mode forwarded to `mdbx-containers` source builds: `AUTO`, `SYSTEM`, or `BUNDLED`. |
 
