@@ -413,3 +413,162 @@ SAHI remains a deferred comparison lane. It must first demonstrate a
 measured advantage over the existing MIH/R4 controls under the same leakage,
 budget, hydration and lifecycle rules before it can justify a separate
 implementation or index decision.
+
+## MVA-0 — Marginal Value of Memory and Read
+
+MVA-0 is a research-only gate for deciding whether an optional derived
+representation or an additional context read provides enough measured value to
+justify its storage, indexing, decoding, latency and maintenance cost. It does
+not introduce a public API, a lifecycle state, an authority score or a new
+memory hierarchy.
+
+The gate covers two related but separate decisions:
+
+1. **Marginal value of memory** — whether to create or retain an optional
+   derived representation such as a summary, aggregate, sketch or additional
+   navigation projection.
+2. **Marginal value of read** — whether the next candidate is worth adding to an
+   already selected context under a fixed budget.
+
+### Admission boundary for derived representations
+
+Novelty and measured gain apply primarily to optional derived material. They
+must not filter mandatory source records, corrections, independent corroborating
+evidence, audit records, lifecycle records or records required by an explicit
+retention/access policy. A low-textual-novelty correction may have high
+decision value, and repeated wording may still be independent evidence when
+its provenance is independent.
+
+A derived candidate is evaluated against the pinned source/read frontier and
+records, at minimum:
+
+- source revisions and evidence ancestry;
+- the capability or decision profile it is intended to support;
+- novelty relative to already available representations;
+- expected gain and the evaluation task or probe family;
+- storage, index, update/delete, decoding and latency cost;
+- uncertainty, assumptions and model/policy revision;
+- protected scenarios that must not regress.
+
+The result is a research decision about the projection: accept, defer, reject
+or unavailable for evaluation. Rejecting or deferring a projection never erases
+or supersedes its canonical source. Lifecycle retirement remains governed by
+the Decision-Relevant Retention Gate and ordinary policy.
+
+### Value-of-Read objective
+
+For an already selected context (S) and candidate (x), an experiment may
+estimate a marginal objective of the form:
+
+`V(x | S) = estimated_gain - lambda_bytes * delta_bytes
+- lambda_time * delta_time - lambda_risk * delta_risk`
+
+This is an experimental comparison objective, not a repository-wide truth,
+authority score or replacement for relevance. The gain must be measured on
+held-out decision probes or another independently declared evaluation task.
+A model that generated a summary or candidate must not be the sole judge of its
+own benefit.
+
+Every Value-of-Read arm records the current context digest, candidate canonical
+identity and revision, expected gain, declared costs, uncertainty and the
+reason the candidate was included, deferred or omitted. Unknown gain or an
+unbounded cost estimate produces an explicit unknown/deferred result rather
+than silent admission or deletion.
+
+### Evaluation partitions and test independence
+
+Marginal-gain estimation, policy tuning and final evaluation must use
+disjoint, predeclared evidence partitions. Each partition is declared before a
+run with its source/reference scope, task or probe role and access rules.
+
+| Partition | Purpose |
+|---|---|
+| training / calibration | fit or calibrate the gain estimator and any representation-level utility features |
+| validation | choose thresholds, coefficients, stopping rules and selection policy |
+| held-out test | perform the final independent evaluation without changing admission, selection or tuning |
+
+Final held-out decision probes and oracle answers must not influence projection
+admission, candidate selection, gain estimation or hyperparameter tuning. A
+query-conditioned arm may use the declared user task, but must not use
+evaluation-only labels, hidden oracle answers or held-out probe content. Test
+results must not be fed back into tuning; if a run is adapted after observing
+them, the adaptation requires a newly declared held-out partition and is
+reported as a new evaluation.
+
+### Experiment isolation
+
+MVA-0 separates the effect of derived-representation admission from the effect
+of selecting another item for a bounded context. Each comparison keeps the
+declared source revisions, frontiers, candidate and decoded-byte budgets fixed.
+
+#### MVA-0A — Derived Representation Admission
+
+Compare the deterministic baseline, novelty-only admission and novelty plus
+measured-gain admission while keeping retrieval, reranking and ContextPack
+selection fixed. Only the admission of optional derived representations may
+vary.
+
+| Arm | Fixed | Variable |
+|---|---|---|
+| deterministic baseline | source, retrieval, context policy and budgets | no optional MVA admission |
+| novelty-only | source, retrieval, context policy and budgets | novelty rule for optional projections |
+| novelty + measured gain | source, retrieval, context policy and budgets | novelty plus calibrated/validated gain gate |
+
+#### MVA-0B — Marginal Context Read
+
+Compare the ordinary deterministic ContextPack builder with Value-of-Read on
+one fixed version of the indexes, projections and available candidate set.
+Only the read-selection policy may vary.
+
+| Arm | Fixed | Variable |
+|---|---|---|
+| deterministic ContextPack | indexes, projections, candidate set, frontiers and budgets | ordinary selection policy |
+| Value-of-Read | indexes, projections, candidate set, frontiers and budgets | marginal-gain selection policy |
+
+#### MVA-0C — Combined Profile
+
+Run the combined admission and read policies only after MVA-0A and MVA-0B have
+independent results. Report the combined profile as its own arm; a combined
+gain cannot be attributed to either component without the isolated comparisons.
+
+The cost of gain estimation, extra model calls, auxiliary storage, index
+changes, update/rebuild work and selection latency is assigned to the arm that
+uses it. Total resource cost remains part of every comparison. Query-conditioned
+selection and query-independent retention remain separately reported, consistent
+with the Decision-Relevant Retention Gate.
+
+### Required fixtures and metrics
+
+The fixture set must include:
+
+- a low-visibility correction to a command or constraint;
+- repeated wording with independent provenance;
+- an unusual but false or unsupported candidate;
+- a summary that preserves the topic but loses a number or exception;
+- a rare facet required by the decision;
+- unknown or high-variance utility and cost estimates.
+
+Reports include decision-probe retention, rare-facet recall, Recall@K,
+nDCG@10, provenance coverage, source hydration, context tokens, decoded bytes,
+index bytes, update/delete/rebuild cost and p50/p95/p99 latency. Protected
+scenario regressions are reported separately from aggregate quality.
+
+A passing result requires a measured gain on held-out data at comparable
+resource cost without unacceptable loss of protected details, provenance or
+lifecycle correctness. It produces a versioned report and implementation
+decision; it does not by itself authorize a new type, DBI or production
+policy.
+
+### Claim status and independent evidence
+
+Each reported claim distinguishes:
+
+- formal result under explicit assumptions;
+- independently checked oracle result;
+- measured empirical result;
+- hypothesis or unverified interpretation.
+
+A theorem about a mathematical surrogate does not establish summary quality or
+answer quality. A benchmark that replays an implementation's own output is
+reproducibility evidence only; correctness still requires an independent oracle,
+invariant or held-out check.

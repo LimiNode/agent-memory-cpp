@@ -1022,3 +1022,16 @@ External research references (arXiv):
 - arXiv:2405.14831 — "HippoRAG: Neurobiologically Inspired Long-Term Memory for Large Language Models".
 - arXiv:2404.13207 — "STaRK: Benchmarking LLM Retrieval on Textual and Relational Knowledge Bases".
 - See also: `guides/research-reading-map.md`.
+
+## Research boundary: marginal value of derived material
+
+An optional summary, aggregate, sketch or navigation projection may be proposed
+under the MVA-0 research gate. The proposal records source frontier,
+provenance, expected decision gain, uncertainty and resource cost. Mandatory
+source material, corrections, independent evidence, audit records and explicit
+retention obligations bypass novelty-based rejection.
+
+MVA-0 can decide whether to create, defer or reject a derived projection. It
+cannot retire the source, change its evidence status or grant action authority.
+Source retirement is still governed by the Decision-Relevant Retention Gate,
+lifecycle policy and any legal, security or privacy obligation.

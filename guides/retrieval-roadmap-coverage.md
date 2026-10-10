@@ -30,6 +30,7 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | Event-centric grounding | `knowledge-base-roadmap.md` EG0, `evaluation-roadmap.md` | Docs/tests only | extraction/linking fixture and parity-controlled event retrieval runner | EG0 grounding gate |
 | Context compression | `compaction-roadmap.md`, `compression-is-intelligence-roadmap.md` | Roadmap only | budgeted compressor | no-op/extractive baseline |
 | Decision-relevant retention / compression evaluation | `evaluation-roadmap.md`, `compaction-roadmap.md`, `compression-is-intelligence-roadmap.md` | Docs/tests only | fixed decision probes, equal-budget extractive/abstractive comparisons and replayable retention evidence | run no-op/extractive/abstractive retention fixture with exact/key-based probes |
+| Marginal value of memory / context read | `evaluation-roadmap.md`, `context-building.md`, `compaction-roadmap.md` | Docs/tests only | independent MVA-0 benchmark for optional derived projections and bounded ContextPack selection | run baseline, measured-gain and Value-of-Read comparison with protected fixtures |
 | Query transformation | `knowledge-activation-roadmap.md` | Roadmap only | drift/evaluation hooks | no-op + trace contract |
 | Reranking | `retrieval-techniques-roadmap.md` | Roadmap only | bounded reranker API | candidate-depth benchmark |
 | Temporal memory | `memory-lifecycle-governance-roadmap.md` | Contract only | valid-at implementation | single-axis fixture |
