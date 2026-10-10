@@ -249,6 +249,34 @@ knowledge. A `KnownAtSequence(B, sequence_before_receipt)` query excludes the
 import; a sequence after the receipt may include it. This distinction remains
 true even when the imported record's original `recorded_at_ms` is 10:00.
 
+
+Historical stability is a separate property from the meaning of a temporal
+predicate. `KnownAtSequence(origin, sequence)` is stable only relative to
+the append-only visibility receipts and a pinned read frontier for that
+origin. `KnownAt(recorded_cutoff_ms)` is a recorded-time predicate; it does
+not, by itself, guarantee that repeated materialization stays unchanged as the
+store evolves. A later import can become visible to a recorded-time query if
+the selected policy permits a late insertion carrying an earlier recorded
+timestamp. Stable historical materialization therefore requires a pinned
+`ReadFrontier`, or an explicit registration-time invariant that rejects late
+insertion with an earlier recorded time. Without one of those conditions, the
+query must not be advertised as replay-stable.
+
+For example, origin A may record an occurrence at 10:00, while origin B
+receives it at 10:30 and obtains its own visibility receipt. A
+`KnownAt(recorded_cutoff_ms=10:15)` query follows the existing record-time
+policy; it must not be described as what B observed. A
+`KnownAtSequence(B, sequence_before_receipt)` query excludes the import, and
+a sequence after the receipt may include it. If an implementation preserves
+A's 10:00 timestamp in B's record, it must use B's receipt/frontier for
+origin-qualified knowledge rather than silently treating A's timestamp as B's
+knowledge time.
+
+The T0 acceptance suite must include a repeated-query fixture with a fixed
+cutoff before and after a late import. It must show that a pinned-frontier or
+receipt-scoped view remains stable, while an unpinned recorded-time view may
+change unless the declared registration policy forbids late old-time inserts.
+
 The first navigation intents are:
 
 | Intent | Required binding |
