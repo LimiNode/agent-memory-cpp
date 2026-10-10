@@ -325,3 +325,91 @@ must remain unknown, not count as corroboration.
 EG0 is `Docs/tests only` until a reproducible runner and checked-in fixture
 exist. A passing event-grounding result does not select a graph backend,
 ontology, extraction provider or storage layout.
+
+## Rare-Facet / Multi-Granularity Retrieval Gate
+
+This is a research-only benchmark contract for multi-granularity semantic
+retrieval. It evaluates whether document-level aggregation and associative
+expansion recover details that ordinary top-chunk retrieval misses. It does not
+promote ASMS, MSBSE, SAHI or AR0 to a production API, evidence class,
+authority source or storage schema.
+
+### Comparison arms
+
+Run all arms on the same corpus, encoder split, query order, qrels and
+source-hydration rules:
+
+1. **BM25 + dense** — the ordinary hybrid baseline.
+2. **Max chunk similarity** — the strongest individual chunk control.
+3. **Mean/OR aggregation** — simple document-level aggregation controls.
+4. **ASMS** — additive semantic membership sketch.
+5. **MSBSE** — multi-slot binary semantic document signature.
+6. **AR0** — bounded multi-step associative expansion.
+7. **ASMS/MSBSE → AR0** — document routing followed by associative drill-down.
+
+The graph-conditioned arms must retain an independent original-query route.
+A graph-derived query expansion and a search restricted to a canonical
+candidate set are separate arms; they must not be reported as one generic
+GraphRAG result. Experimental graph-to-retriever handoff is a harness
+contract, not an assumed public PriorRouteCandidates API for every route type.
+
+### Evaluation unit and normalized target
+
+All arms evaluate the same normalized target: a canonical occurrence identity
+paired with its logical revision (document, block or segment as applicable).
+Projection entries, slots, sketches, graph nodes and duplicate chunks are not
+evaluation units. Each returned item is hydrated to the canonical target before
+scoring; deduplication occurs by canonical occurrence identity plus revision,
+with superseded or stale revisions handled by the declared lifecycle policy.
+The report separately records initial seed recall, expanded graph recall and
+final hydrated target recall/nDCG. Candidate-set recall is a ceiling for a
+conditioned second stage, not final quality.
+
+### Equal-budget and leakage controls
+
+Every run declares the encoder/model revision, chunking, training and held-out
+split, source revision, query/qrels manifest and route policy. Entity names,
+summaries, graph edges and binary signatures derived from evaluation queries
+must not leak into training, fitting or index construction.
+
+For compressed arms, compare equal total bit budgets, including slot/sketch
+metadata and required contribution state. Report the full-precision baseline
+separately when exact equality is impossible; do not hide extra metadata in the
+budget. The resource ledger also includes persistent graph/routing structures,
+index build/update/delete/rebuild work, adjacency reads and edges visited,
+decoded bytes, memory and bit budgets, and end-to-end latency. Report actual
+usage for each arm; equal traversal counts are not required when the declared
+resource accounting makes the trade-off explicit. Hold candidate count,
+decoded-byte budget, final limit, latency procedure and source-hydration work
+constant across comparable arms.
+
+The benchmark includes rare-facet slices where the answer depends on a small
+detail, unusual constraint, exception, version, relationship or ordered
+sub-step. Aggregate averages must not replace these slices. Candidate-set
+recall is an upper bound for any conditioned second-stage recall and must be
+reported separately.
+
+### Lifecycle and diagnostic fixtures
+
+Each arm is exercised on add, delete, revision, rebuild and stale-index cases.
+A result is valid only if exact source hydration returns the expected canonical
+revision after projection or expansion. The report records candidate count,
+edges visited, decoded bytes, graph expansion reasons, latency and false
+expansion rate.
+
+ASMS delete is correct only when per-chunk contributions or an equivalent
+rebuild-safe source are retained. If contributions are unavailable, the
+implementation must rebuild or enter an explicit dirty/fail-closed state; it
+must not silently subtract an aggregate that cannot be decomposed.
+
+MSBSE slots are retrieval projections. They are not durable identities,
+independent evidence, source authority or lifecycle state. Repeated copies,
+derived summaries and graph-generated variants do not become independent
+evidence merely because they accumulate additional sketch or slot matches.
+Retrieval frequency and projection score never upgrade provenance, trust or
+action permission.
+
+SAHI remains a deferred comparison lane. It must first demonstrate a
+measured advantage over the existing MIH/R4 controls under the same leakage,
+budget, hydration and lifecycle rules before it can justify a separate
+implementation or index decision.

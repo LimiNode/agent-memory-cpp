@@ -925,3 +925,24 @@ Baseline — 768-dim float32 embedding (3,072 bytes per vector).
 - [`knowledge-base-roadmap.md`](knowledge-base-roadmap.md) — `HybridRetrievalEngine` (existing), `IQueryTransformer` (planned), `IRetrievalEvaluator` (planned) — binary embeddings integrate as candidate filter inside retrieval.
 - [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) — `MemoryProfileSpec`, `DenseIndexConfig`, `DenseIndexMode`, capability flags, embedding migration workflow (`EmbeddingRecomputeJob`).
 - [`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) — canonical physical MDBX manifest and DBI budget.
+
+## Multi-granularity evaluation boundary
+
+Binary signatures and binary embeddings are projections used by retrieval. They
+do not become document identity, evidence, authority or lifecycle state. The
+multi-granularity comparison is defined in the
+[Rare-Facet / Multi-Granularity Retrieval Gate](evaluation-roadmap.md#rare-facet--multi-granularity-retrieval-gate).
+
+A valid comparison binds the encoder/model revision, corpus and held-out split,
+chunking, source revision, bit budget, candidate budget, decoded-byte budget,
+latency procedure and exact source hydration. The fixture must cover add,
+delete, revision, rebuild and stale-projection cases. A binary projection that
+cannot be updated exactly must request a rebuild or return an explicit
+dirty/fail-closed result.
+
+Aggregate match counts, slot activations and sketch membership are retrieval
+signals only. They cannot create independent corroboration from repeated
+copies or derived summaries, and they cannot alter provenance, lifecycle or
+action authority. Any future implementation decision requires a versioned
+report against the exact oracle and the rare-facet slices, not a similarity
+example alone.

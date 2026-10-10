@@ -580,3 +580,23 @@ there is no default adaptive policy until a matched comparison supports one.
   refresh jobs, and role-aware context budgets.
 - M2+: learned planners, LLM query planners, contradiction-aware synthesis, and
   cross-application taxonomy adapters.
+
+## Rare-facet and associative-expansion evaluation
+
+AR0 is an activation/retrieval planning lane, not an evidence or authority
+source. Its quality must be measured with the
+[Rare-Facet / Multi-Granularity Retrieval Gate](evaluation-roadmap.md#rare-facet--multi-granularity-retrieval-gate).
+
+The gate compares plain retrieval, associative expansion and
+ASMS/MSBSE-to-AR0 composition on identical query, qrels, frontier, candidate,
+decoded-byte and latency budgets. The original query route remains independent
+of activation. Graph-derived names, relation expansion and activation hints
+must be traceable as route inputs; they do not become canonical facts or
+independent corroboration.
+
+Every returned result is hydrated from the expected canonical source revision.
+Wrong seeds, disconnected evidence, stale edges, forbidden endpoints, budget
+exhaustion and hub suppression are recorded as diagnostic outcomes. A
+candidate-set recall ceiling is reported separately from the quality of the
+second-stage retrieval. Adding associative expansion must not change
+provenance, lifecycle, source authority or action admission.
