@@ -87,8 +87,11 @@ jobs:
                 core=true
                 storage=true
                 ;;
-              src/agent_memory/embedding/*|src/agent_memory/index/*|src/agent_memory/retrieval/*|src/agent_memory/eval/*|tests/embedding/*|tests/index/*|tests/retrieval/*|tests/eval/*|tools/benchmarks/*|tools/agent-memory-bench/*|tools/requirements-tools.txt|external/simdcomp/*)
+              src/agent_memory/embedding/*|src/agent_memory/index/*|src/agent_memory/retrieval/*|src/agent_memory/eval/*|tests/embedding/*|tests/index/*|tests/retrieval/*|tests/eval/*)
                 core=true
+                research=true
+                ;;
+              tools/benchmarks/*|tools/agent-memory-bench/*|tools/requirements-tools.txt|external/simdcomp/*)
                 research=true
                 ;;
               CMakeLists.txt|cmake/*|*.cmake|CMakePresets.json|CMakeSettings.json)
