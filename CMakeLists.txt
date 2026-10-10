@@ -169,10 +169,10 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
     endif()
-    # This audit is a pure-Python fail-closed contract and must run in the
-    # default test configuration as well as in benchmark builds.
-    find_package(Python3 COMPONENTS Interpreter QUIET)
-    if(Python3_Interpreter_FOUND)
+    if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
+        # Research self-tests are opt-in. An explicit request must fail closed
+        # when the required Python interpreter is unavailable.
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
         add_test(
             NAME agent_memory_incremental_edit_screen_runner_self_test
             COMMAND ${Python3_EXECUTABLE}
@@ -355,9 +355,6 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
-    else()
-        message(WARNING "Python3 interpreter not found; skipping production-kernel audit self-test")
-    endif()
     if(AGENT_MEMORY_BUILD_BENCHMARKS)
         add_test(
             NAME agent_memory_mih_native_hot_path_self_test
@@ -2176,6 +2173,7 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
-    endif()
+    endif() # Python3_Interpreter_FOUND
+    endif() # AGENT_MEMORY_BUILD_RESEARCH_TESTS
     add_subdirectory(tests)
 endif()

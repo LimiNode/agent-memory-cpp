@@ -2,10 +2,269 @@ name: ci
 
 on:
   push:
+    branches:
+      - main
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 0"
 
 jobs:
+  changes:
+    name: Classify changes
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.classify.outputs.core }}
+      storage: ${{ steps.classify.outputs.storage }}
+      research: ${{ steps.classify.outputs.research }}
+      docs: ${{ steps.classify.outputs.docs }}
+      dbi: ${{ steps.classify.outputs.dbi }}
+      full: ${{ steps.classify.outputs.full }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed paths
+        id: classify
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          emit() {
+            echo "$1=$2" >> "$GITHUB_OUTPUT"
+          }
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" || "$EVENT_NAME" == "schedule" ]]; then
+            emit core true
+            emit storage true
+            emit research true
+            emit docs true
+            emit dbi true
+            emit full true
+            exit 0
+          fi
+
+          base="$PUSH_BEFORE_SHA"
+          head="$GITHUB_SHA"
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base="$PR_BASE_SHA"
+            head="$PR_HEAD_SHA"
+          fi
+
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+            files="$(git ls-tree -r --name-only "$head")"
+          else
+            files="$(git diff --name-only "$base" "$head")"
+          fi
+
+          # Whitespace errors are correctness failures for every change type,
+          # not only documentation changes.
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+            git diff-tree --check --no-commit-id -r "$head"
+          else
+            git diff --check "$base" "$head"
+          fi
+
+          route_path() {
+            local path="$1"
+            case "$path" in
+              guides/dbi-manifest.yaml|guides/mdbx-containers-extension-tz.md|tools/validate-dbi-manifest.py)
+                docs=true
+                dbi=true
+                ;;
+              README*|*.md|*.markdown|guides/*|docs/*)
+                docs=true
+                ;;
+              src/agent_memory/infrastructure/mdbx.hpp|src/agent_memory/infrastructure/mdbx/*|src/agent_memory/storage/*|tests/infrastructure/mdbx/*|external/libmdbx/*|external/mdbx-containers/*)
+                core=true
+                storage=true
+                ;;
+              src/agent_memory/embedding/*|src/agent_memory/index/*|src/agent_memory/retrieval/*|src/agent_memory/eval/*|tests/embedding/*|tests/index/*|tests/retrieval/*|tests/eval/*)
+                core=true
+                research=true
+                ;;
+              tools/benchmarks/*|tools/agent-memory-bench/*|tools/requirements-tools.txt|external/simdcomp/*)
+                research=true
+                ;;
+              CMakeLists.txt|cmake/*|*.cmake|CMakePresets.json|CMakeSettings.json)
+                all=true
+                ;;
+              src/*|tests/*|examples/*|include/*|*.cpp|*.hpp|*.h)
+                core=true
+                ;;
+              .github/*|.gitmodules|LICENSE*|vcpkg.json|conanfile*)
+                all=true
+                ;;
+              *)
+                all=true
+                ;;
+            esac
+          }
+
+          finalize_flags() {
+            if [[ "$all" == "true" ]]; then
+              core=true
+              storage=true
+              research=true
+              docs=true
+              dbi=true
+            fi
+          }
+
+          assert_route() {
+            local path="$1"
+            local expected_core="$2"
+            local expected_storage="$3"
+            local expected_research="$4"
+            local expected_docs="$5"
+            local expected_dbi="$6"
+
+            core=false
+            storage=false
+            research=false
+            docs=false
+            dbi=false
+            all=false
+            route_path "$path"
+            finalize_flags
+
+            if [[ "$core" != "$expected_core" \
+               || "$storage" != "$expected_storage" \
+               || "$research" != "$expected_research" \
+               || "$docs" != "$expected_docs" \
+               || "$dbi" != "$expected_dbi" ]]; then
+              echo "classifier regression failed for $path: core=$core storage=$storage research=$research docs=$docs dbi=$dbi"
+              exit 1
+            fi
+          }
+
+          # Keep representative paths under test so a classifier edit cannot
+          # silently drop a required lane.
+          core=false
+          storage=false
+          research=false
+          docs=false
+          dbi=false
+          all=false
+          full=false
+          assert_route "README.md" false false false true false
+          assert_route "src/agent_memory/infrastructure/mdbx.hpp" true true false false false
+          assert_route "src/agent_memory/infrastructure/mdbx/MdbxStorageContext.cpp" true true false false false
+          assert_route "CMakeLists.txt" true true true true true
+          assert_route "cmake/AgentMemoryOptions.cmake" true true true true true
+          assert_route "src/agent_memory/index/FlatBinarySignatureIndex.cpp" true false true false false
+          assert_route "tests/index/binary_signature_test.cpp" true false true false false
+          assert_route "tools/agent-memory-bench/run-native-mdbx-batch-sweep.py" false false true false false
+          assert_route "unknown/path" true true true true true
+
+          # Regression assertions must not influence the real change set.
+          core=false
+          storage=false
+          research=false
+          docs=false
+          dbi=false
+          all=false
+          full=false
+
+          while IFS= read -r path; do
+            [[ -z "$path" ]] && continue
+            route_path "$path"
+          done <<< "$files"
+
+          finalize_flags
+          emit core "$core"
+          emit storage "$storage"
+          emit research "$research"
+          emit docs "$docs"
+          emit dbi "$dbi"
+          emit full "$full"
+
+  docs:
+    name: Documentation checks
+    if: needs.changes.outputs.docs == 'true'
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changed-file whitespace
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          GITHUB_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --check "$PR_BASE_SHA" "$PR_HEAD_SHA"
+          elif [[ "$EVENT_NAME" == "push" && "$PUSH_BEFORE_SHA" != "" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+            git diff --check "$PUSH_BEFORE_SHA" "$GITHUB_SHA"
+          else
+            git diff --check
+          fi
+
+      - name: Check relative Markdown links
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+          from urllib.parse import unquote
+
+          root = Path(".").resolve()
+          errors = []
+          pattern = re.compile(r"\\[[^\\]]+\\]\\(([^)\\n]+)\\)")
+          ignored = {".git", "build", "build-mdbx", "build-mdbx-benchmark", "build-native-mih", "build-r4"}
+
+          for path in root.rglob("*.md"):
+              if ignored.intersection(path.parts):
+                  continue
+              for raw in pattern.findall(path.read_text(encoding="utf-8")):
+                  target = raw.strip().strip("<>").split("#", 1)[0]
+                  if not target or target.startswith(("http://", "https://", "mailto:")):
+                      continue
+                  candidate = (path.parent / unquote(target)).resolve()
+                  if not candidate.exists():
+                      errors.append(f"{path}: missing relative link {target}")
+
+          if errors:
+              print("\\n".join(errors))
+              sys.exit(1)
+          PY
+
+      - name: Set up Python for DBI manifest checks
+        if: needs.changes.outputs.dbi == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML for DBI manifest checks
+        if: needs.changes.outputs.dbi == 'true'
+        run: python -m pip install PyYAML==6.0.2
+
+      - name: Validate DBI manifest
+        if: needs.changes.outputs.dbi == 'true'
+        run: |
+          python tools/validate-dbi-manifest.py guides/dbi-manifest.yaml \
+            --tz guides/mdbx-containers-extension-tz.md
+          python tools/validate-dbi-manifest.py guides/dbi-manifest.yaml --self-test
+
   cmake:
+    if: needs.changes.outputs.core == 'true'
+    needs: changes
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -20,24 +279,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install tool dependencies
-        run: python -m pip install -r tools/requirements-tools.txt
-
-      - name: Fresh packed-quality contract self-tests
-        run: python tools/agent-memory-bench/test-fresh-packed-quality.py
-
       - name: Configure
         run: >
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Release
           -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF
           -DAGENT_MEMORY_BUILD_EXAMPLES=ON
-          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build
         run: cmake --build build --config Release
@@ -46,20 +294,14 @@ jobs:
         run: ctest --test-dir build --build-config Release --output-on-failure
 
   mdbx:
-    name: MDBX wiring
+    if: needs.changes.outputs.storage == 'true'
+    needs: changes
+    name: MDBX wiring (ubuntu-latest)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install tool dependencies
-        run: python -m pip install -r tools/requirements-tools.txt
 
       - name: Init flat MDBX submodules
         run: git submodule update --init external/libmdbx external/mdbx-containers
@@ -71,8 +313,8 @@ jobs:
           -DAGENT_MEMORY_ENABLE_MDBX=ON
           -DAGENT_MEMORY_MDBX_DEPS_MODE=BUNDLED
           -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF
           -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
-          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build
         run: cmake --build build-mdbx --config Release
@@ -81,6 +323,8 @@ jobs:
         run: ctest --test-dir build-mdbx --build-config Release --output-on-failure
 
   mdbx-benchmark:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
     name: MDBX benchmark harness
     runs-on: ubuntu-latest
 
@@ -107,6 +351,7 @@ jobs:
           -DAGENT_MEMORY_MDBX_DEPS_MODE=BUNDLED
           -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
           -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
           -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
@@ -117,6 +362,8 @@ jobs:
         run: ctest --test-dir build-mdbx-benchmark --build-config Release --output-on-failure -R "agent_memory_mih_storage|agent_memory_native_thq_mdbx_serving_(lifecycle|integer_key)|agent_memory_native_mdbx_(serving_audit|layout_sweep)(_audit)?_self_test|agent_memory_mdbx_finalist_harness_self_test"
 
   native-mih-benchmark:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
     name: Native MIH benchmark harness
     runs-on: ubuntu-latest
 
@@ -138,6 +385,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
           -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
           -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
@@ -151,6 +399,8 @@ jobs:
         run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_
 
   r4-native-benchmark:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
     name: R4 native benchmark harness (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -323,6 +573,8 @@ jobs:
           python tools/agent-memory-bench/write-neuroute-prefix-aware-router-evidence.py --self-test
 
   thq-faiss-additive-control:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
     name: Faiss additive fitting control
     runs-on: ubuntu-latest
     steps:
@@ -362,6 +614,8 @@ jobs:
           python tools/agent-memory-bench/audit-thq-residual-binary-gate.py --self-test
 
   thq-packed-codec-contract:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
     name: THQ packed codec contract
     runs-on: ubuntu-latest
 
@@ -376,6 +630,9 @@ jobs:
 
       - name: Install tool dependencies
         run: python -m pip install -r tools/requirements-tools.txt
+
+      - name: Fresh packed-quality contract self-tests
+        run: python tools/agent-memory-bench/test-fresh-packed-quality.py
 
       - name: Test packed codec contract
         run: |
@@ -420,6 +677,8 @@ jobs:
             tools/agent-memory-bench/analyze-thq-finalist-paired-bootstrap.py
 
   ann-cascade:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
     name: ANN cascade harness
     runs-on: ubuntu-latest
     steps:
@@ -636,3 +895,112 @@ jobs:
           && python tools/agent-memory-bench/test_local_residual_codecs.py
           && python tools/agent-memory-bench/run-neuroute-prototype-binary-metric.py self-test
           && python tools/agent-memory-bench/run-neuroute-prototype-binary-neural.py self-test
+
+  research-full:
+    if: needs.changes.outputs.full == 'true'
+    needs: changes
+    name: Full research CTest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tool dependencies
+        run: python -m pip install -r tools/requirements-tools.txt
+
+      - name: Init research submodules
+        run: git submodule update --init external/libmdbx external/mdbx-containers external/simdcomp
+
+      - name: Configure full research CTest
+        run: >
+          cmake -S . -B build-research-full
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_ENABLE_MDBX=ON
+          -DAGENT_MEMORY_MDBX_DEPS_MODE=BUNDLED
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
+
+      - name: Build full research CTest
+        run: cmake --build build-research-full --config Release
+
+      - name: Run full research CTest
+        run: ctest --test-dir build-research-full --build-config Release --output-on-failure
+
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs:
+      - changes
+      - docs
+      - cmake
+      - mdbx
+      - mdbx-benchmark
+      - native-mih-benchmark
+      - r4-native-benchmark
+      - thq-faiss-additive-control
+      - thq-packed-codec-contract
+      - ann-cascade
+      - research-full
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required lanes
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CORE_REQUIRED: ${{ needs.changes.outputs.core }}
+          STORAGE_REQUIRED: ${{ needs.changes.outputs.storage }}
+          RESEARCH_REQUIRED: ${{ needs.changes.outputs.research }}
+          DOCS_REQUIRED: ${{ needs.changes.outputs.docs }}
+          FULL_REQUIRED: ${{ needs.changes.outputs.full }}
+          DOCS_RESULT: ${{ needs.docs.result }}
+          CORE_RESULT: ${{ needs.cmake.result }}
+          STORAGE_RESULT: ${{ needs.mdbx.result }}
+          MDBX_BENCHMARK_RESULT: ${{ needs.mdbx-benchmark.result }}
+          MIH_RESULT: ${{ needs.native-mih-benchmark.result }}
+          R4_RESULT: ${{ needs.r4-native-benchmark.result }}
+          FAISS_RESULT: ${{ needs.thq-faiss-additive-control.result }}
+          THQ_RESULT: ${{ needs.thq-packed-codec-contract.result }}
+          ANN_RESULT: ${{ needs.ann-cascade.result }}
+          FULL_RESULT: ${{ needs.research-full.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+
+          if [[ "$CHANGES_RESULT" != "success" ]]; then
+            echo "change classification failed: $CHANGES_RESULT"
+            failed=1
+          fi
+
+          check_required() {
+            local required="$1"
+            local result="$2"
+            local label="$3"
+            if [[ "$required" == "true" && "$result" != "success" ]]; then
+              echo "$label was required but finished with: $result"
+              failed=1
+            fi
+          }
+
+          check_required "$DOCS_REQUIRED" "$DOCS_RESULT" "documentation checks"
+          check_required "$CORE_REQUIRED" "$CORE_RESULT" "core CMake/CTest"
+          check_required "$STORAGE_REQUIRED" "$STORAGE_RESULT" "MDBX storage"
+          check_required "$RESEARCH_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
+          check_required "$RESEARCH_REQUIRED" "$MIH_RESULT" "native MIH"
+          check_required "$RESEARCH_REQUIRED" "$R4_RESULT" "R4 benchmark"
+          check_required "$RESEARCH_REQUIRED" "$FAISS_RESULT" "Faiss control"
+          check_required "$RESEARCH_REQUIRED" "$THQ_RESULT" "THQ packed codec"
+          check_required "$RESEARCH_REQUIRED" "$ANN_RESULT" "ANN cascade"
+          check_required "$FULL_REQUIRED" "$FULL_RESULT" "full research CTest"
+
+          exit "$failed"
