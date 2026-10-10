@@ -127,6 +127,8 @@ For the full semantic cases, see the [canonical-content contract](guides/canonic
 - [Storage topology](guides/storage-backend-integration-roadmap.md) — contexts, placement, identity and federation boundaries.
 - [Evaluation roadmap](guides/evaluation-roadmap.md) and [experiments](guides/experiments/) — baselines, receipts and reproducibility.
 - [Memory-feedback stability F0](guides/experiments/2026-10-07-memory-feedback-stability-protocol.md) — protocol, not a completed experiment.
+- [Temporal navigation and durable working context](guides/memory-lifecycle-governance-roadmap.md) and [runtime integration](guides/agent-runtime-integration-roadmap.md) — historical reads, resumable context and crash-boundary semantics.
+- [Knowledge activation](guides/knowledge-activation-roadmap.md) and [knowledge-base retrieval](guides/knowledge-base-roadmap.md) — bounded associative recall and event-centric grounding research.
 - [Project comparison](guides/project-comparison.md) — alternatives, strengths, limitations and selection guidance.
 
 ## Non-goals

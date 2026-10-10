@@ -200,6 +200,154 @@ Every profile is measured against the range-index baseline for candidate count,
 segment reads, decoded bytes, p50/p95/p99, update/compaction cost, and
 time-travel correctness.
 
+### AM-13.1: Temporal Navigation And Historical Read Semantics (T0, M2+)
+
+AM-13 defines which temporal query a caller means. T0 defines how a caller
+navigates that query without turning the core into a calendar or a second query
+API. It is a conceptual retrieval contract and evaluation lane; exact public
+method names and physical indexes remain implementation work.
+
+The navigation basis must keep these axes distinct:
+
+~~~text
+valid time          = source/world interval during which a claim is valid
+event time          = point or interval at which a discrete occurrence happened
+recorded time       = when the selected origin recorded the occurrence/claim
+KnownAt(cutoff)     = existing AM-13 recorded-time view at a recorded cutoff
+origin visibility   = what a querying origin can establish from its
+                      KnowledgeVisibilityReceipt / origin sequence
+~~~
+
+Event time is not automatically valid time: an event may be a point while a
+claim about its consequences remains valid over an interval, and some claims
+have no single event point. Conversely, a source-world validity interval does
+not prove that an observation was recorded or visible at every point in that
+interval. Query tags must state which basis they use rather than silently
+mapping one field to another.
+
+`KnownAt(recorded_cutoff_ms)` keeps the existing AM-13 meaning: it selects the
+record-time view defined by `BiTemporalComponent.recorded_at_ms` and the
+declared read/frontier rules. It is not, by itself, a promise that an arbitrary
+replica or observer had seen the record by that wall-clock time.
+Origin-qualified knowledge uses the existing `KnownAtSequence` semantics and
+an origin-qualified `KnowledgeVisibilityReceipt`; a producer's
+`recorded_sequence` does not imply visibility at another origin. If the
+required receipt or an explicit mapping is unavailable, origin-qualified
+visibility is unavailable/unknown rather than inferred from `recorded_at_ms`.
+
+For example:
+
+~~~text
+10:00  origin A records an occurrence
+10:30  origin B receives/imports it and obtains a visibility receipt
+10:15  a query asks what origin B could know
+~~~
+
+An `ActiveAt` or `KnownAt(recorded_cutoff_ms)` query uses its existing
+source-world or record-time semantics and must not be labelled as B's observed
+knowledge. A `KnownAtSequence(B, sequence_before_receipt)` query excludes the
+import; a sequence after the receipt may include it. This distinction remains
+true even when the imported record's original `recorded_at_ms` is 10:00.
+
+
+Historical stability is a separate property from the meaning of a temporal
+predicate. `KnownAtSequence(origin, sequence)` is stable only relative to
+the append-only visibility receipts and a pinned read frontier for that
+origin. `KnownAt(recorded_cutoff_ms)` is a recorded-time predicate; it does
+not, by itself, guarantee that repeated materialization stays unchanged as the
+store evolves. A later import can become visible to a recorded-time query if
+the selected policy permits a late insertion carrying an earlier recorded
+timestamp. Stable historical materialization therefore requires a pinned
+`ReadFrontier`, or an explicit registration-time invariant that rejects late
+insertion with an earlier recorded time. Without one of those conditions, the
+query must not be advertised as replay-stable.
+
+For example, origin A may record an occurrence at 10:00, while origin B
+receives it at 10:30 and obtains its own visibility receipt. A
+`KnownAt(recorded_cutoff_ms=10:15)` query follows the existing record-time
+policy; it must not be described as what B observed. A
+`KnownAtSequence(B, sequence_before_receipt)` query excludes the import, and
+a sequence after the receipt may include it. If an implementation preserves
+A's 10:00 timestamp in B's record, it must use B's receipt/frontier for
+origin-qualified knowledge rather than silently treating A's timestamp as B's
+knowledge time.
+
+The T0 acceptance suite must include a repeated-query fixture with a fixed
+cutoff before and after a late import. It must show that a pinned-frontier or
+receipt-scoped view remains stable, while an unpinned recorded-time view may
+change unless the declared registration policy forbids late old-time inserts.
+
+The first navigation intents are:
+
+| Intent | Required binding |
+|---|---|
+| Timeline range | time basis (`valid`, `event`, `recorded`, or receipt-qualified visibility), scope/stream or subject, direction, limit and read frontier |
+| Episode read | episode/source identity, selected revision and detail level |
+| Neighbour read | same stream/episode or an explicit relation channel, direction and edge budget |
+| Event query | typed predicates, temporal query tag, access frontier and deterministic order |
+
+An implementation may expose operations with names such as `scan_timeline`,
+`read_episode`, `read_neighbors` or `query_events`, but those names do not
+create a new public API until their owner and ABI are approved. Every operation
+has a bounded budget and returns completion/unknown information when the
+frontier, time range or adjacency work was not fully inspected.
+
+Navigation order is deterministic within the declared stream and origin. A
+cursor binds at least the normalized temporal query and time basis,
+scope/origin, read frontier, lifecycle/projection generations, ordering rule
+and cursor schema. The cursor is rejected when any binding is stale or
+unavailable; it must not silently continue on a newer frontier. Unknown event
+or valid time is explicit and is not sorted into a claimed chronological
+position. `read_neighbors` returns typed relation/episode context and must
+not treat mere adjacency as support, causality or independent evidence.
+
+The historical-read contract is:
+
+~~~text
+active_at(valid_time)
+  -> source/world validity semantics; event point and valid interval stay distinct
+
+known_at(recorded_cutoff_ms)
+  -> existing AM-13 record-time semantics, not arbitrary-observer visibility
+
+known_at_sequence(origin, sequence)
+  -> only knowledge with an origin-qualified KnowledgeVisibilityReceipt by that sequence
+
+late evidence received now about an old event/valid interval
+  -> present query may include it
+  -> a pinned-frontier or receipt-scoped earlier query remains unchanged
+  -> an unpinned recorded-time query is stable only under its declared
+     no-late-old-time registration policy
+~~~
+
+An audit route may show a historical unit together with a later invalidation,
+reconciliation or resolution receipt, but it must label the result as
+historical. It must not present a record that was unknown at the requested
+origin-qualified cutoff as if it had been known then. Temporal navigation also
+preserves the existing lifecycle and access gates: a neighbour traversal cannot
+revive an erased, inaccessible or stale unit.
+
+T0 acceptance fixtures should cover:
+
+- a discrete event point and a claim valid over an interval, proving that event
+  time and valid time are not conflated;
+- equal event times with deterministic origin/sequence tie handling;
+- the late-import example above, with different `KnownAt(recorded_cutoff_ms)`
+  and `KnownAtSequence` outcomes;
+- `ActiveAt`, `KnownAt`, `ActiveAtKnownAt` and
+  `KnownAtSequence` returning their distinct, expected frontiers;
+- unknown time remaining explicit rather than being assigned a false order;
+- cursor rejection after frontier or projection-generation change;
+- previous/next episode navigation scoped to one origin or stream;
+- neighbour expansion that is bounded and distinguishes no-neighbours from
+  policy or budget suppression;
+- redacted or inaccessible neighbours not leaking through navigation traces.
+
+T0 extends the existing AM-13 `TemporalQuery`, `FilterFrontier`,
+`ReadFrontier`, `KnowledgeVisibilityReceipt` and
+`RetrievalTrace` contracts. It does not add a global event log, a scheduler, a graph database
+or a durable cursor table.
+
 ## 4. AM-14: Abstraction And Derivation Graph
 
 Raw documents, chunks, facts, episodes, summaries and higher-level models are
@@ -1075,12 +1223,17 @@ Suggested maturity placement:
 
 - M1: keep current `TemporalComponent`, `WritePolicy`, retrieval metrics and
   raw resource support.
-- M2: add bi-temporal component/indexes, policy-selectable mutation model,
-  fail-closed memory admission/external-materialization policy, optional
-  admission audit, and expanded evaluation metrics.
+- M2: add bi-temporal component/indexes and the T0 historical-navigation
+  contract, policy-selectable mutation model, fail-closed
+  memory-admission/external-materialization policy, optional admission audit,
+  and expanded evaluation metrics.
 - M2+: add abstraction/derivation graph, causal relation vocabulary and
   progressive retrieval; add deterministic-first entity resolution, typed
-  query/MCP safety, logical index separation and the optional
-  `TemporalContextGraphMemory` profile/evaluation lane.
+  query/MCP safety, logical index separation, the W0 durable working-context
+  adapter boundary and the optional `TemporalContextGraphMemory`
+  profile/evaluation lane.
+- M2+/research: screen bounded adaptive associative recall and event-centric
+  grounding under the existing retrieval/evaluation contracts; neither lane
+  is a production default or a new storage model.
 - M3/research: application-level mind models and workflow orchestration in
   sibling projects, validated against the same memory trace/eval harness.

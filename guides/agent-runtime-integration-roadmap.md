@@ -122,6 +122,79 @@ A binding or outcome may be persisted as provenance for
 later replay, but it does not retroactively promote the bound record to
 validated truth.
 
+## Durable Working Context And Crash-Recovery (W0, M2+)
+
+Agent memory, a runtime's working context and a provider's effective context
+are three different artifacts:
+
+```text
+durable memory history
+    -> retrieval/context working state
+    -> provider request/effective context
+```
+
+Durable history owns source records, revisions, provenance, retrieval traces
+and accepted outcomes. Working context is a resumable runtime view over a
+pinned memory frontier. Provider context is an external host artifact that may
+add instructions, tools, dialogue, compression or substitutions. A
+`ContextFingerprint` identifies the finished provider-neutral `Context`; it is
+not proof of the payload actually delivered to a provider.
+
+W0 is a contract for a future host/runtime adapter, not a new core
+`checkpointer`, conversation journal, scheduler or `KnowledgeUnitKind`. A
+working-context checkpoint or receipt is a conceptual record whose fields are
+owned by the runtime integration layer and may be materialized in existing
+runtime/session records. At minimum it binds:
+
+- runtime/session/trace identity and phase of the operation;
+- normalized `RetrievalPlan`, policy revision and source/read frontier;
+- selected unit occurrences, envelope revisions and projection generations;
+- context-pack digest, tokenizer/budget policy, omissions and coverage;
+- summary/compression derivation and model/policy identity when used;
+- idempotency key, attempt/step and the last durable transition;
+- external invocation status and receipts when the host reports them.
+
+The checkpoint is a resumable view, not a new canonical fact. Candidate lists,
+tokenizer caches and other RAM-only intermediates need not be persisted unless
+the declared replay mode requires them. Baseline retrieval uses the ordinary
+usage-accounting contract; a hypothetical scenario overlay has no usage state
+of its own.
+
+The crash boundary is explicit:
+
+| Boundary | Required recovery meaning |
+|---|---|
+| Before a working checkpoint commits | No durable working state is promised. |
+| Checkpoint committed before provider call | Resume from that frontier/pack after revalidation. |
+| Provider call may have been sent but no receipt exists | Outcome is `Unknown`; do not blindly repeat a non-idempotent effect. |
+| Provider receipt or idempotency result is known | Reconcile by receipt/key, then append the observed outcome. |
+| Host reports effective context | Store a host-owned artifact linked to the provider-neutral pack; do not infer it locally. |
+| Memory admission after the response | Use the ordinary write/admission/provenance path. |
+
+Resuming a checkpoint must revalidate the source frontier, selected revisions,
+projection generations, access decision, policy/model revision, budget and
+idempotency key. A stale or incomplete binding fails closed or returns an
+explicit unavailable/needs-review result; it must not silently use the current
+baseline as a substitute. The external model/provider call is outside the
+memory transaction. A memory commit cannot claim that the call happened merely
+because a request object was constructed.
+
+The runtime may keep an append-only transition history for phases such as
+`retrieved`, `packed`, `egress_allowed`, `request_sent`, `effective_context`
+and `outcome_recorded`. These observations are distinct from Task or Decision
+state transitions and do not grant action authority. Repeated recovery of one
+phase uses the same idempotency key or an explicit unknown-outcome policy; it
+must not create duplicate durable commitments.
+
+W0 acceptance fixtures should cover a crash at every boundary above, stale
+frontier/revision rejection, duplicate resume with the same idempotency key,
+provider-call unknown status, missing effective-context report, omitted context
+items, and an ordinary retrieval whose baseline usage accounting is preserved.
+This lane is complementary to `CompactionHandoff`: compaction checkpoints
+resume maintenance jobs, while W0 records an application working-context
+boundary. Neither mechanism turns `agent-memory-cpp` into an execution
+orchestrator.
+
 ## Neutral Runtime References
 
 ```cpp

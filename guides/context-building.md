@@ -84,6 +84,13 @@ instructions, tool schemas, host substitutions and other transformations are
 represented only by the separate host-owned effective-context artifact
 described in [`knowledge-base-roadmap.md#831-effective-context-and-omission-provenance-m2`](knowledge-base-roadmap.md#831-effective-context-and-omission-provenance-m2).
 
+When a host must resume context construction after a crash, the durable
+working-context and unknown-provider-outcome rules are owned by the W0 contract
+in [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md#durable-working-context-and-crash-recovery-w0-m2). A `ContextPack` remains
+the provider-neutral library artifact; a resumed runtime operation must
+revalidate its frontier, revisions, policy and idempotency binding before it
+uses the pack again.
+
 ## Minimal contract
 
 A future dependency-free contract should expose the equivalent of:
