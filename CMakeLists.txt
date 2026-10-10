@@ -355,9 +355,6 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
-    else()
-        message(WARNING "Python3 interpreter not found; skipping production-kernel audit self-test")
-    endif()
     if(AGENT_MEMORY_BUILD_BENCHMARKS)
         add_test(
             NAME agent_memory_mih_native_hot_path_self_test
