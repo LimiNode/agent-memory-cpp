@@ -25,6 +25,27 @@ controllability, outcome, prediction error, unresolvedness, and relationship
 evidence are part of the semantic contract. See
 [`affective-memory-roadmap.md`](affective-memory-roadmap.md) ADR-A06.
 
+### 1.1 Decision-relevant retention boundary
+
+Compaction may create a derived summary, merged unit or compiled handoff
+without retiring its inputs. Before a job proposes supersession, logical
+archival or physical erasure of source material because a derived output is
+available, it must satisfy the
+[Decision-Relevant Retention Gate](evaluation-roadmap.md#decision-relevant-retention-gate)
+with the source revision, replay material, provenance links and declared
+decision probes.
+
+Summary creation alone never makes an input Superseded. The source remains
+addressable and can still be used for exact hydration, conflict inspection,
+late evidence and replay until a separate lifecycle decision passes the normal
+retention, provenance and liveness checks. A compaction result that cannot
+replay its source inputs is unavailable for this decision; it must not silently
+use the current source as a substitute.
+
+This boundary applies to extractive and model-generated summaries, summary
+trees, community summaries and future wiki-style consolidation. It does not
+make CompactionWorker an agent runtime and does not add a new lifecycle state.
+
 ## 2. CompactionWorker
 
 ### 2.1. Architecture
