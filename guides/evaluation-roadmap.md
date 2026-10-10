@@ -101,6 +101,123 @@ verification; `ProcedureTransfer`, `CorrectionReuse` and
 performance outside memorized concrete cases. These metrics never authorize
 execution and do not replace retrieval `Recall@K` or qrels-based `nDCG@10`.
 
+## Decision-Relevant Retention Gate
+
+This gate evaluates whether a summary, compacted context, or compressed
+representation preserves the information required for a declared decision. It
+is a research and evaluation contract. It does not introduce a C++ type,
+lifecycle state, authority flag, or storage schema.
+
+Retention quality is separate from retrieval quality:
+
+- retrieval asks whether the required source material can be found;
+- retention asks whether a bounded derived artifact still carries the details
+  required by fixed decision probes.
+
+A shorter artifact or a high semantic-similarity score is not evidence that the
+retained information is sufficient.
+
+### Evaluation mode and source access
+
+The primary gate is **query-independent**: the compressor receives no decision
+probes, target questions or probe-derived hints. The fixed probe set is held out
+until evaluation. A separate **query-conditioned** mode may provide a declared
+task or probe set to the compressor, but its results are reported separately and
+must never be combined with query-independent scores or used to claim general
+retention.
+
+Every report separates three access arms:
+
+1. **Artifact only** — probes use only the bounded retained artifact.
+2. **Artifact plus bounded source hydration** — the artifact may request a
+declared, capped number of source spans; report hydrated count, bytes and
+provenance coverage.
+3. **Full-source oracle** — the authoritative source is available as a ceiling
+control and is labelled separately.
+
+The retention gate evaluates whether compaction or replacement is safe under the
+declared arm. Legal, security, privacy and explicit user erasure obligations
+remain independent lifecycle obligations; they must not depend on passing this
+research gate or on preserving source material for evaluation.
+
+### Evaluation input and comparison arms
+
+Each case binds the source revision or a retained replay reference, exact source
+hydration/provenance references, the derived output revision or generation, the
+compression or summarization policy/model revision, the total byte/token
+budget, and a fixed probe set. Metadata, provenance and required replay
+material count toward the declared budget when they are part of the artifact.
+
+At minimum, compare these arms on the same source and probe set:
+
+1. **No-op source reference** — the uncompressed source under the declared
+   budget or an explicitly recorded full-source control.
+2. **Extractive retention** — selected source spans with their source anchors.
+3. **Abstractive retention** — a generated summary with derivation and source
+   links.
+4. **Structured operational handoff** — optional fields for goals, constraints,
+   pending steps, verification and unresolved state.
+
+The no-op control establishes the source-side ceiling; it does not make a
+larger artifact comparable to a smaller one. Every comparison reports the
+actual bytes/tokens, metadata overhead, latency and decoded/read cost.
+
+### Fixed decision probes
+
+The probe set is fixed before the run and must include exact or key-based
+checks; an LLM judge may be an additional signal but is not a required oracle.
+Probe families include:
+
+- numbers, units, identifiers, versions and thresholds;
+- commands, API names, paths and configuration keys;
+- goals, constraints, exceptions, negative requirements and safety limits;
+- ordered steps, dependencies and pending work;
+- conflicts, alternatives, unknowns and unresolved decisions;
+- source/inference separation, evidence roots and source drill-down;
+- revision and lifecycle state needed to avoid acting on stale material.
+
+For ADELIA/Ephi recovery-oriented profiles, the fixture should additionally
+cover the goal, constraints, pending steps, verification result,
+unresolved/conflict state and evidence roots. A profile may add domain probes,
+but it must not remove the common probes without recording a new evaluation
+profile.
+
+### Metrics and loss taxonomy
+
+Reports include exact/key retention and decision-probe accuracy, plus separate
+coverage for numeric values, commands/versions, constraints/exceptions,
+sequence/dependency order, conflict/unknown state, provenance and source
+drill-down. Report source-versus-inference conflation as its own failure class.
+
+At minimum classify losses as:
+
+- **detail loss** — a required value, command, version or constraint is absent;
+- **chronology loss** — order, dependency or valid temporal relation is lost;
+- **exception loss** — a caveat, exclusion, conflict or unknown is erased;
+- **provenance loss** — the retained result cannot reach the required source or
+  evidence root;
+- **source/inference conflation** — a derived statement is presented as an
+  observation or commitment;
+- **replay loss** — required baseline, transformation input or model/policy
+  material is unavailable.
+
+A result with missing replay inputs is PENDING_SOURCE_REPLAY or unavailable; it
+must not be converted into an inferred pass or failure from a substitute
+baseline.
+
+### Safety and lifecycle boundaries
+
+A summary, sketch, compressed context or compiled handoff remains a derived
+projection. Its creation does not by itself supersede, erase or lower the
+addressability of source units, and it does not upgrade source trust, evidence
+independence or action authority. Retrieval, usage frequency and summary
+promotion are not substitutes for this gate.
+
+The source remains addressable until the ordinary lifecycle and retention policy
+explicitly permits retirement after the required provenance, replay and
+decision-retention checks. Persistence for audit/replay is distinct from
+admission into ordinary factual retrieval.
+
 ## Acceptance rules
 
 - Approximate search must report quality against the exact oracle on the same

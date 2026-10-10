@@ -28,6 +28,7 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | Adaptive associative recall | `knowledge-activation-roadmap.md` AR0 | Docs/tests only | bounded multi-step cue/context search and cost/provenance comparison | AR0 research screen |
 | Event-centric grounding | `knowledge-base-roadmap.md` EG0, `evaluation-roadmap.md` | Docs/tests only | extraction/linking fixture and parity-controlled event retrieval runner | EG0 grounding gate |
 | Context compression | `compaction-roadmap.md`, `compression-is-intelligence-roadmap.md` | Roadmap only | budgeted compressor | no-op/extractive baseline |
+| Decision-relevant retention / compression evaluation | `evaluation-roadmap.md`, `compaction-roadmap.md`, `compression-is-intelligence-roadmap.md` | Docs/tests only | fixed decision probes, equal-budget extractive/abstractive comparisons and replayable retention evidence | run no-op/extractive/abstractive retention fixture with exact/key-based probes |
 | Query transformation | `knowledge-activation-roadmap.md` | Roadmap only | drift/evaluation hooks | no-op + trace contract |
 | Reranking | `retrieval-techniques-roadmap.md` | Roadmap only | bounded reranker API | candidate-depth benchmark |
 | Temporal memory | `memory-lifecycle-governance-roadmap.md` | Contract only | valid-at implementation | single-axis fixture |

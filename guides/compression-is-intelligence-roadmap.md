@@ -203,3 +203,38 @@ Cross-entropy loss, используемый в LLM pretraining, формаль�
 - [`usage-llm-wiki.md`](usage-llm-wiki.md) — operator guide по LLM Wiki pattern на `agent-memory-cpp` (Karpathy / Cole Medin / OpenWiki / Second Brain variants).
 - [`memory-architectures-roadmap.md`](memory-architectures-roadmap.md) — 13+ внешних memory-архитектур через единый comparison framework.
 - [`advanced-binary-techniques-roadmap.md`](advanced-binary-techniques-roadmap.md) — RotSQ codec, PQ residuals, multi-bit quantisation, multi-stage binary pipelines.
+
+## Decision-relevant retention
+
+Compression is useful only when it preserves the information needed for the
+next declared decision. This is stricter than semantic similarity and different
+from retrieval recall. A compressor can preserve the topic while losing a
+threshold, exception, sequence dependency, conflict or evidence root.
+
+The engineering contract is owned by the
+[Decision-Relevant Retention Gate](evaluation-roadmap.md#decision-relevant-retention-gate).
+Every compression or summary comparison should use the same source revision,
+fixed decision probes and declared total byte/token budget. The minimum probe
+families are:
+
+- numbers, units, identifiers, versions and thresholds;
+- commands, API constraints, paths and configuration keys;
+- goals, constraints, exclusions and exceptions;
+- ordered steps, dependencies and pending work;
+- conflicts, alternatives and unknowns;
+- provenance, evidence roots and source drill-down;
+- source statements versus derived inference.
+
+The gate requires an exact or key-based probe subset. LLM-based judging can add
+qualitative information, but it cannot be the only evidence of retention.
+
+Compression reports classify failures as detail, chronology, exception,
+provenance, source/inference conflation or replay loss. Missing replay inputs
+are reported as unavailable or PENDING_SOURCE_REPLAY; they are never silently
+replaced with the current source or treated as a successful reconstruction.
+
+A summary or compressed representation remains a derived projection. It does
+not become an independent observation, a new authority source or a replacement
+for the retained source merely because it is shorter or frequently retrieved.
+Decision-relevant retention is therefore a condition for a future lifecycle
+decision, not a promise that every compression method is lossless.
