@@ -2173,6 +2173,7 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+    endif() # Python3_Interpreter_FOUND
     endif() # AGENT_MEMORY_BUILD_RESEARCH_TESTS
     add_subdirectory(tests)
 endif()
