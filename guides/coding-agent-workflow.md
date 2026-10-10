@@ -19,6 +19,33 @@ architecture boundaries matter more than broad scaffolding.
 8. Run the relevant checks for the changed surface.
 9. Summarize what changed, what was verified, and what remains.
 
+## Reproducible numerical and formula contracts
+
+A formula, index contract or numerical algorithm is not considered verified
+merely because the prose is plausible, a benchmark looks reasonable or one
+implementation run succeeds. When a change depends on such a contract, the
+agent must add or run at least one reproducible control:
+
+- golden vectors with expected values and boundary cases;
+- a small executable oracle or brute-force reference;
+- a checked replay receipt containing the inputs, parameters and expected
+  result;
+- or an equivalent deterministic control whose values can be independently
+  recomputed.
+
+The control should cover the relevant zero, negative, boundary, tie, update,
+delete, rebuild, overflow and invalid-input cases. The chosen cases and
+tolerances belong in the owner guide or experiment manifest. A timing result
+without the inputs and environment needed to reproduce it is directional
+evidence, not a formula proof.
+
+Historical research notes, chat conclusions, blog posts and old PR bodies are
+discovery evidence only. Before treating an assertion as a repository
+contract, reconcile it with the current main branch, the normative owner guide,
+the implemented interfaces/tests and the coverage audit. If the evidence
+cannot be reconciled, record the conflict and stop short of a public API,
+schema or implementation decision.
+
 ## Execution Modes And Completion Boundary
 
 Use the smallest workflow that fits the change:
