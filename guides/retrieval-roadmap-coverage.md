@@ -21,6 +21,7 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | ExactVectorIndex | `optimization-roadmap.md` | Docs/tests only | canonical library integration | oracle benchmark |
 | ANN / HNSW | `optimization-roadmap.md` | Roadmap only | implementation and lifecycle | HNSW spike vs exact |
 | Vector compression | `binary-embeddings-roadmap.md`, `advanced-binary-techniques-roadmap.md` | Docs/tests only | codec/index integration | F32/F16/int8 matrix |
+| Rare-facet / multi-granularity retrieval | `evaluation-roadmap.md`, `advanced-binary-techniques-roadmap.md`, `knowledge-activation-roadmap.md` | Docs/tests only | equal-budget ASMS/MSBSE/AR0 comparison, rare-facet qrels and lifecycle fixtures | run baseline, projection, associative-expansion and composed-route benchmark |
 | Hybrid / RRF | `knowledge-base-roadmap.md`, `retrieval-execution-roadmap.md` | Contract only | route-local pools, hard-filter diagnostics and fusion trace | Gate H0 protocol, then RRF MVP |
 | Graph retrieval | `knowledge-activation-roadmap.md` | Roadmap only | graph substrate/traversal | relation-owned graph gate |
 | Temporal navigation / historical reads | `memory-lifecycle-governance-roadmap.md` AM-13/T0 | Contract only | bounded timeline/episode/neighbor navigation, cursor/frontier validation and origin-aware fixtures | T0 temporal navigation fixture |

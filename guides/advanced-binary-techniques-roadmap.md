@@ -641,3 +641,32 @@ Field-name references in source notes (no specific identifiers intentionally add
 - [`knowledge-base-roadmap.md`](knowledge-base-roadmap.md) — retrieval flow.
 - [`compaction-roadmap.md`](compaction-roadmap.md) — job types, handoffs.
 - [`research-reading-map.md`](research-reading-map.md) — research-note index.
+
+## Research gate binding: rare-facet retrieval
+
+ASMS, MSBSE and SAHI remain research candidates. Their comparison is owned by
+the [Rare-Facet / Multi-Granularity Retrieval Gate](evaluation-roadmap.md#rare-facet--multi-granularity-retrieval-gate),
+not by this technique catalogue alone.
+
+The common experiment must use the same encoder split, leakage controls,
+source revisions, total bit budget, candidate budget, decoded-byte budget,
+latency procedure and exact source hydration. Rare-facet slices are required
+because a document can match the broad topic while losing the small
+decision-relevant detail that motivated the query.
+
+The following semantic boundaries are mandatory:
+
+- ASMS accumulation is a retrieval signal, not an evidence or authority
+  accumulator. Repeated copies and derived summaries cannot create independent
+  corroboration.
+- ASMS deletion requires retained per-chunk contributions or a rebuild-safe
+  source. Missing contributions require rebuild or an explicit dirty/fail-closed
+  result.
+- MSBSE slots are projections, not durable identities, independent evidence or
+  lifecycle state. Slot matches do not change provenance.
+- SAHI remains deferred until an equal-budget experiment shows a clear,
+  reproducible advantage over existing MIH/R4 controls.
+
+No result from this gate is a production readiness claim or a reason to add a
+public C++ type, DBI or identity kind. A successful experiment would first
+produce a versioned report and an explicit implementation decision.
