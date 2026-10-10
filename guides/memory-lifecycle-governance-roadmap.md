@@ -315,7 +315,9 @@ known_at_sequence(origin, sequence)
 
 late evidence received now about an old event/valid interval
   -> present query may include it
-  -> an earlier recorded-time or origin-sequence query remains unchanged
+  -> a pinned-frontier or receipt-scoped earlier query remains unchanged
+  -> an unpinned recorded-time query is stable only under its declared
+     no-late-old-time registration policy
 ~~~
 
 An audit route may show a historical unit together with a later invalidation,
