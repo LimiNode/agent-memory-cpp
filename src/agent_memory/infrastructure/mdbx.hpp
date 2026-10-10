@@ -7,6 +7,7 @@
 
 #include "mdbx/MdbxCanonicalContentStore.hpp"
 #include "mdbx/MdbxCanonicalContentRouter.hpp"
+#include "mdbx/MdbxFederatedCanonicalReader.hpp"
 #include "mdbx/MdbxDocumentStorage.hpp"
 #include "mdbx/MdbxResourceManifestStorage.hpp"
 #include "mdbx/MdbxStorageContext.hpp"

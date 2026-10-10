@@ -624,4 +624,15 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         NAME agent_memory_mdbx_workspace_routing_test
         COMMAND agent_memory_mdbx_workspace_routing_test
     )
+
+    add_executable(agent_memory_mdbx_federated_canonical_read_test
+        infrastructure/mdbx/mdbx_federated_canonical_read_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_federated_canonical_read_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_federated_canonical_read_test
+        COMMAND agent_memory_mdbx_federated_canonical_read_test
+    )
 endif()
