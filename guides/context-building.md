@@ -191,7 +191,6 @@ usage feedback or turn prompt inclusion into evidence binding. Provider output
 and task success remain host-owned observations; the library records the
 selection inputs and declared evaluation result when available.
 
-
 Selection diagnostics follow the existing `ContextOmission` and
 `PolicyDecisionTrace` contracts. A candidate denied to the current client
 must not have its canonical ID, score, text, citations, provenance or detailed
