@@ -136,7 +136,11 @@ jobs:
             route_path "$path"
             finalize_flags
 
-            if [[ "$core" != "$expected_core"                || "$storage" != "$expected_storage"                || "$research" != "$expected_research"                || "$docs" != "$expected_docs"                || "$dbi" != "$expected_dbi" ]]; then
+            if [[ "$core" != "$expected_core" \
+               || "$storage" != "$expected_storage" \
+               || "$research" != "$expected_research" \
+               || "$docs" != "$expected_docs" \
+               || "$dbi" != "$expected_dbi" ]]; then
               echo "classifier regression failed for $path: core=$core storage=$storage research=$research docs=$docs dbi=$dbi"
               exit 1
             fi
@@ -144,6 +148,13 @@ jobs:
 
           # Keep representative paths under test so a classifier edit cannot
           # silently drop a required lane.
+          core=false
+          storage=false
+          research=false
+          docs=false
+          dbi=false
+          all=false
+          full=false
           assert_route "README.md" false false false true false
           assert_route "src/agent_memory/infrastructure/mdbx.hpp" true true false false false
           assert_route "src/agent_memory/infrastructure/mdbx/MdbxStorageContext.cpp" true true false false false
@@ -153,6 +164,15 @@ jobs:
           assert_route "tests/index/binary_signature_test.cpp" true false true false false
           assert_route "tools/agent-memory-bench/run-native-mdbx-batch-sweep.py" false false true false false
           assert_route "unknown/path" true true true true true
+
+          # Regression assertions must not influence the real change set.
+          core=false
+          storage=false
+          research=false
+          docs=false
+          dbi=false
+          all=false
+          full=false
 
           while IFS= read -r path; do
             [[ -z "$path" ]] && continue
