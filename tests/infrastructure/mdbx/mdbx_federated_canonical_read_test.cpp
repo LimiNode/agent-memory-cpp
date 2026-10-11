@@ -8,6 +8,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -39,6 +40,17 @@ std::filesystem::path temporary_directory() {
     return path;
 }
 
+void corrupt_revision(const std::shared_ptr<MdbxStorageContext>& context,
+                      const DocumentId& id,
+                      std::uint64_t revision) {
+    mdbxc::KeyValueTable<std::string, std::string> revisions(
+        context->connection(), "agent_memory_canonical_revisions");
+    auto transaction = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    const auto row_key = id.value() + std::string{"\x1f"} + std::to_string(revision);
+    revisions.insert_or_assign(row_key, "invalid", transaction);
+    transaction.commit();
+}
+
 } // namespace
 
 int main() {
@@ -48,65 +60,140 @@ int main() {
     const auto path_b = directory / "b.mdbx";
     const DocumentId id{"shared-document"};
 
-    auto context_a = MdbxStorageContext::open(path_a.string());
-    auto context_b = MdbxStorageContext::open(path_b.string());
-    MdbxWorkspaceStorageRegistry registry;
-    registry.bind("workspace-b", context_b, 11);
-    registry.bind("workspace-a", context_a, 7);
-    MdbxCanonicalContentRouter writer(registry);
-    expect(writer.create_document("workspace-a", 7, document("A")), "create A failed");
-    expect(writer.create_document("workspace-b", 11, document("B")), "create B failed");
+    {
+        auto context_a = MdbxStorageContext::open(path_a.string());
+        auto context_b = MdbxStorageContext::open(path_b.string());
+        MdbxWorkspaceStorageRegistry registry;
+        registry.bind("workspace-b", context_b, 11);
+        registry.bind("workspace-a", context_a, 7);
+        MdbxCanonicalContentRouter writer(registry);
+        expect(writer.create_document("workspace-a", 7, document("A")),
+               "create A failed");
+        expect(writer.create_document("workspace-b", 11, document("B")),
+               "create B failed");
 
-    MdbxFederatedCanonicalReader reader(registry);
-    const auto complete = reader.read({id,
-                                       std::nullopt,
-                                       {{"workspace-b", 11}, {"workspace-a", 7}}});
-    expect(complete.status == MdbxFederatedReadStatus::Complete, "read must be complete");
-    expect(complete.documents.size() == 2, "both workspaces must contribute a document");
-    expect(complete.routes.size() == 2, "both route outcomes must be retained");
-    expect(complete.routes[0].provenance.workspace_id == "workspace-a",
-           "routes must be deterministic");
-    expect(complete.documents[0].blocks.front().text == "A", "workspace A leaked or reordered");
-    expect(complete.documents[1].blocks.front().text == "B", "workspace B leaked or reordered");
+        const auto edit = writer.commit(
+            "workspace-a",
+            7,
+            CanonicalEditRequest{
+                id,
+                0,
+                {ReplaceBlockText{ContentBlockId{"body"}, "A edited"}}});
+        expect(edit.status == CanonicalEditStatus::Ok, "historical edit failed");
+        expect(edit.revision && edit.revision->revision == 1,
+               "edit must publish revision 1");
 
-    bool stale = false;
-    try {
-        (void)reader.read({id, std::nullopt, {{"workspace-a", 8}}});
-    } catch (const MdbxStalePlacementError&) {
-        stale = true;
+        MdbxFederatedCanonicalReader reader(registry);
+        const auto current = reader.read(
+            {id, std::nullopt, {{"workspace-b", 11}, {"workspace-a", 7}}});
+        expect(current.status == MdbxFederatedReadStatus::Complete,
+               "current read must be complete");
+        expect(current.routes.size() == 2, "both route outcomes must be retained");
+        expect(current.routes[0].provenance.workspace_id == "workspace-a",
+               "routes must be deterministic");
+        expect(current.routes[0].revision &&
+                   current.routes[0].revision->blocks.front().text == "A edited",
+               "workspace A current revision is wrong");
+        expect(current.routes[1].revision &&
+                   current.routes[1].revision->blocks.front().text == "B",
+               "workspace B current revision is wrong");
+
+        const auto historical = reader.read(
+            {id, 0, {{"workspace-a", 7}, {"workspace-b", 11}}});
+        expect(historical.status == MdbxFederatedReadStatus::Complete,
+               "historical read must be complete");
+        expect(historical.routes[0].revision &&
+                   historical.routes[0].revision->blocks.front().text == "A",
+               "workspace A historical revision is wrong");
+        expect(historical.routes[1].revision &&
+                   historical.routes[1].revision->blocks.front().text == "B",
+               "workspace B historical revision is wrong");
+
+        const auto not_found = reader.read(
+            {DocumentId{"missing"}, std::nullopt, {{"workspace-a", 7}, {"workspace-b", 11}}});
+        expect(not_found.status == MdbxFederatedReadStatus::Complete,
+               "not-found routes are a complete read");
+        expect(not_found.routes.size() == 2 &&
+                   not_found.routes[0].status == MdbxFederatedRouteStatus::NotFound &&
+                   not_found.routes[1].status == MdbxFederatedRouteStatus::NotFound,
+               "missing document must remain distinct from unavailable");
+
+        bool duplicate = false;
+        try {
+            (void)reader.read({id, std::nullopt, {{"workspace-a", 7}, {"workspace-a", 7}}});
+        } catch (const MdbxWorkspaceRoutingError&) {
+            duplicate = true;
+        }
+        expect(duplicate, "duplicate workspace route must fail closed");
+
+        bool stale = false;
+        try {
+            (void)reader.read({id, std::nullopt, {{"workspace-a", 8}}});
+        } catch (const MdbxStalePlacementError&) {
+            stale = true;
+        }
+        expect(stale, "stale generation must fail closed");
+
+        bool unknown = false;
+        try {
+            (void)reader.read({id, std::nullopt, {{"missing", 1}}});
+        } catch (const MdbxUnknownWorkspaceError&) {
+            unknown = true;
+        }
+        expect(unknown, "unknown workspace must fail closed");
+
+        bool over_budget = false;
+        try {
+            std::vector<MdbxFederatedReadProvenance> routes(
+                MdbxFederatedCanonicalReader::kMaxRoutes + 1,
+                {"unbound", 1});
+            (void)reader.read({id, std::nullopt, std::move(routes)});
+        } catch (const std::invalid_argument&) {
+            over_budget = true;
+        }
+        expect(over_budget, "route budget must be enforced before resolution");
+
+        // Corrupt only B's historical row. The backend error is surfaced as an
+        // unavailable route while A remains readable and provenance is retained.
+        corrupt_revision(context_b, id, 0);
+        const auto partial = reader.read(
+            {id, 0, {{"workspace-a", 7}, {"workspace-b", 11}}});
+        expect(partial.status == MdbxFederatedReadStatus::Partial,
+               "one backend failure must produce a partial result");
+        expect(partial.routes[0].revision &&
+                   partial.routes[0].revision->blocks.front().text == "A",
+               "partial read must retain the healthy workspace");
+        expect(partial.routes[1].status == MdbxFederatedRouteStatus::Unavailable,
+               "corrupt backend must be unavailable, not not-found");
+        expect(partial.routes[1].diagnostic == "canonical route unavailable",
+               "backend diagnostics must be redacted");
+
+        corrupt_revision(context_a, id, 0);
+        const auto unavailable = reader.read(
+            {id, 0, {{"workspace-a", 7}, {"workspace-b", 11}}});
+        expect(unavailable.status == MdbxFederatedReadStatus::Unavailable,
+               "all backend failures must be unavailable");
+        expect(unavailable.routes[0].status == MdbxFederatedRouteStatus::Unavailable &&
+                   unavailable.routes[1].status == MdbxFederatedRouteStatus::Unavailable,
+               "all unavailable routes must retain per-route status");
     }
-    expect(stale, "stale generation must fail closed");
 
-    bool unknown = false;
-    try {
-        (void)reader.read({id, std::nullopt, {{"missing", 1}}});
-    } catch (const MdbxUnknownWorkspaceError&) {
-        unknown = true;
+    // Both independent MDBX environments must remain readable after restart.
+    {
+        auto context_a = MdbxStorageContext::open(path_a.string());
+        auto context_b = MdbxStorageContext::open(path_b.string());
+        MdbxWorkspaceStorageRegistry registry;
+        registry.bind("workspace-a", context_a, 7);
+        registry.bind("workspace-b", context_b, 11);
+        MdbxFederatedCanonicalReader reader(registry);
+        const auto current = reader.read(
+            {id, std::nullopt, {{"workspace-a", 7}, {"workspace-b", 11}}});
+        expect(current.routes.size() == 2 &&
+                   current.routes[0].status == MdbxFederatedRouteStatus::Unavailable &&
+                   current.routes[1].status == MdbxFederatedRouteStatus::Unavailable,
+               "corruption must survive restart as unavailable");
     }
-    expect(unknown, "unknown workspace must fail closed");
 
-    // Corrupt only B's revision row. The backend error is surfaced as an
-    // unavailable route while A remains readable and provenance is retained.
-    mdbxc::KeyValueTable<std::string, std::string> revisions(
-        context_b->connection(), "agent_memory_canonical_revisions");
-    auto transaction = context_b->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
-    revisions.insert_or_assign(std::string{"shared-document\x1f0"}, "invalid", transaction);
-    transaction.commit();
-
-    const auto partial = reader.read({id,
-                                      std::nullopt,
-                                      {{"workspace-a", 7}, {"workspace-b", 11}}});
-    expect(partial.status == MdbxFederatedReadStatus::Partial,
-           "one backend failure must produce a partial result");
-    expect(partial.documents.size() == 1 &&
-               partial.documents.front().blocks.front().text == "A",
-           "partial read must retain the healthy workspace only");
-    expect(partial.routes[1].status == MdbxFederatedRouteStatus::Unavailable,
-           "corrupt backend must be unavailable, not not-found");
-    expect(!partial.routes[1].diagnostic.empty(), "unavailable route needs diagnostics");
-
-    context_b.reset();
-    context_a.reset();
     std::error_code error;
     std::filesystem::remove_all(directory, error);
     return error ? 1 : 0;
