@@ -186,9 +186,9 @@ int main() {
         registry.bind("workspace-a", context_a, 7);
         registry.bind("workspace-b", context_b, 11);
         MdbxFederatedCanonicalReader reader(registry);
-        const auto current = reader.read(
-            {id, std::nullopt, {{"workspace-a", 7}, {"workspace-b", 11}}});
-        expect(current.routes.size() == 2 &&
+        const auto historical = reader.read(
+            {id, 0, {{"workspace-a", 7}, {"workspace-b", 11}}});
+        expect(historical.routes.size() == 2 &&
                    current.routes[0].status == MdbxFederatedRouteStatus::Unavailable &&
                    current.routes[1].status == MdbxFederatedRouteStatus::Unavailable,
                "corruption must survive restart as unavailable");
