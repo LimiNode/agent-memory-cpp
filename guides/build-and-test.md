@@ -36,29 +36,29 @@ work must not create additional build directories beside the repository or
 inside a Git worktree. Generated build output must stay untracked.
 
 ```bash
-cmake -S . -B tmp/build-cpp17 \
+cmake -S . -B .build/cpp17 \
     -DCMAKE_BUILD_TYPE=Release \
     -DAGENT_MEMORY_BUILD_TESTS=ON \
     -DAGENT_MEMORY_BUILD_EXAMPLES=ON
 
-cmake --build tmp/build-cpp17 --parallel
-ctest --test-dir tmp/build-cpp17 --output-on-failure
+cmake --build .build/cpp17 --parallel
+ctest --test-dir .build/cpp17 --output-on-failure
 ```
 
 Build and smoke-test the synthetic benchmark CLI:
 
 ```bash
-cmake -S . -B tmp/build-bench \
+cmake -S . -B .build/bench \
     -DCMAKE_BUILD_TYPE=Release \
     -DAGENT_MEMORY_BUILD_TESTS=ON \
     -DAGENT_MEMORY_BUILD_BENCHMARKS=ON \
     -DAGENT_MEMORY_ENABLE_JSON=ON
 
-cmake --build tmp/build-bench --parallel
-ctest --test-dir tmp/build-bench --output-on-failure
-./tmp/build-bench/tools/agent-memory-bench/agent-memory-bench \
+cmake --build .build/bench --parallel
+ctest --test-dir .build/bench --output-on-failure
+./.build/bench/tools/agent-memory-bench/agent-memory-bench \
     tools/agent-memory-bench/config.example.json \
-    tmp/benchmark-report.json
+    .artifacts/benchmark-report.json
 ```
 
 When tests and benchmarks are enabled together, CTest also registers
@@ -93,56 +93,56 @@ available. CI installs the pinned tool dependency from
 Run the BoW-vs-BM25 synthetic sweep fixture:
 
 ```bash
-./tmp/build-bench/tools/agent-memory-bench/agent-memory-bench \
+./.build/bench/tools/agent-memory-bench/agent-memory-bench \
     tools/agent-memory-bench/synthetic-sweep.example.json \
-    tmp/synthetic-sweep-report.json
+    .artifacts/synthetic-sweep-report.json
 ```
 
 Run the binary rerank statistical grid fixture:
 
 ```bash
-./tmp/build-bench/tools/agent-memory-bench/agent-memory-bench \
+./.build/bench/tools/agent-memory-bench/agent-memory-bench \
     tools/agent-memory-bench/synthetic-binary-rerank-grid.example.json \
-    tmp/synthetic-binary-rerank-grid-report.json
+    .artifacts/synthetic-binary-rerank-grid-report.json
 ```
 
 Run the PCA-focused 128D learned-projection fixture:
 
 ```bash
-./tmp/build-bench/tools/agent-memory-bench/agent-memory-bench \
+./.build/bench/tools/agent-memory-bench/agent-memory-bench \
     tools/agent-memory-bench/synthetic-binary-rerank-grid-pca.example.json \
-    tmp/synthetic-binary-rerank-grid-pca-report.json
+    .artifacts/synthetic-binary-rerank-grid-pca-report.json
 ```
 
 Run the ITQ-focused 128D learned-projection fixture:
 
 ```bash
-./tmp/build-bench/tools/agent-memory-bench/agent-memory-bench \
+./.build/bench/tools/agent-memory-bench/agent-memory-bench \
     tools/agent-memory-bench/synthetic-binary-rerank-grid-itq.example.json \
-    tmp/synthetic-binary-rerank-grid-itq-report.json
+    .artifacts/synthetic-binary-rerank-grid-itq-report.json
 ```
 
 Run the precomputed-embedding qrels smoke fixture:
 
 ```bash
-./tmp/build-bench/tools/agent-memory-bench/agent-memory-bench \
+./.build/bench/tools/agent-memory-bench/agent-memory-bench \
     tools/agent-memory-bench/precomputed-embedding-binary-rerank-grid-smoke.example.json \
-    tmp/precomputed-embedding-binary-rerank-grid-smoke-report.json
+    .artifacts/precomputed-embedding-binary-rerank-grid-smoke-report.json
 ```
 
 Run the high-dimensional synthetic variants when investigating projection
 scaling beyond the default 128D fixture:
 
 ```bash
-./tmp/build-bench/tools/agent-memory-bench/agent-memory-bench \
+./.build/bench/tools/agent-memory-bench/agent-memory-bench \
     tools/agent-memory-bench/synthetic-binary-rerank-grid-highdim-384.example.json \
     tmp/synthetic-binary-rerank-grid-highdim-384-report.json
 
-./tmp/build-bench/tools/agent-memory-bench/agent-memory-bench \
+./.build/bench/tools/agent-memory-bench/agent-memory-bench \
     tools/agent-memory-bench/synthetic-binary-rerank-grid-highdim-768.example.json \
     tmp/synthetic-binary-rerank-grid-highdim-768-report.json
 
-./tmp/build-bench/tools/agent-memory-bench/agent-memory-bench \
+./.build/bench/tools/agent-memory-bench/agent-memory-bench \
     tools/agent-memory-bench/synthetic-binary-rerank-grid-highdim-1536.example.json \
     tmp/synthetic-binary-rerank-grid-highdim-1536-report.json
 ```
@@ -361,9 +361,9 @@ it never executes an unsupported instruction speculatively.
 Run the decomposed Hamming hot-path benchmark:
 
 ```bash
-./tmp/build-bench/tools/agent-memory-bench/agent-memory-hamming-hot-path-bench \
+./.build/bench/tools/agent-memory-bench/agent-memory-hamming-hot-path-bench \
     tools/agent-memory-bench/hamming-hot-path.example.json \
-    tmp/hamming-hot-path-report.json
+    .artifacts/hamming-hot-path-report.json
 ```
 
 The report separates raw contiguous distance calculation, `partial_sort`,
@@ -375,13 +375,13 @@ Run the deterministic staircase sweep helper:
 
 ```bash
 py -3 tools/benchmarks/synthetic_staircase.py \
-    --bench-exe tmp/build-bench/tools/agent-memory-bench/agent-memory-bench \
-    --output-dir tmp/synthetic-staircase-v1 \
-    --summary tmp/synthetic-staircase-v1/synthetic-staircase-v1.md
+    --bench-exe .build/bench/tools/agent-memory-bench/agent-memory-bench \
+    --output-dir .artifacts/synthetic-staircase-v1 \
+    --summary .artifacts/synthetic-staircase-v1/synthetic-staircase-v1.md
 ```
 
 The staircase helper keeps generated datasets, configs, and raw JSON reports in
-`tmp/`. Commit only the generated Markdown summary when it changes a design
+`.artifacts/`. Commit only the generated Markdown summary when it changes a design
 decision.
 
 Regenerate the committed tiny synthetic fixture only when intentionally
@@ -401,14 +401,14 @@ Configure with flat MDBX submodules:
 ```bash
 git submodule update --init external/libmdbx external/mdbx-containers
 
-cmake -S . -B tmp/build-mdbx \
+cmake -S . -B .build/mdbx \
     -DCMAKE_BUILD_TYPE=Release \
     -DAGENT_MEMORY_ENABLE_MDBX=ON \
     -DAGENT_MEMORY_MDBX_DEPS_MODE=BUNDLED \
     -DAGENT_MEMORY_BUILD_TESTS=ON
 
-cmake --build tmp/build-mdbx --parallel
-ctest --test-dir tmp/build-mdbx --output-on-failure
+cmake --build .build/mdbx --parallel
+ctest --test-dir .build/mdbx --output-on-failure
 ```
 
 Use `AGENT_MEMORY_MDBX_CONTAINERS_SOURCE_DIR=/path/to/mdbx-containers` only
@@ -417,8 +417,8 @@ when testing a custom checkout outside `external/`.
 On multi-config generators, pass the configuration to build and test commands:
 
 ```bash
-cmake --build tmp/build-cpp17 --config Release --parallel
-ctest --test-dir tmp/build-cpp17 --build-config Release --output-on-failure
+cmake --build .build/cpp17 --config Release --parallel
+ctest --test-dir .build/cpp17 --build-config Release --output-on-failure
 ```
 
 ## CI Expectations
