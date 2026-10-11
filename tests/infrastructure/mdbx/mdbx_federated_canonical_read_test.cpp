@@ -189,8 +189,8 @@ int main() {
         const auto historical = reader.read(
             {id, 0, {{"workspace-a", 7}, {"workspace-b", 11}}});
         expect(historical.routes.size() == 2 &&
-                   current.routes[0].status == MdbxFederatedRouteStatus::Unavailable &&
-                   current.routes[1].status == MdbxFederatedRouteStatus::Unavailable,
+                   historical.routes[0].status == MdbxFederatedRouteStatus::Unavailable &&
+                   historical.routes[1].status == MdbxFederatedRouteStatus::Unavailable,
                "corruption must survive restart as unavailable");
     }
 
