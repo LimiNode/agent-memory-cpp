@@ -1,6 +1,10 @@
 build*/
 tmp/
 .claude/
+.worktrees/
+.build/
+.artifacts/
+.tmp/
 .vs/
 .vscode/
 *.user

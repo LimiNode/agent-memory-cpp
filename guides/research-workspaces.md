@@ -1,9 +1,13 @@
-# Research workspace index and lifecycle
+# Research workspace index and lifecycle (legacy compatibility)
+
+The normative layout is defined in
+[`workspace-layout.md`](workspace-layout.md). Existing rows below describe
+legacy paths and must be migrated without deleting their commits or payloads.
 
 All active research checkouts and large payloads belong under:
 
 ```text
-E:\_repoz\agent-memory-workspaces\<experiment>\
+E:\_repoz\agent-memory-cpp\.worktrees\<experiment>\
 ```
 
 Each experiment uses one checkout/worktree and one remote branch. The minimum

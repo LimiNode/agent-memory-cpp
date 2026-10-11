@@ -1,16 +1,20 @@
-# Temporary research workspaces
+# Temporary research workspaces (legacy compatibility)
+
+The normative local layout is defined in
+[`workspace-layout.md`](workspace-layout.md). The old external root below is
+kept only as a migration reference for existing paths; do not create new
+worktrees there.
 
 Large generated payloads, cloned repositories, raw benchmark reports, and
 review attachments must not accumulate directly under `E:\_repoz`. Use:
 
 ```text
-E:\_repoz\agent-memory-workspaces\
+E:\_repoz\agent-memory-cpp\.worktrees\
 ```
 
-Each experiment gets a named subdirectory, for example
-`agent-memory-workspaces\postbacklog-rthq-gate`. Keep the Git repository and
-small source/config files there; keep DE-1M vectors, generated codes, databases,
-and raw reports in a separate payload subdirectory that is excluded from Git.
+Each Git experiment gets a named subdirectory, for example
+`.worktrees\postbacklog-rthq-gate`. Keep large payloads and raw reports under
+`.artifacts\<experiment>`, not inside the worktree.
 Record the absolute workspace/payload paths and SHA-256 values in the compact
 experiment receipt. Do not delete a workspace merely because it is clean:
 first check its current branch, unpushed commits, unique artifacts, and whether

@@ -30,8 +30,10 @@ All project options use the `AGENT_MEMORY_` prefix.
 
 ## Baseline Commands
 
-Use `tmp/` or `build-*` for local verification outputs. These paths are
-generated and should stay untracked.
+Use `.build/<configuration-or-task>/` for new local verification outputs. The
+historical `tmp/` and `build-*` paths remain valid during migration, but new
+work must not create additional build directories beside the repository or
+inside a Git worktree. Generated build output must stay untracked.
 
 ```bash
 cmake -S . -B tmp/build-cpp17 \
