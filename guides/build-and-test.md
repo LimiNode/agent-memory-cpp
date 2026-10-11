@@ -136,15 +136,15 @@ scaling beyond the default 128D fixture:
 ```bash
 ./.build/bench/tools/agent-memory-bench/agent-memory-bench \
     tools/agent-memory-bench/synthetic-binary-rerank-grid-highdim-384.example.json \
-    tmp/synthetic-binary-rerank-grid-highdim-384-report.json
+    .artifacts/synthetic-binary-rerank-grid-highdim-384-report.json
 
 ./.build/bench/tools/agent-memory-bench/agent-memory-bench \
     tools/agent-memory-bench/synthetic-binary-rerank-grid-highdim-768.example.json \
-    tmp/synthetic-binary-rerank-grid-highdim-768-report.json
+    .artifacts/synthetic-binary-rerank-grid-highdim-768-report.json
 
 ./.build/bench/tools/agent-memory-bench/agent-memory-bench \
     tools/agent-memory-bench/synthetic-binary-rerank-grid-highdim-1536.example.json \
-    tmp/synthetic-binary-rerank-grid-highdim-1536-report.json
+    .artifacts/synthetic-binary-rerank-grid-highdim-1536-report.json
 ```
 
 The grid separates `data_seeds` from `encoder_seeds`. `repeat_count` controls
