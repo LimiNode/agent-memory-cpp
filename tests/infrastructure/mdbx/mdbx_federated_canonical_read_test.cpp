@@ -130,7 +130,9 @@ int main() {
 
         bool stale = false;
         try {
-            (void)reader.read({id, std::nullopt, {{"workspace-a", 8}}});
+            (void)reader.read({id,
+                                  std::nullopt,
+                                  {{"workspace-a", 7}, {"workspace-b", 12}}});
         } catch (const MdbxStalePlacementError&) {
             stale = true;
         }
@@ -196,9 +198,48 @@ int main() {
                "corruption must survive restart as unavailable");
     }
 
+    // A separate pair of environments verifies successful current reads
+    // after both contexts have been closed and reopened.
+    const auto clean_directory = temporary_directory();
+    const auto clean_path_a = clean_directory / "a.mdbx";
+    const auto clean_path_b = clean_directory / "b.mdbx";
+    {
+        auto context_a = MdbxStorageContext::open(clean_path_a.string());
+        auto context_b = MdbxStorageContext::open(clean_path_b.string());
+        MdbxWorkspaceStorageRegistry registry;
+        registry.bind("workspace-a", context_a, 7);
+        registry.bind("workspace-b", context_b, 11);
+        MdbxCanonicalContentRouter writer(registry);
+        expect(writer.create_document("workspace-a", 7, document("A")),
+               "clean create A failed");
+        expect(writer.create_document("workspace-b", 11, document("B")),
+               "clean create B failed");
+    }
+    {
+        auto context_a = MdbxStorageContext::open(clean_path_a.string());
+        auto context_b = MdbxStorageContext::open(clean_path_b.string());
+        MdbxWorkspaceStorageRegistry registry;
+        registry.bind("workspace-a", context_a, 7);
+        registry.bind("workspace-b", context_b, 11);
+        MdbxFederatedCanonicalReader reader(registry);
+        const auto reopened = reader.read(
+            {id, std::nullopt, {{"workspace-a", 7}, {"workspace-b", 11}}});
+        expect(reopened.status == MdbxFederatedReadStatus::Complete &&
+                   reopened.routes.size() == 2 &&
+                   reopened.routes[0].status == MdbxFederatedRouteStatus::Found &&
+                   reopened.routes[1].status == MdbxFederatedRouteStatus::Found &&
+                   reopened.routes[0].revision &&
+                   reopened.routes[0].revision->blocks.front().text == "A" &&
+                   reopened.routes[1].revision &&
+                   reopened.routes[1].revision->blocks.front().text == "B",
+               "healthy environments must retain their routed content after reopen");
+    }
+
+    std::error_code clean_error;
+    std::filesystem::remove_all(clean_directory, clean_error);
     std::error_code error;
     std::filesystem::remove_all(directory, error);
-    return error ? 1 : 0;
+    return error || clean_error ? 1 : 0;
 }
 
 #else

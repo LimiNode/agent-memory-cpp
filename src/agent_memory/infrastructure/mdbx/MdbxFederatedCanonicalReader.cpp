@@ -2,7 +2,9 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 #include <algorithm>
+#include <memory>
 #include <stdexcept>
+#include <vector>
 
 namespace agent_memory {
 
@@ -30,14 +32,18 @@ MdbxFederatedCanonicalReadResult MdbxFederatedCanonicalReader::read(
                 routes[index].workspace_id);
     }
 
+    // Resolve every route before dispatching any backend read. Unknown and
+    // stale placements are caller errors and must fail closed without allowing
+    // an earlier route to perform a read first.
+    std::vector<std::shared_ptr<const MdbxWorkspacePlacement>> placements;
+    placements.reserve(routes.size());
+    for (const auto& route : routes)
+        placements.push_back(m_registry->resolve(route.workspace_id, route.placement_generation));
+
     MdbxFederatedCanonicalReadResult result;
-    result.routes.reserve(routes.size());
+    result.routes.reserve(placements.size());
     std::size_t unavailable_count = 0;
-    for (const auto& route : routes) {
-        // Resolve outside the backend-failure boundary: unknown and stale
-        // placement are caller errors and must fail closed, not become empty
-        // or unavailable results.
-        const auto placement = m_registry->resolve(route.workspace_id, route.placement_generation);
+    for (const auto& placement : placements) {
         MdbxFederatedRouteResult route_result;
         route_result.provenance = {placement->workspace_id(), placement->generation()};
         try {
