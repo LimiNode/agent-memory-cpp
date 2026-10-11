@@ -327,3 +327,4 @@ The following are optional, non-normative process rationale only:
 
 - [Cinimex: Spec-Driven development](https://habr.com/ru/companies/cinimex/articles/1088534/);
 - [Dalee: development process article](https://habr.com/ru/companies/dalee_group/articles/1089078/).
+- [Poetry of agentic development: maintainable change and human responsibility](https://habr.com/ru/articles/1092802/).
