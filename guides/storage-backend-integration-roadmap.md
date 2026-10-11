@@ -784,3 +784,30 @@ After this contract is reviewed, implementation work can be scheduled against
 the canonical-content Gate B/M1b design. The first implementation should create
 a context-aware MDBX vertical slice and prove same-context atomic publication
 before adding a production StorageBundle or SQLite adapter.
+
+### 5.2 R1 bounded federated canonical reads
+
+The first R1 reader is a trusted internal composition-layer operation over an
+explicit, bounded set of immutable workspace placements. The host/runtime must
+authorize every workspace before constructing a request. Placement existence and
+generation are routing checks; they are not client permissions and do not imply
+authorization.
+
+The reader accepts at most 64 explicit routes. Empty, duplicate, unknown or
+stale routes fail closed before backend dispatch. A route result retains its
+workspace and placement generation together with its optional canonical
+revision and one of Found, NotFound or Unavailable. The aggregate reports
+Complete, Partial or Unavailable using the existing per-route evidence. There
+is no second flat document list: local document IDs may be equal in different
+workspaces, so a revision is meaningful only with its route provenance.
+
+Backend failures are converted to a safe unavailable category. Backend
+exception text is not a client-facing diagnostic. The operation performs no
+cross-context transaction or shared snapshot; each context keeps its own
+lifecycle and read boundary. Historical reads use the existing canonical
+revision contract and are not silently replaced by current reads.
+
+The R1 integration fixture covers current and historical revisions, equal local
+IDs in independent MDBX files, Found/NotFound/Unavailable/Partial outcomes,
+duplicate and stale/unknown routing, route-budget rejection, reopening both
+environments, and cleanup only after all context owners are released.

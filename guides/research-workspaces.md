@@ -1,10 +1,20 @@
-# Research workspace index and lifecycle
+# Research workspace index and lifecycle (legacy compatibility)
 
-All active research checkouts and large payloads belong under:
+The normative layout is defined in
+[`workspace-layout.md`](workspace-layout.md). Existing rows below describe
+legacy paths and must be migrated without deleting their commits or payloads.
+
+New research checkouts and their large payloads use separate locations
+relative to the canonical checkout:
 
 ```text
-E:\_repoz\agent-memory-workspaces\<experiment>\
+<repo-root>/.worktrees/<experiment>    Git checkout only
+<repo-root>/.artifacts/<experiment>    external raw data and receipts
 ```
+
+For example, `<repo-root>` may be `E:\_repoz\agent-memory-cpp` on
+one machine. Existing external workspaces remain historical migration
+entries in the index below; the new layout does not imply they were moved.
 
 Each experiment uses one checkout/worktree and one remote branch. The minimum
 index row is:
@@ -20,17 +30,23 @@ by SHA-256 in receipts.
 
 The current residual-correction wave uses the existing checkout
 `E:\_repoz\agent-memory-rslm-faithful` as a transitional location. New work
-should use a child checkout under `agent-memory-workspaces` rather than adding
-another top-level clone under `E:\_repoz`; migration of this checkout must not
+should use a child checkout under
+`E:\_repoz\agent-memory-cpp\.worktrees\<experiment>`, rather than adding
+another top-level clone under `E:\_repoz`. Migration of this checkout must not
 delete unreviewed commits or payloads.
+
+The historical external workspace root
+`E:\_repoz\agent-memory-workspaces\<experiment>` is retained in the index
+below as a migration reference for existing checkouts and payloads. It is not a
+location for new work.
 
 The recovered canonical DE-1M payload is also transitional for now. Its current
 index row is:
 
 | experiment | branch | checkout | payload | state |
 |---|---|---|---|---|
-| `canonical-de1m-source` | n/a (payload-only) | `E:\_repoz\agent-memory-workspaces\canonical-de1m-source` | `payload\` junction to legacy `E:\_repoz\agent-memory-cpp\tmp\native-ann-confirmation-v1\de-1m\e5` | recovered; junction active |
-| `fidelity-closure-v1` | `research/fidelity-closure` | `E:\_repoz\agent-memory-workspaces\fidelity-closure-v1` | `fidelity-closure-payload-v1\` | active; research wave closure |
+| `canonical-de1m-source` | n/a (payload-only) | `E:\_repoz\agent-memory-workspaces\canonical-de1m-source` | `payload` junction to legacy `E:\_repoz\agent-memory-cpp\tmp\native-ann-confirmation-v1\de-1m\e5` | recovered; junction active |
+| `fidelity-closure-v1` | `research/fidelity-closure` | `E:\_repoz\agent-memory-workspaces\fidelity-closure-v1` | `fidelity-closure-payload-v1` | active; research wave closure |
 | `fidelity-closure-payload-v1` | n/a (payload-only) | `E:\_repoz\agent-memory-workspaces\fidelity-closure-payload-v1` | LSQ/PLSQ models and codes bound by manifest | active; external artifacts |
 
 The payload is bound by the E5 `manifest.json` and by the hashes recorded in
