@@ -14,6 +14,8 @@ MdbxFederatedCanonicalReadResult MdbxFederatedCanonicalReader::read(
     const MdbxFederatedCanonicalReadRequest& request) const {
     if (request.routes.empty())
         throw std::invalid_argument("federated canonical read requires at least one route");
+    if (request.routes.size() > kMaxRoutes)
+        throw std::invalid_argument("federated canonical read exceeds the route budget");
 
     auto routes = request.routes;
     std::sort(routes.begin(), routes.end(), [](const auto& left, const auto& right) {
@@ -30,7 +32,6 @@ MdbxFederatedCanonicalReadResult MdbxFederatedCanonicalReader::read(
 
     MdbxFederatedCanonicalReadResult result;
     result.routes.reserve(routes.size());
-    result.documents.reserve(routes.size());
     std::size_t unavailable_count = 0;
     for (const auto& route : routes) {
         // Resolve outside the backend-failure boundary: unknown and stale
@@ -48,11 +49,10 @@ MdbxFederatedCanonicalReadResult MdbxFederatedCanonicalReader::read(
             route_result.status = route_result.revision
                                       ? MdbxFederatedRouteStatus::Found
                                       : MdbxFederatedRouteStatus::NotFound;
-            if (route_result.revision)
-                result.documents.push_back(*route_result.revision);
         } catch (const std::exception& error) {
             route_result.status = MdbxFederatedRouteStatus::Unavailable;
-            route_result.diagnostic = error.what();
+            (void)error;
+            route_result.diagnostic = "canonical route unavailable";
             ++unavailable_count;
         }
         result.routes.push_back(std::move(route_result));
