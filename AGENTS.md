@@ -34,6 +34,8 @@ agent framework.
   checks, benchmark evidence, and exploratory results.
 - [Temporary workspaces](guides/temporary-workspaces.md) - where cloned
   repositories and large external research payloads belong.
+- [Workspace layout](guides/workspace-layout.md) - canonical locations for Git
+  worktrees, builds, temporary files, and research artifacts.
 - [Dependencies](guides/dependencies.md) - flat `external/` submodules and
   optional dependency wiring.
 - [Embeddings](guides/embedding.md) - embedding contracts and backend adapter
