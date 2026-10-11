@@ -19,6 +19,48 @@ architecture boundaries matter more than broad scaffolding.
 8. Run the relevant checks for the changed surface.
 9. Summarize what changed, what was verified, and what remains.
 
+## Change Comprehension And Abstraction Budget
+
+For a non-trivial change, work at a size the reviewer can explain. Before
+editing, identify the affected module and public boundary, the owner guide,
+the relevant invariants, and the smallest observable acceptance case. After
+editing, account for each new state variable, dependency edge, public type,
+adapter, or persistent field. If a change spans unrelated boundaries, split it
+into reviewable slices with explicit integration checks.
+
+A new abstraction needs a concrete reason: removal of observed duplication,
+protection of an existing dependency boundary, or conformance to an established
+local pattern. Name the real caller and the failing case that requires it. Do
+not create a generic manager, cache, router or interface solely because a
+future backend or agent might need one. When a simpler implementation meets
+the acceptance case, keep it. Avoid an automatic line-count threshold or a
+repository-wide complexity score; review the actual coupling and operational
+cost.
+
+Provide a nearby good code example or an executable fixture when the desired
+pattern is easier to show than to describe. Role prompts and generic adjectives
+such as "senior" or "clean" are not project acceptance criteria.
+
+## Intent, Constraints And Feedback
+
+An owner guide records *why* a behavior exists, its semantics, invariants,
+boundaries and acceptance cases. It need not prescribe every helper class or
+algorithm before implementation. Write implementation details in code, tests
+and API documentation as they become real, then update the owner when an
+implementation reveals a durable semantic choice or a new constraint.
+
+For an uncertain design, make the smallest reversible slice that can give
+feedback. Label a hypothesis as such and define the observable result that
+would retain, change or reject it. A large roadmap section is not proof of a
+working capability. A proposed optimization should retain a simple baseline
+and earn adoption through a reproducible fixture, independent oracle or
+measured comparison as appropriate.
+
+When alternatives depend on product goals, deployment constraints or an
+unwritten policy, present their consequences and leave the choice explicit.
+Do not silently turn an external article, an agent preference or an inferred
+requirement into a public API, identity, lifecycle, security or storage rule.
+
 ## Reproducible numerical and formula contracts
 
 A formula, index contract or numerical algorithm is not considered verified
@@ -114,6 +156,28 @@ Typical ownership is:
 
 The table is a guide, not a requirement to create a roadmap for every helper.
 
+## Preserving Existing Contracts
+
+Before changing an existing normative guide, compare it with current
+`main` and record the owner sections and coverage rows the PR touches.
+Classify each change as an addition, refinement, replacement or removal.
+A removal or weakening of a contract must be explicitly named and justified
+in the PR description; a rebase or sync with `main` does not authorize
+dropping content added by another merged PR.
+
+After integration, inspect the full PR diff against current `main`, including
+every deleted line. Verify that referenced owner sections, acceptance fixtures,
+ADR decisions and coverage entries still exist and occur once. For stacked
+PRs, merge or retarget in dependency order, then inspect the later PR's new
+diff before treating its earlier green CI as sufficient. A clean merge and
+Markdown checks do not establish semantic preservation.
+
+Use lightweight contract-presence checks for high-value headings and coverage
+entries when a complete accidental deletion has occurred before. Such checks
+catch disappearance, not semantic weakening; the reviewer still examines
+the text and each justified deletion. Do not ban all deletions or duplicate
+the owner contract in the checker.
+
 ## Definition Of Done For Contract-Bearing Changes
 
 A contract-bearing change is complete only when the relevant surfaces agree:
@@ -206,6 +270,22 @@ Every proposed feature names its milestone, dependencies, minimal
 implementation, benchmark, acceptance check, and known risk. External
 libraries, learned models, and LLM-backed services remain optional unless a
 normative milestone explicitly adopts them.
+
+## Review Evidence And Handoff
+
+A self-review, agent summary or green workflow is a lead, not independent
+verification. For a contract-bearing PR, inspect the actual diff and current
+base, the exact head SHA, required and skipped CI lanes, owner/API/test
+agreement, and the requested review decision. Do not describe a skipped lane
+as passing. Human architectural review remains the decision boundary when
+the correct choice depends on unstated project or deployment constraints.
+
+The handoff states the base and exact head, changed files and contract owners,
+the checks actually run with their outcomes, unavailable checks, remaining
+risks, and all intentional normative deletions. If a claim cannot be verified
+from the available repository or CI evidence, mark it unverified rather than
+turning the agent's report into a fact. Report no merge or publication unless
+the action and its result were observed.
 
 ## Context Hygiene
 
