@@ -8,6 +8,7 @@
 #include "MdbxWorkspaceStorageRegistry.hpp"
 
 #if AGENT_MEMORY_HAS_MDBX
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -41,20 +42,29 @@ struct MdbxFederatedRouteResult final {
     MdbxFederatedReadProvenance provenance;
     MdbxFederatedRouteStatus status = MdbxFederatedRouteStatus::NotFound;
     std::optional<CanonicalDocumentRevision> revision;
+    /// Safe diagnostic category for a trusted caller. Backend exception text is
+    /// intentionally not copied into this field or exposed to clients.
     std::string diagnostic;
 };
 
 /// Request for one document across an explicit, bounded set of workspaces.
+///
+/// The caller must authorize every workspace before constructing this request.
+/// This first R1 slice is a trusted internal operation; the reader validates
+/// placement identity and generation but does not implement client permissions.
 struct MdbxFederatedCanonicalReadRequest final {
     DocumentId document_id;
     std::optional<std::uint64_t> revision;
     std::vector<MdbxFederatedReadProvenance> routes;
 };
 
-/// Deterministic union of canonical reads with per-route completion evidence.
+/// Deterministic canonical reads with per-route completion and provenance.
+///
+/// Revisions remain attached to their route result. There is deliberately no
+/// second flat document vector because local document IDs may collide across
+/// workspaces.
 struct MdbxFederatedCanonicalReadResult final {
     MdbxFederatedReadStatus status = MdbxFederatedReadStatus::Complete;
-    std::vector<CanonicalDocumentRevision> documents;
     std::vector<MdbxFederatedRouteResult> routes;
 };
 
@@ -63,9 +73,13 @@ struct MdbxFederatedCanonicalReadResult final {
 /// The reader performs no path inference, global workspace scan or cross-MDBX
 /// transaction. Unknown and stale placements are rejected by the registry
 /// before any backend read; backend failures remain visible as unavailable
-/// route results.
+/// route results. Authorization is a host/runtime responsibility and is not
+/// inferred from placement validity.
 class MdbxFederatedCanonicalReader final {
   public:
+    /// Maximum number of explicit routes accepted by one read.
+    inline static constexpr std::size_t kMaxRoutes = 64;
+
     explicit MdbxFederatedCanonicalReader(const MdbxWorkspaceStorageRegistry& registry) noexcept;
 
     [[nodiscard]] MdbxFederatedCanonicalReadResult read(
