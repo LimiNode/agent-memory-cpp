@@ -30,7 +30,7 @@ into reviewable slices with explicit integration checks.
 
 A new abstraction needs a concrete reason: removal of observed duplication,
 protection of an existing dependency boundary, or conformance to an established
-local pattern. Name the real caller and the failing case that requires it. Do
+local pattern. Identify the concrete consumer and the observed problem, required invariant, or acceptance case that justifies the abstraction. Do
 not create a generic manager, cache, router or interface solely because a
 future backend or agent might need one. When a simpler implementation meets
 the acceptance case, keep it. Avoid an automatic line-count threshold or a
@@ -165,7 +165,7 @@ A removal or weakening of a contract must be explicitly named and justified
 in the PR description; a rebase or sync with `main` does not authorize
 dropping content added by another merged PR.
 
-After integration, inspect the full PR diff against current `main`, including
+After synchronizing with upstream and immediately before merge, inspect the full PR diff against current `main`, including
 every deleted line. Verify that referenced owner sections, acceptance fixtures,
 ADR decisions and coverage entries still exist and occur once. For stacked
 PRs, merge or retarget in dependency order, then inspect the later PR's new
