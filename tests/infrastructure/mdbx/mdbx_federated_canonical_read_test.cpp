@@ -130,7 +130,9 @@ int main() {
 
         bool stale = false;
         try {
-            (void)reader.read({id, std::nullopt, {{"workspace-a", 8}}});
+            (void)reader.read({id,
+                                  std::nullopt,
+                                  {{"workspace-a", 7}, {"workspace-b", 12}}});
         } catch (const MdbxStalePlacementError&) {
             stale = true;
         }
@@ -225,8 +227,12 @@ int main() {
         expect(reopened.status == MdbxFederatedReadStatus::Complete &&
                    reopened.routes.size() == 2 &&
                    reopened.routes[0].status == MdbxFederatedRouteStatus::Found &&
-                   reopened.routes[1].status == MdbxFederatedRouteStatus::Found,
-               "healthy environments must remain readable after reopen");
+                   reopened.routes[1].status == MdbxFederatedRouteStatus::Found &&
+                   reopened.routes[0].revision &&
+                   reopened.routes[0].revision->blocks.front().text == "A" &&
+                   reopened.routes[1].revision &&
+                   reopened.routes[1].revision->blocks.front().text == "B",
+               "healthy environments must retain their routed content after reopen");
     }
 
     std::error_code clean_error;
