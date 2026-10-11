@@ -23,10 +23,16 @@ receipt, and leave the checkout clean. Payloads stay outside Git and are bound
 by SHA-256 in receipts.
 
 The current residual-correction wave uses the existing checkout
-`E:\_repoz\agent-memory-rslm-faithful` as a transitional location. New work
-should use a child checkout under `agent-memory-workspaces` rather than adding
-another top-level clone under `E:\_repoz`; migration of this checkout must not
+\`E:\_repoz\agent-memory-rslm-faithful\` as a transitional location. New work
+should use a child checkout under
+\`E:\_repoz\agent-memory-cpp\.worktrees\<experiment>\`, rather than adding
+another top-level clone under \`E:\_repoz\`. Migration of this checkout must not
 delete unreviewed commits or payloads.
+
+The historical external workspace root
+\`E:\_repoz\agent-memory-workspaces\<experiment>\` is retained in the index
+below as a migration reference for existing checkouts and payloads. It is not a
+location for new work.
 
 The recovered canonical DE-1M payload is also transitional for now. Its current
 index row is:
