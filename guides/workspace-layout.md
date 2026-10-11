@@ -4,17 +4,20 @@ This repository has one canonical checkout and one canonical root for local
 working data. The layout is relative to the checkout root so it is portable
 across hosts:
 
-\`\`\`text
+```text
 <repo-root>/
     .worktrees/<name>       registered Git worktrees only
     .build/<name>           build and test output
     .artifacts/<name>       research data, reports, models, and evidence
     .tmp/<name>             short-lived disposable files
-\`\`\`
+```
 
-For example, a local machine may materialize \`<repo-root>\` as
-\`E:\\_repoz\\agent-memory-cpp\`; that machine-specific path is not a
-repository contract.
+For example, a local machine may materialize `<repo-root>` as
+`E:\_repoz\agent-memory-cpp`; that machine-specific path is not a
+repository contract. Commands shown with relative `.build/` or `.artifacts/`
+paths assume the canonical checkout is the current directory. When working in
+an isolated Git worktree, use paths under the canonical checkout root rather
+than creating build or artifact directories inside that worktree.
 
 These directories are local-only and ignored by Git. They must not be
 committed.
