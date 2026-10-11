@@ -49,9 +49,8 @@ MdbxFederatedCanonicalReadResult MdbxFederatedCanonicalReader::read(
             route_result.status = route_result.revision
                                       ? MdbxFederatedRouteStatus::Found
                                       : MdbxFederatedRouteStatus::NotFound;
-        } catch (const std::exception& error) {
+        } catch (const std::exception&) {
             route_result.status = MdbxFederatedRouteStatus::Unavailable;
-            (void)error;
             route_result.diagnostic = "canonical route unavailable";
             ++unavailable_count;
         }
