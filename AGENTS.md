@@ -55,7 +55,8 @@ agent framework.
 ## Critical Defaults
 
 - Check `git status --short` before editing and do not overwrite user changes.
-- Keep edits scoped to the requested PR or task.
+- Keep edits scoped to the requested PR or task. For contract-bearing changes,
+  inspect the full diff against current `main` and justify normative deletions.
 - Preserve C++17 as the language baseline.
 - Keep core functionality in a static library. Do not turn the project into a
   header-only library unless the user explicitly changes that direction.
@@ -75,3 +76,5 @@ agent framework.
 - All code comments and Doxygen text must be in English.
 - All changes reach `main` through PRs unless the user explicitly asks for a
   direct push.
+- Report exact HEAD, actual checks and skipped lanes; do not infer quality from
+  an agent summary or a green workflow alone.
