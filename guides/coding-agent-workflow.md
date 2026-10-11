@@ -30,7 +30,8 @@ into reviewable slices with explicit integration checks.
 
 A new abstraction needs a concrete reason: removal of observed duplication,
 protection of an existing dependency boundary, or conformance to an established
-local pattern. Identify the concrete consumer and the observed problem, required invariant, or acceptance case that justifies the abstraction. Do
+local pattern. Identify the concrete consumer and the observed problem, required invariant, or
+acceptance case that justifies the abstraction. Do
 not create a generic manager, cache, router or interface solely because a
 future backend or agent might need one. When a simpler implementation meets
 the acceptance case, keep it. Avoid an automatic line-count threshold or a
