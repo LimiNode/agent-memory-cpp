@@ -5,9 +5,11 @@
 #include <chrono>
 #include <filesystem>
 #include <mdbx_containers/KeyValueTable.hpp>
+#include <memory>
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
