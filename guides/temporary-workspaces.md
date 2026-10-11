@@ -24,25 +24,34 @@ its evidence is already archived.
 
 Research work must use one canonical workspace per active branch:
 
-```text
-E:\_repoz\agent-memory-workspaces\<experiment>\
-  repo\       # one Git checkout/worktree, named after the remote branch
-  payload\    # ignored raw vectors/codes/reports
-  receipts\   # small committed or release-bound provenance manifests
-```
+\`\`\`text
+<repo-root>/.worktrees/<experiment>/
+  repo/       # one Git checkout/worktree, named after the remote branch
+  payload/    # ignored raw vectors/codes/reports
+  receipts/   # small committed or release-bound provenance manifests
+\`\`\`
 
-Do not create additional clones or branch directories directly under
-`E:\_repoz`. Before starting work, record `git remote -v`, the exact branch,
-the worktree path, and `git status --short`. Before handoff, push the branch,
-record the remote head SHA, and leave the worktree clean. If an older scattered
-checkout is discovered, do not delete it automatically: inspect its branch,
-unique commits, and payload references, then migrate or archive it under this
-layout.
+The historical external layout is retained for migration of existing rows:
+
+\`\`\`text
+E:\_repoz\agent-memory-workspaces\<experiment>\
+  repo\
+  payload\
+  receipts\
+\`\`\`
+
+Do not create new clones or branch directories directly under
+\`E:\_repoz\` or the historical external root. Before starting work, record
+\`git remote -v\`, the exact branch, the worktree path, and
+\`git status --short\`. Before handoff, push the branch, record the remote head
+SHA, and leave the worktree clean. If an older scattered checkout is
+discovered, do not delete it automatically: inspect its branch, unique commits,
+and payload references, then migrate or archive it under the canonical layout.
 
 The repository policy and index template are documented in
-[`research-workspaces.md`](research-workspaces.md); the external workspace
-root may mirror that table in `E:\_repoz\agent-memory-workspaces\README.md`.
-
+[\`research-workspaces.md\`](research-workspaces.md); the historical external
+root may mirror that table in
+\`E:\_repoz\agent-memory-workspaces\README.md\` during migration.
 The canonical DE-1M manifest is produced by
 `tools/agent-memory-bench/materialize-frozen-de1m-manifest.py`. It accepts only
 explicit payload paths, validates exact byte sizes, computes hashes, and does
