@@ -3,7 +3,7 @@
 ## Sources reviewed
 
 - Habr: [Сравнение Tarantool, USearch, Qdrant и pgvector](https://habr.com/ru/companies/vktech/articles/1080978/).
-- Public benchmark snapshot reviewed at commit `4466dfc9e870c6d4fd99977ddc8f7f428bcbf13`.
+- Public benchmark snapshot reviewed at commit `4466dfc9e870c6d4cfd99977ddc8f7f428bcbf13`.
 - Habr: [Sber operational agent pattern](https://habr.com/ru/companies/sberbank/articles/1086740/).
 
 ## Engineering conclusions
