@@ -124,10 +124,12 @@ the independent flat retrieval route remains active.
 A host may map eligible navigation output onto the existing `ActivationPlan`
 fields: domain and concept selections use `domains` and `concepts`;
 playbook references use `playbooks`; aliases and route query text use
-`query_variants`; and limits use `budget_hint`. Existing `ActivationTrace` fields carry the plan, map/projection generation and
-fallback decisions already defined by the activation contract. Detailed map path,
-frontier and provenance diagnostics beyond those fields belong to separate route
-diagnostics or a future trace extension; this guide does not add public fields.
+`query_variants`; and limits use `budget_hint`. Existing `ActivationTrace` fields record activation decisions,
+DomainMap/projection versions and fallback decisions already defined by the
+activation contract. The full plan remains owned by `ActivationPlan`. Detailed
+map path, frontier and provenance diagnostics beyond those fields belong to
+separate route diagnostics or a future trace extension; this guide does not add
+public fields.
 No `route_hints` field is introduced.
 
 The reference flow is:
@@ -241,8 +243,16 @@ this route executes before map traversal. A reservation belongs to the same
 resource vector: map traversal may consume only the remaining budget, and the
 reservation is not a hidden fallback allowance. If the flat route exhausts its
 declared reservation, the existing retrieval completion or budget diagnostic is
-recorded rather than silently dropping the route. All comparison arms use the
-same reservation policy.
+recorded rather than silently dropping the route. Production-safe comparison
+arms use the same reservation policy.
+
+The map-only negative control is an explicit ablation. It intentionally disables
+the independent flat route and is not a production-safe map-conditioned
+configuration. Its disabled route and unused reservation are recorded; the
+reservation is not reallocated to map traversal. The arm keeps the same declared
+resource envelope, cost normalization, final ContextPack budget and offline
+cost-accounting method as the other arms, so the missing flat route is the
+control variable rather than a hidden allowance.
 
 Map construction, update and rebuild cost are recorded in a separate offline
 ledger. Each experiment declares the workload used to amortize that cost
