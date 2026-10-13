@@ -109,7 +109,12 @@ in [2026-10-01-native-matched-r4-final-reranker-control.result.json](2026-10-01-
 Raw flat/R4 output is checked by
 `tools/agent-memory-bench/audit-native-flat-and-r4-finalist-wave.py`, whose
 fail-closed self-test is part of CTest.
-## Latest PCA12 routing follow-ups
+## Historical PCA12 routing follow-ups
+
+The following notes are preserved historical evidence from source commit
+`f325d794afacf86d79cbabb000a400658eafd5af`; they are not current routing
+recommendations. See [historical preservation and evidence boundaries](2026-10-13-historical-research-preservation.md)
+and the [preservation manifest](2026-10-13-historical-research-preservation-manifest.json).
 
 - [Diversity-aware centroid routing](2026-09-06-pca12-routing-diversity-centroid.md)
 - [Weighted-kNN cell routing](2026-09-06-pca12-weighted-knn-routing.md)
@@ -124,6 +129,9 @@ fail-closed self-test is part of CTest.
 - [Teacher-direction THQ transition-cost oracle](2026-09-06-thq-transition-cost-oracle.md)
 - [Prototype-direction THQ transition-cost oracle](2026-09-06-thq-prototype-transition-cost-oracle.md)
 - [Multi-anchor THQ transition-cost oracle](2026-09-07-thq-multianchor-transition-cost-oracle.md)
+
+## Subsequent routing and THQ follow-ups
+
 - [Continuous THQ ray/segment geometry oracle](2026-09-07-thq-ray-segment-oracle.md)
 - [Runtime-anchor and spherical THQ geometry oracle](2026-09-07-thq-runtime-anchor-and-spherical-oracle.md)
 - [Prototype-IVF anchor recall oracle](2026-09-07-prototype-ivf-anchor-recall.md)
