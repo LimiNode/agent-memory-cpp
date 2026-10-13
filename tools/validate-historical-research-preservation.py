@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 EXPECTED_COUNT = 13
+EXPECTED_TOOL_COUNT = 11
 ALLOWED_RECEIPT_STATUSES = {"REFERENCED_NOT_AVAILABLE", "NOT_REFERENCED"}
 SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
 
@@ -49,6 +50,23 @@ def main() -> int:
     if not SHA1_RE.fullmatch(source_commit):
         fail("source_commit must be a full SHA-1")
 
+    research_tools = manifest.get("research_tools")
+    if not isinstance(research_tools, list) or len(research_tools) != EXPECTED_TOOL_COUNT:
+        fail(f"expected exactly {EXPECTED_TOOL_COUNT} research tools")
+    for entry in research_tools:
+        path_text = entry.get("path", "")
+        if not path_text.startswith("tools/agent-memory-bench/"):
+            fail(f"tool outside benchmark directory: {path_text}")
+        path = (root / path_text).resolve()
+        if root not in path.parents or not path.is_file():
+            fail(f"missing research tool: {path_text}")
+        expected_sha = entry.get("source_blob_sha", "")
+        if not SHA1_RE.fullmatch(expected_sha):
+            fail(f"invalid tool source_blob_sha: {path_text}")
+        actual_sha = git_blob_sha(path)
+        if actual_sha != expected_sha:
+            fail(f"tool blob SHA mismatch: {path_text}: {actual_sha} != {expected_sha}")
+
     documents = manifest.get("documents")
     if not isinstance(documents, list) or len(documents) != EXPECTED_COUNT:
         fail(f"expected exactly {EXPECTED_COUNT} documents")
@@ -81,7 +99,10 @@ def main() -> int:
         if receipt_status == "REFERENCED_NOT_AVAILABLE" and not receipts:
             fail(f"missing receipt references: {path_text}")
 
-    print(f"VALID: {len(documents)} historical documents and blob bindings")
+    print(
+        f"VALID: {len(documents)} historical documents and "
+        f"{len(research_tools)} research tool blob bindings"
+    )
     return 0
 
 

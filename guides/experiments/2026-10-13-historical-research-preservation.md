@@ -23,6 +23,13 @@ do not replace these source documents or their source commit binding.
 - No claim of scientific reproducibility, dataset availability, or runner
   replay is made by this preservation PR.
 
+The preservation boundary also includes eleven research runner and materializer
+sources referenced by these notes. Their original paths and source Git blob
+SHAs are recorded in the manifest under `research_tools`, and the validator
+checks those bindings. The files are preserved as historical source evidence;
+they are not wired into the active `agent-memory-bench` build and are not
+treated as maintained production tooling.
+
 ## Scope
 
 The preserved set covers the PCA12 routing follow-ups, native document-routing

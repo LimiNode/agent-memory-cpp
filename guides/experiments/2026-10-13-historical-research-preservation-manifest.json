@@ -7,6 +7,19 @@
   "target_commit": "c5fd1003bc853f17031b9b46ef5bc811682d86cc",
   "historical_scope": "These notes preserve historical research evidence and are not current routing recommendations.",
   "raw_receipt_policy": "No raw receipt is recreated or inferred. Referenced receipts are listed with their observed availability.",
+  "research_tools": [
+    {"path": "tools/agent-memory-bench/run-diversity-centroid-routing.py", "source_blob_sha": "fc491e1ce3564c43f5fda1aa2daedbf8c58cf6a7"},
+    {"path": "tools/agent-memory-bench/run-weighted-knn-cell-routing.py", "source_blob_sha": "5996b8fab6fea1542d16a9c58a02f9b510620b20"},
+    {"path": "tools/agent-memory-bench/run-direct4096-data-scaling.py", "source_blob_sha": "d60d1760556baa31e51e3d52a30f0d9eeeb84042"},
+    {"path": "tools/agent-memory-bench/run-hybrid-centroid-hungarian.py", "source_blob_sha": "6454188086786f845ffe5bb78ad77db1673ffd7b"},
+    {"path": "tools/agent-memory-bench/materialize-native-document-routing-bakeoff.py", "source_blob_sha": "6e5b190e0c615a4d42e6d467bf54271227ba22b3"},
+    {"path": "tools/agent-memory-bench/native_document_routing_bakeoff.cpp", "source_blob_sha": "8fd5214bec38b7c0c7e2059ee3db20b30e6b4daa"},
+    {"path": "tools/agent-memory-bench/evaluate-thq-mih.py", "source_blob_sha": "0fa68408477d2185d6decdffe84768040c3b3084"},
+    {"path": "tools/agent-memory-bench/analyze-thq-direction-geometry.py", "source_blob_sha": "9b3fbd57598ed784d584ff72b4d6737b0721658e"},
+    {"path": "tools/agent-memory-bench/evaluate-thq-transition-cost-oracle.py", "source_blob_sha": "5ff8a3a29437dec6b70adc19f36fc747c07e73da"},
+    {"path": "tools/agent-memory-bench/materialize-thq-prototype-codes.py", "source_blob_sha": "3a65080fc447321f04ffb35725acfd65ce0393bf"},
+    {"path": "tools/agent-memory-bench/evaluate-thq-prototype-transition-cost-oracle.py", "source_blob_sha": "92426029369df5e6e365aabc5c00ae2a917af991"}
+  ],
   "documents": [
     {"path": "guides/experiments/2026-09-06-flat-code-and-fp32-free-final-rerank.md", "source_blob_sha": "3020e70244471709bcaea7884cf12a9f035ef36c", "raw_receipt_status": "REFERENCED_NOT_AVAILABLE", "raw_receipts": ["tmp/thq-full-scan-v2/manifest.json", "tmp/thq-full-scan-v2/full-result.json"]},
     {"path": "guides/experiments/2026-09-06-pca12-routing-diversity-centroid.md", "source_blob_sha": "b80ea045e011404999136c3a412c2106db19a736", "raw_receipt_status": "REFERENCED_NOT_AVAILABLE", "raw_receipts": ["tmp/ordinal-lattice-de1m/diversity-centroid-routing-followup.json"]},
