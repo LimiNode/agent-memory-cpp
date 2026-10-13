@@ -245,6 +245,9 @@ jobs:
               sys.exit(1)
           PY
 
+      - name: Validate historical research preservation
+        run: python tools/validate-historical-research-preservation.py
+
       - name: Set up Python for DBI manifest checks
         if: needs.changes.outputs.dbi == 'true'
         uses: actions/setup-python@v5
