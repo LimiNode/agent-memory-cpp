@@ -49,6 +49,11 @@ The core may store evidence that those layers use. It should not directly
 declare hidden mental states as facts unless an application-specific adapter
 persists them as ordinary, provenance-backed knowledge units.
 
+The separation between memory evolution, agent behavior evolution and model
+adaptation is owned by the [runtime integration boundary](agent-runtime-integration-roadmap.md#memory-behavior-and-model-adaptation-boundaries).
+This document owns memory admission and lifecycle semantics; those semantics do
+not grant behavior activation, training eligibility or action authority.
+
 `external/mdbx-containers` should stay domain-neutral. It may provide typed
 tables, range indexes, reverse indexes, relation indexes, multi-table atomic
 writes and large-value/blob helpers. It should not know about
@@ -1096,6 +1101,12 @@ publication time, not that it remains unexpired at the current clock.
 Admission does not alter lifecycle truth or access rights. A visible accepted
 unit still passes normal authority, lifecycle, temporal, and hydration checks
 on every read.
+
+Semantic memory admission authorizes the specified use in memory. It does not
+automatically provide training eligibility, permission for external transfer,
+or action authority. Each subsequent transition must pass its applicable
+ingress/egress and authority contract; the admission receipt is not a reusable
+grant for a different destination or purpose.
 
 ### Rejection, Quarantine, And Confirmation
 

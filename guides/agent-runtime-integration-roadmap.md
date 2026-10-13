@@ -42,6 +42,50 @@ Non-goals for `agent-memory-cpp`:
 Memory may store what those systems did and why. It must not execute actions or
 grant permission to execute them.
 
+## Memory, Behavior, and Model Adaptation Boundaries
+
+Memory evolution, agent behavior evolution and model adaptation are independent
+contours. A change in one contour does not silently promote, activate or rewrite
+the others.
+
+| Contour | Contents | Owner |
+|---|---|---|
+| Memory evolution | Admission, correction, supersession, compaction, derived projections, lifecycle and provenance | `agent-memory-cpp`; external governance policy is applied through the existing interfaces |
+| Agent behavior evolution | Prompts, procedures, workflow definitions, tool selection and execution policies | ADELIA / host runtime |
+| Model adaptation | Training, fine-tuning, adapters and model-weight changes | External model/training pipeline; governance belongs to ADELIA / host |
+
+The boundary invariants are:
+
+- recording or correcting memory does not automatically change agent behavior
+  or model parameters;
+- a persisted procedure is a knowledge artifact. Retrieval, mining and
+  persistence do not mean activation or execution;
+- admission into durable memory is not admission to training. Training
+  eligibility requires a separate external check of purpose, permissions,
+  provenance and evaluation policy;
+- provider or model output is not, by itself, a confirmed fact, independent
+  corroborating evidence or an automatically permitted training example;
+- replacing a model does not rewrite historical memory records or provenance.
+  A change of embedding or extraction model requires compatibility checks and
+  versioned affected derived projections under the existing publication and
+  reindex contracts;
+- promotion or rollback of a behavior or model revision is decided by the
+  external owner. Memory may retain a proposal, evaluation and activation
+  receipt, but it does not make that decision.
+
+Conceptual acceptance cases for a future adapter or evaluation fixture:
+
+1. Correcting a fact creates the mutation-policy history required by the
+   memory contract; the active procedure and model revision remain unchanged.
+2. A retrieved successful procedure remains a candidate until separate host
+   activation and current authority admission occur.
+3. A memory record may be eligible for retrieval while being disallowed for
+   training; an external export either excludes it or rejects the request under
+   its governing policy.
+
+These cases clarify ownership boundaries. They do not add a C++ type, enum,
+storage field, training runtime or activation API.
+
 ## ADR Lane
 
 The source audit used labels ADR-016..ADR-022. In
