@@ -33,8 +33,10 @@ details, current-main blob IDs, reachability evidence, and exact categories are
 in [2026-10-13-pca12-divergent-path-audit.csv](2026-10-13-pca12-divergent-path-audit.csv).
 
 The audit keeps `source_blob_commit` separate from `replacement_commit`:
-the former proves where the historical blob occurs in the protected source
-line, while the latter proves the current `main` replacement. In particular,
+the former is a witness commit in `main` history where the historical blob
+occurs at the original path, while the source commit itself independently
+binds the exact historical bytes and the latter proves the current `main`
+replacement. In particular,
 the two disputed documents remain reachable evidence, not residual gaps:
 `fed6bdf9cd68c843949d7af3005e451847b1e696` contains the historical
 NeuRoute-v2 document and `b281590c682f7612b2caa5775b2104c072908582` contains

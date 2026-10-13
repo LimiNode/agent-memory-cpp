@@ -28,6 +28,7 @@
     },
     {
       "path": "guides/experiments/2026-09-05-cell-aware-ordinal-router.md",
+      "preservation_path": "guides/experiments/2026-09-05-cell-aware-ordinal-router.md",
       "kind": "document",
       "source_blob_sha": "0e6295619976370f59f38f109baa5946725991c0",
       "source_bytes": 4161,
@@ -36,6 +37,7 @@
     },
     {
       "path": "guides/experiments/2026-09-05-multimodal-cell-router-bakeoff.md",
+      "preservation_path": "guides/experiments/2026-09-05-multimodal-cell-router-bakeoff.md",
       "kind": "document",
       "source_blob_sha": "84d74d87e1e150655940ff020d5670a5df3dc814",
       "source_bytes": 6456,
@@ -44,6 +46,7 @@
     },
     {
       "path": "guides/experiments/2026-09-05-pca12-bucket-centroid-bakeoff.md",
+      "preservation_path": "guides/experiments/2026-09-05-pca12-bucket-centroid-bakeoff.md",
       "kind": "document",
       "source_blob_sha": "0ae541d537c54f74d4d7dfdf2305f9995b6ecd0c",
       "source_bytes": 5423,
@@ -52,6 +55,7 @@
     },
     {
       "path": "guides/experiments/2026-09-05-pca12-multi-anchor-oracle.md",
+      "preservation_path": "guides/experiments/2026-09-05-pca12-multi-anchor-oracle.md",
       "kind": "document",
       "source_blob_sha": "51fb3b9ec9852fcd0284ee47fa52f9a98b3e7178",
       "source_bytes": 9364,
@@ -60,6 +64,7 @@
     },
     {
       "path": "guides/experiments/2026-09-05-shared-supervised-ordinal-projection.md",
+      "preservation_path": "guides/experiments/2026-09-05-shared-supervised-ordinal-projection.md",
       "kind": "document",
       "source_blob_sha": "88d6a31a5480c3305c3030151b9286c247e5e7b4",
       "source_bytes": 5742,
@@ -68,6 +73,7 @@
     },
     {
       "path": "guides/experiments/2026-09-06-frozen-candidate-thq-and-full-scan.md",
+      "preservation_path": "guides/experiments/2026-09-06-frozen-candidate-thq-and-full-scan.md",
       "kind": "document",
       "source_blob_sha": "8f2b97755fe731c4888a96ca5683e8bf3fde59b7",
       "source_bytes": 4605,
@@ -76,6 +82,7 @@
     },
     {
       "path": "guides/experiments/2026-09-06-native-document-routing-corrective.md",
+      "preservation_path": "guides/experiments/2026-09-06-native-document-routing-corrective.md",
       "kind": "document",
       "source_blob_sha": "366e065f40bbd6ba366fe93d5798e89799115dea",
       "source_bytes": 3783,
@@ -84,6 +91,7 @@
     },
     {
       "path": "tools/agent-memory-bench/audit-neuroute-training-coverage.py",
+      "preservation_path": "tools/agent-memory-bench/audit-neuroute-training-coverage.py",
       "kind": "tool",
       "source_blob_sha": "546827378773fe84691ea93581a6786aedd718ec",
       "source_bytes": 5688,
@@ -101,6 +109,7 @@
     },
     {
       "path": "tools/agent-memory-bench/generate-ordinal-scaling-cache.py",
+      "preservation_path": "tools/agent-memory-bench/generate-ordinal-scaling-cache.py",
       "kind": "tool",
       "source_blob_sha": "03c7847903cc0c4c5baf334648f67faeaaf95126",
       "source_bytes": 2874,
@@ -109,6 +118,7 @@
     },
     {
       "path": "tools/agent-memory-bench/materialize-neuroute-train-hard-negatives.py",
+      "preservation_path": "tools/agent-memory-bench/materialize-neuroute-train-hard-negatives.py",
       "kind": "tool",
       "source_blob_sha": "7708871eb5322cb867b77a74005bccdca850575b",
       "source_bytes": 3620,
@@ -117,6 +127,7 @@
     },
     {
       "path": "tools/agent-memory-bench/materialize-thq-full-scan.py",
+      "preservation_path": "tools/agent-memory-bench/materialize-thq-full-scan.py",
       "kind": "tool",
       "source_blob_sha": "c0f1193ed012b9d4a7bfbc5b2d103367514b77b1",
       "source_bytes": 6750,
@@ -143,6 +154,7 @@
     },
     {
       "path": "tools/agent-memory-bench/run-cell-aware-ordinal-router.py",
+      "preservation_path": "tools/agent-memory-bench/run-cell-aware-ordinal-router.py",
       "kind": "tool",
       "source_blob_sha": "6d0fe07796f334630bc3044591d7ff528b791d36",
       "source_bytes": 22460,
@@ -151,6 +163,7 @@
     },
     {
       "path": "tools/agent-memory-bench/run-frozen-candidate-codec-bakeoff.py",
+      "preservation_path": "tools/agent-memory-bench/run-frozen-candidate-codec-bakeoff.py",
       "kind": "tool",
       "source_blob_sha": "07e8bd2a1763daff789849fd527f3b2e565ae3b0",
       "source_bytes": 12765,
@@ -168,6 +181,7 @@
     },
     {
       "path": "tools/agent-memory-bench/run-pca12-multi-anchor-oracle.py",
+      "preservation_path": "tools/agent-memory-bench/run-pca12-multi-anchor-oracle.py",
       "kind": "tool",
       "source_blob_sha": "00da4e74540a985f4e7f50943a7aa52a8dc6edc3",
       "source_bytes": 17105,

@@ -213,8 +213,8 @@ def validate_audit(rows: list[dict[str, str]], *, verify_history: bool = True) -
             if blob_for(replacement, path) != current_blob:
                 fail(f"replacement commit does not contain current blob for {path}")
             if verify_history:
-                if subprocess.run(["git", "merge-base", "--is-ancestor", source_commit, SOURCE_COMMIT]).returncode:
-                    fail(f"source evidence commit is not in protected source history for {path}")
+                if subprocess.run(["git", "merge-base", "--is-ancestor", source_commit, BASE_COMMIT]).returncode:
+                    fail(f"source evidence commit is not in main history for {path}")
                 if subprocess.run(["git", "merge-base", "--is-ancestor", replacement, BASE_COMMIT]).returncode:
                     fail(f"replacement commit is not in main history for {path}")
         elif category == "RESIDUAL_PRESERVATION_REQUIRED":
@@ -258,10 +258,10 @@ def validate_manifest(manifest: dict[str, Any], *, verify_files: bool) -> None:
         expected_kind = "document" if path.startswith("guides/experiments/") else "tool"
         if kind != expected_kind:
             fail(f"unexpected kind for {path}")
-        preservation_path = item.get("preservation_path", path)
-        if preservation_path is not None:
-            preservation_path = strict_path(preservation_path, "preservation path")
-            preservation_paths.append(preservation_path)
+        if "preservation_path" not in item or item.get("preservation_path") is None:
+            fail(f"missing preservation path for {path}")
+        preservation_path = strict_path(item["preservation_path"], "preservation path")
+        preservation_paths.append(preservation_path)
         expected_blob = blob_for(SOURCE_COMMIT, path)
         if item.get("source_blob_sha") != expected_blob or not SHA_RE.fullmatch(item.get("source_blob_sha", "")):
             fail(f"source blob mismatch for {path}")
@@ -274,14 +274,10 @@ def validate_manifest(manifest: dict[str, Any], *, verify_files: bool) -> None:
         if not isinstance(receipts, list) or receipts or any(not isinstance(value, str) or not value for value in receipts):
             fail(f"raw receipts must be an empty list for {path}")
         if verify_files:
-            if preservation_path is None:
-                if path not in EXPECTED_ABSENT_PATHS:
-                    fail(f"missing preservation path for {path}")
-            else:
-                actual = Path(preservation_path).read_bytes()
-                source = source_bytes(SOURCE_COMMIT, path)
-                if hashlib.sha256(actual).digest() != hashlib.sha256(source).digest():
-                    fail(f"working-tree bytes differ from source for {path}")
+            actual = Path(preservation_path).read_bytes()
+            source = source_bytes(SOURCE_COMMIT, path)
+            if hashlib.sha256(actual).digest() != hashlib.sha256(source).digest():
+                fail(f"working-tree bytes differ from source for {path}")
             if preservation_path and preservation_path != path:
                 active = Path(path).read_bytes()
                 if active != source_bytes(BASE_COMMIT, path):
@@ -296,6 +292,39 @@ def validate_absent_paths() -> None:
             fail(f"absent-path source file missing: {path}")
         if blob_for(BASE_COMMIT, path) != "":
             fail(f"absent-path unexpectedly exists in main: {path}")
+
+
+def tree_map(commit: str) -> dict[str, str]:
+    output = git("ls-tree", "-r", "--full-tree", commit)
+    result: dict[str, str] = {}
+    for line in output.splitlines():
+        fields = line.split("\t", 1)
+        metadata = fields[0].split()
+        if len(fields) != 2 or len(metadata) != 3:
+            fail(f"unexpected tree entry in {commit}: {line}")
+        if metadata[1] == "commit":
+            continue
+        if metadata[1] != "blob":
+            fail(f"unexpected tree entry in {commit}: {line}")
+        result[fields[1]] = metadata[2]
+    return result
+
+
+def validate_coverage() -> None:
+    source = tree_map(SOURCE_COMMIT)
+    base = tree_map(BASE_COMMIT)
+    roots = ("guides/experiments/", "tools/agent-memory-bench/")
+    source = {path: blob for path, blob in source.items() if path.startswith(roots)}
+    base = {path: blob for path, blob in base.items() if path.startswith(roots)}
+    source_only = set(source) - set(base)
+    divergent = {
+        path for path in set(source) & set(base) if source[path] != base[path]
+    }
+    if source_only != EXPECTED_ABSENT_PATHS:
+        fail("independent source/base coverage disagrees with absent-path inventory")
+    if divergent != EXPECTED_CSV_PATHS:
+        fail("independent source/base coverage disagrees with divergent audit")
+    print(f"coverage: {len(divergent)} divergent, {len(source_only)} absent")
 
 
 def run_self_tests() -> None:
@@ -324,9 +353,16 @@ def run_self_tests() -> None:
     bad_path = copy.deepcopy(rows)
     bad_path[0]["path"] = bad_path[0]["path"].replace("/", "\\", 1)
     cases.append(("backslash path", bad_path, manifest))
+    absolute_path = copy.deepcopy(rows)
+    absolute_path[0]["path"] = "/absolute/path.md"
+    cases.append(("absolute path", absolute_path, manifest))
     bad_receipt = copy.deepcopy(manifest)
     bad_receipt["bindings"][0]["raw_receipt_status"] = "AVAILABLE"
     cases.append(("invalid receipt status", rows, bad_receipt))
+    missing_preservation = copy.deepcopy(manifest)
+    absent_binding = next(item for item in missing_preservation["bindings"] if item["path"] in EXPECTED_ABSENT_PATHS)
+    absent_binding["preservation_path"] = None
+    cases.append(("null preservation path", rows, missing_preservation))
     bad_size = copy.deepcopy(manifest)
     bad_size["bindings"][0]["source_bytes"] += 1
     cases.append(("changed manifest byte count", rows, bad_size))
@@ -340,9 +376,11 @@ def run_self_tests() -> None:
         except ValidationError:
             continue
         fail(f"self-test did not reject {name}")
-    with tempfile.TemporaryDirectory() as directory:
+    with tempfile.TemporaryDirectory(dir=".") as directory:
         source_path = Path(manifest["bindings"][0]["preservation_path"])
-        corrupt_path = Path(directory) / "corrupt.bin"
+        relative_directory = Path(directory).resolve().relative_to(Path.cwd().resolve())
+        corrupt_path = relative_directory / "corrupt.bin"
+        corrupt_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source_path, corrupt_path)
         data = bytearray(corrupt_path.read_bytes())
         data[0] ^= 1
@@ -355,7 +393,7 @@ def run_self_tests() -> None:
             pass
         else:
             fail("self-test did not reject physical byte corruption")
-    print("self-test: PASS (10 invalid cases rejected)")
+    print("self-test: PASS (12 invalid cases rejected)")
 
 
 def main() -> int:
@@ -363,6 +401,7 @@ def main() -> int:
         rows = load_audit()
         validate_audit(rows)
         validate_absent_paths()
+        validate_coverage()
         validate_manifest(load_json(RESIDUAL_MANIFEST), verify_files=True)
         if "--self-test" in sys.argv[1:]:
             run_self_tests()
