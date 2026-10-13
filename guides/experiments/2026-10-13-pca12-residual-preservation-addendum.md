@@ -32,6 +32,15 @@ manifest; the active `main` paths are not overwritten. The machine-readable
 details, current-main blob IDs, reachability evidence, and exact categories are
 in [2026-10-13-pca12-divergent-path-audit.csv](2026-10-13-pca12-divergent-path-audit.csv).
 
+The audit keeps `source_blob_commit` separate from `replacement_commit`:
+the former proves where the historical blob occurs in the protected source
+line, while the latter proves the current `main` replacement. In particular,
+the two disputed documents remain reachable evidence, not residual gaps:
+`fed6bdf9cd68c843949d7af3005e451847b1e696` contains the historical
+NeuRoute-v2 document and `b281590c682f7612b2caa5775b2104c072908582` contains
+the shared learned semantic-address document. Their replacement commits are
+recorded independently in the CSV.
+
 The addendum manifest in this branch records all 20 source blob SHA-1 values
 and byte sizes. Historical documents and tools are not current routing
 recommendations and are not connected to CMake, CI, or runtime execution.
