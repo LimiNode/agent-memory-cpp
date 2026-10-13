@@ -13,12 +13,19 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace agent_memory {
+
+/// \brief Deterministic interruption points for recovery verification.
+enum class DurableLexicalDocumentMemoryFaultPoint {
+    AfterCanonicalWrite,
+    BeforeCatalogPublication
+};
 
 /// \brief Options for the durable lexical document-memory profile.
 struct MdbxDurableLexicalDocumentMemoryOptions final {
@@ -27,6 +34,9 @@ struct MdbxDurableLexicalDocumentMemoryOptions final {
     bool relative_to_exe = false;
     std::int64_t max_dbs = kDefaultMdbxMaxDbs;
     std::shared_ptr<MdbxStorageContext> context;
+    /// Optional test/diagnostic hook. Throwing simulates process interruption;
+    /// the durable intent is recovered by the next operation or reopen.
+    std::function<void(DurableLexicalDocumentMemoryFaultPoint)> fault_injector;
 };
 
 /// \brief One lexical hit hydrated from the durable canonical body.
@@ -44,9 +54,15 @@ struct DurableLexicalDocumentHit final {
 ///
 /// The profile stores one canonical text block per logical resource and keeps
 /// the BM25 index as a rebuildable derived view. Reopening the same MDBX file
-/// reconstructs the lexical view from the durable canonical bodies. One
+/// reconstructs the lexical view from revision-bound canonical bodies. One
 /// resource maps to one chunk in this first vertical slice; chunking and
 /// projection publication remain separate M0 follow-ups.
+///
+/// Each upsert persists an intent before changing canonical content, then
+/// atomically publishes a per-resource catalog binding to the exact canonical
+/// revision. Interrupted intents are completed on retry or reopen. Instances
+/// sharing an MDBX environment observe catalog changes through per-scope
+/// generations; callers do not need to coordinate an in-memory snapshot.
 ///
 /// This class deliberately does not implement dense retrieval, hybrid fusion,
 /// knowledge-unit payloads, graph expansion, temporal validity, or background

@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -19,9 +21,16 @@
 namespace agent_memory {
 namespace {
 
-constexpr std::string_view kCatalogKey = "entries";
-constexpr std::string_view kCatalogPayloadVersion =
+constexpr std::string_view kEntryKeyPrefix = "entry";
+constexpr std::string_view kPendingKeyPrefix = "pending";
+constexpr std::string_view kScopeVersionKeyPrefix = "scope-version";
+constexpr std::string_view kLegacyCatalogKey = "entries";
+constexpr std::string_view kLegacyCatalogPayloadVersion =
     "agent_memory.durable_lexical_catalog.v1";
+constexpr std::string_view kEntryPayloadVersion =
+    "agent_memory.durable_lexical_entry.v2";
+constexpr std::string_view kPendingPayloadVersion =
+    "agent_memory.durable_lexical_pending.v2";
 constexpr std::string_view kBodyBlockId = "body";
 constexpr char kKeySeparator = '\x1f';
 
@@ -46,7 +55,9 @@ std::string table_name(const std::string& prefix, std::string_view suffix) {
 
 void reject_key_separator(std::string_view value, std::string_view field) {
     if(value.empty() || value.find(kKeySeparator) != std::string_view::npos) {
-        throw std::invalid_argument(std::string(field) + " must be non-empty and must not contain U+001F");
+        throw std::invalid_argument(
+            std::string(field) + " must be non-empty and must not contain U+001F"
+        );
     }
 }
 
@@ -93,6 +104,25 @@ public:
         return value;
     }
 
+    [[nodiscard]] std::uint64_t read_u64() {
+        const auto text = read_string();
+        if(text.empty()) {
+            throw std::runtime_error("durable lexical catalog contains an empty integer");
+        }
+        std::uint64_t value = 0;
+        for(const auto character : text) {
+            if(character < '0' || character > '9') {
+                throw std::runtime_error("durable lexical catalog contains an invalid integer");
+            }
+            const auto digit = static_cast<std::uint64_t>(character - '0');
+            if(value > (std::numeric_limits<std::uint64_t>::max() - digit) / 10U) {
+                throw std::runtime_error("durable lexical catalog integer overflow");
+            }
+            value = value * 10U + digit;
+        }
+        return value;
+    }
+
     [[nodiscard]] std::string read_string() {
         const auto size = read_size();
         if(size > m_payload.size() - m_position) {
@@ -119,13 +149,50 @@ struct CatalogEntry final {
     ResourceId resource_id;
     DocumentId document_id;
     std::string source_uri;
+    std::uint64_t canonical_revision = 0;
+};
+
+struct PendingOperation final {
+    ScopeId scope_id;
+    ResourceId resource_id;
+    DocumentId document_id;
+    std::string source_uri;
+    std::string utf8_text;
 };
 
 using EntriesByResource = std::map<ResourceId, CatalogEntry>;
 using EntriesByScope = std::map<ScopeId, EntriesByResource>;
 
 std::string logical_key(const ScopeId& scope_id, const ResourceId& resource_id) {
-    return scope_id.value() + std::string{1, kKeySeparator} + resource_id.value();
+    return scope_id.value() + std::string(1, kKeySeparator) + resource_id.value();
+}
+
+std::string record_key(
+    std::string_view prefix,
+    const ScopeId& scope_id,
+    const ResourceId& resource_id
+) {
+    return std::string{prefix} + std::string(1, kKeySeparator) +
+        logical_key(scope_id, resource_id);
+}
+
+std::string entry_key(const ScopeId& scope_id, const ResourceId& resource_id) {
+    return record_key(kEntryKeyPrefix, scope_id, resource_id);
+}
+
+std::string pending_key(const ScopeId& scope_id, const ResourceId& resource_id) {
+    return record_key(kPendingKeyPrefix, scope_id, resource_id);
+}
+
+std::string scope_version_key(const ScopeId& scope_id) {
+    return std::string{kScopeVersionKeyPrefix} + std::string(1, kKeySeparator) +
+        scope_id.value();
+}
+
+bool has_key_prefix(std::string_view key, std::string_view prefix) {
+    return key.size() > prefix.size() &&
+        key.compare(0, prefix.size(), prefix) == 0 &&
+        key[prefix.size()] == kKeySeparator;
 }
 
 std::string encode_document_component(std::string_view value) {
@@ -149,33 +216,94 @@ std::string document_key(const ScopeId& scope_id, const ResourceId& resource_id)
 }
 
 ChunkId chunk_id(const ScopeId& scope_id, const ResourceId& resource_id) {
-    return ChunkId{logical_key(scope_id, resource_id) + std::string{1, kKeySeparator} + "chunk"};
+    return ChunkId{
+        logical_key(scope_id, resource_id) + std::string(1, kKeySeparator) + "chunk"
+    };
 }
 
-std::string serialize_catalog(const EntriesByScope& entries) {
+void validate_identity(
+    const ScopeId& scope_id,
+    const ResourceId& resource_id,
+    const DocumentId& document_id
+) {
+    reject_key_separator(scope_id.value(), "scope id");
+    reject_key_separator(resource_id.value(), "resource id");
+    reject_key_separator(document_id.value(), "document id");
+    if(document_id.value() != document_key(scope_id, resource_id)) {
+        throw std::runtime_error("durable lexical catalog contains an invalid document identity");
+    }
+}
+
+std::string serialize_entry(const CatalogEntry& entry) {
     std::string payload;
-    append_string(payload, kCatalogPayloadVersion);
-    std::size_t entry_count = 0;
-    for(const auto& scope : entries) {
-        entry_count += scope.second.size();
-    }
-    append_size(payload, entry_count);
-    for(const auto& scope : entries) {
-        for(const auto& resource : scope.second) {
-            const auto& entry = resource.second;
-            append_string(payload, entry.scope_id.value());
-            append_string(payload, entry.resource_id.value());
-            append_string(payload, entry.document_id.value());
-            append_string(payload, entry.source_uri);
-        }
-    }
+    append_string(payload, kEntryPayloadVersion);
+    append_string(payload, entry.scope_id.value());
+    append_string(payload, entry.resource_id.value());
+    append_string(payload, entry.document_id.value());
+    append_string(payload, entry.source_uri);
+    append_string(payload, std::to_string(entry.canonical_revision));
     return payload;
 }
 
-EntriesByScope deserialize_catalog(std::string_view payload) {
+CatalogEntry deserialize_entry(std::string_view payload) {
     PayloadReader reader{payload};
-    if(reader.read_string() != kCatalogPayloadVersion) {
-        throw std::runtime_error("unsupported durable lexical catalog payload version");
+    if(reader.read_string() != kEntryPayloadVersion) {
+        throw std::runtime_error("unsupported durable lexical entry payload version");
+    }
+    CatalogEntry entry{
+        ScopeId{reader.read_string()},
+        ResourceId{reader.read_string()},
+        DocumentId{reader.read_string()},
+        reader.read_string(),
+        reader.read_u64()
+    };
+    reader.require_end();
+    validate_identity(entry.scope_id, entry.resource_id, entry.document_id);
+    if(entry.source_uri.empty()) {
+        throw std::runtime_error("durable lexical catalog contains an empty source URI");
+    }
+    return entry;
+}
+
+std::string serialize_pending(const PendingOperation& operation) {
+    std::string payload;
+    append_string(payload, kPendingPayloadVersion);
+    append_string(payload, operation.scope_id.value());
+    append_string(payload, operation.resource_id.value());
+    append_string(payload, operation.document_id.value());
+    append_string(payload, operation.source_uri);
+    append_string(payload, operation.utf8_text);
+    return payload;
+}
+
+PendingOperation deserialize_pending(std::string_view payload) {
+    PayloadReader reader{payload};
+    if(reader.read_string() != kPendingPayloadVersion) {
+        throw std::runtime_error("unsupported durable lexical pending payload version");
+    }
+    PendingOperation operation{
+        ScopeId{reader.read_string()},
+        ResourceId{reader.read_string()},
+        DocumentId{reader.read_string()},
+        reader.read_string(),
+        reader.read_string()
+    };
+    reader.require_end();
+    validate_identity(
+        operation.scope_id,
+        operation.resource_id,
+        operation.document_id
+    );
+    if(operation.source_uri.empty() || operation.utf8_text.empty()) {
+        throw std::runtime_error("durable lexical pending operation is incomplete");
+    }
+    return operation;
+}
+
+EntriesByScope deserialize_legacy_catalog(std::string_view payload) {
+    PayloadReader reader{payload};
+    if(reader.read_string() != kLegacyCatalogPayloadVersion) {
+        throw std::runtime_error("unsupported durable lexical legacy catalog version");
     }
 
     EntriesByScope entries;
@@ -185,44 +313,67 @@ EntriesByScope deserialize_catalog(std::string_view payload) {
             ScopeId{reader.read_string()},
             ResourceId{reader.read_string()},
             DocumentId{reader.read_string()},
-            reader.read_string()
+            reader.read_string(),
+            0
         };
-        reject_key_separator(entry.scope_id.value(), "scope id");
-        reject_key_separator(entry.resource_id.value(), "resource id");
-        reject_key_separator(entry.document_id.value(), "document id");
+        validate_identity(entry.scope_id, entry.resource_id, entry.document_id);
         if(entry.source_uri.empty()) {
-            throw std::runtime_error("durable lexical catalog contains an empty source URI");
+            throw std::runtime_error("durable lexical legacy catalog contains an empty URI");
         }
-        const auto scope_inserted = entries.emplace(entry.scope_id, EntriesByResource{});
-        if(!scope_inserted.first->second.emplace(entry.resource_id, std::move(entry)).second) {
-            throw std::runtime_error("durable lexical catalog contains a duplicate resource");
+        auto& resources = entries[entry.scope_id];
+        if(!resources.emplace(entry.resource_id, std::move(entry)).second) {
+            throw std::runtime_error("durable lexical legacy catalog contains a duplicate resource");
         }
     }
     reader.require_end();
     return entries;
 }
 
+std::uint64_t parse_u64(std::string_view text, std::string_view field) {
+    if(text.empty()) {
+        throw std::runtime_error(std::string(field) + " is empty");
+    }
+    std::uint64_t value = 0;
+    for(const auto character : text) {
+        if(character < '0' || character > '9') {
+            throw std::runtime_error(std::string(field) + " is invalid");
+        }
+        const auto digit = static_cast<std::uint64_t>(character - '0');
+        if(value > (std::numeric_limits<std::uint64_t>::max() - digit) / 10U) {
+            throw std::runtime_error(std::string(field) + " overflow");
+        }
+        value = value * 10U + digit;
+    }
+    return value;
+}
+
 std::string block_text(const CanonicalDocumentRevision& revision) {
-    if(revision.blocks.size() != 1 || revision.blocks.front().id.value() != kBodyBlockId) {
-        throw std::runtime_error("durable lexical document has an invalid body block topology");
+    if(revision.blocks.size() != 1 ||
+       revision.blocks.front().id.value() != kBodyBlockId) {
+        throw std::runtime_error(
+            "durable lexical document has an invalid body block topology"
+        );
     }
     return revision.blocks.front().text;
 }
 
-LexicalDocumentRecord make_lexical_record(
-    const ScopeId& scope_id,
-    const ResourceId& resource_id,
+std::optional<LexicalDocumentRecord> make_lexical_record(
+    const CatalogEntry& entry,
     const CanonicalDocumentRevision& revision,
     const StandardTokenizer& tokenizer
 ) {
     const auto text = block_text(revision);
     const auto tokenization = tokenizer.tokenize(text);
+    if(tokenization.tokens.empty()) {
+        return std::nullopt;
+    }
+
     ResourceRevision resource_revision;
-    resource_revision.resource_id = resource_id;
+    resource_revision.resource_id = entry.resource_id;
     resource_revision.generation = revision.revision + 1;
     resource_revision.pipeline_config_hash = 1;
     LexicalDocumentRecord record{
-        chunk_id(scope_id, resource_id),
+        chunk_id(entry.scope_id, entry.resource_id),
         resource_revision,
         tokenization.tokens,
         {},
@@ -230,7 +381,7 @@ LexicalDocumentRecord make_lexical_record(
         0
     };
     if(!is_valid(record)) {
-        throw std::runtime_error("durable lexical document produced no searchable tokens");
+        throw std::runtime_error("durable lexical document produced an invalid index record");
     }
     return record;
 }
@@ -245,15 +396,23 @@ public:
                                           options.path,
                                           options.relative_to_exe,
                                           options.max_dbs))
-        , m_catalog(m_context->connection(), table_name(options.table_prefix, "durable_lexical_catalog"))
+        , m_catalog(
+              m_context->connection(),
+              table_name(options.table_prefix, "durable_lexical_catalog"))
         , m_canonical([&] {
             MdbxCanonicalContentStoreOptions canonical_options;
             canonical_options.table_prefix = options.table_prefix;
             canonical_options.context = m_context;
             return canonical_options;
         }())
-        , m_entries(load_entries()) {
+        , m_fault_injector(std::move(options.fault_injector)) {
+        migrate_legacy_catalog();
+        recover_pending_operations();
+        m_entries = load_entries();
         rebuild_indexes();
+        for(const auto& scope : m_entries) {
+            m_scope_versions[scope.first] = load_scope_version(scope.first);
+        }
     }
 
     [[nodiscard]] std::uint64_t upsert_text(
@@ -271,56 +430,52 @@ public:
             throw std::invalid_argument("UTF-8 body must not be empty");
         }
 
-        auto scope_it = m_entries.find(scope_id);
-        if(scope_it == m_entries.end()) {
-            scope_it = m_entries.emplace(scope_id, EntriesByResource{}).first;
-        }
-        auto resource_it = scope_it->second.find(resource_id);
-        const auto document_id = resource_it == scope_it->second.end()
-            ? DocumentId{document_key(scope_id, resource_id)}
-            : resource_it->second.document_id;
+        const auto requested_document_id = DocumentId{
+            document_key(scope_id, resource_id)
+        };
+        const PendingOperation requested{
+            std::move(scope_id),
+            std::move(resource_id),
+            requested_document_id,
+            std::move(source_uri),
+            std::move(utf8_text)
+        };
 
-        CanonicalDocumentRevision current;
-        if(resource_it == scope_it->second.end()) {
-            current = CanonicalDocumentRevision{
-                document_id,
-                0,
-                {},
-                {ContentBlock{
-                    ContentBlockId{std::string{kBodyBlockId}},
-                    1,
-                    ContentBlockKind::Paragraph,
-                    std::nullopt,
-                    utf8_text
-                }}
+        std::lock_guard<std::mutex> lock(m_mutex);
+        synchronize_scope(requested.scope_id);
+        const auto requested_payload = serialize_pending(requested);
+
+        for(;;) {
+            const auto existing = acquire_pending(requested, requested_payload);
+            if(existing) {
+                complete_operation(deserialize_pending(*existing), *existing, false);
+                continue;
+            }
+
+            const auto revision = ensure_canonical(requested);
+            inject_fault(DurableLexicalDocumentMemoryFaultPoint::AfterCanonicalWrite);
+            inject_fault(DurableLexicalDocumentMemoryFaultPoint::BeforeCatalogPublication);
+            const auto published_version = publish_operation(
+                requested,
+                requested_payload,
+                revision.revision
+            );
+            if(!published_version) {
+                continue;
+            }
+
+            CatalogEntry entry{
+                requested.scope_id,
+                requested.resource_id,
+                requested.document_id,
+                requested.source_uri,
+                revision.revision
             };
-            if(!m_canonical.create_document(current)) {
-                throw std::runtime_error("durable lexical document already exists");
-            }
-        } else {
-            const auto stored = m_canonical.read_current(document_id);
-            if(!stored) {
-                throw std::runtime_error("durable lexical catalog points to a missing canonical document");
-            }
-            current = *stored;
-            if(block_text(current) != utf8_text) {
-                const auto result = m_canonical.commit({
-                    document_id,
-                    current.revision,
-                    {ReplaceBlockText{ContentBlockId{std::string{kBodyBlockId}}, utf8_text}}
-                });
-                if(!result.succeeded() || !result.revision) {
-                    throw std::runtime_error("durable lexical document update was not published");
-                }
-                current = *result.revision;
-            }
+            m_entries[entry.scope_id][entry.resource_id] = entry;
+            m_scope_versions[entry.scope_id] = *published_version;
+            update_index_entry(entry, revision);
+            return revision.revision + 1;
         }
-
-        CatalogEntry entry{scope_id, resource_id, document_id, std::move(source_uri)};
-        scope_it->second[resource_id] = entry;
-        persist_entries();
-        rebuild_scope(scope_id);
-        return current.revision + 1;
     }
 
     [[nodiscard]] std::vector<DurableLexicalDocumentHit> search(
@@ -335,6 +490,8 @@ public:
             throw std::invalid_argument("lexical query limit must not be zero");
         }
 
+        std::lock_guard<std::mutex> lock(m_mutex);
+        synchronize_scope(scope_id);
         const auto index_it = m_indexes.find(scope_id);
         if(index_it == m_indexes.end()) {
             return {};
@@ -368,17 +525,21 @@ public:
             if(resource_it == scope_entries->second.end()) {
                 throw std::runtime_error("lexical index returned an unregistered chunk");
             }
-            const auto current = m_canonical.read_current(resource_it->second.document_id);
-            if(!current) {
-                throw std::runtime_error("lexical catalog entry lost its canonical body");
+            const auto& entry = resource_it->second;
+            const auto revision = m_canonical.read_revision(
+                entry.document_id,
+                entry.canonical_revision
+            );
+            if(!revision) {
+                throw std::runtime_error("lexical catalog entry lost its canonical revision");
             }
             hits.push_back(DurableLexicalDocumentHit{
                 scope_id,
-                resource_it->second.resource_id,
+                entry.resource_id,
                 lexical_hit.chunk_id,
-                resource_it->second.source_uri,
-                block_text(*current),
-                current->revision + 1,
+                entry.source_uri,
+                block_text(*revision),
+                revision->revision + 1,
                 lexical_hit.score
             });
         }
@@ -386,52 +547,319 @@ public:
     }
 
 private:
-    EntriesByScope load_entries() const {
-        const auto payload = m_catalog.find(std::string{kCatalogKey});
-        return payload ? deserialize_catalog(*payload) : EntriesByScope{};
-    }
+    void migrate_legacy_catalog() {
+        const auto legacy_payload = m_catalog.find(std::string{kLegacyCatalogKey});
+        if(!legacy_payload) {
+            return;
+        }
 
-    void persist_entries() {
+        auto legacy_entries = deserialize_legacy_catalog(*legacy_payload);
+        for(auto& scope : legacy_entries) {
+            for(auto& resource : scope.second) {
+                auto& entry = resource.second;
+                const auto revision = m_canonical.read_current(entry.document_id);
+                if(!revision) {
+                    throw std::runtime_error(
+                        "durable lexical legacy catalog points to a missing canonical document"
+                    );
+                }
+                entry.canonical_revision = revision->revision;
+            }
+        }
+
         auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
-        m_catalog.insert_or_assign(
-            std::string{kCatalogKey},
-            serialize_catalog(m_entries),
-            txn
-        );
+        const auto current_legacy = m_catalog.find(std::string{kLegacyCatalogKey}, txn);
+        if(!current_legacy) {
+            txn.rollback();
+            return;
+        }
+        if(*current_legacy != *legacy_payload) {
+            throw std::runtime_error("durable lexical legacy catalog changed during migration");
+        }
+
+        for(const auto& scope : legacy_entries) {
+            bool inserted_any = false;
+            for(const auto& resource : scope.second) {
+                const auto& entry = resource.second;
+                inserted_any = m_catalog.insert(
+                    entry_key(entry.scope_id, entry.resource_id),
+                    serialize_entry(entry),
+                    txn
+                ) || inserted_any;
+            }
+            if(inserted_any) {
+                static_cast<void>(increment_scope_version(scope.first, txn));
+            }
+        }
+        if(!m_catalog.erase(std::string{kLegacyCatalogKey}, txn)) {
+            throw std::runtime_error("durable lexical legacy catalog was not removed");
+        }
         txn.commit();
     }
 
-    void rebuild_scope(const ScopeId& scope_id) {
+    [[nodiscard]] EntriesByScope load_entries() const {
+        EntriesByScope entries;
+        const auto records = m_catalog.retrieve_all<std::map>();
+        for(const auto& record : records) {
+            if(!has_key_prefix(record.first, kEntryKeyPrefix)) {
+                continue;
+            }
+            auto entry = deserialize_entry(record.second);
+            if(record.first != entry_key(entry.scope_id, entry.resource_id)) {
+                throw std::runtime_error("durable lexical entry key does not match its payload");
+            }
+            auto& resources = entries[entry.scope_id];
+            if(!resources.emplace(entry.resource_id, std::move(entry)).second) {
+                throw std::runtime_error("durable lexical catalog contains a duplicate resource");
+            }
+        }
+        return entries;
+    }
+
+    [[nodiscard]] EntriesByResource load_scope_entries(const ScopeId& scope_id) const {
+        EntriesByResource entries;
+        const auto records = m_catalog.retrieve_all<std::map>();
+        for(const auto& record : records) {
+            if(!has_key_prefix(record.first, kEntryKeyPrefix)) {
+                continue;
+            }
+            auto entry = deserialize_entry(record.second);
+            if(record.first != entry_key(entry.scope_id, entry.resource_id)) {
+                throw std::runtime_error("durable lexical entry key does not match its payload");
+            }
+            if(entry.scope_id == scope_id &&
+               !entries.emplace(entry.resource_id, std::move(entry)).second) {
+                throw std::runtime_error("durable lexical catalog contains a duplicate resource");
+            }
+        }
+        return entries;
+    }
+
+    [[nodiscard]] std::uint64_t load_scope_version(const ScopeId& scope_id) const {
+        const auto stored = m_catalog.find(scope_version_key(scope_id));
+        return stored ? parse_u64(*stored, "durable lexical scope version") : 0;
+    }
+
+    [[nodiscard]] std::optional<std::string> acquire_pending(
+        const PendingOperation& operation,
+        const std::string& payload
+    ) {
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        const auto key = pending_key(operation.scope_id, operation.resource_id);
+        if(m_catalog.insert(key, payload, txn)) {
+            txn.commit();
+            return std::nullopt;
+        }
+        const auto existing = m_catalog.find(key, txn);
+        txn.commit();
+        if(!existing) {
+            throw std::runtime_error("durable lexical pending operation disappeared");
+        }
+        return existing;
+    }
+
+    [[nodiscard]] CanonicalDocumentRevision ensure_canonical(
+        const PendingOperation& operation
+    ) {
+        for(;;) {
+            const auto stored = m_canonical.read_current(operation.document_id);
+            if(!stored) {
+                CanonicalDocumentRevision initial{
+                    operation.document_id,
+                    0,
+                    {},
+                    {ContentBlock{
+                        ContentBlockId{std::string{kBodyBlockId}},
+                        1,
+                        ContentBlockKind::Paragraph,
+                        std::nullopt,
+                        operation.utf8_text
+                    }}
+                };
+                if(m_canonical.create_document(initial)) {
+                    return initial;
+                }
+                continue;
+            }
+
+            if(block_text(*stored) == operation.utf8_text) {
+                return *stored;
+            }
+            const auto result = m_canonical.commit({
+                operation.document_id,
+                stored->revision,
+                {ReplaceBlockText{
+                    ContentBlockId{std::string{kBodyBlockId}},
+                    operation.utf8_text
+                }}
+            });
+            if(result.succeeded() && result.revision) {
+                return *result.revision;
+            }
+            if(result.status != CanonicalEditStatus::Conflict) {
+                throw std::runtime_error(
+                    "durable lexical canonical publication failed: " + result.message
+                );
+            }
+        }
+    }
+
+    [[nodiscard]] std::optional<std::uint64_t> publish_operation(
+        const PendingOperation& operation,
+        const std::string& pending_payload,
+        std::uint64_t canonical_revision
+    ) {
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        const auto pending = pending_key(operation.scope_id, operation.resource_id);
+        const auto stored_pending = m_catalog.find(pending, txn);
+        if(!stored_pending || *stored_pending != pending_payload) {
+            txn.rollback();
+            return std::nullopt;
+        }
+
+        const CatalogEntry entry{
+            operation.scope_id,
+            operation.resource_id,
+            operation.document_id,
+            operation.source_uri,
+            canonical_revision
+        };
+        m_catalog.insert_or_assign(
+            entry_key(entry.scope_id, entry.resource_id),
+            serialize_entry(entry),
+            txn
+        );
+
+        const auto next_version = increment_scope_version(entry.scope_id, txn);
+        if(!m_catalog.erase(pending, txn)) {
+            throw std::runtime_error("durable lexical pending operation was not cleared");
+        }
+        txn.commit();
+        return next_version;
+    }
+
+    [[nodiscard]] std::uint64_t increment_scope_version(
+        const ScopeId& scope_id,
+        const mdbxc::Transaction& txn
+    ) {
+        const auto version_key = scope_version_key(scope_id);
+        const auto stored_version = m_catalog.find(version_key, txn);
+        const auto previous_version = stored_version
+            ? parse_u64(*stored_version, "durable lexical scope version")
+            : 0;
+        if(previous_version == std::numeric_limits<std::uint64_t>::max()) {
+            throw std::runtime_error("durable lexical scope version overflow");
+        }
+        const auto next_version = previous_version + 1;
+        m_catalog.insert_or_assign(version_key, std::to_string(next_version), txn);
+        return next_version;
+    }
+
+    void complete_operation(
+        const PendingOperation& operation,
+        const std::string& pending_payload,
+        bool inject_faults
+    ) {
+        const auto revision = ensure_canonical(operation);
+        if(inject_faults) {
+            inject_fault(DurableLexicalDocumentMemoryFaultPoint::AfterCanonicalWrite);
+            inject_fault(DurableLexicalDocumentMemoryFaultPoint::BeforeCatalogPublication);
+        }
+        static_cast<void>(publish_operation(
+            operation,
+            pending_payload,
+            revision.revision
+        ));
+    }
+
+    void recover_pending_operations() {
+        const auto records = m_catalog.retrieve_all<std::map>();
+        for(const auto& record : records) {
+            if(!has_key_prefix(record.first, kPendingKeyPrefix)) {
+                continue;
+            }
+            const auto operation = deserialize_pending(record.second);
+            if(record.first != pending_key(operation.scope_id, operation.resource_id)) {
+                throw std::runtime_error("durable lexical pending key does not match its payload");
+            }
+            complete_operation(operation, record.second, false);
+        }
+    }
+
+    void inject_fault(DurableLexicalDocumentMemoryFaultPoint point) const {
+        if(m_fault_injector) {
+            m_fault_injector(point);
+        }
+    }
+
+    void update_index_entry(
+        const CatalogEntry& entry,
+        const CanonicalDocumentRevision& revision
+    ) const {
+        auto& index = m_indexes[entry.scope_id];
+        static_cast<void>(index.erase(chunk_id(entry.scope_id, entry.resource_id)));
+        const auto record = make_lexical_record(entry, revision, m_tokenizer);
+        if(record) {
+            index.upsert(*record);
+        }
+    }
+
+    void rebuild_scope(const ScopeId& scope_id) const {
         const auto scope_it = m_entries.find(scope_id);
         ExactLexicalIndex rebuilt;
         if(scope_it != m_entries.end()) {
             for(const auto& item : scope_it->second) {
-                const auto current = m_canonical.read_current(item.second.document_id);
-                if(!current) {
-                    throw std::runtime_error("durable lexical catalog points to a missing canonical document");
+                const auto& entry = item.second;
+                const auto revision = m_canonical.read_revision(
+                    entry.document_id,
+                    entry.canonical_revision
+                );
+                if(!revision) {
+                    throw std::runtime_error(
+                        "durable lexical catalog points to a missing canonical revision"
+                    );
                 }
-                rebuilt.upsert(make_lexical_record(
-                    scope_id,
-                    item.first,
-                    *current,
-                    m_tokenizer
-                ));
+                const auto record = make_lexical_record(entry, *revision, m_tokenizer);
+                if(record) {
+                    rebuilt.upsert(*record);
+                }
             }
         }
         m_indexes[scope_id] = std::move(rebuilt);
     }
 
-    void rebuild_indexes() {
+    void rebuild_indexes() const {
+        m_indexes.clear();
         for(const auto& scope : m_entries) {
             rebuild_scope(scope.first);
         }
     }
 
+    void synchronize_scope(const ScopeId& scope_id) const {
+        const auto persisted_version = load_scope_version(scope_id);
+        const auto local = m_scope_versions.find(scope_id);
+        if(local != m_scope_versions.end() && local->second == persisted_version) {
+            return;
+        }
+
+        auto entries = load_scope_entries(scope_id);
+        if(entries.empty()) {
+            m_entries.erase(scope_id);
+        } else {
+            m_entries[scope_id] = std::move(entries);
+        }
+        rebuild_scope(scope_id);
+        m_scope_versions[scope_id] = persisted_version;
+    }
+
     std::shared_ptr<MdbxStorageContext> m_context;
-    mdbxc::KeyValueTable<std::string, std::string> m_catalog;
+    mutable mdbxc::KeyValueTable<std::string, std::string> m_catalog;
     MdbxCanonicalContentStore m_canonical;
-    EntriesByScope m_entries;
-    std::map<ScopeId, ExactLexicalIndex> m_indexes;
+    std::function<void(DurableLexicalDocumentMemoryFaultPoint)> m_fault_injector;
+    mutable std::mutex m_mutex;
+    mutable EntriesByScope m_entries;
+    mutable std::map<ScopeId, ExactLexicalIndex> m_indexes;
+    mutable std::map<ScopeId, std::uint64_t> m_scope_versions;
     StandardTokenizer m_tokenizer;
 };
 

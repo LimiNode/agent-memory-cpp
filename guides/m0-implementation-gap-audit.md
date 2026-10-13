@@ -25,15 +25,22 @@ The smallest useful production surface is one vertical slice:
 
 `MdbxDurableLexicalDocumentMemory` is the only new production API needed for
 this first slice. Its options, `upsert_text`, `search` and hydrated hit value
-form the deliberately small public surface. It keeps a compact catalog of
-scope, resource, document and URI metadata in MDBX, stores one canonical
-`body` block through `MdbxCanonicalContentStore`, and rebuilds an in-memory
-`ExactLexicalIndex` when opened. Updates retain the logical resource identifier
-and expose a one-based body generation. Search results hydrate the URI and
-current text.
+form the deliberately small public surface. It keeps independent per-resource
+catalog records in MDBX, stores one canonical `body` block through
+`MdbxCanonicalContentStore`, and rebuilds an in-memory `ExactLexicalIndex` when
+opened. A durable intent makes publication recoverable across the canonical
+and catalog transactions, while the published record binds URI and search to
+one exact canonical revision. Updates retain the logical resource identifier
+and expose a one-based body generation. Search results hydrate that published
+URI and revision-bound text.
+
+Normal upserts replace only the affected in-memory lexical record. Full scope
+rebuild remains a reopen and stale-reader refresh strategy for this first
+profile. Text with no lexical tokens remains durable but is omitted from BM25.
 
 The checked example and focused CTest cover ingest, scope isolation, lexical
-search, reopen, update, hydration and invalid-input handling.
+search, targeted update, shared-context visibility, interrupted-publication
+recovery, tokenless text, reopen, hydration and invalid-input handling.
 
 ## Deliberate boundaries
 

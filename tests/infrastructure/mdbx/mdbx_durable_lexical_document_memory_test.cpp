@@ -3,6 +3,7 @@
 #if AGENT_MEMORY_HAS_MDBX
 
 #include <filesystem>
+#include <memory>
 #include <stdexcept>
 #include <utility>
 
@@ -12,6 +13,7 @@ void expect(bool condition, const char* message) {
         throw std::runtime_error(message);
     }
 }
+
 } // namespace
 
 int main() {
@@ -85,7 +87,183 @@ int main() {
         expect(uri_only.front().generation == 2, "URI-only update changed generation");
     }
 
+    const ScopeId recovery_scope{"recovery"};
+    const ResourceId recovery_resource{"interrupted-create"};
+    {
+        MdbxDurableLexicalDocumentMemoryOptions options;
+        options.path = path.string();
+        options.fault_injector = [](DurableLexicalDocumentMemoryFaultPoint point) {
+            if(point == DurableLexicalDocumentMemoryFaultPoint::AfterCanonicalWrite) {
+                throw std::runtime_error("injected interruption after canonical write");
+            }
+        };
+        MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+        bool interrupted = false;
+        try {
+            static_cast<void>(memory.upsert_text(
+                recovery_scope,
+                recovery_resource,
+                "https://example.test/recovery-v1",
+                "Recovery preserves the first canonical publication."
+            ));
+        } catch(const std::runtime_error&) {
+            interrupted = true;
+        }
+        expect(interrupted, "after-canonical fault injection did not interrupt upsert");
+    }
+
+    {
+        MdbxDurableLexicalDocumentMemoryOptions options;
+        options.path = path.string();
+        MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+        const auto recovered = memory.search(recovery_scope, "first canonical", 5);
+        expect(recovered.size() == 1, "reopen did not recover interrupted create");
+        expect(recovered.front().source_uri == "https://example.test/recovery-v1",
+               "recovered create lost its URI");
+        expect(memory.upsert_text(
+                   recovery_scope,
+                   recovery_resource,
+                   "https://example.test/recovery-v1",
+                   "Recovery preserves the first canonical publication.") == 1,
+               "retry after recovered create was not idempotent");
+    }
+
+    {
+        MdbxDurableLexicalDocumentMemoryOptions options;
+        options.path = path.string();
+        options.fault_injector = [](DurableLexicalDocumentMemoryFaultPoint point) {
+            if(point == DurableLexicalDocumentMemoryFaultPoint::BeforeCatalogPublication) {
+                throw std::runtime_error("injected interruption before catalog publication");
+            }
+        };
+        MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+        bool interrupted = false;
+        try {
+            static_cast<void>(memory.upsert_text(
+                recovery_scope,
+                recovery_resource,
+                "https://example.test/recovery-v2",
+                "Recovery publishes the updated canonical revision."
+            ));
+        } catch(const std::runtime_error&) {
+            interrupted = true;
+        }
+        expect(interrupted, "before-catalog fault injection did not interrupt upsert");
+    }
+
+    {
+        MdbxDurableLexicalDocumentMemoryOptions options;
+        options.path = path.string();
+        MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+        const auto recovered = memory.search(recovery_scope, "updated canonical", 5);
+        expect(recovered.size() == 1, "reopen did not recover interrupted update");
+        expect(recovered.front().source_uri == "https://example.test/recovery-v2",
+               "recovered update mixed body and URI revisions");
+        expect(recovered.front().generation == 2,
+               "recovered update changed canonical generation unexpectedly");
+    }
+
+    const ScopeId tokenless_scope{"tokenless"};
+    const ResourceId tokenless_resource{"punctuation"};
+    {
+        MdbxDurableLexicalDocumentMemoryOptions options;
+        options.path = path.string();
+        MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+        expect(memory.upsert_text(
+                   tokenless_scope,
+                   ResourceId{"searchable"},
+                   "https://example.test/searchable",
+                   "Ordinary searchable neighbor remains available.") == 1,
+               "searchable neighbor insert failed");
+        expect(memory.upsert_text(
+                   tokenless_scope,
+                   tokenless_resource,
+                   "https://example.test/punctuation",
+                   "!!!") == 1,
+               "tokenless canonical text was not retained");
+        expect(memory.search(tokenless_scope, "ordinary", 5).size() == 1,
+               "tokenless text disturbed searchable neighbor");
+    }
+
+    {
+        MdbxDurableLexicalDocumentMemoryOptions options;
+        options.path = path.string();
+        MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+        expect(memory.search(tokenless_scope, "ordinary", 5).size() == 1,
+               "tokenless text blocked database reopen");
+        expect(memory.upsert_text(
+                   tokenless_scope,
+                   tokenless_resource,
+                   "https://example.test/punctuation",
+                   "!!!") == 1,
+               "tokenless no-op changed canonical generation");
+        expect(memory.upsert_text(
+                   tokenless_scope,
+                   tokenless_resource,
+                   "https://example.test/punctuation-v2",
+                   "Punctuation document is searchable now.") == 2,
+               "tokenless document did not retain its canonical generation");
+        expect(memory.search(tokenless_scope, "punctuation", 5).size() == 1,
+               "formerly tokenless document was not indexed after update");
+    }
+
+    const ScopeId shared_scope{"shared-context"};
+    {
+        auto context = MdbxStorageContext::open(
+            path.string(),
+            false,
+            kDefaultMdbxMaxDbs
+        );
+        MdbxDurableLexicalDocumentMemoryOptions options_a;
+        options_a.context = context;
+        MdbxDurableLexicalDocumentMemoryOptions options_b;
+        options_b.context = context;
+        MdbxDurableLexicalDocumentMemory memory_a{std::move(options_a)};
+        MdbxDurableLexicalDocumentMemory memory_b{std::move(options_b)};
+
+        expect(memory_a.upsert_text(
+                   shared_scope,
+                   ResourceId{"a"},
+                   "https://example.test/shared-a",
+                   "Alpha is written by the first instance.") == 1,
+               "first shared-context insert failed");
+        expect(memory_b.upsert_text(
+                   shared_scope,
+                   ResourceId{"b"},
+                   "https://example.test/shared-b",
+                   "Beta is written by the stale second instance.") == 1,
+               "second shared-context insert failed");
+        expect(memory_a.search(shared_scope, "beta", 5).size() == 1,
+               "first instance did not observe second instance publication");
+        expect(memory_b.search(shared_scope, "alpha", 5).size() == 1,
+               "second instance overwrote or missed first instance publication");
+
+        expect(memory_a.upsert_text(
+                   shared_scope,
+                   ResourceId{"a"},
+                   "https://example.test/shared-a-v2",
+                   "Gamma is the targeted replacement.") == 2,
+               "targeted shared-context update failed");
+        expect(memory_b.search(shared_scope, "gamma", 5).size() == 1,
+               "stale instance did not refresh the changed resource");
+        expect(memory_b.search(shared_scope, "beta", 5).size() == 1,
+               "targeted update lost the independent resource");
+        expect(memory_b.search(shared_scope, "alpha", 5).empty(),
+               "targeted update retained stale terms");
+    }
+
+    {
+        MdbxDurableLexicalDocumentMemoryOptions options;
+        options.path = path.string();
+        MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+        expect(memory.search(shared_scope, "gamma", 5).size() == 1,
+               "reopen lost first per-resource catalog entry");
+        expect(memory.search(shared_scope, "beta", 5).size() == 1,
+               "reopen lost second per-resource catalog entry");
+    }
+
     std::filesystem::remove(path, error);
+
     return 0;
 }
 
