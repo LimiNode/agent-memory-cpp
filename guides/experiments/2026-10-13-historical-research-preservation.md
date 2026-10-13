@@ -23,12 +23,23 @@ do not replace these source documents or their source commit binding.
 - No claim of scientific reproducibility, dataset availability, or runner
   replay is made by this preservation PR.
 
-The preservation boundary also includes eleven research runner and materializer
-sources referenced by these notes. Their original paths and source Git blob
-SHAs are recorded in the manifest under `research_tools`, and the validator
-checks those bindings. The files are preserved as historical source evidence;
-they are not wired into the active `agent-memory-bench` build and are not
-treated as maintained production tooling.
+The preservation boundary also includes the research runner and materializer
+sources referenced by these notes, plus their local loader dependencies. Their
+original paths and source Git blob SHAs are recorded in the manifest under
+`research_tools`, and the validator checks the exact required set. The files
+are preserved as historical source evidence; they are not wired into the active
+`agent-memory-bench` build and are not treated as maintained production
+tooling.
+
+The closure includes the PCA12 loader chain
+(`run-pca12-bucket-centroid-bakeoff.py`,
+`run-multimodal-cell-router-bakeoff.py`,
+`run-shared-supervised-ordinal-projection.py`, and
+`run-neuroute-ordinal-lattice.py`) and the two THQ sources identified during
+review (`evaluate-thq-multianchor-transition-cost-oracle.py` and
+`native_thq_full_scan.cpp`). Datasets, generated receipts, and unrelated
+experimental runners remain outside this preservation boundary and are not
+claimed to be available.
 
 ## Scope
 
