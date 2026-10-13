@@ -13,6 +13,10 @@ The separate [memory feedback stability gate (F0)](2026-10-07-memory-feedback-st
 defines a proposed usage-feedback screen. It records no completed experiment
 and does not change production scoring or block canonical-content storage.
 
+The [JPEG XL image representation note](2026-10-13-jpeg-xl-image-representation.md)
+records an optional codec candidate. It contains no implementation or
+performance claim.
+
 For the consolidated codec status across quality, native retrieval, 1M flat
 serving, and MDBX persistence, see the [codec evaluation report](codec-evaluation-report.md).
 
