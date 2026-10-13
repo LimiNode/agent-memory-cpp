@@ -26,11 +26,11 @@ repository state, but they do not change the historical source bindings above.
 | Gap class | Current evidence | Status | Next action |
 | --- | --- | --- | --- |
 | Historical document bytes | 13/13 source blobs verified against the source commit recorded by #503 | `BYTE_PRESERVED` | None for the documents themselves. |
-| Historical research tools | 17/17 #503 tools plus the 20 residual bindings from #506 are recorded by path and SHA-1 | `SOURCE_PRESERVED` | Keep the preservation paths stable; do not connect them to active builds without a separate decision. |
+| Historical research material | 17/17 #503 tools plus 20 residual #506 bindings (9 documents and 11 tools) are recorded by path and SHA-1 | `SOURCE_PRESERVED` | Keep the preservation paths stable; do not connect them to active builds without a separate decision. |
 | Divergent paths | 34 audited; 28 reachable in `main` history and 6 retained under explicit preservation paths | `AUDITED` | Re-run only if the source or preservation paths change. |
 | Absent paths | 14 source paths retained in the #506 scope | `BYTE_PRESERVED` | No reconstruction is needed. |
 | Referenced raw receipts | 11 documents reference receipts marked `REFERENCED_NOT_AVAILABLE` in the #503 manifest | `RAW_RECEIPT_GAP` | Locate an independently verifiable copy, or leave the receipt unavailable. Never infer it from prose. |
-| Unreferenced raw receipts | 2 documents are marked `NOT_REFERENCED` | `RAW_RECEIPT_NOT_EXPECTED` | No receipt is required unless a future audit identifies a concrete binding. |
+| Unreferenced raw receipts | 2 documents are marked `NOT_REFERENCED` in the source manifest | `RAW_RECEIPT_NOT_REFERENCED_IN_SOURCE` | This records only that the source note has no receipt reference; whether independent evidence is needed remains a separate audit decision. |
 | Residual raw artifacts | The #506 addendum records `NOT_AUDITED_IN_THIS_PASS`; datasets, qrels, and benchmark outputs were not recreated | `INDEPENDENT_AUDIT_PENDING` | Hash any available local copy and create an independent durable copy before declaring it preserved. |
 | Scientific replay | Source code and notes are preserved, but missing inputs/receipts prevent a general replay claim | `NOT_REPRODUCIBLE_FROM_REPOSITORY_ALONE` | Keep this limitation explicit in research notes and release descriptions. |
 
@@ -39,14 +39,19 @@ The complete path-level residual inventory remains in
 The 13 document-level receipt declarations remain in
 [`2026-10-13-historical-research-preservation-manifest.json`](2026-10-13-historical-research-preservation-manifest.json).
 
+The `RESIDUAL_PRESERVATION_PENDING_REVIEW` status in the older PCA12 addendum
+is a pre-merge historical status. The current Git-byte preservation in #506 has
+been checked; external raw artifacts and independent scientific replay remain
+open gaps and are not upgraded by this ledger.
+
 ## Branch and archive policy
 
 - `agent/pca12-routing-followups` remains a source witness at
   `f325d794afacf86d79cbabb000a400658eafd5af`.
 - The source witness and any related worktree must not be removed solely
   because the preservation PRs have merged.
-- Four unrelated deletion-ready branches were removed on 2026-10-13 after
-  exact-SHA preflight; no preservation branch was part of that batch.
+- Remote branch deletion is tracked as a separate operational event. No
+  preservation branch is authorized for deletion by this ledger alone.
 - Local research archives, bundles, NPZ/qrels payloads, and receipts remain
   outside this Git closure until their bytes and durable copies are audited.
 
