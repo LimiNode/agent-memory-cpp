@@ -124,9 +124,11 @@ the independent flat retrieval route remains active.
 A host may map eligible navigation output onto the existing `ActivationPlan`
 fields: domain and concept selections use `domains` and `concepts`;
 playbook references use `playbooks`; aliases and route query text use
-`query_variants`; and limits use `budget_hint`. Map generation, path,
-frontier, provenance and fallback reasons are reported through the existing
-`ActivationTrace` and route diagnostics. No `route_hints` field is introduced.
+`query_variants`; and limits use `budget_hint`. Existing `ActivationTrace` fields carry the plan, map/projection generation and
+fallback decisions already defined by the activation contract. Detailed map path,
+frontier and provenance diagnostics beyond those fields belong to separate route
+diagnostics or a future trace extension; this guide does not add public fields.
+No `route_hints` field is introduced.
 
 The reference flow is:
 
@@ -135,12 +137,12 @@ The reference flow is:
 3. expand only child maps whose `review_state` is `Reviewed` or `Canonical`,
    whose `map_availability` is `available`, and which pass the normal scope,
    access and lifecycle checks; bound expansion by depth, fanout and byte budgets;
-3. validate scope, access, lifecycle, language and temporal filters independently;
-4. run ordinary lexical/dense/graph retrieval using the resulting hints;
-5. retain an independent original-query route;
-6. fuse route-local candidates with existing completion and provenance rules;
-7. hydrate canonical records before factual context assembly;
-8. expose the map path as routing diagnostics, not as evidence.
+4. validate scope, access, lifecycle, language and temporal filters independently;
+5. run ordinary lexical/dense/graph retrieval using the resulting hints;
+6. retain an independent original-query route;
+7. fuse route-local candidates with existing completion and provenance rules;
+8. hydrate canonical records before factual context assembly;
+9. expose the map path as routing diagnostics, not as evidence.
 
 A stale, unavailable, low-confidence or ambiguous map must not suppress the
 independent route. The implementation falls back to broader retrieval or
@@ -233,7 +235,14 @@ unbounded work in one component for savings in another. If a matched-total-cost
 scalar is reported, it must be derived from a versioned, predeclared
 normalization and weight table; the raw resource vector remains part of the
 result. The independent flat route and any fallback consume the same envelope,
-with no hidden fallback allowance.
+with no hidden fallback allowance. Each fixture must predeclare a non-zero
+minimum reservation for the independent original-query route, or declare that
+this route executes before map traversal. A reservation belongs to the same
+resource vector: map traversal may consume only the remaining budget, and the
+reservation is not a hidden fallback allowance. If the flat route exhausts its
+declared reservation, the existing retrieval completion or budget diagnostic is
+recorded rather than silently dropping the route. All comparison arms use the
+same reservation policy.
 
 Map construction, update and rebuild cost are recorded in a separate offline
 ledger. Each experiment declares the workload used to amortize that cost
