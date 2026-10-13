@@ -198,9 +198,10 @@ The **Hierarchical Navigation Retrieval Gate** compares:
 6. map-only retrieval as a negative control.
 
 All arms use the same canonical corpus, embedding split, read frontiers,
-and final ContextPack/token budget. Each arm also receives the same total
-query-time work budget. The query-time ledger includes map bytes read, map
-nodes/edges traversed, fanout, aliases and query variants, retrieval calls,
+candidate budget, decoded-byte budget and final ContextPack/token budget. Each
+arm also receives the same total query-time work budget. The query-time ledger
+includes map bytes read, map nodes/edges traversed, fanout, aliases and query
+variants, retrieval calls,
 decoded bytes, and model calls/tokens when a map policy uses a model. The
 independent flat route and any fallback consume this same budget; a map arm
 must not receive extra retrieval work through a hidden fallback allowance.
