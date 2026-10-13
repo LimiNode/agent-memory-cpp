@@ -35,6 +35,12 @@ This guide extends, rather than replaces:
 
 ## 2. Design Rules
 
+Optional image codecs are representations, not canonical artifact identities.
+The current JPEG XL research candidate and its matched-corpus evaluation are
+recorded in [`experiments/2026-10-13-jpeg-xl-image-representation.md`](experiments/2026-10-13-jpeg-xl-image-representation.md).
+No codec is a production dependency until provenance, round-trip, quality and
+operability gates pass.
+
 1. `KnowledgeUnitKind` describes knowledge semantics (`Fact`, `Policy`,
    `Chunk`, `Summary`), never a file format such as PDF, image or video.
 2. A logical source and a fetched or imported revision have different,

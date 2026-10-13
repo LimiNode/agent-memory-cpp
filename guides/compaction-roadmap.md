@@ -6,6 +6,12 @@
 
 ## 1. Purpose
 
+The bounded offline replay and derived-projection boundary is specified in
+[`offline-consolidation-roadmap.md`](offline-consolidation-roadmap.md). This
+document remains the owner for compaction jobs, source retention and
+`SummaryPromotionJob`; the offline guide does not add a second worker or
+scheduler.
+
 Этот документ описывает:
 
 - `CompactionWorker` — фоновый компонент MemoryStack, обрабатывающий compaction jobs.

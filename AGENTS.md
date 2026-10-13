@@ -23,6 +23,10 @@ agent framework.
   capability manifest.
 - [Knowledge activation](guides/knowledge-activation-roadmap.md) - domain maps,
   playbooks, soft routing, and context-planning concepts.
+- [Offline consolidation and replay](guides/offline-consolidation-roadmap.md) -
+  bounded offline projection refresh, replay receipts, and source protection.
+- [Hierarchical navigation](guides/hierarchical-navigation-roadmap.md) -
+  bounded DomainMap routing and map-conditioned retrieval rules.
 - [Agent runtime integration](guides/agent-runtime-integration-roadmap.md) -
   optional cognitive-runtime trace, perspective, procedure, and reconciliation
   contracts.

@@ -62,6 +62,25 @@ unwritten policy, present their consequences and leave the choice explicit.
 Do not silently turn an external article, an agent preference or an inferred
 requirement into a public API, identity, lifecycle, security or storage rule.
 
+## Offline consolidation and navigation projections
+
+Treat offline or "sleep-inspired" work as a bounded host-scheduled projection
+job, not as a new memory type or an autonomous agent loop. Preserve the source
+frontier, selected revisions, derivation policy, assumptions and publication
+receipt. A summary, DomainMap or navigator may guide retrieval, but it is not
+independent evidence, authority or access control.
+
+When using a navigator, keep an independent flat retrieval route, bound map
+recursion and fanout, validate scope and lifecycle independently, and hydrate
+canonical sources before making a factual claim. Stale, unavailable or
+ambiguous maps must fall back to broader retrieval or an explicit unknown.
+
+When adding or changing an offline consolidation or navigation contract,
+separate calibration and policy tuning from held-out evaluation. Do not claim
+that a map or summary improves quality because it received extra tokens, oracle
+labels or hidden evaluation answers. Rejected derived material must not remove,
+supersede or downgrade its canonical inputs.
+
 ## Reproducible numerical and formula contracts
 
 A formula, index contract or numerical algorithm is not considered verified
