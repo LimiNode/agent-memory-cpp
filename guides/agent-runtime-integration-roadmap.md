@@ -50,8 +50,8 @@ the others.
 
 | Contour | Contents | Owner |
 |---|---|---|
-| Memory evolution | Admission, correction, supersession, compaction, derived projections, lifecycle and provenance | `agent-memory-cpp`; external governance policy is applied through the existing interfaces |
-| Agent behavior evolution | Prompts, procedures, workflow definitions, tool selection and execution policies | ADELIA / host runtime |
+| Memory evolution | Admission, correction, supersession, compaction, derived projections, persisted procedure artifacts, evidence, lifecycle/status history and provenance | `agent-memory-cpp`; external governance policy is applied through the existing interfaces |
+| Agent behavior evolution | Procedure selection, operative bindings, workflow definitions, tool selection, activation policy and execution policy | ADELIA / host runtime |
 | Model adaptation | Training, fine-tuning, adapters and model-weight changes | External model/training pipeline; governance belongs to ADELIA / host |
 
 The boundary invariants are:
@@ -73,12 +73,43 @@ The boundary invariants are:
   external owner. Memory may retain a proposal, evaluation and activation
   receipt, but it does not make that decision.
 
+Procedure lifecycle, activation planning and execution are separate
+transitions:
+
+1. A persisted `ProcedurePayload` and its `ProcedureStateComponent` carry the
+   lifecycle of a knowledge artifact, such as
+   `ProcedureStatus::Candidate`, `Validated` or `Active`, together with its
+   evidence and status history. Changing this persisted status is a memory
+   lifecycle operation; it is not a runtime invocation.
+2. A `ProcedureActivationCandidate` is a retrieval/context-planning artifact.
+   It may refer to a persisted procedure and its requirements, but emitting it
+   does not mutate the persisted procedure status or request execution.
+3. Inclusion in an `ActivationPlan` selects a procedure for the current
+   context. It does not execute the procedure and does not provide authority or
+   a callable binding.
+4. Runtime invocation/execution admission is a separate current-run check of
+   callable binding, capability availability, authority, policy and resource
+   budget. Only the host/runtime can perform that admission and attempt the
+   effectful operation, subject to the existing [Procedure Activation](#procedure-activation)
+   contract.
+
+The resulting invariant is:
+
+```text
+persisted Active != selected for this run
+selected for this run != authorized to execute
+authorized to execute != successfully executed
+```
+
 Conceptual acceptance cases for a future adapter or evaluation fixture:
 
 1. Correcting a fact creates the mutation-policy history required by the
    memory contract; the active procedure and model revision remain unchanged.
-2. A retrieved successful procedure remains a candidate until separate host
-   activation and current authority admission occur.
+2. A stored Procedure may already have `Active` persisted status. Retrieval
+   may emit a `ProcedureActivationCandidate` and an `ActivationPlan` may
+   select it, while runtime invocation still fails or remains unavailable when
+   the current binding, capability, authority, policy or resource admission
+   does not pass.
 3. A memory record may be eligible for retrieval while being disallowed for
    training; an external export either excludes it or rejects the request under
    its governing policy.
