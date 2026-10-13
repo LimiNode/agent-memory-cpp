@@ -7,6 +7,11 @@
 
 ## Purpose And Boundary
 
+JPEG XL is tracked as an optional image representation candidate in
+[`experiments/2026-10-13-jpeg-xl-image-representation.md`](experiments/2026-10-13-jpeg-xl-image-representation.md).
+It may reduce artifact or decode cost in a future profile, but it does not
+replace canonical bytes or visual projection provenance.
+
 The artifact-provenance roadmap already defines immutable image artifacts,
 versioned OCR and vision representations, typed image-region anchors and
 `FigureContext`. This document adds the missing retrieval-side plan: independent

@@ -129,6 +129,9 @@ ctest --test-dir build --build-config Release \
 - [F0: устойчивость обратной связи](guides/experiments/2026-10-07-memory-feedback-stability-protocol.md) — протокол, а не завершённый эксперимент.
 - [Временная навигация и долговечный рабочий контекст](guides/memory-lifecycle-governance-roadmap.md) и [интеграция с runtime](guides/agent-runtime-integration-roadmap.md) — историческое чтение, возобновляемая сборка контекста и семантика восстановления после сбоя.
 - [Активация знаний](guides/knowledge-activation-roadmap.md) и [поиск по базе знаний](guides/knowledge-base-roadmap.md) — исследования ограниченного ассоциативного поиска и событийного grounding.
+- [Офлайн-консолидация и replay](guides/offline-consolidation-roadmap.md) — офлайн-обновление производных проекций без замены исходных записей.
+- [Иерархическая навигация](guides/hierarchical-navigation-roadmap.md) — маршрутизация через DomainMap, ограниченные карты карт и fallback к обычному поиску.
+- [Исследование JPEG XL](guides/experiments/2026-10-13-jpeg-xl-image-representation.md) — необязательный кандидат кодека, не production-зависимость.
 - [Сравнение проектов](guides/project-comparison.md) — альтернативы, преимущества, ограничения и области применения.
 
 ## Что не является целью
