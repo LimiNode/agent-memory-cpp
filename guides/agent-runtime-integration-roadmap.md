@@ -80,8 +80,7 @@ transitions:
    lifecycle of a knowledge artifact, such as
    `ProcedureStatus::Candidate`, `ProcedureStatus::Validating` or
    `ProcedureStatus::Active`, together with its evidence and status history.
-   A successful validation is evidence for a promotion decision, not a separate
-   separate `Validated` status value. The memory layer/application profile
+   A successful validation is evidence for a promotion decision, not a separate `Validated` status value. The memory layer/application profile
    stores the artifact, applies compare-and-swap and transition-history checks,
    and preserves the record; ADELIA, the host or an operator decides whether
    that evidence permits promotion to `ProcedureStatus::Active`.
