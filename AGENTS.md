@@ -21,6 +21,8 @@ agent framework.
   direction, and planned source areas.
 - [Milestones](guides/milestones.md) - normative M0/M1/M2 scope and
   capability manifest.
+- [Product path](guides/product-path.md) - source-to-knowledge product
+  objective, dependency graph, KB stages, and research-selection policy.
 - [Knowledge activation](guides/knowledge-activation-roadmap.md) - domain maps,
   playbooks, soft routing, and context-planning concepts.
 - [Agent runtime integration](guides/agent-runtime-integration-roadmap.md) -

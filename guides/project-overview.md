@@ -64,6 +64,11 @@ The repository is under active development. It already provides the native found
 
 The [retrieval coverage audit](retrieval-roadmap-coverage.md) is the status authority for implemented slices, contracts and research-only work.
 
+The product-oriented sequencing for turning these primitives into a growing,
+source-grounded knowledge base is recorded in
+[`guides/product-path.md`](product-path.md). It complements the normative
+milestone ladder without changing its dependency rules.
+
 ## Core Scope
 
 The library scope is limited to:
