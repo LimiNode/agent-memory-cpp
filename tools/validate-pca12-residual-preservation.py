@@ -162,15 +162,31 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_audit() -> list[dict[str, str]]:
+def parse_audit(path: Path) -> list[dict[str, str]]:
     try:
-        with AUDIT_CSV.open(newline="", encoding="utf-8") as handle:
-            reader = csv.DictReader(handle)
-            if reader.fieldnames != CSV_FIELDS:
-                fail(f"audit CSV header is not exact: {reader.fieldnames!r}")
-            rows = list(reader)
+        with path.open(newline="", encoding="utf-8") as handle:
+            reader = csv.reader(handle, strict=True)
+            try:
+                header = next(reader)
+            except StopIteration:
+                fail("audit CSV is empty")
+            if header != CSV_FIELDS:
+                fail(f"audit CSV header is not exact: {header!r}")
+            rows = []
+            for line_number, values in enumerate(reader, start=2):
+                if len(values) != len(CSV_FIELDS):
+                    fail(
+                        f"audit CSV row {line_number} has {len(values)} fields, "
+                        f"expected {len(CSV_FIELDS)}"
+                    )
+                rows.append(dict(zip(CSV_FIELDS, values)))
     except (OSError, csv.Error) as exc:
         fail(f"cannot load audit CSV: {exc}")
+    return rows
+
+
+def load_audit() -> list[dict[str, str]]:
+    rows = parse_audit(AUDIT_CSV)
     if len(rows) != 34:
         fail(f"audit CSV must contain 34 rows, got {len(rows)}")
     if {row["path"] for row in rows} != EXPECTED_CSV_PATHS:
@@ -183,8 +199,15 @@ def load_audit() -> list[dict[str, str]]:
 def validate_audit(rows: list[dict[str, str]], *, verify_history: bool = True) -> None:
     for row in rows:
         path = strict_path(row.get("path"), "audit path")
-        if row["kind"] not in {"document", "tool"}:
-            fail(f"invalid audit kind for {path}")
+        expected_kind = (
+            "document"
+            if path.startswith("guides/experiments/")
+            else "tool"
+            if path.startswith("tools/agent-memory-bench/")
+            else None
+        )
+        if expected_kind is None or row["kind"] != expected_kind:
+            fail(f"audit kind does not match path for {path}")
         if row["manifest_503_binding"] != "no":
             fail(f"unexpected #503 binding for {path}")
         source_blob = row["source_blob_sha"]
@@ -353,6 +376,9 @@ def run_self_tests() -> None:
     bad_path = copy.deepcopy(rows)
     bad_path[0]["path"] = bad_path[0]["path"].replace("/", "\\", 1)
     cases.append(("backslash path", bad_path, manifest))
+    wrong_kind = copy.deepcopy(rows)
+    wrong_kind[0]["kind"] = "tool"
+    cases.append(("kind/path mismatch", wrong_kind, manifest))
     absolute_path = copy.deepcopy(rows)
     absolute_path[0]["path"] = "/absolute/path.md"
     cases.append(("absolute path", absolute_path, manifest))
@@ -377,6 +403,20 @@ def run_self_tests() -> None:
             continue
         fail(f"self-test did not reject {name}")
     with tempfile.TemporaryDirectory(dir=".") as directory:
+        malformed_csv = Path(directory) / "malformed.csv"
+        csv_lines = AUDIT_CSV.read_text(encoding="utf-8").splitlines()
+        malformed_csv.write_text(
+            "\n".join([csv_lines[0], f"{csv_lines[1]},extra", *csv_lines[2:]]) + "\n",
+            encoding="utf-8",
+        )
+        try:
+            parse_audit(malformed_csv)
+        except ValidationError as exc:
+            if "has 11 fields, expected 10" not in str(exc):
+                fail(f"CSV width self-test reported the wrong error: {exc}")
+        else:
+            fail("self-test did not reject malformed CSV width")
+
         source_path = Path(manifest["bindings"][0]["preservation_path"])
         relative_directory = Path(directory).resolve().relative_to(Path.cwd().resolve())
         corrupt_path = relative_directory / "corrupt.bin"
@@ -389,11 +429,15 @@ def run_self_tests() -> None:
         corrupt_manifest["bindings"][0]["preservation_path"] = corrupt_path.as_posix()
         try:
             validate_manifest(corrupt_manifest, verify_files=True)
-        except ValidationError:
-            pass
+        except ValidationError as exc:
+            expected_error = (
+                f"working-tree bytes differ from source for {manifest['bindings'][0]['path']}"
+            )
+            if str(exc) != expected_error:
+                fail(f"corruption self-test reported the wrong error: {exc}")
         else:
             fail("self-test did not reject physical byte corruption")
-    print("self-test: PASS (12 invalid cases rejected)")
+    print(f"self-test: PASS ({len(cases) + 2} invalid cases rejected)")
 
 
 def main() -> int:
