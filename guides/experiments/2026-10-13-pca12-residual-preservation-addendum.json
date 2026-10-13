@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "preservation_status": "RESIDUAL_PRESERVATION_PENDING_REVIEW",
+  "source_repository": "LimiNode/agent-memory-cpp",
+  "source_branch": "agent/pca12-routing-followups",
+  "source_commit": "f325d794afacf86d79cbabb000a400658eafd5af",
+  "base_commit": "32f2278251b54967e84bbc0f61cd80b3f0a67576",
+  "historical_scope": "Historical research evidence and tooling only; not current routing recommendations or production runtime.",
+  "raw_receipt_policy": "No raw receipt is reconstructed or inferred. Receipt status is explicit per binding.",
+  "bindings": [
+    {
+      "path": "guides/experiments/2026-09-04-neuroute-document-cascade-code-family.md",
+      "preservation_path": "guides/experiments/archived/2026-10-13-pca12-residual/2026-09-04-neuroute-document-cascade-code-family.md",
+      "kind": "document",
+      "source_blob_sha": "a1ced0f196a447702a1d8e167c126c915c0559c6",
+      "source_bytes": 25280,
+      "raw_receipt_status": "NOT_AUDITED_IN_THIS_PASS",
+      "raw_receipts": []
+    },
+    {
+      "path": "guides/experiments/README.md",
+      "preservation_path": "guides/experiments/archived/2026-10-13-pca12-residual/source-guides-experiments-README.txt",
+      "kind": "document",
+      "source_blob_sha": "c6a6cb62e2b7b103303a5de68c6556591dd99881",
+      "source_bytes": 5549,
+      "raw_receipt_status": "NOT_AUDITED_IN_THIS_PASS",
+      "raw_receipts": []
+    },
+    {
+      "path": "guides/experiments/2026-09-05-cell-aware-ordinal-router.md",
+      "preservation_path": "guides/experiments/2026-09-05-cell-aware-ordinal-router.md",
+      "kind": "document",
+      "source_blob_sha": "0e6295619976370f59f38f109baa5946725991c0",
+      "source_bytes": 4161,
+      "raw_receipt_status": "NOT_AUDITED_IN_THIS_PASS",
+      "raw_receipts": []
+    },
+    {
+      "path": "guides/experiments/2026-09-05-multimodal-cell-router-bakeoff.md",
+      "preservation_path": "guides/experiments/2026-09-05-multimodal-cell-router-bakeoff.md",
+      "kind": "document",
+      "source_blob_sha": "84d74d87e1e150655940ff020d5670a5df3dc814",
+      "source_bytes": 6456,
+      "raw_receipt_status": "NOT_AUDITED_IN_THIS_PASS",
+      "raw_receipts": []
+    },
+    {
+      "path": "guides/experiments/2026-09-05-pca12-bucket-centroid-bakeoff.md",
+      "preservation_path": "guides/experiments/2026-09-05-pca12-bucket-centroid-bakeoff.md",
+      "kind": "document",
+      "source_blob_sha": "0ae541d537c54f74d4d7dfdf2305f9995b6ecd0c",
+      "source_bytes": 5423,
+      "raw_receipt_status": "NOT_AUDITED_IN_THIS_PASS",
+      "raw_receipts": []
+    },
+    {
+      "path": "guides/experiments/2026-09-05-pca12-multi-anchor-oracle.md",
+      "preservation_path": "guides/experiments/2026-09-05-pca12-multi-anchor-oracle.md",
+      "kind": "document",
+      "source_blob_sha": "51fb3b9ec9852fcd0284ee47fa52f9a98b3e7178",
+      "source_bytes": 9364,
+      "raw_receipt_status": "NOT_AUDITED_IN_THIS_PASS",
+      "raw_receipts": []
+    },
+    {
+      "path": "guides/experiments/2026-09-05-shared-supervised-ordinal-projection.md",
+      "preservation_path": "guides/experiments/2026-09-05-shared-supervised-ordinal-projection.md",
+      "kind": "document",
+      "source_blob_sha": "88d6a31a5480c3305c3030151b9286c247e5e7b4",
+      "source_bytes": 5742,
+      "raw_receipt_status": "NOT_AUDITED_IN_THIS_PASS",
+      "raw_receipts": []
+    },
+    {
+      "path": "guides/experiments/2026-09-06-frozen-candidate-thq-and-full-scan.md",
+      "preservation_path": "guides/experiments/2026-09-06-frozen-candidate-thq-and-full-scan.md",
+      "kind": "document",
+      "source_blob_sha": "8f2b97755fe731c4888a96ca5683e8bf3fde59b7",
+      "source_bytes": 4605,
+      "raw_receipt_status": "NOT_AUDITED_IN_THIS_PASS",
+      "raw_receipts": []
+    },
+    {
+      "path": "guides/experiments/2026-09-06-native-document-routing-corrective.md",
+      "preservation_path": "guides/experiments/2026-09-06-native-document-routing-corrective.md",
+      "kind": "document",
+      "source_blob_sha": "366e065f40bbd6ba366fe93d5798e89799115dea",
+      "source_bytes": 3783,
+      "raw_receipt_status": "NOT_AUDITED_IN_THIS_PASS",
+      "raw_receipts": []
+    },
+    {
+      "path": "tools/agent-memory-bench/audit-neuroute-training-coverage.py",
+      "preservation_path": "tools/agent-memory-bench/audit-neuroute-training-coverage.py",
+      "kind": "tool",
+      "source_blob_sha": "546827378773fe84691ea93581a6786aedd718ec",
+      "source_bytes": 5688,
+      "raw_receipt_status": "NOT_APPLICABLE",
+      "raw_receipts": []
+    },
+    {
+      "path": "tools/agent-memory-bench/document_codec_native_benchmark.cpp",
+      "preservation_path": "tools/historical-research/pca12-residual/agent-memory-bench/document_codec_native_benchmark.cpp",
+      "kind": "tool",
+      "source_blob_sha": "caf29bead02e4a6ecad1efc6039a8ae384a8a0dd",
+      "source_bytes": 39689,
+      "raw_receipt_status": "NOT_APPLICABLE",
+      "raw_receipts": []
+    },
+    {
+      "path": "tools/agent-memory-bench/generate-ordinal-scaling-cache.py",
+      "preservation_path": "tools/agent-memory-bench/generate-ordinal-scaling-cache.py",
+      "kind": "tool",
+      "source_blob_sha": "03c7847903cc0c4c5baf334648f67faeaaf95126",
+      "source_bytes": 2874,
+      "raw_receipt_status": "NOT_APPLICABLE",
+      "raw_receipts": []
+    },
+    {
+      "path": "tools/agent-memory-bench/materialize-neuroute-train-hard-negatives.py",
+      "preservation_path": "tools/agent-memory-bench/materialize-neuroute-train-hard-negatives.py",
+      "kind": "tool",
+      "source_blob_sha": "7708871eb5322cb867b77a74005bccdca850575b",
+      "source_bytes": 3620,
+      "raw_receipt_status": "NOT_APPLICABLE",
+      "raw_receipts": []
+    },
+    {
+      "path": "tools/agent-memory-bench/materialize-thq-full-scan.py",
+      "preservation_path": "tools/agent-memory-bench/materialize-thq-full-scan.py",
+      "kind": "tool",
+      "source_blob_sha": "c0f1193ed012b9d4a7bfbc5b2d103367514b77b1",
+      "source_bytes": 6750,
+      "raw_receipt_status": "NOT_APPLICABLE",
+      "raw_receipts": []
+    },
+    {
+      "path": "tools/agent-memory-bench/neuroute-asymmetric-prototype-map.example.json",
+      "preservation_path": "tools/historical-research/pca12-residual/agent-memory-bench/neuroute-asymmetric-prototype-map.example.json",
+      "kind": "tool",
+      "source_blob_sha": "5bbc3ea8c7f40ff4d9a45139a38ca23a4773eebb",
+      "source_bytes": 691,
+      "raw_receipt_status": "NOT_APPLICABLE",
+      "raw_receipts": []
+    },
+    {
+      "path": "tools/agent-memory-bench/neuroute-prototype-binary-neural.example.json",
+      "preservation_path": "tools/historical-research/pca12-residual/agent-memory-bench/neuroute-prototype-binary-neural.example.json",
+      "kind": "tool",
+      "source_blob_sha": "fe2207f247cf0909e690af575c3d47ca1cd16252",
+      "source_bytes": 1279,
+      "raw_receipt_status": "NOT_APPLICABLE",
+      "raw_receipts": []
+    },
+    {
+      "path": "tools/agent-memory-bench/run-cell-aware-ordinal-router.py",
+      "preservation_path": "tools/agent-memory-bench/run-cell-aware-ordinal-router.py",
+      "kind": "tool",
+      "source_blob_sha": "6d0fe07796f334630bc3044591d7ff528b791d36",
+      "source_bytes": 22460,
+      "raw_receipt_status": "NOT_APPLICABLE",
+      "raw_receipts": []
+    },
+    {
+      "path": "tools/agent-memory-bench/run-frozen-candidate-codec-bakeoff.py",
+      "preservation_path": "tools/agent-memory-bench/run-frozen-candidate-codec-bakeoff.py",
+      "kind": "tool",
+      "source_blob_sha": "07e8bd2a1763daff789849fd527f3b2e565ae3b0",
+      "source_bytes": 12765,
+      "raw_receipt_status": "NOT_APPLICABLE",
+      "raw_receipts": []
+    },
+    {
+      "path": "tools/agent-memory-bench/run-neuroute-asymmetric-prototype-map.py",
+      "preservation_path": "tools/historical-research/pca12-residual/agent-memory-bench/run-neuroute-asymmetric-prototype-map.py",
+      "kind": "tool",
+      "source_blob_sha": "d54364d5ab65707bea2c7d896fc747aecd1e575f",
+      "source_bytes": 33084,
+      "raw_receipt_status": "NOT_APPLICABLE",
+      "raw_receipts": []
+    },
+    {
+      "path": "tools/agent-memory-bench/run-pca12-multi-anchor-oracle.py",
+      "preservation_path": "tools/agent-memory-bench/run-pca12-multi-anchor-oracle.py",
+      "kind": "tool",
+      "source_blob_sha": "00da4e74540a985f4e7f50943a7aa52a8dc6edc3",
+      "source_bytes": 17105,
+      "raw_receipt_status": "NOT_APPLICABLE",
+      "raw_receipts": []
+    }
+  ]
+}
