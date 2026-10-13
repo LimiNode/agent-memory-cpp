@@ -102,6 +102,7 @@ EXPECTED_RESIDUAL_PATHS = {
     "tools/agent-memory-bench/neuroute-prototype-binary-neural.example.json",
     "tools/agent-memory-bench/run-neuroute-asymmetric-prototype-map.py",
 }
+_MAIN_OBJECTS: set[str] | None = None
 
 
 class ValidationError(ValueError):
@@ -142,6 +143,13 @@ def source_bytes(commit: str, path: str) -> bytes:
     if result.returncode:
         fail(f"source path cannot be read: {path}")
     return result.stdout
+
+
+def main_contains_object(object_id: str) -> bool:
+    global _MAIN_OBJECTS
+    if _MAIN_OBJECTS is None:
+        _MAIN_OBJECTS = {line.split()[0] for line in git("rev-list", "--objects", BASE_COMMIT).splitlines()}
+    return object_id in _MAIN_OBJECTS
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -192,6 +200,8 @@ def validate_audit(rows: list[dict[str, str]], *, verify_history: bool = True) -
         if category == "REACHABLE_IN_MAIN_HISTORY":
             if reachable != "yes":
                 fail(f"reachable category has non-yes flag for {path}")
+            if not main_contains_object(source_blob):
+                fail(f"source blob is not reachable from main history for {path}")
             source_commit = row["source_blob_commit"]
             replacement = row["replacement_commit"]
             if not SHA_RE.fullmatch(source_commit) or not SHA_RE.fullmatch(replacement):
@@ -208,7 +218,7 @@ def validate_audit(rows: list[dict[str, str]], *, verify_history: bool = True) -
                 if subprocess.run(["git", "merge-base", "--is-ancestor", replacement, BASE_COMMIT]).returncode:
                     fail(f"replacement commit is not in main history for {path}")
         elif category == "RESIDUAL_PRESERVATION_REQUIRED":
-            if reachable != "no" or any(row[key] for key in ("source_blob_commit", "replacement_commit", "source_blob_commit_path")):
+            if reachable != "no" or main_contains_object(source_blob) or any(row[key] for key in ("source_blob_commit", "replacement_commit", "source_blob_commit_path")):
                 fail(f"residual row contains reachability evidence for {path}")
         else:
             fail(f"invalid audit category for {path}: {category}")
