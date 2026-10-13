@@ -78,15 +78,23 @@ transitions:
 
 1. A persisted `ProcedurePayload` and its `ProcedureStateComponent` carry the
    lifecycle of a knowledge artifact, such as
-   `ProcedureStatus::Candidate`, `Validated` or `Active`, together with its
-   evidence and status history. Changing this persisted status is a memory
-   lifecycle operation; it is not a runtime invocation.
+   `ProcedureStatus::Candidate`, `ProcedureStatus::Validating` or
+   `ProcedureStatus::Active`, together with its evidence and status history.
+   A successful validation is evidence for a promotion decision, not a separate
+   `ProcedureStatus::Validated` value. The memory layer/application profile
+   stores the artifact, applies compare-and-swap and transition-history checks,
+   and preserves the record; ADELIA, the host or an operator decides whether
+   that evidence permits promotion to `ProcedureStatus::Active`.
 2. A `ProcedureActivationCandidate` is a retrieval/context-planning artifact.
    It may refer to a persisted procedure and its requirements, but emitting it
    does not mutate the persisted procedure status or request execution.
-3. Inclusion in an `ActivationPlan` selects a procedure for the current
-   context. It does not execute the procedure and does not provide authority or
-   a callable binding.
+3. A host/runtime may use a `ProcedureActivationCandidate` while constructing
+   the existing `ActivationPlan` or another run-local selection artifact.
+   The existing `ActivationPlan` remains a planning/retrieval-hint contract;
+   it is not redefined to contain procedures or to select a persisted procedure.
+   An explicit host/runtime decision may select a procedure for this run, but that
+   selection does not execute the procedure or provide authority or a callable
+   binding.
 4. Runtime invocation/execution admission is a separate current-run check of
    callable binding, capability availability, authority, policy and resource
    budget. Only the host/runtime can perform that admission and attempt the
@@ -106,10 +114,11 @@ Conceptual acceptance cases for a future adapter or evaluation fixture:
 1. Correcting a fact creates the mutation-policy history required by the
    memory contract; the active procedure and model revision remain unchanged.
 2. A stored Procedure may already have `Active` persisted status. Retrieval
-   may emit a `ProcedureActivationCandidate` and an `ActivationPlan` may
-   select it, while runtime invocation still fails or remains unavailable when
-   the current binding, capability, authority, policy or resource admission
-   does not pass.
+   or planning may emit a `ProcedureActivationCandidate`; a host/runtime may
+   make an explicit run-local selection without redefining the existing
+   `ActivationPlan` contract, while runtime invocation still fails or
+   remains unavailable when the current binding, capability, authority, policy or
+   resource admission does not pass.
 3. A memory record may be eligible for retrieval while being disallowed for
    training; an external export either excludes it or rejects the request under
    its governing policy.
