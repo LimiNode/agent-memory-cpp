@@ -1,7 +1,7 @@
 # JPEG XL Image Representation Research Note
 
-Date: 2026-10-13  
-Status: research candidate; no implementation claim  
+Date: 2026-10-13
+Status: research candidate; no implementation claim
 Scope: optional artifact representation for image storage and retrieval
 
 ## Question
