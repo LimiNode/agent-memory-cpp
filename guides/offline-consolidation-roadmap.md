@@ -139,10 +139,13 @@ separately retrievable. Contradictory sources remain visible as contradictions.
 A late correction is appended or versioned; it is not erased by rewriting an
 older summary.
 
-The existing SummaryPromotionJob and Decision-Relevant Retention Gate apply to
-all consolidation outputs, including summary trees, community summaries and
-navigation projections. Creating a projection never makes an input
-`Superseded` automatically.
+The existing `SummaryPromotionJob` remains scoped to its summary/`CompiledArticlePayload`
+contract. It is not a universal publisher for DomainMap, graph or other
+navigation projections; those outputs use their applicable derived-projection
+publication and admission contracts. The Decision-Relevant Retention Gate is
+required when a consolidation result proposes retirement, supersession or loss
+of ordinary source availability. It is not automatically required for every
+derived output. Creating a projection never makes an input `Superseded` automatically.
 
 ## 6. Publication and recovery
 

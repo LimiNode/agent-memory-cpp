@@ -69,13 +69,18 @@ Measure separately:
   sufficient for this claim;
 - perceptual quality for lossy mode with a declared metric and qrels where
   applicable;
-- EXIF/XMP/ICC/orientation and container metadata under an explicitly declared
+- EXIF/XMP/ICC/container metadata and orientation under an explicitly declared
   preservation policy;
 - encode CPU, RAM and wall time;
 - warm and cold decode p50/p95/p99;
 - progressive or partial decode behaviour;
 - failure and decoder portability across supported platforms;
 - visual retrieval quality after decode and projection rebuild.
+
+For orientation fixtures, compare displayed samples and metadata separately.
+If the JPEG XL codestream carries a display orientation, apply that transform
+exactly once; do not apply source EXIF orientation again on top. Record whether
+metadata is preserved, normalized or stripped.
 
 A benchmark must publish encoder settings, corpus manifest, source digests,
 toolchain, libjxl revision, output digests and raw receipts. Quality and speed

@@ -69,7 +69,7 @@ source_frontier: ...
 origin: manual | derived | imported
 review_state: Raw | Candidate | Reviewed | Canonical
 review_receipt: ...
-status: active | stale | unavailable
+map_availability: available | stale | unavailable
 title: AI
 aliases: [artificial intelligence]
 intents: [understand_ai, review_agent_design]
@@ -103,17 +103,38 @@ Map entries must carry enough provenance to answer:
 A map digest verifies the materialized map. It does not replace its source
 frontier or replay material.
 
+### Routing eligibility
+
+Every map that contributes routing input, including an initial root or domain
+map, must pass the same eligibility gate before its hints are consumed:
+
+- `review_state` is `Reviewed` or `Canonical` under the existing
+  `CurationState` contract;
+- the applicable admission/publication receipt is valid for the map generation;
+- `map_availability` is `available`, and its source frontier is usable for
+  the query;
+- scope, access, lifecycle, language and temporal checks pass.
+
+A `Raw` or `Candidate` root/domain map may be retained as a non-authoritative
+candidate, but it must not supply routing hints. If no eligible map is available,
+the independent flat retrieval route remains active.
+
 ## 4. Activation and retrieval flow
 
-A host may use a map to construct an `ActivationPlan` containing domains,
-concepts, playbooks, route hints, query variants and budget hints.
+A host may map eligible navigation output onto the existing `ActivationPlan`
+fields: domain and concept selections use `domains` and `concepts`;
+playbook references use `playbooks`; aliases and route query text use
+`query_variants`; and limits use `budget_hint`. Map generation, path,
+frontier, provenance and fallback reasons are reported through the existing
+`ActivationTrace` and route diagnostics. No `route_hints` field is introduced.
 
 The reference flow is:
 
 1. retrieve a bounded set of root or domain maps;
-2. expand only child maps whose `review_state` is `Reviewed` or `Canonical`,
-   whose status is `active`, and which pass the normal scope, access and
-   lifecycle checks; bound expansion by depth, fanout and byte budgets;
+2. use a map only after the routing-eligibility gate above has passed;
+3. expand only child maps whose `review_state` is `Reviewed` or `Canonical`,
+   whose `map_availability` is `available`, and which pass the normal scope,
+   access and lifecycle checks; bound expansion by depth, fanout and byte budgets;
 3. validate scope, access, lifecycle, language and temporal filters independently;
 4. run ordinary lexical/dense/graph retrieval using the resulting hints;
 5. retain an independent original-query route;
@@ -199,18 +220,29 @@ The **Hierarchical Navigation Retrieval Gate** compares:
 
 All arms use the same canonical corpus, embedding split, read frontiers,
 candidate budget, decoded-byte budget and final ContextPack/token budget. Each
-arm also receives the same total query-time work budget. The query-time ledger
-includes map bytes read, map nodes/edges traversed, fanout, aliases and query
-variants, retrieval calls,
-decoded bytes, and model calls/tokens when a map policy uses a model. The
-independent flat route and any fallback consume this same budget; a map arm
-must not receive extra retrieval work through a hidden fallback allowance.
+arm receives the same component-wise query-time resource envelope:
+
+- map bytes read and decoded;
+- map nodes and edges traversed, fanout and query variants;
+- retrieval calls and decoded bytes;
+- model calls and tokens when a map policy uses a model;
+- measured query latency.
+
+The ledger is a vector of independently bounded resources. An arm may not trade
+unbounded work in one component for savings in another. If a matched-total-cost
+scalar is reported, it must be derived from a versioned, predeclared
+normalization and weight table; the raw resource vector remains part of the
+result. The independent flat route and any fallback consume the same envelope,
+with no hidden fallback allowance.
 
 Map construction, update and rebuild cost are recorded in a separate offline
-cost ledger rather than hidden in query-time results. HN-0 reports both a
-matched-total-cost slice and a matched-latency slice, with the same final
-ContextPack budget for every arm. Calibration and policy tuning must be
-separated from held-out evaluation.
+ledger. Each experiment declares the workload used to amortize that cost
+(number of queries, updates and rebuilds); the matched-total-cost slice adds
+the applicable amortized offline cost to the query-time cost for every arm.
+The query-only slice reports online work separately. HN-0 reports both
+matched-total-cost and matched-latency slices, with the same final ContextPack
+budget for every arm. Calibration and policy tuning must be separated from
+held-out evaluation.
 
 The benchmark fixes one evaluation granularity per fixture: document, block or
 segment. It must not vary granularity between comparison arms.
@@ -239,6 +271,8 @@ The first fixture set includes:
 - a rare fact absent from the map but present in canonical evidence;
 - a stale child map after source revision;
 - a wrong route that must fall back to flat retrieval;
+- a `Raw` or `Candidate` root map that is ignored and leaves flat retrieval
+  unchanged;
 - the same local ID in two scopes;
 - a forbidden scope referenced by a map;
 - a map-only candidate with no source hydration;
