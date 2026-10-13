@@ -63,10 +63,14 @@ transparency, HDR/wide-gamut samples and re-encoded near-duplicates.
 Measure separately:
 
 - bytes per artifact and total storage;
-- exact pixel equality in lossless mode;
+- generic lossless image mode: exact decoded pixel/sample equality;
+- JPEG recompression mode: byte-for-byte reconstruction of the original JPEG
+  bitstream and equality of its source-file digest; a pixel-equal result is not
+  sufficient for this claim;
 - perceptual quality for lossy mode with a declared metric and qrels where
   applicable;
-- metadata, ICC profile and orientation preservation;
+- EXIF/XMP/ICC/orientation and container metadata under an explicitly declared
+  preservation policy;
 - encode CPU, RAM and wall time;
 - warm and cold decode p50/p95/p99;
 - progressive or partial decode behaviour;

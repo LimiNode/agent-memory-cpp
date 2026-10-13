@@ -44,11 +44,18 @@ Supported origins are explicit:
 
 - `manual` — curated by a human or trusted editor;
 - `derived` — generated from canonical units and relations;
-- `imported` — supplied by another knowledge base;
-- `reviewed` — derived or imported and accepted through review.
+- `imported` — supplied by another knowledge base.
 
 Origin does not determine truth. It determines how the map is maintained and
 what validation it requires.
+
+Review and admission are a separate axis. The `review_state` field below uses
+the existing `CurationState` values (`Raw`, `Candidate`, `Reviewed`,
+`Canonical`) from the knowledge-activation contract; it is not a new review
+enum. A `review_receipt` refers to the applicable existing curation, admission
+or publication receipt and policy revision. It does not replace source
+provenance or lifecycle state. The origin remains unchanged when a map moves
+from `Candidate` to `Reviewed` or `Canonical`.
 
 ## 3. Map entry contract
 
@@ -59,7 +66,9 @@ map_id: domain.ai
 scope_id: workspace-main
 map_generation: 12
 source_frontier: ...
-origin: manual | derived | imported | reviewed
+origin: manual | derived | imported
+review_state: Raw | Candidate | Reviewed | Canonical
+review_receipt: ...
 status: active | stale | unavailable
 title: AI
 aliases: [artificial intelligence]
@@ -102,7 +111,9 @@ concepts, playbooks, route hints, query variants and budget hints.
 The reference flow is:
 
 1. retrieve a bounded set of root or domain maps;
-2. expand only approved child maps within depth, fanout and byte budgets;
+2. expand only child maps whose `review_state` is `Reviewed` or `Canonical`,
+   whose status is `active`, and which pass the normal scope, access and
+   lifecycle checks; bound expansion by depth, fanout and byte budgets;
 3. validate scope, access, lifecycle, language and temporal filters independently;
 4. run ordinary lexical/dense/graph retrieval using the resulting hints;
 5. retain an independent original-query route;
@@ -139,6 +150,25 @@ The map must remain a navigation layer. A short map summary can suggest what to
 retrieve, but the final factual answer must be hydrated from canonical source
 material.
 
+## 5.1 Research basis and limits
+
+The navigation hypothesis is informed by adjacent retrieval research, not
+proved by it:
+
+- [RAPTOR](https://proceedings.iclr.cc/paper_files/paper/2024/hash/8a2acd174940dbca361a6398a4f9df91-Abstract-Conference.html)
+  is a recursive summary-tree and multi-abstraction retrieval baseline; it
+  motivates comparing multiple summary levels, but it does not establish this
+  project's `DomainMap` schema, admission state, access rules or lifecycle
+  semantics.
+- [HippoRAG](https://arxiv.org/abs/2405.14831) is a knowledge-graph and
+  Personalized-PageRank associative-retrieval baseline; it motivates
+  graph-conditioned routing comparisons, but it does not establish the
+  proposed root/domain/topic taxonomy or production quality.
+
+These sources are research inputs for HN-0 fixtures. They do not prove that
+hierarchical maps improve retrieval, grant authority, or replace independent
+canonical-source hydration.
+
 ## 6. Map maintenance and offline consolidation
 
 Navigation maps are derived or curated projections with their own generation,
@@ -168,8 +198,18 @@ The **Hierarchical Navigation Retrieval Gate** compares:
 6. map-only retrieval as a negative control.
 
 All arms use the same canonical corpus, embedding split, read frontiers,
-candidate and decoded-byte budgets. Map construction, calibration and policy
-tuning must be separated from held-out evaluation.
+and final ContextPack/token budget. Each arm also receives the same total
+query-time work budget. The query-time ledger includes map bytes read, map
+nodes/edges traversed, fanout, aliases and query variants, retrieval calls,
+decoded bytes, and model calls/tokens when a map policy uses a model. The
+independent flat route and any fallback consume this same budget; a map arm
+must not receive extra retrieval work through a hidden fallback allowance.
+
+Map construction, update and rebuild cost are recorded in a separate offline
+cost ledger rather than hidden in query-time results. HN-0 reports both a
+matched-total-cost slice and a matched-latency slice, with the same final
+ContextPack budget for every arm. Calibration and policy tuning must be
+separated from held-out evaluation.
 
 The benchmark fixes one evaluation granularity per fixture: document, block or
 segment. It must not vary granularity between comparison arms.

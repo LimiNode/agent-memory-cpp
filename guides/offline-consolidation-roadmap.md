@@ -33,6 +33,22 @@ The word "sleep" is an explanatory label for an offline phase. It must not
 become a public API or imply that a provider, model or process is continuously
 running.
 
+## Research basis and limits
+
+Sleep-consolidation research is used here only as a biological analogy for
+offline replay, transformation and integration of prior experience. The
+systems-consolidation literature, including the
+[Nature Neuroscience review](https://www.nature.com/articles/s41593-019-0467-3),
+does not establish these software phases, receipts, retention rules or
+production quality. It motivates a research question: whether bounded replay
+and targeted reactivation can improve derived projections while preserving
+source and conflict semantics.
+
+The software contract below is therefore an independent engineering proposal.
+Its claims require the OC-0 experiments and independent decision probes; a
+biological result is not evidence that a particular consolidation policy is
+correct for an agent memory system.
+
 ## 2. Wake and offline phases
 
 The phases have different guarantees:
