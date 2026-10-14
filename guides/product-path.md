@@ -35,11 +35,14 @@ M0: lexical document memory +--> M1b: structured knowledge --------+--> M2: adva
 Orthogonal lane: runtime adapters and host integration
 ```
 
-M0 is the shared product foundation. M1a, M1b and M1c are independent unless
-a concrete profile requires a combined capability. M2 depends on the selected
-M1 capabilities; it does not require every M1 feature to be implemented at
-once. Runtime integration is orthogonal and must not pull orchestration,
-scheduling or action authority into the memory library.
+M0 is the shared product foundation. M1a, M1b and M1c are independent work
+lanes, and a concrete early profile may use only the M1 capabilities it needs.
+That profile-level sequencing does not relax the normative gate: formal M2
+completion still requires M1a, M1b and M1c as specified by
+[`milestones.md`](milestones.md). Research or a partial profile may explore an
+M2 direction early, but it is not a completed M2 milestone. Runtime integration
+is orthogonal and must not pull orchestration, scheduling or action authority
+into the memory library.
 
 Research may explore a later node early, but an experiment does not promote a
 milestone to `Implemented` and does not create a new dependency by itself.
@@ -74,10 +77,12 @@ The source type changes the evidence locator, not the durable identity model.
 | Scientific and archival documents | bibliographic identity, accessible text, figures and formulas | document/version plus page or region |
 
 An archive of a discussion is not required when the product goal is to retain
-selected knowledge from it. Conversely, a media transcript without stable
-time intervals is not sufficient evidence for a durable note. Retention and
-access policies must be explicit; unavailable raw material must remain marked
-as unavailable rather than reconstructed from a summary.
+selected knowledge from it. A media transcript without stable time intervals
+cannot support a precise time-resolved citation, but it may still be retained
+as derived material when the chosen profile permits weaker localization and
+the provenance limitation is explicit. Retention and access policies must be
+explicit; unavailable raw material must remain marked as unavailable rather
+than reconstructed from a summary.
 
 ## Self-growing knowledge lifecycle
 
@@ -113,11 +118,14 @@ not additional milestone gates.
 | KB-3 | Subscriptions, bounded queues, targeted reindex, recovery and admission policy | M1c | Restart and partial failure do not lose or duplicate publication work |
 | KB-4 | External consumer API, scopes, access policy and operational observability | Stable M0/M1 substrate | Multiple applications can use the same knowledge base without cross-scope leakage |
 
-The current narrow implementation closes part of KB-0: durable canonical text,
-deterministic lexical search, scope isolation, update and reopen. It does not
-yet complete the M0 table in `milestones.md`; resource manifests/importers,
-knowledge-unit stores, source summaries, projections and retrieval traces remain
-explicit gaps.
+The merged `main` branch provides the canonical-content foundation and lexical
+primitives. The durable lexical document-memory vertical slice described by
+PR #508 proposes to close part of KB-0 with durable canonical text,
+deterministic lexical search, scope isolation, update and reopen; until that PR
+is merged and its corrective checks are accepted, this remains proposed rather
+than a capability of `main`. In either case it does not complete the M0 table in
+`milestones.md`: resource manifests/importers, knowledge-unit stores, source
+summaries, projections and retrieval traces remain explicit gaps.
 
 ## Research policy
 
