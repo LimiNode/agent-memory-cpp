@@ -25,8 +25,6 @@ constexpr std::string_view kEntryKeyPrefix = "entry";
 constexpr std::string_view kPendingKeyPrefix = "pending";
 constexpr std::string_view kScopeVersionKeyPrefix = "scope-version";
 constexpr std::string_view kLegacyCatalogKey = "entries";
-constexpr std::string_view kLegacyCatalogPayloadVersion =
-    "agent_memory.durable_lexical_catalog.v1";
 constexpr std::string_view kEntryPayloadVersion =
     "agent_memory.durable_lexical_entry.v2";
 constexpr std::string_view kPendingPayloadVersion =
@@ -300,35 +298,6 @@ PendingOperation deserialize_pending(std::string_view payload) {
     return operation;
 }
 
-EntriesByScope deserialize_legacy_catalog(std::string_view payload) {
-    PayloadReader reader{payload};
-    if(reader.read_string() != kLegacyCatalogPayloadVersion) {
-        throw std::runtime_error("unsupported durable lexical legacy catalog version");
-    }
-
-    EntriesByScope entries;
-    const auto count = reader.read_size();
-    for(std::size_t index = 0; index < count; ++index) {
-        CatalogEntry entry{
-            ScopeId{reader.read_string()},
-            ResourceId{reader.read_string()},
-            DocumentId{reader.read_string()},
-            reader.read_string(),
-            0
-        };
-        validate_identity(entry.scope_id, entry.resource_id, entry.document_id);
-        if(entry.source_uri.empty()) {
-            throw std::runtime_error("durable lexical legacy catalog contains an empty URI");
-        }
-        auto& resources = entries[entry.scope_id];
-        if(!resources.emplace(entry.resource_id, std::move(entry)).second) {
-            throw std::runtime_error("durable lexical legacy catalog contains a duplicate resource");
-        }
-    }
-    reader.require_end();
-    return entries;
-}
-
 std::uint64_t parse_u64(std::string_view text, std::string_view field) {
     if(text.empty()) {
         throw std::runtime_error(std::string(field) + " is empty");
@@ -406,7 +375,7 @@ public:
             return canonical_options;
         }())
         , m_fault_injector(std::move(options.fault_injector)) {
-        migrate_legacy_catalog();
+        reject_legacy_catalog();
         recover_pending_operations();
         m_entries = load_entries();
         rebuild_indexes();
@@ -570,54 +539,15 @@ public:
     }
 
 private:
-    void migrate_legacy_catalog() {
+    void reject_legacy_catalog() const {
         const auto legacy_payload = m_catalog.find(std::string{kLegacyCatalogKey});
         if(!legacy_payload) {
             return;
         }
-
-        auto legacy_entries = deserialize_legacy_catalog(*legacy_payload);
-        for(auto& scope : legacy_entries) {
-            for(auto& resource : scope.second) {
-                auto& entry = resource.second;
-                const auto revision = m_canonical.read_current(entry.document_id);
-                if(!revision) {
-                    throw std::runtime_error(
-                        "durable lexical legacy catalog points to a missing canonical document"
-                    );
-                }
-                entry.canonical_revision = revision->revision;
-            }
-        }
-
-        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
-        const auto current_legacy = m_catalog.find(std::string{kLegacyCatalogKey}, txn);
-        if(!current_legacy) {
-            txn.rollback();
-            return;
-        }
-        if(*current_legacy != *legacy_payload) {
-            throw std::runtime_error("durable lexical legacy catalog changed during migration");
-        }
-
-        for(const auto& scope : legacy_entries) {
-            bool inserted_any = false;
-            for(const auto& resource : scope.second) {
-                const auto& entry = resource.second;
-                inserted_any = m_catalog.insert(
-                    entry_key(entry.scope_id, entry.resource_id),
-                    serialize_entry(entry),
-                    txn
-                ) || inserted_any;
-            }
-            if(inserted_any) {
-                static_cast<void>(increment_scope_version(scope.first, txn));
-            }
-        }
-        if(!m_catalog.erase(std::string{kLegacyCatalogKey}, txn)) {
-            throw std::runtime_error("durable lexical legacy catalog was not removed");
-        }
-        txn.commit();
+        throw std::runtime_error(
+            "durable lexical catalog v1 is unsupported: canonical revision binding is "
+            "unverified; export and explicitly migrate the legacy data before opening"
+        );
     }
 
     [[nodiscard]] EntriesByScope load_entries() const {

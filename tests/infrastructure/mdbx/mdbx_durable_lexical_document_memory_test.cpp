@@ -2,6 +2,8 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+#include <mdbx_containers/KeyValueTable.hpp>
+
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
@@ -18,6 +20,41 @@ void expect(bool condition, const char* message) {
 
 int main() {
     using namespace agent_memory;
+    {
+        const auto legacy_path = std::filesystem::temp_directory_path() /
+            "agent_memory_durable_lexical_document_memory_legacy_test.mdbx";
+        std::error_code legacy_error;
+        std::filesystem::remove(legacy_path, legacy_error);
+        auto legacy_context = MdbxStorageContext::open(
+            legacy_path.string(),
+            false,
+            kDefaultMdbxMaxDbs
+        );
+        mdbxc::KeyValueTable<std::string, std::string> legacy_catalog(
+            legacy_context->connection(),
+            "agent_memory_durable_lexical_catalog"
+        );
+        auto legacy_txn = legacy_context->connection()->transaction(
+            mdbxc::TransactionMode::WRITABLE
+        );
+        expect(legacy_catalog.insert("entries", "legacy-v1-payload", legacy_txn),
+               "legacy fixture was not written");
+        legacy_txn.commit();
+
+        MdbxDurableLexicalDocumentMemoryOptions legacy_options;
+        legacy_options.context = legacy_context;
+        bool rejected = false;
+        try {
+            MdbxDurableLexicalDocumentMemory legacy_memory{std::move(legacy_options)};
+        } catch(const std::runtime_error& error) {
+            rejected = std::string{error.what()}.find("v1 is unsupported") !=
+                std::string::npos;
+        }
+        expect(rejected, "legacy catalog was accepted without verified revision binding");
+        legacy_context.reset();
+        std::filesystem::remove(legacy_path, legacy_error);
+    }
+
     const auto path = std::filesystem::temp_directory_path() /
         "agent_memory_durable_lexical_document_memory_test.mdbx";
     std::error_code error;

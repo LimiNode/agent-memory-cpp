@@ -640,7 +640,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         infrastructure/mdbx/mdbx_durable_lexical_document_memory_test.cpp
     )
     target_link_libraries(agent_memory_mdbx_durable_lexical_document_memory_test
-        PRIVATE agent_memory::agent_memory
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
     )
     add_test(
         NAME agent_memory_mdbx_durable_lexical_document_memory_test
