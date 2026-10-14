@@ -677,6 +677,79 @@ must never be passed to RRF or persisted as a valid branch position.
 
 Per-stack default weights в `HybridRetrievalConfig::retriever_weights`. Validation: `weights.size() == number of retrievers`. `WeightedMax`/`Learned` fusion — M2+.
 
+### 7.3.1. Typed multimodal results and source hydration
+
+A retrieval result is a typed reference to source material, not an untyped binary
+payload. This contract applies to text, images, audio, video and cross-modal
+routes while keeping the existing RetrievalPlan, RetrievalHit, CitationHandle,
+Artifact, Representation and EvidenceAnchor concepts.
+
+Every result that can be shown or hydrated must preserve:
+
+- the logical source artifact or document identity;
+- the exact source revision or retained representation revision;
+- the projection/encoder identity and generation when a derived route produced
+  the candidate;
+- a typed locator appropriate to the source, such as a text range, page
+  region, image region, audio time range, video time range or frame region;
+- provenance and derivation links back to the source representation; and
+- an explicit hydration state: available, partial or unavailable, with a reason
+  when the requested representation cannot be resolved.
+
+The existing RetrievalHit remains the ranking envelope. Its citations and
+projection metadata point to the typed source reference; they do not turn a
+snippet, caption, transcript or binary code into source truth. Artifact and
+EvidenceAnchor definitions in artifact-provenance-roadmap.md own locator and
+representation semantics. Context.materialization_instructions remains the
+authorization-gated request path for a host that actually needs a page, crop,
+audio interval, frame or video clip. Retrieval does not implicitly return
+binary bytes.
+
+Hydration is revision- and policy-qualified:
+
+1. validate scope, access policy, lifecycle and the requested source revision at
+   one read frontier;
+2. resolve the typed locator against that exact revision/representation;
+3. return the requested materialization, or an explicit Partial/Unavailable
+   outcome with provenance of what could not be resolved;
+4. never substitute a newer revision, a same-path file, or a derived caption or
+   transcript when the caller asked for the original representation.
+
+A text result may hydrate a canonical text range. An image result may hydrate a
+retained image artifact or an image-region representation. Audio results may
+refer to a transcript interval, semantic audio segment or identity-fingerprint
+window; those are distinct routes. Video results may refer to a temporal clip,
+keyframe region, frame OCR region or audio/transcript interval. A cross-modal
+result is valid only when its projection descriptor declares the query and
+candidate spaces compatible. No universal embedding space or implicit score
+fusion is assumed.
+
+The existing RetrievalPlan selects query type, scope, retriever and projection
+route. A host can request a typed source family through those existing fields
+and route contracts; this section does not add SearchRequest, SearchTarget,
+MediaSegment or another public result hierarchy. If a future adapter needs
+richer result metadata, it must extend the existing citation/trace contract
+through a separate compatibility review rather than silently changing
+RetrievalHit identity.
+
+Minimum conformance fixtures for this contract are:
+
+- exact text revision plus a valid text-range hydration;
+- image result with a typed region locator and retained representation;
+- audio result with a time-range locator that is not confused with its ASR
+  transcript;
+- video result with a temporal or frame locator and explicit source revision;
+- stale or unavailable representation returning Partial/Unavailable rather than
+  a current-revision substitute;
+- policy denial before hydration with no denied source identity or bytes in the
+  client-visible trace; and
+- a cross-modal candidate whose descriptor is incompatible being rejected
+  before fusion.
+
+A result may be useful for ranking without being hydratable. The unavailable
+state is therefore part of the observable retrieval contract, not an invitation
+to reconstruct source content from a summary.
+
 ### 7.4. Decay-Aware Scoring
 
 `DecayAwareRetriever` оборачивает другие retrievers и применяет DecayPolicy через две стадии per canonical spec (см. `policies-roadmap.md` §2.3):
