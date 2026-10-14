@@ -112,11 +112,17 @@ not additional milestone gates.
 
 | Stage | Product capability | Depends on | Acceptance signal |
 | --- | --- | --- | --- |
-| KB-0 | Durable text source, revision-bound note, lexical retrieval, citation hydration and reopen | M0 | Import, update, search, close/reopen and recover the source binding |
+| KB-0 | Durable text source, revision-bound note, lexical retrieval, citation hydration and reopen | M0 | Import, read an explicit revision, edit a note with optimistic conflict/NoChange semantics, search, close/reopen and recover the source binding |
 | KB-1 | Candidate extraction, versioned notes, duplicate detection and idempotent refresh | M0 plus selected M1b contracts | Reprocessing a source is stable; changes supersede rather than erase evidence |
-| KB-2 | Time, page and figure anchors; retained representations and optional image-derived views | Artifact-provenance profile | A statement opens the exact document region, page or time interval |
+| KB-2 | Time, page and figure anchors; retained representations and optional image-derived views | Artifact-provenance profile | A result identifies the exact source revision and typed document/media locator, then hydrates it or reports explicit Partial/Unavailable status |
 | KB-3 | Subscriptions, bounded queues, targeted reindex, recovery and admission policy | M1c | Restart and partial failure do not lose or duplicate publication work |
 | KB-4 | External consumer API, scopes, access policy and operational observability | Stable M0/M1 substrate | Multiple applications can use the same knowledge base without cross-scope leakage |
+
+For KB-0, “revision-bound note” means that a host reads and edits a declared
+canonical revision and materialization profile. Line ranges are temporary view
+coordinates; stale edits fail with Conflict, equivalent edits return NoChange,
+and a successful edit produces one canonical revision. The product path does
+not require the low-level store to expose line operations as a public API.
 
 The merged `main` branch provides the canonical-content foundation and lexical
 primitives. The durable lexical document-memory vertical slice described by
