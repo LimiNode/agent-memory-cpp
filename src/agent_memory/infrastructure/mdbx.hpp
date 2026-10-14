@@ -12,5 +12,6 @@
 #include "mdbx/MdbxResourceManifestStorage.hpp"
 #include "mdbx/MdbxStorageContext.hpp"
 #include "mdbx/MdbxWorkspaceStorageRegistry.hpp"
+#include "mdbx/MdbxDurableLexicalDocumentMemory.hpp"
 
 #endif
