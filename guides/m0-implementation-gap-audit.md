@@ -36,7 +36,14 @@ URI and revision-bound text.
 
 Normal upserts replace only the affected in-memory lexical record. Full scope
 rebuild remains a reopen and stale-reader refresh strategy for this first
-profile. Text with no lexical tokens remains durable but is omitted from BM25.
+profile. When another instance publishes in the same scope during an upsert,
+the writer detects the intervening scope generation and performs a complete
+scope refresh before returning. A stale-reader refresh likewise scans the
+catalog and rebuilds the affected scope. This cross-instance scan/rebuild is a
+temporary cost of the narrow M0 profile; incremental deltas or a change log are
+performance-gated follow-up work, not a generic synchronization framework,
+background queue, or replication system in this PR. Text with no lexical
+tokens remains durable but is omitted from BM25.
 
 The checked example and focused CTest cover ingest, scope isolation, lexical
 search, targeted update, shared-context visibility, interrupted-publication

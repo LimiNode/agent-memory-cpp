@@ -24,7 +24,9 @@ namespace agent_memory {
 /// \brief Deterministic interruption points for recovery verification.
 enum class DurableLexicalDocumentMemoryFaultPoint {
     AfterCanonicalWrite,
-    BeforeCatalogPublication
+    BeforeCatalogPublication,
+    /// Invoked after the catalog transaction commits, before local indexes update.
+    AfterCatalogPublication
 };
 
 /// \brief Options for the durable lexical document-memory profile.

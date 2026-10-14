@@ -443,6 +443,10 @@ public:
 
         std::lock_guard<std::mutex> lock(m_mutex);
         synchronize_scope(requested.scope_id);
+        const auto observed_scope_version = [&] {
+            const auto local = m_scope_versions.find(requested.scope_id);
+            return local == m_scope_versions.end() ? std::uint64_t{0} : local->second;
+        }();
         const auto requested_payload = serialize_pending(requested);
 
         for(;;) {
@@ -464,17 +468,36 @@ public:
                 continue;
             }
 
-            CatalogEntry entry{
-                requested.scope_id,
-                requested.resource_id,
-                requested.document_id,
-                requested.source_uri,
-                revision.revision
-            };
-            m_entries[entry.scope_id][entry.resource_id] = entry;
-            m_scope_versions[entry.scope_id] = *published_version;
-            update_index_entry(entry, revision);
-            return revision.revision + 1;
+            try {
+                inject_fault(DurableLexicalDocumentMemoryFaultPoint::AfterCatalogPublication);
+                CatalogEntry entry{
+                    requested.scope_id,
+                    requested.resource_id,
+                    requested.document_id,
+                    requested.source_uri,
+                    revision.revision
+                };
+                m_entries[entry.scope_id][entry.resource_id] = entry;
+                update_index_entry(entry, revision);
+                m_scope_versions[entry.scope_id] = *published_version;
+
+                const auto scope_changed_during_upsert =
+                    observed_scope_version == std::numeric_limits<std::uint64_t>::max() ||
+                    *published_version != observed_scope_version + 1;
+                if(scope_changed_during_upsert) {
+                    // A different instance may have published between our initial
+                    // synchronization and publication. Reconcile the complete scope
+                    // before reporting a current local snapshot.
+                    m_scope_versions.erase(entry.scope_id);
+                    synchronize_scope(entry.scope_id);
+                }
+                return revision.revision + 1;
+            } catch(...) {
+                // The durable catalog is already committed. Force the next read or
+                // retry to rebuild local state instead of trusting a partial index.
+                m_scope_versions.erase(requested.scope_id);
+                throw;
+            }
         }
     }
 
@@ -796,9 +819,10 @@ private:
         const CatalogEntry& entry,
         const CanonicalDocumentRevision& revision
     ) const {
+        // Build anything that can fail before removing the previous posting.
+        const auto record = make_lexical_record(entry, revision, m_tokenizer);
         auto& index = m_indexes[entry.scope_id];
         static_cast<void>(index.erase(chunk_id(entry.scope_id, entry.resource_id)));
-        const auto record = make_lexical_record(entry, revision, m_tokenizer);
         if(record) {
             index.upsert(*record);
         }

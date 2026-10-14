@@ -253,6 +253,84 @@ int main() {
     }
 
     {
+        auto context = MdbxStorageContext::open(
+            path.string(),
+            false,
+            kDefaultMdbxMaxDbs
+        );
+        MdbxDurableLexicalDocumentMemoryOptions options_b;
+        options_b.context = context;
+        MdbxDurableLexicalDocumentMemory memory_b{std::move(options_b)};
+        bool interleaved = false;
+        MdbxDurableLexicalDocumentMemoryOptions options_a;
+        options_a.context = context;
+        options_a.fault_injector = [&](DurableLexicalDocumentMemoryFaultPoint point) {
+            if(point == DurableLexicalDocumentMemoryFaultPoint::AfterCanonicalWrite &&
+               !interleaved) {
+                interleaved = true;
+                expect(memory_b.upsert_text(
+                           shared_scope,
+                           ResourceId{"interleaved-b"},
+                           "https://example.test/interleaved-b",
+                           "Interleavedbeta body.") == 1,
+                       "interleaved publication failed");
+            }
+        };
+        MdbxDurableLexicalDocumentMemory memory_a{std::move(options_a)};
+        expect(memory_a.upsert_text(
+                   shared_scope,
+                   ResourceId{"interleaved-a"},
+                   "https://example.test/interleaved-a",
+                   "Interleavedalpha body.") == 1,
+               "interleaved primary publication failed");
+        const auto alpha = memory_a.search(shared_scope, "interleavedalpha", 5);
+        const auto beta = memory_a.search(shared_scope, "interleavedbeta", 5);
+        expect(alpha.size() == 1 &&
+                   alpha.front().source_uri == "https://example.test/interleaved-a" &&
+                   alpha.front().generation == 1,
+               "interleaved primary resource was not reconciled");
+        expect(beta.size() == 1 &&
+                   beta.front().source_uri == "https://example.test/interleaved-b" &&
+                   beta.front().generation == 1,
+               "interleaved foreign resource was lost from the local snapshot");
+    }
+
+    {
+        auto context = MdbxStorageContext::open(
+            path.string(),
+            false,
+            kDefaultMdbxMaxDbs
+        );
+        bool injected = false;
+        MdbxDurableLexicalDocumentMemoryOptions options;
+        options.context = context;
+        options.fault_injector = [&](DurableLexicalDocumentMemoryFaultPoint point) {
+            if(point == DurableLexicalDocumentMemoryFaultPoint::AfterCatalogPublication &&
+               !injected) {
+                injected = true;
+                throw std::runtime_error("post-publication local failure");
+            }
+        };
+        MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+        bool failed = false;
+        try {
+            static_cast<void>(memory.upsert_text(
+                shared_scope,
+                ResourceId{"post-publication"},
+                "https://example.test/post-publication",
+                "Post publication recovery body."));
+        } catch(const std::runtime_error&) {
+            failed = true;
+        }
+        expect(failed, "post-publication fault was not injected");
+        const auto recovered = memory.search(shared_scope, "recovery", 5);
+        expect(recovered.size() == 1 &&
+                   recovered.front().source_uri == "https://example.test/post-publication" &&
+                   recovered.front().generation == 1,
+               "post-publication local failure did not force reconciliation");
+    }
+
+    {
         MdbxDurableLexicalDocumentMemoryOptions options;
         options.path = path.string();
         MdbxDurableLexicalDocumentMemory memory{std::move(options)};
