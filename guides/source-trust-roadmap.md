@@ -68,6 +68,8 @@ copying                 != corroboration
 retrieval frequency     != epistemic authority
 shared ancestry         != independent consensus
 summary of summary      != new observation
+memory admission        != training eligibility
+procedure persistence   != procedure activation
 ```
 
 Summaries and extracted facts therefore preserve a source/provenance reference
@@ -85,6 +87,11 @@ graph update. Relation payload changes follow the existing new-Relation and
 supersession/erase-lineage contract in
 [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md); reflection cannot
 rewrite a Relation's identity-bearing edge in place.
+
+Preserving a derivation or correction trace does not raise the evidence status
+of the record automatically and does not make the record eligible for training.
+Persisting a procedure records knowledge about a possible procedure; activation
+requires the separate host/runtime policy and current authority checks.
 
 ## Required invariants
 

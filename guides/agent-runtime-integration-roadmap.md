@@ -42,6 +42,89 @@ Non-goals for `agent-memory-cpp`:
 Memory may store what those systems did and why. It must not execute actions or
 grant permission to execute them.
 
+## Memory, Behavior, and Model Adaptation Boundaries
+
+Memory evolution, agent behavior evolution and model adaptation are independent
+contours. A change in one contour does not silently promote, activate or rewrite
+the others.
+
+| Contour | Contents | Owner |
+|---|---|---|
+| Memory evolution | Admission, correction, supersession, compaction, derived projections, persisted procedure artifacts, evidence, lifecycle/status history and provenance | `agent-memory-cpp`; external governance policy is applied through the existing interfaces |
+| Agent behavior evolution | Procedure selection, operative bindings, workflow definitions, tool selection, activation policy and execution policy | ADELIA / host runtime |
+| Model adaptation | Training, fine-tuning, adapters and model-weight changes | External model/training pipeline; governance belongs to ADELIA / host |
+
+The boundary invariants are:
+
+- recording or correcting memory does not automatically change agent behavior
+  or model parameters;
+- a persisted procedure is a knowledge artifact. Retrieval, mining and
+  persistence do not mean activation or execution;
+- admission into durable memory is not admission to training. Training
+  eligibility requires a separate external check of purpose, permissions,
+  provenance and evaluation policy;
+- provider or model output is not, by itself, a confirmed fact, independent
+  corroborating evidence or an automatically permitted training example;
+- replacing a model does not rewrite historical memory records or provenance.
+  A change of embedding or extraction model requires compatibility checks and
+  versioned affected derived projections under the existing publication and
+  reindex contracts;
+- promotion or rollback of a behavior or model revision is decided by the
+  external owner. Memory may retain a proposal, evaluation and activation
+  receipt, but it does not make that decision.
+
+Procedure lifecycle, activation planning and execution are separate
+transitions:
+
+1. A persisted `ProcedurePayload` and its `ProcedureStateComponent` carry the
+   lifecycle of a knowledge artifact, such as
+   `ProcedureStatus::Candidate`, `ProcedureStatus::Validating` or
+   `ProcedureStatus::Active`, together with its evidence and status history.
+   A successful validation is evidence for a promotion decision, not a separate `Validated` status value. The memory layer/application profile
+   stores the artifact, applies compare-and-swap and transition-history checks,
+   and preserves the record; ADELIA, the host or an operator decides whether
+   that evidence permits promotion to `ProcedureStatus::Active`.
+2. A `ProcedureActivationCandidate` is a retrieval/context-planning artifact.
+   It may refer to a persisted procedure and its requirements, but emitting it
+   does not mutate the persisted procedure status or request execution.
+3. A host/runtime may use a `ProcedureActivationCandidate` while constructing
+   the existing `ActivationPlan` or another run-local selection artifact.
+   The existing `ActivationPlan` remains a planning/retrieval-hint contract;
+   it is not redefined to contain procedures or to select a persisted procedure.
+   An explicit host/runtime decision may select a procedure for this run, but that
+   selection does not execute the procedure or provide authority or a callable
+   binding.
+4. Runtime invocation/execution admission is a separate current-run check of
+   callable binding, capability availability, authority, policy and resource
+   budget. Only the host/runtime can perform that admission and attempt the
+   effectful operation, subject to the existing [Procedure Activation](#procedure-activation)
+   contract.
+
+The resulting invariant is:
+
+```text
+persisted Active != selected for this run
+selected for this run != authorized to execute
+authorized to execute != successfully executed
+```
+
+Conceptual acceptance cases for a future adapter or evaluation fixture:
+
+1. Correcting a fact creates the mutation-policy history required by the
+   memory contract; the active procedure and model revision remain unchanged.
+2. A stored Procedure may already have `Active` persisted status. Retrieval
+   or planning may emit a `ProcedureActivationCandidate`; a host/runtime may
+   make an explicit run-local selection without redefining the existing
+   `ActivationPlan` contract, while runtime invocation still fails or
+   remains unavailable when the current binding, capability, authority, policy or
+   resource admission does not pass.
+3. A memory record may be eligible for retrieval while being disallowed for
+   training; an external export either excludes it or rejects the request under
+   its governing policy.
+
+These cases clarify ownership boundaries. They do not add a C++ type, enum,
+storage field, training runtime or activation API.
+
 ## ADR Lane
 
 The source audit used labels ADR-016..ADR-022. In

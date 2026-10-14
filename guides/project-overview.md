@@ -145,6 +145,13 @@ audio and video extension in `guides/multimodal-binary-retrieval-roadmap.md`.
 This keeps a future external model adapter, cross-encoder, chunk-expansion
 policy, or ANN backend from becoming an implicit core dependency. Each remains
 optional and must be promoted through its own frozen evaluation evidence.
+Offline consolidation and hierarchical DomainMap routing are documented as
+host-bounded research layers in
+[`offline-consolidation-roadmap.md`](offline-consolidation-roadmap.md) and
+[`hierarchical-navigation-roadmap.md`](hierarchical-navigation-roadmap.md).
+Optional image representations, including the JPEG XL research candidate, are
+owned by artifact and visual-retrieval roadmaps and never replace canonical
+artifact bytes.
 
 ## Reindexing Backlog
 

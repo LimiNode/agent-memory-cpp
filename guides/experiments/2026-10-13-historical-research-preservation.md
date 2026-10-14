@@ -5,6 +5,8 @@ Source branch: `agent/pca12-routing-followups`
 Source commit: `f325d794afacf86d79cbabb000a400658eafd5af`
 Preservation manifest: [2026-10-13-historical-research-preservation-manifest.json](2026-10-13-historical-research-preservation-manifest.json)
 
+The follow-up residual scope is recorded in the [PCA12 residual addendum](2026-10-13-pca12-residual-preservation-addendum.md) and its [divergent-path audit](2026-10-13-pca12-divergent-path-audit.csv).
+
 This note records the preservation boundary for thirteen September research
 documents restored byte-for-byte at their original relative paths. They are
 historical evidence, not current routing recommendations or product defaults.

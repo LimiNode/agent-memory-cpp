@@ -8,6 +8,12 @@ activation answers "which domains, concepts, procedures, constraints, and
 evidence must be considered for this turn?" Both layers are required for agent
 systems that use `agent-memory-cpp` as their knowledge substrate.
 
+Hierarchical navigator and DomainMap semantics are detailed in
+[`hierarchical-navigation-roadmap.md`](hierarchical-navigation-roadmap.md).
+That guide extends this activation contract with bounded map-of-maps traversal,
+manual versus derived map provenance, stale-map fallback and the HN-0 research
+gate; it does not introduce a competing activation taxonomy.
+
 ## 1. Boundary
 
 `agent-memory-cpp` owns storage, retrieval, planning contracts, context
