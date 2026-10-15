@@ -76,6 +76,60 @@ enum values are recorded. Query-level `RetrievalCompletion` has
 `Complete`, `Partial`, `Unavailable`, `BudgetExhausted`, `Dropped` and
 `RequiredRouteFailed`.
 
+### Candidate discovery and evidence opening
+
+Candidate discovery and evidence opening are separate execution stages with
+separate diagnostics and cost attribution:
+
+```text
+projection/index route
+  -> candidate identity, score and source/provenance reference
+  -> selective canonical source opening
+  -> structure or covering-row navigation when required
+  -> exact-revision hydration and verification
+  -> eligible RetrievalHit or an explicit incomplete outcome
+```
+
+Candidate discovery may use lexical, semantic, binary, graph or routing
+projections. It produces a bounded set of references; a score, snippet or
+projection descriptor is not evidence by itself. Source opening reads a selected
+canonical chunk, range, representation or structural covering row at the pinned
+frontier. It must not silently substitute a newer revision, a same-path source
+or a derived caption/transcript for the requested original.
+
+The existing execution budget must account for these dimensions separately:
+
+- candidate visits, route calls and refill rounds;
+- canonical source opens and structural reads;
+- decoded bytes, payload reads and hydration work;
+- deadline/latency and any provider or transport work owned by the host.
+
+All dimensions remain inside one declared total work envelope. Selective opening
+must not create a hidden second retrieval budget, and a source-open operation
+must not bypass scope, access, lifecycle, revision or provenance checks. If the
+source is missing, denied or stale, the executor returns the applicable existing
+`Partial`, `Unavailable`, `RequiredRouteFailed` or redacted policy outcome rather
+than inventing a source-backed answer. No new public operation or result type is
+implied by this notation.
+
+`RetrievalTrace` and the existing route/projection diagnostics should distinguish
+candidate discovery from source opening and final hydration. A future adapter
+may expose a tool-shaped operation such as opening a selected chunk or reading
+document structure, but that is a host-facing lowering over these contracts, not
+a new core tool API.
+
+Minimum end-to-end acceptance fixture:
+
+1. Run semantic and exact lexical routes over a technical-document corpus with
+   pinned source revisions and a declared frontier.
+2. Selectively open surviving candidates and, where needed, covering structure.
+3. Verify exact identifiers, version constraints, commands and exceptions against
+   canonical source material.
+4. Compare quality, false closure, source coverage, decoded bytes and latency
+   under the same total work envelope.
+5. When the required source cannot be opened, require an explicit unknown or
+   unavailable result; do not accept a similar chunk or summary as recovery.
+
 ### Filter-aware sufficiency and bounded refill
 
 `candidate_limit` is an input budget, not a promise that a filtered query can
