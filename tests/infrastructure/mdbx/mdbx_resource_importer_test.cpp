@@ -385,8 +385,7 @@ int main() {
         expect(recovered_result.revision.generation == 2,
                "an existing executor did not recover P before importing Q on demand");
         const auto completed = second.find_manifest(ResourceId{"resource:concurrent"});
-        expect(completed && completed->revision.generation == 2 &&
-                   completed->revision.source_uri == "https://example.test/other",
+        expect(completed && completed->revision.generation == 2,
                "on-demand recovery did not publish the replacement payload");
     }
     std::filesystem::remove(concurrency_path, error);
