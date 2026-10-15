@@ -50,9 +50,13 @@ host-issued `RetrievalAccessContext` and the deny-by-default `AccessPolicy`
 contract from `policies-roadmap.md`, with the strict-filter scope listed in
 `milestones.md` (scope, access, status, language, jurisdiction and trust).
 Soft domain or modality routing may choose among already eligible routes, but
-it must never replace these filters. An external derived index may receive
-only the exact eligible-unit constraint and read frontier; it must not receive
-host grants or policy claims. After ranking or fusion, the same authoritative
+it must never replace these filters. An external derived index may receive only
+an `ExternalCandidateConstraint` containing the exact eligible-unit set, read
+frontier and policy fingerprint, and only through an adapter in the same
+trusted security domain. The adapter must enforce that exact constraint before
+top-K/ranking. Host grants, roles, jurisdictions, the full
+`RetrievalAccessContext` and raw policy claims must never cross the adapter
+boundary. After ranking or fusion, the same authoritative
 scope/access/lifecycle and source-revision frontier checks run again before
 hydration or context materialization. A denied candidate must not reveal its
 source identity or sensitive denial reason.

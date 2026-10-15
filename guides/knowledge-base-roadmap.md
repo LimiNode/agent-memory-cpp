@@ -689,9 +689,10 @@ Every result that can be shown or hydrated must preserve:
 - the logical source artifact or document identity;
 - the exact original `SourceRevisionId` for every source-grounded
   `EvidenceAnchor`;
-- a derived route additionally carries `RepresentationId`, its representation
-  revision and projection generation; a representation revision never substitutes
-  for the original `SourceRevisionId`;
+- a derived route additionally carries the opaque `RepresentationId`, any
+  representation version metadata declared by its owning provenance contract,
+  and the independent projection generation; none of these substitutes for the
+  original `SourceRevisionId`;
 - the projection/encoder identity and generation when a derived route produced
   the candidate;
 - a typed locator appropriate to the source, such as a text range, page
