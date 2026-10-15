@@ -6,25 +6,21 @@
 
 #include <array>
 #include <algorithm>
-#include <atomic>
 #include <cctype>
+#include <chrono>
 #include <limits>
 #include <map>
 #include <mutex>
+#include <random>
 #include <stdexcept>
 #include <utility>
 
 namespace agent_memory {
 namespace {
 
-constexpr std::string_view kIntentVersionV1 =
-    "agent_memory.resource_import_intent.v1";
-constexpr std::string_view kIntentVersionV2 =
-    "agent_memory.resource_import_intent.v2";
-constexpr std::size_t kMaxSearchCandidates = 1024;
+constexpr std::string_view kIntentVersionV3 =
+    "agent_memory.resource_import_intent.v3";
 constexpr char kSeparator = '\x1f';
-std::atomic<std::uint64_t> g_owner_sequence{0};
-std::mutex g_publication_mutex;
 
 void append_size(std::string& out, std::size_t value) {
     out += std::to_string(value);
@@ -189,13 +185,67 @@ private:
 
 struct PendingImport final {
     ObservedResource resource;
-    std::string owner_token;
+    std::string owner_id;
+    std::uint64_t fencing_epoch = 0;
+    std::uint64_t lease_expires_at_ms = 0;
 };
 
-std::string make_owner_token(const void* owner) {
-    const auto sequence = ++g_owner_sequence;
-    return std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + ":" +
-        std::to_string(sequence);
+struct ClaimedImport final {
+    PendingImport operation;
+    std::string payload;
+    bool created = false;
+};
+
+std::string make_owner_id() {
+    static constexpr char digits[] = "0123456789abcdef";
+    std::random_device source;
+    std::string id;
+    id.reserve(32);
+    for(std::size_t word = 0; word < 4; ++word) {
+        const auto value = static_cast<std::uint32_t>(source());
+        for(int shift = 28; shift >= 0; shift -= 4) {
+            id.push_back(digits[(value >> shift) & 0x0fU]);
+        }
+    }
+    return id;
+}
+
+std::uint64_t system_clock_ms() {
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()
+    ).count();
+    if(elapsed < 0) {
+        throw std::runtime_error("system clock precedes the Unix epoch");
+    }
+    return static_cast<std::uint64_t>(elapsed);
+}
+
+std::uint64_t lease_deadline(std::uint64_t now, std::uint64_t duration) {
+    if(duration == 0) {
+        throw std::invalid_argument("resource importer ownership lease must be positive");
+    }
+    if(now > (std::numeric_limits<std::uint64_t>::max)() - duration) {
+        throw std::runtime_error("resource importer ownership lease overflow");
+    }
+    return now + duration;
+}
+
+std::uint64_t parse_decimal_u64(std::string_view text, std::string_view field) {
+    if(text.empty()) {
+        throw std::runtime_error(std::string{field} + " is empty");
+    }
+    std::uint64_t value = 0;
+    for(const auto character : text) {
+        if(character < '0' || character > '9') {
+            throw std::runtime_error(std::string{field} + " is invalid");
+        }
+        const auto digit = static_cast<std::uint64_t>(character - '0');
+        if(value > ((std::numeric_limits<std::uint64_t>::max)() - digit) / 10U) {
+            throw std::runtime_error(std::string{field} + " overflow");
+        }
+        value = value * 10U + digit;
+    }
+    return value;
 }
 
 std::string table_name(std::string prefix, std::string_view suffix) {
@@ -278,8 +328,10 @@ void validate_resource(const ObservedResource& resource) {
 std::string serialize_intent(const PendingImport& pending) {
     const auto& resource = pending.resource;
     std::string payload;
-    append_string(payload, kIntentVersionV2);
-    append_string(payload, pending.owner_token);
+    append_string(payload, kIntentVersionV3);
+    append_string(payload, pending.owner_id);
+    append_string(payload, std::to_string(pending.fencing_epoch));
+    append_string(payload, std::to_string(pending.lease_expires_at_ms));
     append_string(payload, resource.scope_id.value());
     append_string(payload, resource.resource_id.value());
     append_string(payload, resource.source_uri);
@@ -304,15 +356,16 @@ std::string serialize_intent(const PendingImport& pending) {
 PendingImport deserialize_intent(std::string_view payload) {
     Reader reader{payload};
     const auto version = reader.string();
-    if(version != kIntentVersionV1 && version != kIntentVersionV2) {
+    if(version != kIntentVersionV3) {
         throw std::runtime_error("unsupported resource import intent version");
     }
     PendingImport pending;
-    if(version == kIntentVersionV2) {
-        pending.owner_token = reader.string();
-        if(pending.owner_token.empty()) {
-            throw std::runtime_error("resource import intent has no owner token");
-        }
+    pending.owner_id = reader.string();
+    pending.fencing_epoch = reader.u64();
+    pending.lease_expires_at_ms = reader.u64();
+    if(pending.owner_id.empty() || pending.fencing_epoch == 0 ||
+       pending.lease_expires_at_ms == 0) {
+        throw std::runtime_error("resource import intent has invalid ownership metadata");
     }
     pending.resource.scope_id = ScopeId{reader.string()};
     pending.resource.resource_id = ResourceId{reader.string()};
@@ -423,6 +476,23 @@ bool same_provenance(
         left->extractor_version == right->extractor_version;
 }
 
+bool same_import_request(
+    const ObservedResource& left,
+    const ObservedResource& right
+) {
+    return left.scope_id == right.scope_id &&
+        left.resource_id == right.resource_id &&
+        left.source_uri == right.source_uri &&
+        left.utf8_body == right.utf8_body &&
+        left.pipeline_config_hash == right.pipeline_config_hash &&
+        same_provenance(
+            left.text_origin,
+            left.derived_text_provenance,
+            right.text_origin,
+            right.derived_text_provenance
+        );
+}
+
 } // namespace
 
 class MdbxResourceImporter::Impl final {
@@ -446,48 +516,35 @@ public:
             manifest_options.max_dbs = options.max_dbs;
             return manifest_options;
         }())
-        , m_intents(m_context->connection(), table_name(options.table_prefix, "resource_import_intents"))
+        , m_intent_table_name(table_name(options.table_prefix, "resource_import_intents"))
+        , m_intents(m_context->connection(), m_intent_table_name)
         , m_bindings(m_context->connection(), table_name(options.table_prefix, "resource_import_bindings"))
+        , m_epochs(m_context->connection(), table_name(options.table_prefix, "resource_import_epochs"))
+        , m_lease_ms(options.ownership_lease_ms)
+        , m_clock(options.clock_ms ? std::move(options.clock_ms) : system_clock_ms)
         , m_fault_injector(std::move(options.fault_injector)) {
-        m_owner_token = make_owner_token(this);
+        if(m_lease_ms == 0) {
+            throw std::invalid_argument("resource importer ownership lease must be positive");
+        }
+        m_owner_id = make_owner_id();
         recover_pending();
     }
 
     ResourceImportResult import(ObservedResource resource) {
         validate_resource(resource);
         std::lock_guard<std::mutex> lock(m_mutex);
-        const auto key = resource.resource_id.value();
-        const auto requested_payload = serialize_intent(PendingImport{resource, m_owner_token});
         ensure_manifest_compatibility(resource);
-        const auto existing = claim_or_existing(key, requested_payload);
-        if(existing) {
-            const auto existing_operation = deserialize_intent(*existing);
-            if(existing_operation.owner_token != m_owner_token) {
-                throw std::runtime_error(
-                    "resource import is owned by another executor"
-                );
-            }
-            if(*existing != requested_payload) {
-                throw std::runtime_error(
-                    "a different resource import is already pending"
-                );
-            }
-        } else {
-            try {
-                bind_scope(resource);
-            } catch(...) {
-                release_expected(key, requested_payload);
-                throw;
-            }
+        const auto claim = claim_import(resource);
+        if(claim.operation.owner_id != m_owner_id) {
+            throw std::runtime_error("resource import is owned by another live executor");
         }
-        if(!existing) {
+        if(!same_import_request(claim.operation.resource, resource)) {
+            throw std::runtime_error("a different resource import is already pending");
+        }
+        if(claim.created) {
             inject(ResourceImporterFaultPoint::AfterIntent);
         }
-        return complete(
-            deserialize_intent(existing ? *existing : requested_payload),
-            true,
-            existing ? *existing : requested_payload
-        );
+        return complete(claim.operation, true, claim.payload);
     }
 
     std::optional<ResourceManifest> find_manifest(const ResourceId& id) const {
@@ -502,6 +559,9 @@ public:
         if(limit == 0) {
             throw std::invalid_argument("search limit must not be zero");
         }
+        if(limit > kMdbxResourceImporterMaxSearchLimit) {
+            throw std::invalid_argument("search limit exceeds the importer candidate bound");
+        }
         std::size_t candidate_limit = limit;
         for(;;) {
             auto lexical_hits = m_lexical.search(scope, query, candidate_limit);
@@ -515,13 +575,13 @@ public:
             }
             if(visible.size() >= limit ||
                lexical_hits.size() < candidate_limit ||
-               candidate_limit >= kMaxSearchCandidates) {
+               candidate_limit >= kMdbxResourceImporterMaxSearchLimit) {
                 break;
             }
             candidate_limit = std::min(
-                kMaxSearchCandidates,
-                candidate_limit > kMaxSearchCandidates / 2
-                    ? kMaxSearchCandidates
+                kMdbxResourceImporterMaxSearchLimit,
+                candidate_limit > kMdbxResourceImporterMaxSearchLimit / 2
+                    ? kMdbxResourceImporterMaxSearchLimit
                     : candidate_limit * 2
             );
         }
@@ -538,14 +598,19 @@ private:
         bool inject_faults,
         const std::string& expected_payload
     ) {
-        std::lock_guard<std::mutex> publication_lock(g_publication_mutex);
         const auto expected_manifest = ensure_manifest_compatibility(pending.resource);
         assert_ownership(pending.resource.resource_id.value(), expected_payload);
-        const auto generation = m_lexical.upsert_text(
+        if(inject_faults) inject(ResourceImporterFaultPoint::BeforeLexicalPublication);
+        const auto generation = m_lexical.upsert_text_guarded(
             pending.resource.scope_id,
             pending.resource.resource_id,
             pending.resource.source_uri,
-            pending.resource.utf8_body
+            pending.resource.utf8_body,
+            DurableLexicalPublicationGuard{
+                m_intent_table_name,
+                pending.resource.resource_id.value(),
+                expected_payload
+            }
         );
         if(inject_faults) inject(ResourceImporterFaultPoint::AfterLexicalPublication);
         if(inject_faults) inject(ResourceImporterFaultPoint::BeforeManifestPublication);
@@ -569,66 +634,117 @@ private:
         m_intents.load(pending);
         for(const auto& item : pending) {
             const auto operation = deserialize_intent(item.second);
+            if(item.first != operation.resource.resource_id.value()) {
+                throw std::runtime_error("resource import intent key does not match its payload");
+            }
+            if(operation.lease_expires_at_ms > now_ms()) {
+                continue;
+            }
             ensure_manifest_compatibility(operation.resource);
-            bind_scope(operation.resource);
             const auto takeover = takeover_pending(item.first, item.second, operation);
-            complete(takeover, false, serialize_intent(takeover));
+            complete(takeover.operation, false, takeover.payload);
         }
     }
 
-    void bind_scope(const ObservedResource& resource) {
-        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    ClaimedImport claim_import(const ObservedResource& resource) {
         const auto key = resource.resource_id.value();
-        if(m_bindings.insert(key, resource.scope_id.value(), txn)) {
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        const auto existing_payload = m_intents.find(key, txn);
+        if(existing_payload) {
+            auto existing = deserialize_intent(*existing_payload);
+            if(existing.owner_id == m_owner_id &&
+               same_import_request(existing.resource, resource)) {
+                existing.lease_expires_at_ms = lease_deadline(now_ms(), m_lease_ms);
+                auto renewed_payload = serialize_intent(existing);
+                m_intents.insert_or_assign(key, renewed_payload, txn);
+                txn.commit();
+                return {std::move(existing), std::move(renewed_payload), false};
+            }
             txn.commit();
-            return;
+            return {std::move(existing), *existing_payload, false};
         }
-        const auto existing = m_bindings.find(key, txn);
-        if(!existing) {
+
+        const auto binding = m_bindings.find(key, txn);
+        if(binding && *binding != resource.scope_id.value()) {
             txn.rollback();
-            throw std::runtime_error("resource scope binding disappeared");
+            throw std::invalid_argument("ResourceId is already bound to a different scope");
         }
-        if(*existing != resource.scope_id.value()) {
+        const auto epoch = next_epoch(key, txn);
+        PendingImport claimed{
+            resource,
+            m_owner_id,
+            epoch,
+            lease_deadline(now_ms(), m_lease_ms)
+        };
+        auto payload = serialize_intent(claimed);
+        if(!binding) {
+            if(!m_bindings.insert(key, resource.scope_id.value(), txn)) {
+                txn.rollback();
+                throw std::runtime_error("resource scope binding could not be created");
+            }
+        }
+        if(!m_intents.insert(key, payload, txn)) {
             txn.rollback();
-            throw std::invalid_argument(
-                "ResourceId is already bound to a different scope"
-            );
+            throw std::runtime_error("resource import intent was concurrently created");
         }
         txn.commit();
+        return {std::move(claimed), std::move(payload), true};
     }
 
-    [[nodiscard]] std::optional<std::string> claim_or_existing(
-        const std::string& key,
-        const std::string& payload
-    ) {
-        for(;;) {
-            auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
-            if(m_intents.insert(key, payload, txn)) {
-                txn.commit();
-                return std::nullopt;
-            }
-            const auto existing = m_intents.find(key, txn);
-            txn.commit();
-            if(existing) return existing;
-        }
-    }
-
-    PendingImport takeover_pending(
+    ClaimedImport takeover_pending(
         const std::string& key,
         const std::string& expected_payload,
         PendingImport operation
     ) {
-        operation.owner_token = m_owner_token;
-        const auto replacement = serialize_intent(operation);
         auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
         const auto existing = m_intents.find(key, txn);
         if(!existing || *existing != expected_payload) {
             txn.rollback();
             throw std::runtime_error("resource import intent changed during recovery");
         }
+        if(operation.lease_expires_at_ms > now_ms()) {
+            txn.rollback();
+            throw std::runtime_error("live resource import intent cannot be taken over");
+        }
+        const auto binding = m_bindings.find(key, txn);
+        if(!binding || *binding != operation.resource.scope_id.value()) {
+            txn.rollback();
+            throw std::runtime_error("resource import scope binding is missing or inconsistent");
+        }
+        const auto stored_epoch = m_epochs.find(key, txn);
+        if(!stored_epoch ||
+           parse_decimal_u64(*stored_epoch, "resource import fencing epoch") <
+               operation.fencing_epoch) {
+            txn.rollback();
+            throw std::runtime_error("resource import fencing epoch regressed");
+        }
+        operation.owner_id = m_owner_id;
+        operation.fencing_epoch = next_epoch(key, txn);
+        operation.lease_expires_at_ms = lease_deadline(now_ms(), m_lease_ms);
+        const auto replacement = serialize_intent(operation);
         m_intents.insert_or_assign(key, replacement, txn);
         txn.commit();
-        return operation;
+        return {std::move(operation), replacement, false};
+    }
+
+    std::uint64_t next_epoch(
+        const std::string& key,
+        const mdbxc::Transaction& txn
+    ) {
+        const auto stored = m_epochs.find(key, txn);
+        const auto previous = stored
+            ? parse_decimal_u64(*stored, "resource import fencing epoch")
+            : 0;
+        if(previous == (std::numeric_limits<std::uint64_t>::max)()) {
+            throw std::runtime_error("resource import fencing epoch overflow");
+        }
+        const auto next = previous + 1;
+        m_epochs.insert_or_assign(key, std::to_string(next), txn);
+        return next;
+    }
+
+    std::uint64_t now_ms() const {
+        return m_clock();
     }
 
     void assert_ownership(const std::string& key, const std::string& payload) const {
@@ -730,10 +846,14 @@ private:
     std::shared_ptr<MdbxStorageContext> m_context;
     MdbxDurableLexicalDocumentMemory m_lexical;
     MdbxResourceManifestStorage m_manifests;
+    std::string m_intent_table_name;
     mdbxc::KeyValueTable<std::string, std::string> m_intents;
     mdbxc::KeyValueTable<std::string, std::string> m_bindings;
+    mdbxc::KeyValueTable<std::string, std::string> m_epochs;
+    std::uint64_t m_lease_ms;
+    std::function<std::uint64_t()> m_clock;
     std::function<void(ResourceImporterFaultPoint)> m_fault_injector;
-    std::string m_owner_token;
+    std::string m_owner_id;
     mutable std::mutex m_mutex;
 };
 

@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -50,6 +51,17 @@ struct DurableLexicalDocumentHit final {
     std::string text;
     std::uint64_t generation = 0;
     float score = 0.0F;
+};
+
+/// \brief Durable compare token checked in the lexical publication transaction.
+///
+/// The named MDBX table must belong to the same storage context. Publication
+/// proceeds only while `key` still contains `expected_value`. A rejected guard
+/// removes the guarded lexical intent without changing the active catalog.
+struct DurableLexicalPublicationGuard final {
+    std::string table_name;
+    std::string key;
+    std::string expected_value;
 };
 
 /// \brief Small deterministic M0 path from durable text to lexical retrieval.
@@ -95,6 +107,20 @@ public:
         ResourceId resource_id,
         std::string source_uri,
         std::string utf8_text
+    );
+
+    /// \brief Inserts or updates text under a durable publication fence.
+    ///
+    /// The guard is serialized with the lexical intent and rechecked in the
+    /// same MDBX transaction that activates the catalog revision, including
+    /// recovery after interruption.
+    /// \throws std::runtime_error when the guard no longer matches.
+    [[nodiscard]] std::uint64_t upsert_text_guarded(
+        ScopeId scope_id,
+        ResourceId resource_id,
+        std::string source_uri,
+        std::string utf8_text,
+        DurableLexicalPublicationGuard guard
     );
 
     /// \brief Executes deterministic BM25 search within one scope.

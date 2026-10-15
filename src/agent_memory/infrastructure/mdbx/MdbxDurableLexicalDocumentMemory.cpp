@@ -27,8 +27,10 @@ constexpr std::string_view kScopeVersionKeyPrefix = "scope-version";
 constexpr std::string_view kLegacyCatalogKey = "entries";
 constexpr std::string_view kEntryPayloadVersion =
     "agent_memory.durable_lexical_entry.v2";
-constexpr std::string_view kPendingPayloadVersion =
+constexpr std::string_view kPendingPayloadVersionV2 =
     "agent_memory.durable_lexical_pending.v2";
+constexpr std::string_view kPendingPayloadVersionV3 =
+    "agent_memory.durable_lexical_pending.v3";
 constexpr std::string_view kBodyBlockId = "body";
 constexpr char kKeySeparator = '\x1f';
 
@@ -156,6 +158,18 @@ struct PendingOperation final {
     DocumentId document_id;
     std::string source_uri;
     std::string utf8_text;
+    std::optional<DurableLexicalPublicationGuard> guard;
+};
+
+enum class PublicationStatus {
+    Published,
+    Contended,
+    Fenced
+};
+
+struct PublicationResult final {
+    PublicationStatus status = PublicationStatus::Contended;
+    std::uint64_t scope_version = 0;
 };
 
 using EntriesByResource = std::map<ResourceId, CatalogEntry>;
@@ -265,18 +279,27 @@ CatalogEntry deserialize_entry(std::string_view payload) {
 
 std::string serialize_pending(const PendingOperation& operation) {
     std::string payload;
-    append_string(payload, kPendingPayloadVersion);
+    append_string(
+        payload,
+        operation.guard ? kPendingPayloadVersionV3 : kPendingPayloadVersionV2
+    );
     append_string(payload, operation.scope_id.value());
     append_string(payload, operation.resource_id.value());
     append_string(payload, operation.document_id.value());
     append_string(payload, operation.source_uri);
     append_string(payload, operation.utf8_text);
+    if(operation.guard) {
+        append_string(payload, operation.guard->table_name);
+        append_string(payload, operation.guard->key);
+        append_string(payload, operation.guard->expected_value);
+    }
     return payload;
 }
 
 PendingOperation deserialize_pending(std::string_view payload) {
     PayloadReader reader{payload};
-    if(reader.read_string() != kPendingPayloadVersion) {
+    const auto version = reader.read_string();
+    if(version != kPendingPayloadVersionV2 && version != kPendingPayloadVersionV3) {
         throw std::runtime_error("unsupported durable lexical pending payload version");
     }
     PendingOperation operation{
@@ -284,8 +307,19 @@ PendingOperation deserialize_pending(std::string_view payload) {
         ResourceId{reader.read_string()},
         DocumentId{reader.read_string()},
         reader.read_string(),
-        reader.read_string()
+        reader.read_string(),
+        std::nullopt
     };
+    if(version == kPendingPayloadVersionV3) {
+        operation.guard = DurableLexicalPublicationGuard{
+            reader.read_string(),
+            reader.read_string(),
+            reader.read_string()
+        };
+        if(operation.guard->table_name.empty() || operation.guard->key.empty()) {
+            throw std::runtime_error("durable lexical publication guard is incomplete");
+        }
+    }
     reader.require_end();
     validate_identity(
         operation.scope_id,
@@ -390,6 +424,42 @@ public:
         std::string source_uri,
         std::string utf8_text
     ) {
+        return upsert_text_impl(
+            std::move(scope_id),
+            std::move(resource_id),
+            std::move(source_uri),
+            std::move(utf8_text),
+            std::nullopt
+        );
+    }
+
+    [[nodiscard]] std::uint64_t upsert_text_guarded(
+        ScopeId scope_id,
+        ResourceId resource_id,
+        std::string source_uri,
+        std::string utf8_text,
+        DurableLexicalPublicationGuard guard
+    ) {
+        if(guard.table_name.empty() || guard.key.empty()) {
+            throw std::invalid_argument("durable lexical publication guard is incomplete");
+        }
+        return upsert_text_impl(
+            std::move(scope_id),
+            std::move(resource_id),
+            std::move(source_uri),
+            std::move(utf8_text),
+            std::move(guard)
+        );
+    }
+
+private:
+    [[nodiscard]] std::uint64_t upsert_text_impl(
+        ScopeId scope_id,
+        ResourceId resource_id,
+        std::string source_uri,
+        std::string utf8_text,
+        std::optional<DurableLexicalPublicationGuard> guard
+    ) {
         reject_key_separator(scope_id.value(), "scope id");
         reject_key_separator(resource_id.value(), "resource id");
         if(source_uri.empty()) {
@@ -407,7 +477,8 @@ public:
             std::move(resource_id),
             requested_document_id,
             std::move(source_uri),
-            std::move(utf8_text)
+            std::move(utf8_text),
+            std::move(guard)
         };
 
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -428,14 +499,20 @@ public:
             const auto revision = ensure_canonical(requested);
             inject_fault(DurableLexicalDocumentMemoryFaultPoint::AfterCanonicalWrite);
             inject_fault(DurableLexicalDocumentMemoryFaultPoint::BeforeCatalogPublication);
-            const auto published_version = publish_operation(
+            const auto publication = publish_operation(
                 requested,
                 requested_payload,
                 revision.revision
             );
-            if(!published_version) {
+            if(publication.status == PublicationStatus::Contended) {
                 continue;
             }
+            if(publication.status == PublicationStatus::Fenced) {
+                throw std::runtime_error(
+                    "durable lexical publication fence rejected the operation"
+                );
+            }
+            const auto published_version = publication.scope_version;
 
             try {
                 inject_fault(DurableLexicalDocumentMemoryFaultPoint::AfterCatalogPublication);
@@ -448,11 +525,11 @@ public:
                 };
                 m_entries[entry.scope_id][entry.resource_id] = entry;
                 update_index_entry(entry, revision);
-                m_scope_versions[entry.scope_id] = *published_version;
+                m_scope_versions[entry.scope_id] = published_version;
 
                 const auto scope_changed_during_upsert =
                     observed_scope_version == std::numeric_limits<std::uint64_t>::max() ||
-                    *published_version != observed_scope_version + 1;
+                    published_version != observed_scope_version + 1;
                 if(scope_changed_during_upsert) {
                     // A different instance may have published between our initial
                     // synchronization and publication. Reconcile the complete scope
@@ -470,6 +547,7 @@ public:
         }
     }
 
+public:
     [[nodiscard]] std::vector<DurableLexicalDocumentHit> search(
         const ScopeId& scope_id,
         std::string_view query,
@@ -657,17 +735,34 @@ private:
         }
     }
 
-    [[nodiscard]] std::optional<std::uint64_t> publish_operation(
+    [[nodiscard]] PublicationResult publish_operation(
         const PendingOperation& operation,
         const std::string& pending_payload,
         std::uint64_t canonical_revision
     ) {
+        auto* guard_table = operation.guard
+            ? &publication_guard_table(operation.guard->table_name)
+            : nullptr;
         auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
         const auto pending = pending_key(operation.scope_id, operation.resource_id);
         const auto stored_pending = m_catalog.find(pending, txn);
         if(!stored_pending || *stored_pending != pending_payload) {
             txn.rollback();
-            return std::nullopt;
+            return {PublicationStatus::Contended, 0};
+        }
+
+        if(guard_table) {
+            const auto current_guard = guard_table->find(operation.guard->key, txn);
+            if(!current_guard || *current_guard != operation.guard->expected_value) {
+                if(!m_catalog.erase(pending, txn)) {
+                    txn.rollback();
+                    throw std::runtime_error(
+                        "fenced durable lexical operation could not clear its intent"
+                    );
+                }
+                txn.commit();
+                return {PublicationStatus::Fenced, 0};
+            }
         }
 
         const CatalogEntry entry{
@@ -688,7 +783,23 @@ private:
             throw std::runtime_error("durable lexical pending operation was not cleared");
         }
         txn.commit();
-        return next_version;
+        return {PublicationStatus::Published, next_version};
+    }
+
+    mdbxc::KeyValueTable<std::string, std::string>& publication_guard_table(
+        const std::string& name
+    ) {
+        const auto found = m_publication_guard_tables.find(name);
+        if(found != m_publication_guard_tables.end()) {
+            return *found->second;
+        }
+        auto table = std::make_unique<mdbxc::KeyValueTable<std::string, std::string>>(
+            m_context->connection(),
+            name
+        );
+        auto* result = table.get();
+        m_publication_guard_tables.emplace(name, std::move(table));
+        return *result;
     }
 
     [[nodiscard]] std::uint64_t increment_scope_version(
@@ -814,6 +925,10 @@ private:
     mutable EntriesByScope m_entries;
     mutable std::map<ScopeId, ExactLexicalIndex> m_indexes;
     mutable std::map<ScopeId, std::uint64_t> m_scope_versions;
+    std::map<
+        std::string,
+        std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>>
+    > m_publication_guard_tables;
     StandardTokenizer m_tokenizer;
 };
 
@@ -835,6 +950,22 @@ std::uint64_t MdbxDurableLexicalDocumentMemory::upsert_text(
         std::move(resource_id),
         std::move(source_uri),
         std::move(utf8_text)
+    );
+}
+
+std::uint64_t MdbxDurableLexicalDocumentMemory::upsert_text_guarded(
+    ScopeId scope_id,
+    ResourceId resource_id,
+    std::string source_uri,
+    std::string utf8_text,
+    DurableLexicalPublicationGuard guard
+) {
+    return m_impl->upsert_text_guarded(
+        std::move(scope_id),
+        std::move(resource_id),
+        std::move(source_uri),
+        std::move(utf8_text),
+        std::move(guard)
     );
 }
 
