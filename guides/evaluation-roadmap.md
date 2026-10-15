@@ -121,16 +121,32 @@ A task fixture declares:
 - the allowed `Unknown`, `Unavailable` and human-escalation outcomes;
 - the final ContextPack and decoded-byte budgets.
 
-Candidate discovery and evidence opening are separate measured stages:
+Candidate discovery and evidence opening are separate measured stages. The
+evaluation order is:
 
 ```text
-candidate discovery
-  -> exact lexical or semantic lookup
+RetrievalPlan
+  -> strict access/policy/filter frontier
+  -> candidate discovery and ranking envelope
   -> selective source opening
-  -> structure navigation when needed
+  -> scope/access/lifecycle/revision/provenance revalidation
   -> canonical hydration and verification
+  -> optional ContextPack materialization
   -> answer, Unknown or escalation
 ```
+
+The strict access/policy/filter frontier is applied before candidate creation,
+using the existing scope, access, lifecycle and policy contracts. Candidate
+discovery then produces bounded identities and ranking metadata. The existing
+`RetrievalHit` remains a ranking envelope and may exist before full source
+opening; its score, snippet or projection descriptor is not evidence by itself.
+
+Opening a selected source creates an **opened evidence** stage only after the
+executor revalidates scope, access, lifecycle, requested revision, frontier and
+provenance. Exact canonical hydration and verification are distinct from both
+candidate/hit ranking and the later host/context-builder selection of allowed
+material into `ContextPack`. Not every ranked hit must be hydratable, and no
+new public result type is implied.
 
 A candidate score or projection hit is not evidence by itself. Opening a
 selected chunk, reading covering structure or hydrating a source representation
