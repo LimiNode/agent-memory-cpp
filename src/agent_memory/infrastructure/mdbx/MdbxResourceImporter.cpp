@@ -569,10 +569,25 @@ private:
 
     void ensure_manifest_compatibility(const ObservedResource& resource) const {
         const auto existing = m_manifests.find_manifest(resource.resource_id);
-        if(existing && existing->payload_version != ResourceManifestPayloadVersion::V6) {
+        if(!existing) return;
+        if(existing->payload_version != ResourceManifestPayloadVersion::V6) {
             throw std::runtime_error(
                 "legacy resource manifest lacks verified text-origin provenance; "
                 "export and explicitly migrate it before importing"
+            );
+        }
+        const auto digest = body_digest(resource.utf8_body);
+        if(existing->revision.body_digest &&
+           existing->revision.body_digest->bytes == digest.bytes &&
+           (existing->revision.pipeline_config_hash != resource.pipeline_config_hash ||
+            !same_provenance(
+                existing->revision.text_origin,
+                existing->revision.derived_text_provenance,
+                resource.text_origin,
+                resource.derived_text_provenance
+            ))) {
+            throw std::runtime_error(
+                "resource revision metadata changed without a new canonical body generation"
             );
         }
     }

@@ -1326,6 +1326,8 @@ agent_memory_canonical_revisions|canonical_content|KeyValueTable|always|kv_suppo
 agent_memory_canonical_bodies|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId,BodyRevision,PhysicalEncodingGeneration|1
 agent_memory_canonical_ledgers|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId|1
 agent_memory_durable_lexical_catalog|lexical|KeyValueTable|indexed_retrieval|kv_supported|logical_adapter_required|RecordKind,ScopeId,OptionalResourceId|1
+agent_memory_resource_import_intents|ingestion|KeyValueTable|indexed_retrieval|kv_supported|logical_adapter_required|ResourceId|1
+agent_memory_resource_import_bindings|ingestion|KeyValueTable|indexed_retrieval|kv_supported|logical_adapter_required|ResourceId|1
 jobs_by_id|runtime_services|KeyValueTable|RuntimeQueue|kv_supported|raw_mirror_only|JobId|1
 jobs_scheduled|runtime_services|RangeIndexTable|RuntimeQueue|kv_supported_if_range_is_kv_backed|raw_mirror_only|RunAfterMs,JobId|1
 jobs_ready|runtime_services|RangeIndexTable|RuntimeQueue|kv_supported_if_range_is_kv_backed|raw_mirror_only|PriorityRank,JobId|1
@@ -1487,7 +1489,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | Compaction handoff profile delta | 0 by default, +1 if compaction enabled | +1 | KV supported | `compaction_handoffs`; `JobId -> CompactionHandoff`, operational checkpoint for the same queue job, not queue ordering. |
 | MDBX-backed resource body delta | 0 by default, +1 simple KV or +2 chunked | +2 | KV supported | `resource_bodies` or `resource_body_manifest` + `resource_body_chunks`; see §12.9. |
 | Canonical content C1 profile | 0 by default, +4 when enabled | +4 | KV supported / logical adapter required | Raw/plain immutable heads and revisions, logical body bindings, physical body generations and no-reuse ledgers. C2 compression and re-encoding are excluded. |
-| Durable lexical document-memory profile | 0 by default, +1 when enabled with canonical content C1 | +1 | KV supported / logical adapter required | Rebuildable M0 lexical catalog for scope/resource/document/URI bindings; canonical bodies remain owned by C1. |
+| Durable lexical document-memory profile | 0 by default, +3 when enabled with canonical content C1 | +3 | KV supported / logical adapter required | Rebuildable M0 lexical catalog plus importer intent and ResourceId-to-ScopeId binding tables; canonical bodies remain owned by C1. |
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
 | Durable global identity delta | 0 by default, +1 when `DurableGlobalIdentity` is enabled | +1 | KV supported / logical adapter required | `global_unit_id_to_local_id`; common import/export capability consumed by A0, not A-lane-owned; never raw-mirrored because its local target is environment-specific. |
 | Runtime sequence delta | 0 by default, +1 when sequence-time retrieval is enabled | +1 | KV-range if backed / logical adapter required | `runtime_sequence_index`; exports durable visibility receipts by global identity while producer-event acceleration rows are rebuilt after remapping. |
@@ -1495,7 +1497,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | Derived vector-blob dedup delta | 0 by default, +1 when M2 dense dedup is enabled | +1 | KV supported / derived rebuildable | `derived_vector_blobs`; scope-local immutable encoded payloads only; per-unit metadata, lifecycle and provenance remain separate. |
 | Optional sync system DBIs from §1.5.10 | 0 by default, snapshot-derived opt-in | snapshot-derived | opt-in only | Count the enabled raw/logical store manifest at the pinned upstream SHA; not used by M0/M1/M2 while §11.7 is DEFER. |
 | Migration / dual-write reserve | 0 | +8 | application-owned | Reserved for transitional tables during profile migrations. |
-| Planned expanded peak under current assumptions | profile-selected | 65 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + durable global identity + runtime sequence + durable lexical catalog + sync + reserve | within recommended ceiling | Leaves 31 DBI slots of headroom under `max_dbs = 96`, including 15 above the required 16 free slots; optional M2 lexical/dedup deltas are budgeted in the manifest but not selected by this reference profile. |
+| Planned expanded peak under current assumptions | profile-selected | 67 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + durable global identity + runtime sequence + durable lexical/importer profile + sync + reserve | within recommended ceiling | Leaves 29 DBI slots of headroom under `max_dbs = 96`, including 13 above the required 16 free slots; optional M2 lexical/dedup deltas are budgeted in the manifest but not selected by this reference profile. |
 
 Any future addition must update this table with capability, default-open
 status, underlying MDBX table type, number of physical DBI, paired reverse
@@ -1518,13 +1520,13 @@ resource_body_chunked=2
 source_refs_by_resource=1
 global_unit_id_to_local_id=1
 runtime_sequence_index=1
-durable_lexical_document_memory=1
+durable_lexical_document_memory=3
 sync_system_be72a2b=9
 migration_dual_write_reserve=8
-total=65
-headroom=31
+total=67
+headroom=29
 minimum_free_slots=16
-headroom_above_minimum=15
+headroom_above_minimum=13
 ```
 
 ### 5.5.2. Operational limits for one MDBX environment
