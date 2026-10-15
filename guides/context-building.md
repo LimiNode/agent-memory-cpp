@@ -200,3 +200,34 @@ policy, but it must not be confused with client-visible omission metadata.
 For denied candidates, use the aggregate or redacted trace required by those
 contracts; an experimental Value-of-Read implementation must not bypass the
 existing disclosure boundary.
+### Protected task-closure fixture after compaction
+
+Compaction or provider-context reduction may omit old tool messages from a
+model-visible pack, but it must not make the canonical source unreachable by
+implication. A protected task-closure fixture joins the existing compaction,
+source-retention and W0 contracts without adding a new context type:
+
+```text
+canonical source revision
+  -> bounded ContextPack
+  -> compaction or omission
+  -> declared rehydration request
+  -> bounded retrieval and source opening
+  -> new ContextPack with source provenance
+```
+
+The fixture must verify recovery of an exact identifier, version, command,
+constraint or exception after one or more compaction cycles. The recovered item
+keeps its canonical source revision, read frontier and evidence roots; a summary
+or compacted projection remains derived and cannot silently become source truth.
+
+If the source is unavailable, denied or stale, the result is an explicit
+`Unknown`, `Unavailable` or redacted policy outcome. A plausible continuation
+from the remaining summary is not successful rehydration. The fixture records
+what was omitted, what was reopened and which protected fact was verified, while
+keeping client-visible denial details behind the existing `PolicyDecisionTrace`
+boundary.
+
+This is an evaluation fixture and host integration requirement, not a new
+automatic rehydration loop or public API. Its task-closure metrics are owned by
+[`evaluation-roadmap.md`](evaluation-roadmap.md#task-closure-aware-retrieval-and-evidence-opening-gate).
