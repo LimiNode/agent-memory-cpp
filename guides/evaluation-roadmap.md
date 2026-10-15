@@ -107,7 +107,10 @@ This is a research-only end-to-end gate for comparing retrieval and context
 policies on declared tasks. It measures verified task closure, not whether an
 agent is generally cheaper or better than one-shot RAG. The core library remains
 a deterministic substrate; host runtime owns tool invocation, answer generation
-and human escalation.
+and human escalation. The motivating case study and its limitations are
+recorded in
+[`2026-10-15-task-closure-evidence-opening.md`](experiments/2026-10-15-task-closure-evidence-opening.md);
+that note contains no project benchmark result.
 
 A task fixture declares:
 
