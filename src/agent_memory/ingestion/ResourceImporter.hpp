@@ -24,7 +24,7 @@ namespace agent_memory {
         std::uint64_t pipeline_config_hash = 1;
     };
 
-    /// \brief Result of publishing one source revision.
+    /// \brief Result of publishing one source/body revision.
     ///
     /// This first profile publishes one lexical document and one chunk-shaped
     /// record. It intentionally does not claim a KnowledgeUnitStore or a
@@ -37,6 +37,11 @@ namespace agent_memory {
     };
 
     /// \brief M0 importer boundary for observed UTF-8 resources.
+    ///
+    /// `revision.generation` is the canonical body generation in this narrow
+    /// profile. Pipeline and extractor metadata are bound to that generation;
+    /// changing them without a new body generation is rejected until an
+    /// independent projection-generation contract exists.
     class IResourceImporter {
     public:
         virtual ~IResourceImporter();

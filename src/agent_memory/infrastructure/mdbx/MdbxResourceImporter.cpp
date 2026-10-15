@@ -205,6 +205,46 @@ void validate_resource(const ObservedResource& resource) {
     if(resource.source_uri.empty() || resource.utf8_body.empty()) {
         throw std::invalid_argument("resource URI and UTF-8 body must not be empty");
     }
+    for(std::size_t i = 0; i < resource.utf8_body.size();) {
+        const auto lead = static_cast<unsigned char>(resource.utf8_body[i]);
+        std::size_t width = 0;
+        std::uint32_t code_point = 0;
+        if(lead <= 0x7fU) {
+            width = 1;
+            code_point = lead;
+        } else if(lead >= 0xc2U && lead <= 0xdfU) {
+            width = 2;
+            code_point = lead & 0x1fU;
+        } else if(lead >= 0xe0U && lead <= 0xefU) {
+            width = 3;
+            code_point = lead & 0x0fU;
+        } else if(lead >= 0xf0U && lead <= 0xf4U) {
+            width = 4;
+            code_point = lead & 0x07U;
+        } else {
+            throw std::invalid_argument("resource body is not valid UTF-8");
+        }
+        if(i + width > resource.utf8_body.size()) {
+            throw std::invalid_argument("resource body is not valid UTF-8");
+        }
+        for(std::size_t offset = 1; offset < width; ++offset) {
+            const auto continuation = static_cast<unsigned char>(
+                resource.utf8_body[i + offset]
+            );
+            if((continuation & 0xc0U) != 0x80U) {
+                throw std::invalid_argument("resource body is not valid UTF-8");
+            }
+            code_point = (code_point << 6U) | (continuation & 0x3fU);
+        }
+        if((width == 2 && code_point < 0x80U) ||
+           (width == 3 && code_point < 0x800U) ||
+           (width == 4 && code_point < 0x10000U) ||
+           code_point > 0x10ffffU ||
+           (code_point >= 0xd800U && code_point <= 0xdfffU)) {
+            throw std::invalid_argument("resource body is not valid UTF-8");
+        }
+        i += width;
+    }
     if(resource.text_origin == SourceTextOrigin::OriginalText) {
         if(resource.derived_text_provenance) {
             throw std::invalid_argument("OriginalText must not carry derived provenance");
@@ -346,6 +386,21 @@ ResourceManifest make_manifest(
     return manifest;
 }
 
+bool same_provenance(
+    SourceTextOrigin left_origin,
+    const std::optional<DerivedTextProvenance>& left,
+    SourceTextOrigin right_origin,
+    const std::optional<DerivedTextProvenance>& right
+) {
+    if(left_origin != right_origin || left.has_value() != right.has_value()) {
+        return false;
+    }
+    if(!left) return true;
+    return left->source_media_type == right->source_media_type &&
+        left->extractor_id == right->extractor_id &&
+        left->extractor_version == right->extractor_version;
+}
+
 } // namespace
 
 class MdbxResourceImporter::Impl final {
@@ -370,6 +425,7 @@ public:
             return manifest_options;
         }())
         , m_intents(m_context->connection(), table_name(options.table_prefix, "resource_import_intents"))
+        , m_bindings(m_context->connection(), table_name(options.table_prefix, "resource_import_bindings"))
         , m_fault_injector(std::move(options.fault_injector)) {
         recover_pending();
     }
@@ -379,15 +435,19 @@ public:
         std::lock_guard<std::mutex> lock(m_mutex);
         const auto key = resource.resource_id.value();
         const auto requested_payload = serialize_intent(PendingImport{resource});
-        const auto existing = m_intents.find(key);
+        bind_scope(resource);
+        const auto existing = claim_or_existing(key, requested_payload);
         if(existing && *existing != requested_payload) {
             throw std::runtime_error("a different resource import is already pending");
         }
         if(!existing) {
-            m_intents.insert_or_assign(key, requested_payload);
             inject(ResourceImporterFaultPoint::AfterIntent);
         }
-        return complete(deserialize_intent(existing ? *existing : requested_payload), true);
+        return complete(
+            deserialize_intent(existing ? *existing : requested_payload),
+            true,
+            existing ? *existing : requested_payload
+        );
     }
 
     std::optional<ResourceManifest> find_manifest(const ResourceId& id) const {
@@ -397,7 +457,16 @@ public:
     std::vector<DurableLexicalDocumentHit> search(
         const ScopeId& scope, std::string_view query, std::size_t limit
     ) const {
-        return m_lexical.search(scope, query, limit);
+        std::lock_guard<std::mutex> lock(m_mutex);
+        const auto lexical_hits = m_lexical.search(scope, query, limit);
+        std::vector<DurableLexicalDocumentHit> visible;
+        visible.reserve(lexical_hits.size());
+        for(auto& hit : lexical_hits) {
+            if(!m_intents.find(hit.resource_id.value())) {
+                visible.push_back(std::move(hit));
+            }
+        }
+        return visible;
     }
 
 private:
@@ -405,7 +474,12 @@ private:
         if(m_fault_injector) m_fault_injector(point);
     }
 
-    ResourceImportResult complete(const PendingImport& pending, bool inject_faults) {
+    ResourceImportResult complete(
+        const PendingImport& pending,
+        bool inject_faults,
+        const std::string& expected_payload
+    ) {
+        ensure_manifest_compatibility(pending.resource);
         const auto generation = m_lexical.upsert_text(
             pending.resource.scope_id,
             pending.resource.resource_id,
@@ -416,9 +490,10 @@ private:
         if(inject_faults) inject(ResourceImporterFaultPoint::BeforeManifestPublication);
         const auto digest = body_digest(pending.resource.utf8_body);
         const auto manifest = make_manifest(pending.resource, generation, digest);
+        ensure_manifest_compatibility(pending.resource, manifest.revision, digest);
         m_manifests.upsert_manifest(manifest);
         if(inject_faults) inject(ResourceImporterFaultPoint::AfterManifestPublication);
-        m_intents.erase(pending.resource.resource_id.value());
+        release_expected(pending.resource.resource_id.value(), expected_payload);
         return ResourceImportResult{
             pending.resource.resource_id,
             manifest.revision,
@@ -431,7 +506,103 @@ private:
         std::vector<std::pair<std::string, std::string>> pending;
         m_intents.load(pending);
         for(const auto& item : pending) {
-            complete(deserialize_intent(item.second), false);
+            const auto operation = deserialize_intent(item.second);
+            bind_scope(operation.resource);
+            complete(operation, false, item.second);
+        }
+    }
+
+    void bind_scope(const ObservedResource& resource) {
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        const auto key = resource.resource_id.value();
+        if(m_bindings.insert(key, resource.scope_id.value(), txn)) {
+            txn.commit();
+            return;
+        }
+        const auto existing = m_bindings.find(key, txn);
+        if(!existing) {
+            txn.rollback();
+            throw std::runtime_error("resource scope binding disappeared");
+        }
+        if(*existing != resource.scope_id.value()) {
+            txn.rollback();
+            throw std::invalid_argument(
+                "ResourceId is already bound to a different scope"
+            );
+        }
+        txn.commit();
+    }
+
+    [[nodiscard]] std::optional<std::string> claim_or_existing(
+        const std::string& key,
+        const std::string& payload
+    ) {
+        for(;;) {
+            auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            if(m_intents.insert(key, payload, txn)) {
+                txn.commit();
+                return std::nullopt;
+            }
+            const auto existing = m_intents.find(key, txn);
+            txn.commit();
+            if(existing) return existing;
+        }
+    }
+
+    void release_expected(const std::string& key, const std::string& payload) {
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        const auto existing = m_intents.find(key, txn);
+        if(!existing) {
+            txn.commit();
+            return;
+        }
+        if(*existing != payload) {
+            txn.rollback();
+            throw std::runtime_error("resource import intent payload changed during publication");
+        }
+        if(!m_intents.erase(key, txn)) {
+            txn.rollback();
+            throw std::runtime_error("resource import intent could not be released");
+        }
+        txn.commit();
+    }
+
+    void ensure_manifest_compatibility(const ObservedResource& resource) const {
+        const auto existing = m_manifests.find_manifest(resource.resource_id);
+        if(existing && existing->payload_version != ResourceManifestPayloadVersion::V6) {
+            throw std::runtime_error(
+                "legacy resource manifest lacks verified text-origin provenance; "
+                "export and explicitly migrate it before importing"
+            );
+        }
+    }
+
+    void ensure_manifest_compatibility(
+        const ObservedResource& resource,
+        const ResourceRevision& revision,
+        const ResourceBodyDigest& digest
+    ) const {
+        const auto existing = m_manifests.find_manifest(resource.resource_id);
+        if(!existing) return;
+        if(existing->payload_version != ResourceManifestPayloadVersion::V6) {
+            throw std::runtime_error(
+                "legacy resource manifest lacks verified text-origin provenance; "
+                "export and explicitly migrate it before importing"
+            );
+        }
+        if(existing->revision.generation == revision.generation &&
+           (existing->revision.pipeline_config_hash != revision.pipeline_config_hash ||
+            !same_provenance(
+                existing->revision.text_origin,
+                existing->revision.derived_text_provenance,
+                revision.text_origin,
+                revision.derived_text_provenance
+            ) ||
+            !existing->revision.body_digest ||
+            existing->revision.body_digest->bytes != digest.bytes)) {
+            throw std::runtime_error(
+                "resource revision metadata changed without a new canonical body generation"
+            );
         }
     }
 
@@ -439,6 +610,7 @@ private:
     MdbxDurableLexicalDocumentMemory m_lexical;
     MdbxResourceManifestStorage m_manifests;
     mdbxc::KeyValueTable<std::string, std::string> m_intents;
+    mdbxc::KeyValueTable<std::string, std::string> m_bindings;
     std::function<void(ResourceImporterFaultPoint)> m_fault_injector;
     mutable std::mutex m_mutex;
 };

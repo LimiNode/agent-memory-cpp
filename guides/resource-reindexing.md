@@ -63,6 +63,11 @@ can model a revision as `resource_id`, `generation`, an uncompressed content
 hash, and a pipeline configuration hash. It adapts to, rather than replaces,
 immutable `SourceRevisionId` in artifact-aware profiles.
 
+The narrow durable lexical importer uses `generation` for the canonical body
+generation. Its pipeline configuration and derived-text provenance are bound
+to that generation; a metadata-only pipeline/provenance change is rejected
+until the importer has an independent projection-generation contract.
+
 `SourceLocator`
 : A portable, mutable observation of where a logical resource was seen. It is
 not identity and may change while `ResourceId` remains stable. A source can
