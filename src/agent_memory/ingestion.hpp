@@ -10,5 +10,6 @@
 #include "storage.hpp"
 
 #include "ingestion/ResourceIndexer.hpp"
+#include "ingestion/ResourceImporter.hpp"
 
 #endif

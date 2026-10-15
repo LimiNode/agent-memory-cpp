@@ -13,6 +13,8 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+#include "MdbxStorageContext.hpp"
+
 namespace agent_memory {
 
     /// \brief Configuration for MDBX-backed resource manifest storage.
@@ -23,6 +25,17 @@ namespace agent_memory {
         ///       distinct input prefixes can map to the same table prefix.
         std::string table_prefix = "agent_memory";
         bool relative_to_exe = false;
+        std::int64_t max_dbs = kDefaultMdbxMaxDbs;
+        std::shared_ptr<MdbxStorageContext> context;
+        /// Optional pre-opened table used by guarded manifest publication.
+        std::string publication_guard_table_name;
+    };
+
+    /// \brief Durable compare token checked in the manifest write transaction.
+    struct MdbxManifestPublicationGuard final {
+        std::string table_name;
+        std::string key;
+        std::string expected_value;
     };
 
     /// \brief MDBX-backed implementation of `IResourceManifestStorage`.
@@ -42,6 +55,21 @@ namespace agent_memory {
         ) noexcept;
 
         void upsert_manifest(ResourceManifest manifest) override;
+
+        /// \brief Publishes a manifest only when the previously observed value
+        ///        is still present and byte-for-byte unchanged.
+        /// \throws std::runtime_error when another writer changed the value.
+        void upsert_manifest_if_unchanged(
+            ResourceManifest manifest,
+            const std::optional<ResourceManifest>& expected
+        );
+
+        /// \brief Conditionally publishes while the durable intent still matches.
+        void upsert_manifest_if_unchanged_guarded(
+            ResourceManifest manifest,
+            const std::optional<ResourceManifest>& expected,
+            MdbxManifestPublicationGuard guard
+        );
 
         [[nodiscard]] std::optional<ResourceManifest> find_manifest(
             const ResourceId& resource_id

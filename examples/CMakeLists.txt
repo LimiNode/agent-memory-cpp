@@ -25,4 +25,13 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         PRIVATE
             agent_memory::agent_memory
     )
+
+    add_executable(agent_memory_resource_importer
+        resource_importer.cpp
+    )
+
+    target_link_libraries(agent_memory_resource_importer
+        PRIVATE
+            agent_memory::agent_memory
+    )
 endif()

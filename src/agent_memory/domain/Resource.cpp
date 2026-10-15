@@ -6,6 +6,14 @@
 
 namespace agent_memory {
 
+    bool is_valid_derived_text_provenance(
+        const DerivedTextProvenance& provenance
+    ) noexcept {
+        return !provenance.source_media_type.empty()
+            && !provenance.extractor_id.empty()
+            && !provenance.extractor_version.empty();
+    }
+
     namespace {
 
         struct DerivedRecordKindName final {
@@ -154,6 +162,23 @@ namespace agent_memory {
             manifest.revision.body_digest &&
             !is_valid_resource_body_digest(*manifest.revision.body_digest)
         ) {
+            return false;
+        }
+
+        if(manifest.revision.text_origin == SourceTextOrigin::OriginalText) {
+            if(manifest.revision.derived_text_provenance) {
+                return false;
+            }
+        } else if(manifest.revision.text_origin == SourceTextOrigin::DerivedExtraction) {
+            if(
+                !manifest.revision.derived_text_provenance
+                || !is_valid_derived_text_provenance(
+                    *manifest.revision.derived_text_provenance
+                )
+            ) {
+                return false;
+            }
+        } else {
             return false;
         }
 

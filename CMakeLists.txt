@@ -44,6 +44,7 @@ add_library(agent_memory STATIC
     src/agent_memory/eval/StubRetriever.cpp
     src/agent_memory/facts/Fact.cpp
     src/agent_memory/ingestion/ResourceIndexer.cpp
+    src/agent_memory/ingestion/ResourceImporter.cpp
     src/agent_memory/index/AggregateBinarySignature.cpp
     src/agent_memory/index/AsymmetricBinarySignatureScorer.cpp
     src/agent_memory/index/AutoencoderBinaryEncoder.cpp
@@ -130,6 +131,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxWorkspaceStorageRegistry.cpp
             src/agent_memory/infrastructure/mdbx/MdbxDurableLexicalDocumentMemory.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxResourceImporter.cpp
     )
 
     agent_memory_provide_mdbx_containers(AGENT_MEMORY_MDBX_CONTAINERS_TARGET)
@@ -174,6 +176,11 @@ if(AGENT_MEMORY_BUILD_TESTS)
             add_test(
                 NAME agent_memory_durable_lexical_document_memory_example
                 COMMAND $<TARGET_FILE:agent_memory_durable_lexical_document_memory>
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_resource_importer_example
+                COMMAND $<TARGET_FILE:agent_memory_resource_importer>
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
         endif()

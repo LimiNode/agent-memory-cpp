@@ -133,6 +133,12 @@ EXPECTED_PHYSICAL_KEYS = {
         "ScopeId", "ProjectionKind", "LexicalStatisticsEpoch", "FieldId",
         "TokenId", "SegmentId",
     ],
+    "agent_memory_durable_lexical_catalog": [
+        "RecordKind", "ScopeId", "OptionalResourceId",
+    ],
+    "agent_memory_resource_import_intents": ["ResourceId"],
+    "agent_memory_resource_import_bindings": ["ResourceId"],
+    "agent_memory_resource_import_epochs": ["ResourceId"],
 }
 
 STALE_TERMS = {

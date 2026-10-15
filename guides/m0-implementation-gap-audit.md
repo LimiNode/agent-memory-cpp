@@ -2,18 +2,18 @@
 
 This short audit compares the M0 requirements in `guides/milestones.md` with
 `guides/retrieval-roadmap-coverage.md`. The coverage audit classifies canonical
-raw/plain MDBX bodies and the core lexical primitives as implemented, while
-durable importing, a resource catalog and a rebuildable lexical projection
-remain incomplete.
+raw/plain MDBX bodies and the core lexical primitives as implemented. This PR
+adds a narrow lexical-first importer and manifest publication path; the full
+normative M0 resource and knowledge-unit gates remain incomplete.
 
 | M0 gate | State before this PR | Result of this PR |
 | --- | --- | --- |
-| Raw resource ingest | Contracts and canonical C1 storage exist; no executable UTF-8 ingest/reopen path | Narrow `.md`/`.txt`/log-compatible UTF-8 text upsert with stable resource identity and reopen |
+| Raw resource ingest | Contracts and canonical C1 storage exist; no executable UTF-8 ingest/reopen path | Narrow `.md`/`.txt`/log-compatible UTF-8 text import with stable resource identity, manifest binding, durable intent recovery and reopen |
 | Chunk/Note units | Contract only | Not addressed; this slice maps one resource to one lexical chunk without claiming a knowledge-unit store |
 | Immutable knowledge-unit identity | Value contracts only | Not addressed |
 | Source summaries | Value contracts only | URI and original body are hydrated, but no `SourceRefSummary` persistence is claimed |
 | Original projection | Contract only | Rebuildable BM25 view only; no general `IProjectionStore` implementation |
-| Lexical retrieval | In-memory tokenizer/index primitives exist; coverage says roadmap only for the product path | Deterministic BM25 product path over durable canonical bodies |
+| Lexical retrieval | In-memory tokenizer/index primitives exist; coverage says roadmap only for the product path | Deterministic BM25 product path over durable canonical bodies, exercised through the importer |
 | Scope isolation | Contract and some storage slices exist | Covered for ingest, reopen and search in this profile |
 | Retrieval trace | Missing product path | Not addressed |
 
@@ -23,16 +23,26 @@ The smallest useful production surface is one vertical slice:
 
 `scope/resource -> durable canonical UTF-8 body -> deterministic BM25 index -> reopen -> search`
 
-`MdbxDurableLexicalDocumentMemory` is the only new production API needed for
-this first slice. Its options, `upsert_text`, `search` and hydrated hit value
-form the deliberately small public surface. It keeps independent per-resource
-catalog records in MDBX, stores one canonical `body` block through
-`MdbxCanonicalContentStore`, and rebuilds an in-memory `ExactLexicalIndex` when
-opened. A durable intent makes publication recoverable across the canonical
-and catalog transactions, while the published record binds URI and search to
-one exact canonical revision. Updates retain the logical resource identifier
-and expose a one-based body generation. Search results hydrate that published
-URI and revision-bound text.
+The new `IResourceImporter`/`MdbxResourceImporter` surface composes the
+existing durable lexical memory with `MdbxResourceManifestStorage`. It accepts
+one host-observed UTF-8 resource, records a SHA-256 body digest and text-origin
+provenance, publishes document/chunk-shaped manifest records, and exposes
+manifest lookup plus lexical search. A durable import intent makes the
+lexical-first publication recoverable: an interruption leaves the previous
+manifest visible and is completed on reopen or by a later importer after the
+lease expires. Resource IDs are durably bound to
+lease-expired recovery first completes the durable pending payload before a
+new observed payload for the same ResourceId is claimed. Resource IDs are
+durably bound to one scope within this manifest profile; reusing an ID from
+another scope fails
+closed. Search hides resources with a pending import intent, so an
+uncommitted lexical publication is not visible through the importer. Intent
+acquisition and release use compare-and-check transactions. Canonical, lexical,
+and manifest publication each recheck the exact fencing intent in their own
+write transaction, so a stale executor cannot advance the active canonical
+head after losing ownership. Same-body
+pipeline/provenance changes are rejected until an independent
+projection-generation contract exists.
 
 Normal upserts replace only the affected in-memory lexical record. Full scope
 rebuild remains a reopen and stale-reader refresh strategy for this first
@@ -45,17 +55,21 @@ performance-gated follow-up work, not a generic synchronization framework,
 background queue, or replication system in this PR. Text with no lexical
 tokens remains durable but is omitted from BM25.
 
-The checked example and focused CTest cover ingest, scope isolation, lexical
-search, targeted update, shared-context visibility, interrupted-publication
-recovery, tokenless text, reopen, hydration and invalid-input handling.
+The checked importer example and focused CTest cover ingest, manifest binding,
+lexical search, metadata-only update, interrupted-publication recovery, reopen,
+all five fault points, pending-visibility filtering, scope binding, SHA-256,
+UTF-8 validation and derived-text provenance. The underlying lexical-memory
+tests still cover scope isolation, shared-context visibility, tokenless text
+and hydration.
 
 ## Deliberate boundaries
 
-This PR does not claim that all M0 gates are complete. Resource manifests and
-reindex protocols remain contract work; importer interfaces, multi-chunk
-segmentation, knowledge-unit persistence, projections, recovery/compaction and
-maintenance are follow-up M0 work. Dense, hybrid, graph, temporal and other
-M1/M2 capabilities are explicitly excluded.
+This PR does not claim that all M0 gates are complete. Multi-chunk
+segmentation, `KnowledgeUnitStore`, `SourceRefSummary` persistence, a general
+Original projection store, retrieval traces, reindex protocols beyond this
+publication intent, recovery/compaction and maintenance are follow-up M0 work.
+Dense, hybrid, graph, temporal and other M1/M2 capabilities are explicitly
+excluded.
 
 The lexical index is a rebuildable derived view, not a second source of truth.
 The durable source of truth is the existing canonical content store. No

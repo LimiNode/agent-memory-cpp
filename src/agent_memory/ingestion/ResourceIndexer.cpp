@@ -19,7 +19,8 @@ namespace agent_memory {
         constexpr std::uint32_t RESOURCE_INDEXER_MANIFEST_SCHEMA_VERSION = 1;
 
         bool is_resource_indexer_schema(const ResourceManifest& manifest) noexcept {
-            return manifest.payload_version == ResourceManifestPayloadVersion::V5 &&
+            return (manifest.payload_version == ResourceManifestPayloadVersion::V5 ||
+                    manifest.payload_version == ResourceManifestPayloadVersion::V6) &&
                 manifest.schema.schema_id == RESOURCE_INDEXER_MANIFEST_SCHEMA_ID &&
                 manifest.schema.schema_version == RESOURCE_INDEXER_MANIFEST_SCHEMA_VERSION;
         }
@@ -153,7 +154,8 @@ namespace agent_memory {
                 );
             }
 
-            if(manifest.payload_version != ResourceManifestPayloadVersion::V5) {
+            if(manifest.payload_version != ResourceManifestPayloadVersion::V5 &&
+               manifest.payload_version != ResourceManifestPayloadVersion::V6) {
                 throw ResourceIndexManifestCompatibilityError(
                     ResourceIndexManifestCompatibilityReason::LegacyPayload,
                     "Stored resource manifest requires explicit migration"

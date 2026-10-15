@@ -429,9 +429,9 @@ int main() {
             persisted->revision.body_digest->bytes != make_body_digest(0x3CU).bytes ||
             persisted->state != agent_memory::ResourceManifestState::ErasePending ||
             persisted->pending_reclaim_records.size() != 1
-            || persisted->payload_version != agent_memory::ResourceManifestPayloadVersion::V5
+            || persisted->payload_version != agent_memory::ResourceManifestPayloadVersion::V6
         ) {
-            return fail("MDBX manifest storage must persist v5 manifest fields");
+            return fail("MDBX manifest storage must persist v6 manifest fields");
         }
 
         if(!agent_memory::is_valid_resource_manifest(*persisted)) {
