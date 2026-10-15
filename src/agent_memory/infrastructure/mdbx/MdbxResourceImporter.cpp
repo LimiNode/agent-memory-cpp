@@ -436,6 +436,7 @@ public:
         const auto key = resource.resource_id.value();
         const auto requested_payload = serialize_intent(PendingImport{resource});
         bind_scope(resource);
+        ensure_manifest_compatibility(resource);
         const auto existing = claim_or_existing(key, requested_payload);
         if(existing && *existing != requested_payload) {
             throw std::runtime_error("a different resource import is already pending");
@@ -587,7 +588,9 @@ private:
                 resource.derived_text_provenance
             ))) {
             throw std::runtime_error(
-                "resource revision metadata changed before canonical publication"
+                "resource revision metadata changed before canonical publication: " +
+                std::to_string(existing->revision.pipeline_config_hash) + " -> " +
+                std::to_string(resource.pipeline_config_hash)
             );
         }
     }

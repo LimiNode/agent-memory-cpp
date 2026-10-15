@@ -214,8 +214,9 @@ int main() {
     const auto concurrency_path = test_path("concurrency");
     std::filesystem::remove(concurrency_path, error);
     {
+        const auto context = MdbxStorageContext::open(concurrency_path.string());
         MdbxResourceImporterOptions first_options;
-        first_options.path = concurrency_path.string();
+        first_options.context = context;
         first_options.fault_injector = [](ResourceImporterFaultPoint point) {
             if(point == ResourceImporterFaultPoint::AfterIntent) {
                 throw std::runtime_error("leave pending intent");
@@ -223,7 +224,7 @@ int main() {
         };
         MdbxResourceImporter first{std::move(first_options)};
         MdbxResourceImporterOptions second_options;
-        second_options.path = concurrency_path.string();
+        second_options.context = context;
         MdbxResourceImporter second{std::move(second_options)};
         bool first_interrupted = false;
         try {
