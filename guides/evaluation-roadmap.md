@@ -101,6 +101,110 @@ verification; `ProcedureTransfer`, `CorrectionReuse` and
 performance outside memorized concrete cases. These metrics never authorize
 execution and do not replace retrieval `Recall@K` or qrels-based `nDCG@10`.
 
+## Task-Closure-Aware Retrieval and Evidence-Opening Gate
+
+This is a research-only end-to-end gate for comparing retrieval and context
+policies on declared tasks. It measures verified task closure, not whether an
+agent is generally cheaper or better than one-shot RAG. The core library remains
+a deterministic substrate; host runtime owns tool invocation, answer generation
+and human escalation.
+
+A task fixture declares:
+
+- the pinned source revisions, read frontiers, scope and access policy;
+- the task, required evidence roots and an independent success predicate;
+- protected facts such as exact identifiers, versions, commands, constraints and
+  exceptions that must survive the task;
+- the allowed `Unknown`, `Unavailable` and human-escalation outcomes;
+- the final ContextPack and decoded-byte budgets.
+
+Candidate discovery and evidence opening are separate measured stages:
+
+```text
+candidate discovery
+  -> exact lexical or semantic lookup
+  -> selective source opening
+  -> structure navigation when needed
+  -> canonical hydration and verification
+  -> answer, Unknown or escalation
+```
+
+A candidate score or projection hit is not evidence by itself. Opening a
+selected chunk, reading covering structure or hydrating a source representation
+must preserve the pinned revision/frontier and provenance. The corresponding
+execution contract is defined in
+[`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md).
+
+### Comparison arms
+
+Run the following policies on the same predeclared task set:
+
+| Arm | Policy variable | Required control |
+|---|---|---|
+| One-shot baseline | One bounded retrieval pass with declared selective opening | deterministic route, source hydration and final ContextPack budget |
+| Fixed multi-step | A fixed number and order of additional retrieval/opening steps | same routes, source revisions, frontiers and total work envelope |
+| Adaptive bounded | Stop, change route or open more evidence only when the declared progress rule requires it | same route set, maximum work envelope and final ContextPack budget |
+
+The comparison freezes corpus and query hashes, qrels or task oracles, source
+revisions, frontiers, access policy, available route set, projection/model
+revisions, tokenizer and final output budget. Adaptive selection may use fewer
+steps, but it may not receive hidden extra calls, tokens, decoded bytes, source
+opens or oracle labels. Actual work and unused budget are reported separately.
+
+Benchmark outcome labels are evaluation classifications, not public C++ states:
+
+| Outcome | Meaning |
+|---|---|
+| Verified closure | The declared success predicate passes and required claims have allowed source/provenance support. |
+| False closure | The system reports completion, but an independent oracle finds a protected failure or unsupported claim. |
+| Bounded unknown | Available evidence is insufficient and the system states that limitation without inventing an answer. |
+| Escalated | The policy requests a host or human decision under the declared escalation rule. |
+| Incomplete or timeout | The work envelope ends before a verified or explicitly unknown outcome is produced. |
+
+Fewer user follow-up questions or fewer escalations do not establish correct
+closure. A lower-cost arm is a win only when it preserves verified closure,
+protected facts, provenance, access policy and privacy on an independent holdout.
+
+### Full cost and evidence ledger
+
+Every arm reports the work needed to reach the outcome, not only provider token
+usage. Keep these evidence classes separate:
+
+| Cost class | Meaning |
+|---|---|
+| Measured | Counters and timings observed by the runner, such as route work, source opens, decoded bytes, storage reads and latency. |
+| Provider-declared | Usage reported by a model or service provider. It is evidence of reported consumption, not a complete system bill. |
+| Estimated | A declared price or operational model applied to measured/provider-declared quantities. Assumptions and uncertainty are retained. |
+
+Report retrieval, query/corpus encoding, reranking, source opening and hydration,
+decoded bytes, transport, storage/index maintenance, provider calls, human
+escalation and p50/p95/p99 latency as separate components. Do not silently add
+measured, provider-declared and estimated values into one apparently exact total.
+
+### Independence and protected fixtures
+
+Calibration, policy selection and final evaluation use disjoint, predeclared
+partitions, following the same training/calibration, validation and held-out
+test discipline as MVA-0. Hidden decision answers and evaluation-only labels
+must not influence stopping, route selection, gain estimation or model/policy
+tuning.
+
+At minimum, the holdout contains:
+
+- an exact code symbol, identifier or command where one character changes the result;
+- a version or migration constraint and a negative or exception condition;
+- a fact distributed across multiple source files or document sections;
+- a correction whose newer source revision must displace an older answer;
+- a post-compaction case where the exact fact must be recovered by opening the
+  canonical source rather than by trusting a summary.
+
+If the source is missing, denied or stale, the result is `Unknown`,
+`Unavailable` or the applicable redacted policy outcome. The evaluator must not
+accept a plausible summary or model continuation as source recovery.
+
+A passing gate requires a versioned report, independent oracle or human-reviewed
+holdout, full cost ledger and protected-case results. The gate does not add an
+agent loop, a tool API, a new lifecycle state or a production stopping policy.
 ## Decision-Relevant Retention Gate
 
 This gate evaluates whether a summary, compacted context, or compressed
