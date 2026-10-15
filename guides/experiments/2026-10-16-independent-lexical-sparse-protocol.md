@@ -253,3 +253,37 @@ why the next PR is a runner/protocol implementation rather than an integration.
   checkpoint;
 - append measured results to this research line rather than replacing this
   protocol note.
+
+## PR2 runner smoke (2026-10-16)
+
+Context: `research/lexical-alternatives-runner`, initially based on protocol
+commit `01f168e1`. This is a harness check, not an algorithm comparison.
+
+Command:
+
+```text
+py -3 tools/lexical-research/run_lexical_protocol.py \
+  --dataset tools/lexical-research/fixtures/lexical_protocol_smoke.json \
+  --self-test
+```
+
+Expected result: the fixture exercises an exact identifier, a code-oriented
+multi-term query, a Russian query, and an explicit no-answer query. The smoke
+must preserve the expected top document for the first three and return no hits
+for the no-answer case.
+
+Actual result: `verified` at the runner commit recorded by the PR. The self-test passed with
+`Recall@1/5/10/50 = 1.0`, `nDCG@10 = 1.0`, `MRR = 1.0`, and no-answer accuracy
+`1.0`. A separate three-repeat receipt was written outside Git under
+`.artifacts/lexical-protocol-smoke.json`; its p50/p95/p99 values are local
+Python directional timings and are not performance evidence.
+
+Interpretation: PR2 now provides a small, hash-bound corpus/qrels input and a
+portable BM25 control for subsequent scorer plugins. It does not establish
+parity with the C++ `ExactLexicalIndex`; the runner README and PR3 gate require
+that comparison before any quality or latency claim.
+
+Limitations: the fixture is intentionally tiny, uses one frozen tokenizer
+profile, has no stale-posting or update replay, and contains no learned-sparse
+artifact. Model inference, compressed postings, WAND/BMW, and MDBX remain
+unmeasured.
