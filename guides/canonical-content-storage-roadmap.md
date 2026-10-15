@@ -541,9 +541,13 @@ and whether a final newline is present. For the line-oriented profile:
 
 Line ranges are coordinates in that materialized revision. They are not
 persistent IDs and must never be replayed against an implicitly newer revision.
-If a range cannot be mapped unambiguously to the canonical block/structure
-revision, the operation is rejected or recorded as an explicit materialized
-revision with provenance; it must not guess which source blocks were intended.
+For a lossless canonical edit such as `replace_lines`, if a range cannot be
+mapped unambiguously to the canonical block/structure revision, the operation
+must fail closed. It must not guess which source blocks were intended or fall
+back to importing the materialized text. A host may separately choose an
+explicit materialized import/reconstruction operation that rebuilds canonical
+blocks, but that operation is not lossless `replace_lines` and must report any
+loss of block-identity reuse together with its provenance.
 
 A conceptual host flow is:
 
