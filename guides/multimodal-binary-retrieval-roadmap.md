@@ -22,6 +22,68 @@ heads remain optional adapters. A new model output is a versioned projection;
 it does not alter the original artifact or turn model-generated text into
 source truth.
 
+## Typed result and hydration boundary
+
+A binary candidate generator returns a stable logical artifact or segment
+reference plus the descriptor and typed locator needed for later hydration. It
+does not return an opaque “media result” that bypasses the canonical source
+contracts.
+
+The result path is:
+
+    query/projection route
+      -> strict scope/access/policy validation
+      -> exact eligible canonical-unit set or trusted policy constraint
+      -> candidate creation within one compatible descriptor/space
+      -> ranking and any compatible fusion
+      -> repeat scope/access/lifecycle/revision-frontier validation
+      -> Artifact/Representation plus typed EvidenceAnchor
+      -> requested image, audio or video materialization
+         |-> Available
+         |-> Partial with an explicit missing portion
+         |-> Stale when the derived result is not current at the requested frontier
+         |-> Denied with a redacted client-visible outcome
+         \-> Unavailable with a diagnostic reason
+
+The first validation is mandatory before candidate creation. It uses the
+host-issued `RetrievalAccessContext` and the deny-by-default `AccessPolicy`
+contract from `policies-roadmap.md`, with the strict-filter scope listed in
+`milestones.md` (scope, access, status, language, jurisdiction and trust).
+Soft domain or modality routing may choose among already eligible routes, but
+it must never replace these filters. An external derived index may receive only
+an `ExternalCandidateConstraint` containing the exact eligible-unit set, read
+frontier and policy fingerprint, and only through an adapter in the same
+trusted security domain. The adapter must enforce that exact constraint before
+top-K/ranking. Host grants, roles, jurisdictions, the full
+`RetrievalAccessContext` and raw policy claims must never cross the adapter
+boundary. After ranking or fusion, the same authoritative
+scope/access/lifecycle and source-revision frontier checks run again before
+hydration or context materialization. A denied candidate must not reveal its
+source identity or sensitive denial reason.
+
+Image, audio and video routes must retain the distinction between semantic
+representations, identity fingerprints, transcripts/OCR and original media.
+For example, an ASR interval may support text retrieval while the source
+materialization remains an audio time range. A keyframe hit may point to a
+frame region while the video source remains a temporal clip. A perceptual hash
+identifies a near-copy; it does not prove semantic relevance.
+
+`RepresentationId` is the opaque identity of a derived representation under
+the owning artifact/provenance profile. This roadmap does not introduce a
+separate numeric representation revision. If an owning normative contract
+records representation version metadata, the route must carry that declared
+identity without inventing a new counter. `projection_generation` remains an
+independent derived freshness/version token for the projection or encoder; it
+does not replace `SourceRevisionId` or change the source grounding identity.
+
+The typed result/hydration contract is owned jointly by
+knowledge-base-roadmap.md and artifact-provenance-roadmap.md. This document
+only constrains binary retrieval to preserve the stable identity, declared
+representation identity, projection generation and typed locator needed by
+that contract. Candidate ranking never silently fuses incompatible binary
+spaces, and hydration never substitutes a newer source revision or a derived
+description for the requested original.
+
 ## Binary Spaces Are Not Modalities
 
 The engine may reuse Hamming storage, flat scan, MIH, full-code scoring and
