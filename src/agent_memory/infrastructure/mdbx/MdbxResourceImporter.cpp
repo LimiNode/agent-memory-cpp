@@ -538,7 +538,26 @@ public:
         ensure_manifest_compatibility(resource);
         auto claim = claim_import(resource);
         if(!same_import_request(claim.operation.resource, resource)) {
-            throw std::runtime_error("a different resource import is already pending");
+            if(claim.operation.owner_id == m_owner_id ||
+               claim.operation.lease_expires_at_ms > now_ms()) {
+                throw std::runtime_error("a different resource import is already pending");
+            }
+            const auto recovered = takeover_pending(
+                resource.resource_id.value(),
+                claim.payload,
+                std::move(claim.operation)
+            );
+            static_cast<void>(complete(
+                recovered.operation,
+                false,
+                recovered.payload
+            ));
+            claim = claim_import(resource);
+            if(!same_import_request(claim.operation.resource, resource)) {
+                throw std::runtime_error(
+                    "resource import changed while recovering an expired intent"
+                );
+            }
         }
         if(claim.operation.owner_id != m_owner_id) {
             if(claim.operation.lease_expires_at_ms > now_ms()) {

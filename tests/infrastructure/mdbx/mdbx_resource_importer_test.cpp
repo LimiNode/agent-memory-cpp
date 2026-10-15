@@ -380,13 +380,14 @@ int main() {
                "same payload was allowed to execute without owning the live lease");
         second_now = 1'000;
         const auto recovered_result = second.import(original(
-            "resource:concurrent", "https://example.test/concurrent", "concurrent source"
+            "resource:concurrent", "https://example.test/other", "new concurrent source"
         ));
-        expect(recovered_result.revision.generation == 1,
-               "an existing executor did not recover an expired pending import on demand");
+        expect(recovered_result.revision.generation == 2,
+               "an existing executor did not recover P before importing Q on demand");
         const auto completed = second.find_manifest(ResourceId{"resource:concurrent"});
-        expect(completed && completed->revision.generation == 1,
-               "on-demand recovery did not publish the pending import");
+        expect(completed && completed->revision.generation == 2 &&
+                   completed->revision.source_uri == "https://example.test/other",
+               "on-demand recovery did not publish the replacement payload");
     }
     std::filesystem::remove(concurrency_path, error);
 

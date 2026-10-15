@@ -31,7 +31,10 @@ manifest lookup plus lexical search. A durable import intent makes the
 lexical-first publication recoverable: an interruption leaves the previous
 manifest visible and is completed on reopen or by a later importer after the
 lease expires. Resource IDs are durably bound to
-one scope within this manifest profile; reusing an ID from another scope fails
+lease-expired recovery first completes the durable pending payload before a
+new observed payload for the same ResourceId is claimed. Resource IDs are
+durably bound to one scope within this manifest profile; reusing an ID from
+another scope fails
 closed. Search hides resources with a pending import intent, so an
 uncommitted lexical publication is not visible through the importer. Intent
 acquisition and release use compare-and-check transactions. Canonical, lexical,
