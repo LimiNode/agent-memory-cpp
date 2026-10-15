@@ -459,7 +459,6 @@ public:
         const auto key = resource.resource_id.value();
         const auto requested_payload = serialize_intent(PendingImport{resource, m_owner_token});
         ensure_manifest_compatibility(resource);
-        bind_scope(resource);
         const auto existing = claim_or_existing(key, requested_payload);
         if(existing) {
             const auto existing_operation = deserialize_intent(*existing);
@@ -472,6 +471,13 @@ public:
                 throw std::runtime_error(
                     "a different resource import is already pending"
                 );
+            }
+        } else {
+            try {
+                bind_scope(resource);
+            } catch(...) {
+                release_expected(key, requested_payload);
+                throw;
             }
         }
         if(!existing) {
