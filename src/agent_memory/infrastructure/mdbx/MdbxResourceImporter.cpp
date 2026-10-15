@@ -587,7 +587,7 @@ private:
                 resource.derived_text_provenance
             ))) {
             throw std::runtime_error(
-                "resource revision metadata changed without a new canonical body generation"
+                "resource revision metadata changed before canonical publication"
             );
         }
     }
@@ -616,7 +616,7 @@ private:
             !existing->revision.body_digest ||
             existing->revision.body_digest->bytes != digest.bytes)) {
             throw std::runtime_error(
-                "resource revision metadata changed without a new canonical body generation"
+                "resource revision metadata changed during canonical publication"
             );
         }
     }
