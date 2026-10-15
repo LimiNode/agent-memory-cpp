@@ -79,23 +79,48 @@ enum values are recorded. Query-level `RetrievalCompletion` has
 ### Candidate discovery and evidence opening
 
 Candidate discovery and evidence opening are separate execution stages with
-separate diagnostics and cost attribution:
+separate diagnostics and cost attribution. The execution order is:
 
 ```text
-projection/index route
-  -> candidate identity, score and source/provenance reference
+RetrievalPlan
+  -> strict access/policy/filter frontier
+  -> candidate discovery
+       -> projection/index route
+       -> candidate identity and ranking metadata
   -> selective canonical source opening
-  -> structure or covering-row navigation when required
+  -> scope/access/lifecycle/revision/provenance revalidation
   -> exact-revision hydration and verification
-  -> eligible RetrievalHit or an explicit incomplete outcome
+  -> optional ContextPack materialization
 ```
 
+The strict access/policy/filter frontier is evaluated before any candidate or
+`RetrievalHit` is created. It applies the existing scope, access, lifecycle,
+tombstone/staleness and policy rules from `policies-roadmap.md`; it is not a
+post-ranking cleanup step.
+
 Candidate discovery may use lexical, semantic, binary, graph or routing
-projections. It produces a bounded set of references; a score, snippet or
-projection descriptor is not evidence by itself. Source opening reads a selected
-canonical chunk, range, representation or structural covering row at the pinned
+projections. It yields bounded candidate references and ranking envelopes. The
+existing `RetrievalHit` remains a ranking envelope: it may exist before full
+source opening or hydration, and its score, snippet or projection descriptor
+is not evidence by itself. A hit may therefore be useful for ranking while not
+being hydratable. This distinction does not add a public result type.
+
+The stages have separate meanings:
+
+- a **candidate/hit** is a bounded identity and ranking envelope admitted by
+  the pre-candidate frontier;
+- **opened evidence** is allowed canonical source material successfully opened
+  at the pinned revision/frontier after revalidation;
+- a **ContextPack** is the later host/context-builder selection of allowed
+  material for the current request. It is not synonymous with a
+  `RetrievalHit` and is not created merely because a hit was ranked.
+
+Source opening reads a selected canonical chunk, range, representation or
+structural covering row at the pinned frontier. Before hydration, the executor
+must revalidate scope, access, lifecycle, revision and provenance against that
 frontier. It must not silently substitute a newer revision, a same-path source
-or a derived caption/transcript for the requested original.
+or a derived caption/transcript for the requested original. Only opened and
+verified evidence may contribute source-grounded material to ContextPack.
 
 The existing execution budget must account for these dimensions separately:
 
@@ -108,26 +133,31 @@ All dimensions remain inside one declared total work envelope. Selective opening
 must not create a hidden second retrieval budget, and a source-open operation
 must not bypass scope, access, lifecycle, revision or provenance checks. If the
 source is missing, denied or stale, the executor returns the applicable existing
-`Partial`, `Unavailable`, `RequiredRouteFailed` or redacted policy outcome rather
-than inventing a source-backed answer. No new public operation or result type is
-implied by this notation.
+`Partial`, `Unavailable`, `RequiredRouteFailed` or redacted policy outcome
+rather than inventing a source-backed answer. No new public operation or result
+type is implied by this notation.
 
-`RetrievalTrace` and the existing route/projection diagnostics should distinguish
-candidate discovery from source opening and final hydration. A future adapter
-may expose a tool-shaped operation such as opening a selected chunk or reading
-document structure, but that is a host-facing lowering over these contracts, not
-a new core tool API.
+`RetrievalTrace` and the existing route/projection diagnostics should
+distinguish candidate discovery, source opening and final hydration. A future
+adapter may expose a tool-shaped operation such as opening a selected chunk or
+reading document structure, but that is a host-facing lowering over these
+contracts, not a new core tool API.
 
 Minimum end-to-end acceptance fixture:
 
 1. Run semantic and exact lexical routes over a technical-document corpus with
    pinned source revisions and a declared frontier.
-2. Selectively open surviving candidates and, where needed, covering structure.
-3. Verify exact identifiers, version constraints, commands and exceptions against
-   canonical source material.
-4. Compare quality, false closure, source coverage, decoded bytes and latency
+2. Apply the strict access/policy/filter frontier before creating candidates or
+   hits.
+3. Selectively open surviving candidates and, where needed, covering structure.
+4. Revalidate scope, access, lifecycle, revision and provenance before exact
+   hydration.
+5. Verify exact identifiers, version constraints, commands and exceptions
+   against canonical source material, then materialize only the allowed
+   ContextPack content.
+6. Compare quality, false closure, source coverage, decoded bytes and latency
    under the same total work envelope.
-5. When the required source cannot be opened, require an explicit unknown or
+7. When the required source cannot be opened, require an explicit unknown or
    unavailable result; do not accept a similar chunk or summary as recovery.
 
 ### Filter-aware sufficiency and bounded refill
