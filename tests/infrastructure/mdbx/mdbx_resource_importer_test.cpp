@@ -2,6 +2,8 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+#include <mdbx_containers/KeyValueTable.hpp>
+
 #include <array>
 #include <filesystem>
 #include <stdexcept>
@@ -211,6 +213,83 @@ int main() {
         std::filesystem::remove(fault_path, error);
     }
 
+    const auto refill_path = test_path("search_refill");
+    std::filesystem::remove(refill_path, error);
+    {
+        const auto context = MdbxStorageContext::open(refill_path.string());
+        MdbxResourceImporterOptions committed_options;
+        committed_options.context = context;
+        MdbxResourceImporter committed{std::move(committed_options)};
+        (void)committed.import(original(
+            "resource:visible", "https://example.test/visible",
+            "shared retrieval phrase visible"
+        ));
+
+        MdbxResourceImporterOptions pending_options;
+        pending_options.context = context;
+        pending_options.fault_injector = [](ResourceImporterFaultPoint point) {
+            if(point == ResourceImporterFaultPoint::AfterLexicalPublication) {
+                throw std::runtime_error("leave lexical intent pending");
+            }
+        };
+        MdbxResourceImporter pending{std::move(pending_options)};
+        bool interrupted = false;
+        try {
+            (void)pending.import(original(
+                "resource:pending", "https://example.test/pending",
+                "shared retrieval phrase pending"
+            ));
+        } catch(const std::runtime_error&) { interrupted = true; }
+        expect(interrupted, "search refill fixture did not leave an intent pending");
+        const auto visible = pending.search(ScopeId{"tenant-a"}, "shared retrieval", 1);
+        expect(visible.size() == 1 && visible.front().resource_id == ResourceId{"resource:visible"},
+               "pending filtering did not refill the bounded lexical candidate set");
+    }
+    std::filesystem::remove(refill_path, error);
+
+    const auto foreign_manifest_path = test_path("foreign_schema");
+    std::filesystem::remove(foreign_manifest_path, error);
+    {
+        const auto context = MdbxStorageContext::open(foreign_manifest_path.string());
+        MdbxResourceManifestStorageOptions storage_options;
+        storage_options.context = context;
+        MdbxResourceManifestStorage storage{std::move(storage_options)};
+        ResourceManifest foreign;
+        foreign.revision.resource_id = ResourceId{"resource:foreign-schema"};
+        foreign.revision.generation = 1;
+        foreign.revision.content_hash = 1;
+        foreign.records = {
+            DerivedRecordRef{
+                DerivedRecordKind::Document,
+                ChunkId{},
+                "foreign-document",
+                0
+            }
+        };
+        foreign.schema = ResourceManifestSchema{"other.writer", 7};
+        storage.upsert_manifest(std::move(foreign));
+
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        MdbxResourceImporter importer{std::move(options)};
+        bool rejected = false;
+        try {
+            (void)importer.import(original(
+                "resource:foreign-schema",
+                "https://example.test/foreign-schema",
+                "foreign schema must remain untouched"
+            ));
+        } catch(const std::runtime_error&) { rejected = true; }
+        expect(rejected, "foreign manifest schema was accepted for overwrite");
+        const mdbxc::KeyValueTable<std::string, std::string> bindings(
+            context->connection(),
+            "agent_memory_resource_import_bindings"
+        );
+        expect(!bindings.find("resource:foreign-schema"),
+               "failed foreign-schema import left a durable scope binding");
+    }
+    std::filesystem::remove(foreign_manifest_path, error);
+
     const auto concurrency_path = test_path("concurrency");
     std::filesystem::remove(concurrency_path, error);
     {
@@ -240,11 +319,20 @@ int main() {
             ));
         } catch(const std::runtime_error&) { foreign_rejected = true; }
         expect(foreign_rejected, "foreign concurrent payload replaced pending intent");
-        const auto completed = second.import(original(
-            "resource:concurrent", "https://example.test/concurrent", "concurrent source"
-        ));
-        expect(completed.revision.generation == 1,
-               "same pending payload was not completed idempotently");
+        bool same_payload_rejected = false;
+        try {
+            (void)second.import(original(
+                "resource:concurrent", "https://example.test/concurrent", "concurrent source"
+            ));
+        } catch(const std::runtime_error&) { same_payload_rejected = true; }
+        expect(same_payload_rejected,
+               "same payload was allowed to execute without an ownership token");
+        MdbxResourceImporterOptions recovery_options;
+        recovery_options.context = context;
+        MdbxResourceImporter recovery{std::move(recovery_options)};
+        const auto completed = recovery.find_manifest(ResourceId{"resource:concurrent"});
+        expect(completed && completed->revision.generation == 1,
+               "a new executor did not recover the fenced pending import");
     }
     std::filesystem::remove(concurrency_path, error);
 

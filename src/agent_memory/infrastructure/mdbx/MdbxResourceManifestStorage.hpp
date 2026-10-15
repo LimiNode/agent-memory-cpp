@@ -47,6 +47,14 @@ namespace agent_memory {
 
         void upsert_manifest(ResourceManifest manifest) override;
 
+        /// \brief Publishes a manifest only when the previously observed value
+        ///        is still present and byte-for-byte unchanged.
+        /// \throws std::runtime_error when another writer changed the value.
+        void upsert_manifest_if_unchanged(
+            ResourceManifest manifest,
+            const std::optional<ResourceManifest>& expected
+        );
+
         [[nodiscard]] std::optional<ResourceManifest> find_manifest(
             const ResourceId& resource_id
         ) const override;

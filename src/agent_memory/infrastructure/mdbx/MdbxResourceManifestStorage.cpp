@@ -426,6 +426,27 @@ namespace agent_memory {
             );
         }
 
+        void upsert_manifest_if_unchanged(
+            ResourceManifest manifest,
+            const std::optional<ResourceManifest>& expected
+        ) {
+            const auto key = manifest.revision.resource_id.value();
+            const auto payload = serialize_manifest(manifest);
+            const auto expected_payload = expected
+                ? std::optional<std::string>{serialize_manifest(*expected)}
+                : std::nullopt;
+            auto txn = m_connection->transaction(mdbxc::TransactionMode::WRITABLE);
+            const auto current = m_manifests.find(key, txn);
+            if(current != expected_payload) {
+                txn.rollback();
+                throw std::runtime_error(
+                    "resource manifest changed before conditional publication"
+                );
+            }
+            m_manifests.insert_or_assign(key, payload, txn);
+            txn.commit();
+        }
+
         [[nodiscard]] std::optional<ResourceManifest> find_manifest(
             const ResourceId& resource_id
         ) const {
@@ -470,6 +491,13 @@ namespace agent_memory {
 
     void MdbxResourceManifestStorage::upsert_manifest(ResourceManifest manifest) {
         m_impl->upsert_manifest(std::move(manifest));
+    }
+
+    void MdbxResourceManifestStorage::upsert_manifest_if_unchanged(
+        ResourceManifest manifest,
+        const std::optional<ResourceManifest>& expected
+    ) {
+        m_impl->upsert_manifest_if_unchanged(std::move(manifest), expected);
     }
 
     std::optional<ResourceManifest> MdbxResourceManifestStorage::find_manifest(

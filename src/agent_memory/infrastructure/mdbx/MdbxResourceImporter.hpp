@@ -46,9 +46,11 @@ namespace agent_memory {
     /// ResourceId is globally unique for this manifest profile. Scope remains
     /// part of the lexical identity; callers that reuse a human-readable name
     /// in multiple scopes must provide distinct globally qualified ResourceIds.
-    /// Publication uses a durable intent table: a failure between canonical,
-    /// lexical and manifest transactions leaves the prior manifest visible and
-    /// is completed on reopen or retry.
+    /// Publication uses a durable intent table with an execution-owner token:
+    /// a same-payload caller cannot execute an intent owned by another live
+    /// executor, while a new executor may take over an interrupted intent.
+    /// A failure between canonical, lexical and manifest transactions leaves
+    /// the prior manifest visible and is completed on reopen or retry.
     class MdbxResourceImporter final : public IResourceImporter {
     public:
         explicit MdbxResourceImporter(MdbxResourceImporterOptions options);
