@@ -776,8 +776,6 @@ Minimum conformance fixtures for this contract are:
   denied source identity or sensitive reason;
 - OCR/ASR extraction with `ExtractionStatus::Partial` remaining distinct from
   hydration `Partial`;
-- policy denial before hydration with no denied source identity or bytes in the
-  client-visible trace; and
 - a cross-modal candidate whose descriptor is incompatible being rejected
   before fusion.
 
