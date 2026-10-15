@@ -127,14 +127,13 @@ equivalent edits return NoChange, and a successful edit produces one canonical
 revision. It is not an M0/KB-0 gate, and the product path does not require the
 low-level store to expose line operations as a public API.
 
-The merged `main` branch provides the canonical-content foundation and lexical
-primitives. The durable lexical document-memory vertical slice described by
-PR #508 proposes to close part of KB-0 with durable canonical text,
-deterministic lexical search, scope isolation, update and reopen; until that PR
-is merged and its corrective checks are accepted, this remains proposed rather
-than a capability of `main`. In either case it does not complete the M0 table in
-`milestones.md`: resource manifests/importers, knowledge-unit stores, source
-summaries, projections and retrieval traces remain explicit gaps.
+The merged `main` branch provides the canonical-content foundation, lexical
+primitives and the implemented durable lexical document-memory vertical slice
+from PR #508: durable canonical text, deterministic lexical search, scope
+isolation, update and reopen. This closes part of KB-0, but it does not
+complete the normative M0 table in `milestones.md`: resource
+manifests/importers, knowledge-unit stores, source summaries, projections and
+retrieval traces remain explicit gaps.
 
 ## Research policy
 
