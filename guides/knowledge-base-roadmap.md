@@ -687,14 +687,18 @@ Artifact, Representation and EvidenceAnchor concepts.
 Every result that can be shown or hydrated must preserve:
 
 - the logical source artifact or document identity;
-- the exact source revision or retained representation revision;
+- the exact original `SourceRevisionId` for every source-grounded
+  `EvidenceAnchor`;
+- a derived route additionally carries `RepresentationId`, its representation
+  revision and projection generation; a representation revision never substitutes
+  for the original `SourceRevisionId`;
 - the projection/encoder identity and generation when a derived route produced
   the candidate;
 - a typed locator appropriate to the source, such as a text range, page
   region, image region, audio time range, video time range or frame region;
 - provenance and derivation links back to the source representation; and
-- an explicit hydration state: available, partial or unavailable, with a reason
-  when the requested representation cannot be resolved.
+- an explicit hydration outcome classified by the table below; this documentation
+  does not add a public enum.
 
 The existing RetrievalHit remains the ranking envelope. Its citations and
 projection metadata point to the typed source reference; they do not turn a
@@ -705,13 +709,39 @@ authorization-gated request path for a host that actually needs a page, crop,
 audio interval, frame or video clip. Retrieval does not implicitly return
 binary bytes.
 
-Hydration is revision- and policy-qualified:
+For a source-grounded result, the identity chain is:
+
+```text
+SourceRevisionId + ArtifactId
+    -> RepresentationId + SegmentId (for example, ASR or OCR)
+    -> EvidenceAnchor / typed locator
+    -> RetrievalHit
+```
+
+When an existing knowledge-unit route is used, the bridge is
+`Artifact -> Representation -> Segment -> Chunk/KnowledgeUnitId -> RetrievalHit`.
+A host may return an Artifact target to a caller, but it must not add
+`KnowledgeUnitKind::Image` or pass a naked `ArtifactId` into `RetrievalHit`.
+The source revision remains the grounding identity even when a derived
+representation supplies the searchable segment.
+
+Hydration is revision- and policy-qualified. The following are contract-level
+outcomes and diagnostics, not a new public status enum:
+
+| Outcome | Meaning |
+| --- | --- |
+| `Available` | The requested source or representation resolves at the requested revision and frontier. |
+| `Partial` | An allowed source or representation is missing or only part of the requested materialization is available. This is hydration state, not the existing `ExtractionStatus::Partial` for OCR/ASR. |
+| `Unavailable` | The allowed source or representation cannot be resolved at the requested revision/frontier. |
+| `Denied` | Policy or access prevents hydration. The client-facing result is redacted and must not expose source identity or a sensitive denial reason. |
+| `Stale` | The projection or representation does not match the requested source revision/frontier. It must never be returned as current; use the existing stale/unavailable diagnostic path. |
 
 1. validate scope, access policy, lifecycle and the requested source revision at
    one read frontier;
 2. resolve the typed locator against that exact revision/representation;
-3. return the requested materialization, or an explicit Partial/Unavailable
-   outcome with provenance of what could not be resolved;
+3. return the requested materialization, or the applicable Partial/Unavailable
+   outcome (or a redacted Denied result) with provenance only for material that
+   the caller is allowed to inspect;
 4. never substitute a newer revision, a same-path file, or a derived caption or
    transcript when the caller asked for the original representation.
 
@@ -739,8 +769,13 @@ Minimum conformance fixtures for this contract are:
 - audio result with a time-range locator that is not confused with its ASR
   transcript;
 - video result with a temporal or frame locator and explicit source revision;
-- stale or unavailable representation returning Partial/Unavailable rather than
-  a current-revision substitute;
+- an allowed-but-missing source or representation returning Partial/Unavailable;
+- a stale projection or representation never returned as a current-revision
+  result;
+- policy denial before hydration with a redacted client-visible outcome and no
+  denied source identity or sensitive reason;
+- OCR/ASR extraction with `ExtractionStatus::Partial` remaining distinct from
+  hydration `Partial`;
 - policy denial before hydration with no denied source identity or bytes in the
   client-visible trace; and
 - a cross-modal candidate whose descriptor is incompatible being rejected
