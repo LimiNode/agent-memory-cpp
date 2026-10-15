@@ -406,6 +406,8 @@ public:
             MdbxCanonicalContentStoreOptions canonical_options;
             canonical_options.table_prefix = options.table_prefix;
             canonical_options.context = m_context;
+            canonical_options.publication_guard_table_name =
+                table_name(options.table_prefix, "resource_import_intents");
             return canonical_options;
         }())
         , m_fault_injector(std::move(options.fault_injector)) {
@@ -496,7 +498,21 @@ private:
                 continue;
             }
 
-            const auto revision = ensure_canonical(requested);
+            CanonicalDocumentRevision revision;
+            try {
+                revision = ensure_canonical(requested);
+            } catch(const std::runtime_error& error) {
+                if(requested.guard &&
+                   std::string_view{error.what()}.find(
+                       "canonical publication fence rejected"
+                   ) != std::string_view::npos) {
+                    discard_pending(requested, requested_payload);
+                    throw std::runtime_error(
+                        "durable lexical publication fence rejected the operation"
+                    );
+                }
+                throw;
+            }
             inject_fault(DurableLexicalDocumentMemoryFaultPoint::AfterCanonicalWrite);
             inject_fault(DurableLexicalDocumentMemoryFaultPoint::BeforeCatalogPublication);
             const auto publication = publish_operation(
@@ -692,6 +708,16 @@ private:
     [[nodiscard]] CanonicalDocumentRevision ensure_canonical(
         const PendingOperation& operation
     ) {
+        const auto guarded = [&]() -> std::optional<MdbxCanonicalPublicationGuard> {
+            if(!operation.guard) {
+                return std::nullopt;
+            }
+            return MdbxCanonicalPublicationGuard{
+                operation.guard->table_name,
+                operation.guard->key,
+                operation.guard->expected_value
+            };
+        };
         for(;;) {
             const auto stored = m_canonical.read_current(operation.document_id);
             if(!stored) {
@@ -707,7 +733,11 @@ private:
                         operation.utf8_text
                     }}
                 };
-                if(m_canonical.create_document(initial)) {
+                const auto guard = guarded();
+                const auto created = guard
+                    ? m_canonical.create_document_guarded(initial, *guard)
+                    : m_canonical.create_document(initial);
+                if(created) {
                     return initial;
                 }
                 continue;
@@ -716,14 +746,18 @@ private:
             if(block_text(*stored) == operation.utf8_text) {
                 return *stored;
             }
-            const auto result = m_canonical.commit({
+            const CanonicalEditRequest request{
                 operation.document_id,
                 stored->revision,
                 {ReplaceBlockText{
                     ContentBlockId{std::string{kBodyBlockId}},
                     operation.utf8_text
                 }}
-            });
+            };
+            const auto guard = guarded();
+            const auto result = guard
+                ? m_canonical.commit_guarded(request, *guard)
+                : m_canonical.commit(request);
             if(result.succeeded() && result.revision) {
                 return *result.revision;
             }
@@ -824,7 +858,19 @@ private:
         const std::string& pending_payload,
         bool inject_faults
     ) {
-        const auto revision = ensure_canonical(operation);
+        CanonicalDocumentRevision revision;
+        try {
+            revision = ensure_canonical(operation);
+        } catch(const std::runtime_error& error) {
+            if(operation.guard &&
+               std::string_view{error.what()}.find(
+                   "canonical publication fence rejected"
+               ) != std::string_view::npos) {
+                discard_pending(operation, pending_payload);
+                return;
+            }
+            throw;
+        }
         if(inject_faults) {
             inject_fault(DurableLexicalDocumentMemoryFaultPoint::AfterCanonicalWrite);
             inject_fault(DurableLexicalDocumentMemoryFaultPoint::BeforeCatalogPublication);
@@ -834,6 +880,22 @@ private:
             pending_payload,
             revision.revision
         ));
+    }
+
+    void discard_pending(
+        const PendingOperation& operation,
+        const std::string& expected_payload
+    ) {
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        const auto key = pending_key(operation.scope_id, operation.resource_id);
+        const auto current = m_catalog.find(key, txn);
+        if(current && *current == expected_payload) {
+            if(!m_catalog.erase(key, txn)) {
+                txn.rollback();
+                throw std::runtime_error("fenced durable lexical intent could not be cleared");
+            }
+        }
+        txn.commit();
     }
 
     void recover_pending_operations() {

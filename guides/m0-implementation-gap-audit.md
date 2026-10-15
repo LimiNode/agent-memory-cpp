@@ -29,11 +29,15 @@ one host-observed UTF-8 resource, records a SHA-256 body digest and text-origin
 provenance, publishes document/chunk-shaped manifest records, and exposes
 manifest lookup plus lexical search. A durable import intent makes the
 lexical-first publication recoverable: an interruption leaves the previous
-manifest visible and is completed on reopen. Resource IDs are durably bound to
+manifest visible and is completed on reopen or by a later importer after the
+lease expires. Resource IDs are durably bound to
 one scope within this manifest profile; reusing an ID from another scope fails
 closed. Search hides resources with a pending import intent, so an
 uncommitted lexical publication is not visible through the importer. Intent
-acquisition and release use compare-and-check transactions, and same-body
+acquisition and release use compare-and-check transactions. Canonical, lexical,
+and manifest publication each recheck the exact fencing intent in their own
+write transaction, so a stale executor cannot advance the active canonical
+head after losing ownership. Same-body
 pipeline/provenance changes are rejected until an independent
 projection-generation contract exists.
 
@@ -50,7 +54,7 @@ tokens remains durable but is omitted from BM25.
 
 The checked importer example and focused CTest cover ingest, manifest binding,
 lexical search, metadata-only update, interrupted-publication recovery, reopen,
-all four fault points, pending-visibility filtering, scope binding, SHA-256,
+all five fault points, pending-visibility filtering, scope binding, SHA-256,
 UTF-8 validation and derived-text provenance. The underlying lexical-memory
 tests still cover scope isolation, shared-context visibility, tokenless text
 and hydration.

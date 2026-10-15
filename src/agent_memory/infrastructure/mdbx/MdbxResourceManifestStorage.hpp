@@ -27,6 +27,15 @@ namespace agent_memory {
         bool relative_to_exe = false;
         std::int64_t max_dbs = kDefaultMdbxMaxDbs;
         std::shared_ptr<MdbxStorageContext> context;
+        /// Optional pre-opened table used by guarded manifest publication.
+        std::string publication_guard_table_name;
+    };
+
+    /// \brief Durable compare token checked in the manifest write transaction.
+    struct MdbxManifestPublicationGuard final {
+        std::string table_name;
+        std::string key;
+        std::string expected_value;
     };
 
     /// \brief MDBX-backed implementation of `IResourceManifestStorage`.
@@ -53,6 +62,13 @@ namespace agent_memory {
         void upsert_manifest_if_unchanged(
             ResourceManifest manifest,
             const std::optional<ResourceManifest>& expected
+        );
+
+        /// \brief Conditionally publishes while the durable intent still matches.
+        void upsert_manifest_if_unchanged_guarded(
+            ResourceManifest manifest,
+            const std::optional<ResourceManifest>& expected,
+            MdbxManifestPublicationGuard guard
         );
 
         [[nodiscard]] std::optional<ResourceManifest> find_manifest(

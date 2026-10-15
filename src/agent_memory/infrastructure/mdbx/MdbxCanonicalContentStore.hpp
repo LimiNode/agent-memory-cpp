@@ -45,6 +45,15 @@ struct MdbxCanonicalContentStoreOptions final {
     bool relative_to_exe = false; ///< Resolve an owned relative path from the executable.
     std::int64_t max_dbs = kDefaultMdbxMaxDbs;   ///< Capacity passed to an owned context.
     std::shared_ptr<MdbxStorageContext> context; ///< Optional host/shared MDBX context.
+    /// Optional pre-opened table used by guarded canonical publication.
+    std::string publication_guard_table_name;
+};
+
+/// \brief Durable compare token checked in the canonical write transaction.
+struct MdbxCanonicalPublicationGuard final {
+    std::string table_name;
+    std::string key;
+    std::string expected_value;
 };
 
 /// \brief Durable raw/plain canonical document-content store.
@@ -83,6 +92,11 @@ class MdbxCanonicalContentStore final : public ICanonicalContentStore,
 
     /// \copydoc ICanonicalContentEditor::create_document
     bool create_document(CanonicalDocumentRevision initial) override;
+    /// \brief Creates a document only while the durable publication guard matches.
+    bool create_document_guarded(
+        CanonicalDocumentRevision initial,
+        MdbxCanonicalPublicationGuard guard
+    );
     /// \copydoc ICanonicalContentStore::read_current
     [[nodiscard]] std::optional<CanonicalDocumentRevision>
     read_current(const DocumentId&) const override;
@@ -100,8 +114,21 @@ class MdbxCanonicalContentStore final : public ICanonicalContentStore,
                          std::optional<std::uint64_t> = std::nullopt) const override;
     /// \copydoc ICanonicalContentEditor::commit
     [[nodiscard]] CanonicalEditResult commit(const CanonicalEditRequest&) override;
+    /// \brief Publishes an edit only while the durable publication guard matches.
+    [[nodiscard]] CanonicalEditResult commit_guarded(
+        const CanonicalEditRequest&,
+        MdbxCanonicalPublicationGuard guard
+    );
 
   private:
+    bool create_document_impl(
+        CanonicalDocumentRevision initial,
+        std::optional<MdbxCanonicalPublicationGuard> guard
+    );
+    [[nodiscard]] CanonicalEditResult commit_impl(
+        const CanonicalEditRequest&,
+        std::optional<MdbxCanonicalPublicationGuard> guard
+    );
     class Impl;
     std::unique_ptr<Impl> m_impl; ///< MDBX-dependent implementation state.
 };

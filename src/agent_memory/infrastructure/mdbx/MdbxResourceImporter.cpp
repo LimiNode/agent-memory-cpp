@@ -514,6 +514,8 @@ public:
             manifest_options.table_prefix = options.table_prefix;
             manifest_options.context = m_context;
             manifest_options.max_dbs = options.max_dbs;
+            manifest_options.publication_guard_table_name =
+                table_name(options.table_prefix, "resource_import_intents");
             return manifest_options;
         }())
         , m_intent_table_name(table_name(options.table_prefix, "resource_import_intents"))
@@ -534,12 +536,20 @@ public:
         validate_resource(resource);
         std::lock_guard<std::mutex> lock(m_mutex);
         ensure_manifest_compatibility(resource);
-        const auto claim = claim_import(resource);
-        if(claim.operation.owner_id != m_owner_id) {
-            throw std::runtime_error("resource import is owned by another live executor");
-        }
+        auto claim = claim_import(resource);
         if(!same_import_request(claim.operation.resource, resource)) {
             throw std::runtime_error("a different resource import is already pending");
+        }
+        if(claim.operation.owner_id != m_owner_id) {
+            if(claim.operation.lease_expires_at_ms > now_ms()) {
+                throw std::runtime_error("resource import is owned by another live executor");
+            }
+            claim = takeover_pending(
+                resource.resource_id.value(),
+                claim.payload,
+                std::move(claim.operation)
+            );
+            return complete(claim.operation, true, claim.payload);
         }
         if(claim.created) {
             inject(ResourceImporterFaultPoint::AfterIntent);
@@ -618,7 +628,15 @@ private:
         const auto manifest = make_manifest(pending.resource, generation, digest);
         ensure_manifest_compatibility(pending.resource, manifest.revision, digest);
         assert_ownership(pending.resource.resource_id.value(), expected_payload);
-        m_manifests.upsert_manifest_if_unchanged(manifest, expected_manifest);
+        m_manifests.upsert_manifest_if_unchanged_guarded(
+            manifest,
+            expected_manifest,
+            MdbxManifestPublicationGuard{
+                m_intent_table_name,
+                pending.resource.resource_id.value(),
+                expected_payload
+            }
+        );
         if(inject_faults) inject(ResourceImporterFaultPoint::AfterManifestPublication);
         release_expected(pending.resource.resource_id.value(), expected_payload);
         return ResourceImportResult{

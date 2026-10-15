@@ -555,7 +555,16 @@ class MdbxCanonicalContentStore::Impl final {
           heads(context->connection(), prefix + "_canonical_heads"),
           revisions(context->connection(), prefix + "_canonical_revisions"),
           bodies(context->connection(), prefix + "_canonical_bodies"),
-          ledgers(context->connection(), prefix + "_canonical_ledgers") {}
+          ledgers(context->connection(), prefix + "_canonical_ledgers"),
+          publication_guard_table_name(options.publication_guard_table_name),
+          publication_guard_table(
+              options.publication_guard_table_name.empty()
+                  ? nullptr
+                  : std::make_unique<mdbxc::KeyValueTable<std::string, std::string>>(
+                        context->connection(),
+                        options.publication_guard_table_name
+                    )
+          ) {}
 
     struct Loaded {
         std::optional<CanonicalDocumentRevision> current; ///< Current immutable revision.
@@ -635,6 +644,26 @@ class MdbxCanonicalContentStore::Impl final {
         ledgers.insert_or_assign(revision.document_id.value(), encode_ledger(ledger), txn);
     }
 
+    bool guard_matches(
+        const MdbxCanonicalPublicationGuard& guard,
+        const mdbxc::Transaction& txn
+    ) {
+        if(guard.table_name.empty() || guard.key.empty()) {
+            throw std::invalid_argument("canonical publication guard is incomplete");
+        }
+        if(!publication_guard_table || guard.table_name != publication_guard_table_name) {
+            throw std::invalid_argument("canonical publication guard table is not configured");
+        }
+        const auto current = publication_guard_table->find(guard.key, txn);
+        if(!current) {
+            throw std::runtime_error("canonical publication fence rejected: key missing");
+        }
+        if(*current != guard.expected_value) {
+            throw std::runtime_error("canonical publication fence rejected: value changed");
+        }
+        return true;
+    }
+
     std::shared_ptr<MdbxStorageContext> context; ///< Shared MDBX environment.
     std::string prefix;                          ///< Sanitized application table prefix.
     mutable std::mutex mutex;                    ///< Serializes this wrapper's table access.
@@ -642,6 +671,8 @@ class MdbxCanonicalContentStore::Impl final {
     mdbxc::KeyValueTable<std::string, std::string> revisions; ///< Immutable revision records.
     mdbxc::KeyValueTable<std::string, std::string> bodies;    ///< Raw/plain physical bodies.
     mdbxc::KeyValueTable<std::string, std::string> ledgers;   ///< Historical block-ID ledgers.
+    std::string publication_guard_table_name;
+    std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> publication_guard_table;
 };
 
 MdbxCanonicalContentStore::MdbxCanonicalContentStore(MdbxCanonicalContentStoreOptions options)
@@ -650,12 +681,30 @@ MdbxCanonicalContentStore::MdbxCanonicalContentStore(MdbxCanonicalContentStoreOp
 MdbxCanonicalContentStore::~MdbxCanonicalContentStore() = default;
 
 bool MdbxCanonicalContentStore::create_document(CanonicalDocumentRevision initial) {
+    return create_document_impl(std::move(initial), std::nullopt);
+}
+
+bool MdbxCanonicalContentStore::create_document_guarded(
+    CanonicalDocumentRevision initial,
+    MdbxCanonicalPublicationGuard guard
+) {
+    return create_document_impl(std::move(initial), std::move(guard));
+}
+
+bool MdbxCanonicalContentStore::create_document_impl(
+    CanonicalDocumentRevision initial,
+    std::optional<MdbxCanonicalPublicationGuard> guard
+) {
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     InMemoryCanonicalContentStore validator;
     if (!validator.create_document(initial))
         return false;
     initial = *validator.read_current(initial.document_id);
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    if (guard && !m_impl->guard_matches(*guard, txn)) {
+        txn.rollback();
+        throw std::runtime_error("canonical publication fence rejected the creation");
+    }
     if (m_impl->heads.find(initial.document_id.value(), txn))
         return false;
     std::set<ContentBlockId> ids;
@@ -711,8 +760,26 @@ MdbxCanonicalContentStore::materialize_markdown(const DocumentId& id,
 }
 
 CanonicalEditResult MdbxCanonicalContentStore::commit(const CanonicalEditRequest& request) {
+    return commit_impl(request, std::nullopt);
+}
+
+CanonicalEditResult MdbxCanonicalContentStore::commit_guarded(
+    const CanonicalEditRequest& request,
+    MdbxCanonicalPublicationGuard guard
+) {
+    return commit_impl(request, std::move(guard));
+}
+
+CanonicalEditResult MdbxCanonicalContentStore::commit_impl(
+    const CanonicalEditRequest& request,
+    std::optional<MdbxCanonicalPublicationGuard> guard
+) {
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    if (guard && !m_impl->guard_matches(*guard, txn)) {
+        txn.rollback();
+        throw std::runtime_error("canonical publication fence rejected the edit");
+    }
     auto loaded = m_impl->load(request.document_id, txn);
     if (!loaded.current) {
         txn.rollback();

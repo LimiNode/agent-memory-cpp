@@ -417,7 +417,16 @@ namespace agent_memory {
                                               options.relative_to_exe,
                                               options.max_dbs))
             , m_connection(m_context->connection())
-            , m_manifests(m_connection, table_name(m_table_prefix, "resource_manifests")) {}
+            , m_manifests(m_connection, table_name(m_table_prefix, "resource_manifests"))
+            , m_publication_guard_table_name(options.publication_guard_table_name)
+            , m_publication_guard_table(
+                  options.publication_guard_table_name.empty()
+                      ? nullptr
+                      : std::make_unique<mdbxc::KeyValueTable<std::string, std::string>>(
+                            m_connection,
+                            options.publication_guard_table_name
+                        )
+              ) {}
 
         void upsert_manifest(ResourceManifest manifest) {
             m_manifests.insert_or_assign(
@@ -428,7 +437,8 @@ namespace agent_memory {
 
         void upsert_manifest_if_unchanged(
             ResourceManifest manifest,
-            const std::optional<ResourceManifest>& expected
+            const std::optional<ResourceManifest>& expected,
+            const std::optional<MdbxManifestPublicationGuard>& guard = std::nullopt
         ) {
             const auto key = manifest.revision.resource_id.value();
             const auto payload = serialize_manifest(manifest);
@@ -436,6 +446,24 @@ namespace agent_memory {
                 ? std::optional<std::string>{serialize_manifest(*expected)}
                 : std::nullopt;
             auto txn = m_connection->transaction(mdbxc::TransactionMode::WRITABLE);
+            if(guard) {
+                if(guard->table_name.empty() || guard->key.empty()) {
+                    txn.rollback();
+                    throw std::invalid_argument("manifest publication guard is incomplete");
+                }
+                if(!m_publication_guard_table ||
+                   guard->table_name != m_publication_guard_table_name) {
+                    txn.rollback();
+                    throw std::invalid_argument(
+                        "manifest publication guard table is not configured"
+                    );
+                }
+                const auto current_guard = m_publication_guard_table->find(guard->key, txn);
+                if(!current_guard || *current_guard != guard->expected_value) {
+                    txn.rollback();
+                    throw std::runtime_error("manifest publication fence rejected the update");
+                }
+            }
             const auto current = m_manifests.find(key, txn);
             if(current != expected_payload) {
                 txn.rollback();
@@ -472,6 +500,9 @@ namespace agent_memory {
         std::shared_ptr<MdbxStorageContext> m_context;
         std::shared_ptr<mdbxc::Connection> m_connection;
         mdbxc::KeyValueTable<std::string, std::string> m_manifests;
+        std::string m_publication_guard_table_name;
+        std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>>
+            m_publication_guard_table;
     };
 
     MdbxResourceManifestStorage::MdbxResourceManifestStorage(
@@ -498,6 +529,18 @@ namespace agent_memory {
         const std::optional<ResourceManifest>& expected
     ) {
         m_impl->upsert_manifest_if_unchanged(std::move(manifest), expected);
+    }
+
+    void MdbxResourceManifestStorage::upsert_manifest_if_unchanged_guarded(
+        ResourceManifest manifest,
+        const std::optional<ResourceManifest>& expected,
+        MdbxManifestPublicationGuard guard
+    ) {
+        m_impl->upsert_manifest_if_unchanged(
+            std::move(manifest),
+            expected,
+            std::move(guard)
+        );
     }
 
     std::optional<ResourceManifest> MdbxResourceManifestStorage::find_manifest(

@@ -55,6 +55,24 @@ void use_test_clock(
     options.clock_ms = [now_ms] { return now_ms; };
 }
 
+std::string canonical_document_id(
+    std::string_view scope,
+    std::string_view resource
+) {
+    static constexpr char digits[] = "0123456789abcdef";
+    const auto encode = [&](std::string_view value) {
+        std::string encoded;
+        encoded.reserve(value.size() * 2U);
+        for(const auto byte : value) {
+            const auto octet = static_cast<unsigned char>(byte);
+            encoded.push_back(digits[octet >> 4U]);
+            encoded.push_back(digits[octet & 0x0fU]);
+        }
+        return encoded;
+    };
+    return "durable-lexical:" + encode(scope) + ':' + encode(resource);
+}
+
 } // namespace
 
 int main() {
@@ -339,7 +357,9 @@ int main() {
         expect(first_interrupted, "concurrency fixture did not leave pending intent");
         MdbxResourceImporterOptions second_options;
         second_options.context = context;
-        use_test_clock(second_options, 150);
+        std::uint64_t second_now = 150;
+        second_options.ownership_lease_ms = 100;
+        second_options.clock_ms = [&second_now] { return second_now; };
         MdbxResourceImporter second{std::move(second_options)};
         expect(!second.find_manifest(ResourceId{"resource:concurrent"}),
                "opening another importer revoked an unexpired owner lease");
@@ -358,13 +378,15 @@ int main() {
         } catch(const std::runtime_error&) { same_payload_rejected = true; }
         expect(same_payload_rejected,
                "same payload was allowed to execute without owning the live lease");
-        MdbxResourceImporterOptions recovery_options;
-        recovery_options.context = context;
-        use_test_clock(recovery_options, 1'000);
-        MdbxResourceImporter recovery{std::move(recovery_options)};
-        const auto completed = recovery.find_manifest(ResourceId{"resource:concurrent"});
+        second_now = 1'000;
+        const auto recovered_result = second.import(original(
+            "resource:concurrent", "https://example.test/concurrent", "concurrent source"
+        ));
+        expect(recovered_result.revision.generation == 1,
+               "an existing executor did not recover an expired pending import on demand");
+        const auto completed = second.find_manifest(ResourceId{"resource:concurrent"});
         expect(completed && completed->revision.generation == 1,
-               "a new executor did not recover the fenced pending import");
+               "on-demand recovery did not publish the pending import");
     }
     std::filesystem::remove(concurrency_path, error);
 
@@ -429,6 +451,27 @@ int main() {
         stale_thread.join();
         expect(stale_writer_fenced,
                "stale executor was not rejected at lexical publication");
+        MdbxCanonicalContentStore canonical(MdbxCanonicalContentStoreOptions{
+            {}, "agent_memory", false, kDefaultMdbxMaxDbs, context
+        });
+        const auto current_canonical = canonical.read_current(DocumentId{
+            canonical_document_id("tenant-a", "resource:fenced")
+        });
+        expect(current_canonical && !current_canonical->blocks.empty() &&
+                   current_canonical->blocks.front().text == "currentomega",
+               "stale executor changed the active canonical head after fencing");
+        const auto repeated = successor.import(original(
+            "resource:fenced",
+            "https://example.test/fenced-q",
+            "currentomega"
+        ));
+        expect(repeated.revision.generation == 2,
+               "idempotent resource import did not publish its current manifest generation");
+        const auto after_repeat = canonical.read_current(DocumentId{
+            canonical_document_id("tenant-a", "resource:fenced")
+        });
+        expect(after_repeat && after_repeat->revision == current_canonical->revision,
+               "idempotent payload advanced the canonical revision");
         expect(successor.search(ScopeId{"tenant-a"}, "currentomega", 5).size() == 1,
                "stale executor replaced payload Q in lexical search");
         expect(successor.search(ScopeId{"tenant-a"}, "obsoletealpha", 5).empty(),
@@ -443,6 +486,12 @@ int main() {
                "reopen lost the successor manifest generation");
         expect(reopened.search(ScopeId{"tenant-a"}, "currentomega", 5).size() == 1,
                "reopen did not preserve payload Q lexical visibility");
+        const auto reopened_canonical = canonical.read_current(DocumentId{
+            canonical_document_id("tenant-a", "resource:fenced")
+        });
+        expect(reopened_canonical && !reopened_canonical->blocks.empty() &&
+                   reopened_canonical->blocks.front().text == "currentomega",
+               "reopen changed the fenced canonical head");
     }
     std::filesystem::remove(fencing_path, error);
 
