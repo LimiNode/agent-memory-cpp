@@ -112,20 +112,28 @@ not additional milestone gates.
 
 | Stage | Product capability | Depends on | Acceptance signal |
 | --- | --- | --- | --- |
-| KB-0 | Durable text source, revision-bound note, lexical retrieval, citation hydration and reopen | M0 | Import, update, search, close/reopen and recover the source binding |
-| KB-1 | Candidate extraction, versioned notes, duplicate detection and idempotent refresh | M0 plus selected M1b contracts | Reprocessing a source is stable; changes supersede rather than erase evidence |
-| KB-2 | Time, page and figure anchors; retained representations and optional image-derived views | Artifact-provenance profile | A statement opens the exact document region, page or time interval |
+| KB-0 | Durable text source, revision-bound access, lexical retrieval, citation hydration and reopen | M0 | Import, read an explicit revision, apply a source update, search, close/reopen and recover the source binding |
+| KB-1 | Candidate extraction, optional versioned notes, duplicate detection and idempotent refresh | M0 plus selected M1b contracts | Reprocessing a source is stable; a selected M1b note profile may provide versioned editing with optimistic Conflict/NoChange; changes supersede rather than erase evidence |
+| KB-2 | Time, page and figure anchors; retained representations and optional image-derived views | Artifact-provenance profile | A result identifies the exact source revision and typed document/media locator, then hydrates it or reports explicit Partial/Unavailable status |
 | KB-3 | Subscriptions, bounded queues, targeted reindex, recovery and admission policy | M1c | Restart and partial failure do not lose or duplicate publication work |
 | KB-4 | External consumer API, scopes, access policy and operational observability | Stable M0/M1 substrate | Multiple applications can use the same knowledge base without cross-scope leakage |
 
-The merged `main` branch provides the canonical-content foundation and lexical
-primitives. The durable lexical document-memory vertical slice described by
-PR #508 proposes to close part of KB-0 with durable canonical text,
-deterministic lexical search, scope isolation, update and reopen; until that PR
-is merged and its corrective checks are accepted, this remains proposed rather
-than a capability of `main`. In either case it does not complete the M0 table in
-`milestones.md`: resource manifests/importers, knowledge-unit stores, source
-summaries, projections and retrieval traces remain explicit gaps.
+For KB-0, “revision-bound access” means that a host reads a declared canonical
+revision and materialization profile, and a source update preserves that binding
+while publishing the next canonical revision. Line ranges are temporary view
+coordinates, not durable identifiers. Optimistic note editing belongs to a
+selected M1b/KB-1 profile: when enabled, stale edits fail with Conflict,
+equivalent edits return NoChange, and a successful edit produces one canonical
+revision. It is not an M0/KB-0 gate, and the product path does not require the
+low-level store to expose line operations as a public API.
+
+The merged `main` branch provides the canonical-content foundation, lexical
+primitives and the implemented durable lexical document-memory vertical slice
+from PR #508: durable canonical text, deterministic lexical search, scope
+isolation, update and reopen. This closes part of KB-0, but it does not
+complete the normative M0 table in `milestones.md`: resource
+manifests/importers, knowledge-unit stores, source summaries, projections and
+retrieval traces remain explicit gaps.
 
 ## Research policy
 

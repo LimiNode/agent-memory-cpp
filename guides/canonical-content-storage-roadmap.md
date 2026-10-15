@@ -518,6 +518,87 @@ benchmark contract.
 
 The storage contract must expose both ingestion and inspection:
 
+### Host-facing revision-bound document access
+
+The block-oriented store contract is the semantic foundation, but a host often
+needs a simple document view for notes, editors and source inspection. That view
+is revision-bound. It is not a second source of truth and it must not turn line
+positions into durable block identities.
+
+A host-facing read is conceptually bound to:
+
+    (document_id, document_revision, materialization_profile)
+
+The materialization profile declares the canonical text encoding, newline policy,
+and whether a final newline is present. For the line-oriented profile:
+
+- canonical text is valid UTF-8;
+- CRLF and CR inputs are normalized to LF before line numbering;
+- lines are one-based and inclusive (1..1 is the first line);
+- an empty document has zero lines;
+- the final-newline policy is explicit and stable for the selected profile;
+- invalid UTF-8, an invalid range, or an unrepresentable edit fails closed.
+
+Line ranges are coordinates in that materialized revision. They are not
+persistent IDs and must never be replayed against an implicitly newer revision.
+For a lossless canonical edit such as `replace_lines`, if a range cannot be
+mapped unambiguously to the canonical block/structure revision, the operation
+must fail closed. It must not guess which source blocks were intended or fall
+back to importing the materialized text. A host may separately choose an
+explicit materialized import/reconstruction operation that rebuilds canonical
+blocks, but that operation is not lossless `replace_lines` and must report any
+loss of block-identity reuse together with its provenance.
+
+A conceptual host flow is:
+
+    read(document_id, revision = N, profile)
+      -> view with revision N and line coordinates
+    replace_lines(view, 4..7, replacement_text, expected_revision = N)
+      -> one canonical edit against revision N
+    commit
+      -> revision N+1 | Conflict | NoChange
+
+All operations in one document edit use the same expected revision and one
+consistent read snapshot. Overlapping or ambiguous ranges are rejected before
+publication. A stale expected revision returns Conflict; the editor does not
+silently rebase line coordinates onto the current document. A semantically
+equivalent edit returns NoChange and publishes no new document revision or
+persistent ContentChangeSet.
+
+A successful edit publishes exactly one new canonical document revision. The
+canonical content and its net ContentChangeSet become visible atomically at
+that document boundary. Lexical, dense, binary, visual, audio and other
+projections may become stale until their own generation is rebuilt; a strict
+current read must not present a stale projection as the current revision. The
+change record preserves stable identities and revisions for untouched blocks and
+exposes only the final net invalidation set.
+
+This contract is single-document atomicity. Updating several documents,
+resources or contexts requires a separate publication protocol and must not be
+implied by a convenience editor.
+
+Original source publications are immutable evidence. A host may edit a note,
+annotation or derived working copy, but that edit creates a new revision with
+an explicit target/source binding and provenance; it does not overwrite the
+retained original or silently mutate an imported source revision.
+
+Minimum acceptance cases for this host-facing profile are:
+
+1. Reading revision N twice with the same profile yields identical text and
+   line coordinates.
+2. A replace on a declared range publishes one revision and preserves untouched
+   block IDs/revisions.
+3. Two edits based on N admit one and reject the other as Conflict.
+4. Repeating an equivalent edit returns NoChange without a new revision.
+5. A stale or missing projection is reported as stale/unavailable according to
+   its route contract; the canonical revision remains readable.
+6. A source annotation edit retains a link to the immutable source revision.
+
+The conceptual read/replace_lines names above are documentation notation only.
+This roadmap does not add a public DocumentHandle, line-edit API or
+cross-document transaction type.
+
+
 ```cpp
 read_document(id, revision = current)
 read_block(block_id, revision = current)
