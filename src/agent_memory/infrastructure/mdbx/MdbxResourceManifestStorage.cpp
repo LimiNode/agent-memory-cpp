@@ -25,6 +25,8 @@ namespace agent_memory {
             "agent_memory.resource_manifest.v4";
         constexpr std::string_view RESOURCE_MANIFEST_PAYLOAD_VERSION_V5 =
             "agent_memory.resource_manifest.v5";
+        constexpr std::string_view RESOURCE_MANIFEST_PAYLOAD_VERSION_V6 =
+            "agent_memory.resource_manifest.v6";
 
         std::string sanitize_table_part(std::string value) {
             if(value.empty()) {
@@ -90,6 +92,35 @@ namespace agent_memory {
                 bytes.push_back(static_cast<char>(byte));
             }
             append_string(payload, bytes);
+        }
+
+        void append_text_origin(
+            std::string& payload,
+            SourceTextOrigin origin,
+            const std::optional<DerivedTextProvenance>& provenance
+        ) {
+            switch(origin) {
+            case SourceTextOrigin::OriginalText:
+                if(provenance) {
+                    throw std::invalid_argument(
+                        "OriginalText resource revision must not carry derived provenance"
+                    );
+                }
+                append_string(payload, "original");
+                return;
+            case SourceTextOrigin::DerivedExtraction:
+                if(!provenance || !is_valid_derived_text_provenance(*provenance)) {
+                    throw std::invalid_argument(
+                        "DerivedExtraction resource revision requires complete provenance"
+                    );
+                }
+                append_string(payload, "derived");
+                append_string(payload, provenance->source_media_type);
+                append_string(payload, provenance->extractor_id);
+                append_string(payload, provenance->extractor_version);
+                return;
+            }
+            throw std::invalid_argument("Unsupported resource text origin");
         }
 
         class PayloadReader final {
@@ -234,18 +265,45 @@ namespace agent_memory {
             return digest;
         }
 
+        void read_text_origin(
+            PayloadReader& reader,
+            ResourceRevision& revision
+        ) {
+            const auto origin = reader.read_string();
+            if(origin == "original") {
+                revision.text_origin = SourceTextOrigin::OriginalText;
+                revision.derived_text_provenance.reset();
+                return;
+            }
+            if(origin == "derived") {
+                revision.text_origin = SourceTextOrigin::DerivedExtraction;
+                revision.derived_text_provenance = DerivedTextProvenance{
+                    reader.read_string(),
+                    reader.read_string(),
+                    reader.read_string()
+                };
+                return;
+            }
+            throw std::runtime_error("Unsupported resource text origin");
+        }
+
         std::string serialize_manifest(const ResourceManifest& manifest) {
             if(!is_valid_resource_manifest(manifest)) {
                 throw std::invalid_argument("ResourceManifest is invalid");
             }
 
             std::string payload;
-            append_string(payload, RESOURCE_MANIFEST_PAYLOAD_VERSION_V5);
+            append_string(payload, RESOURCE_MANIFEST_PAYLOAD_VERSION_V6);
             append_string(payload, manifest.revision.resource_id.value());
             append_uint64(payload, manifest.revision.generation);
             append_uint64(payload, manifest.revision.content_hash);
             append_uint64(payload, manifest.revision.pipeline_config_hash);
             append_body_digest(payload, manifest.revision.body_digest);
+            append_text_origin(
+                payload,
+                manifest.revision.text_origin,
+                manifest.revision.derived_text_provenance
+            );
             append_manifest_state(payload, manifest.state);
             append_size(payload, manifest.records.size());
             for(const auto& record : manifest.records) {
@@ -269,6 +327,7 @@ namespace agent_memory {
                 && version != RESOURCE_MANIFEST_PAYLOAD_VERSION_V3
                 && version != RESOURCE_MANIFEST_PAYLOAD_VERSION_V4
                 && version != RESOURCE_MANIFEST_PAYLOAD_VERSION_V5
+                && version != RESOURCE_MANIFEST_PAYLOAD_VERSION_V6
             ) {
                 throw std::runtime_error("Unsupported resource manifest payload version");
             }
@@ -282,14 +341,19 @@ namespace agent_memory {
                 version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V3 ||
                 version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V4 ||
                 version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V5
+                || version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V6
             ) {
                 manifest.revision.body_digest = read_body_digest(reader);
+            }
+            if(version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V6) {
+                read_text_origin(reader, manifest.revision);
             }
             if(
                 version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V2 ||
                 version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V3 ||
                 version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V4 ||
-                version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V5
+                version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V5 ||
+                version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V6
             ) {
                 manifest.state = read_manifest_state(reader);
             }
@@ -300,14 +364,16 @@ namespace agent_memory {
             }
             if(
                 version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V4 ||
-                version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V5
+                version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V5 ||
+                version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V6
             ) {
                 const auto pending_count = reader.read_size();
                 for(std::size_t i = 0; i < pending_count; ++i) {
                     manifest.pending_reclaim_records.push_back(read_record(reader));
                 }
             }
-            if(version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V5) {
+            if(version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V5 ||
+               version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V6) {
                 manifest.schema.schema_id = reader.read_string();
                 const auto schema_version = reader.read_uint64();
                 if(schema_version > std::numeric_limits<std::uint32_t>::max()) {
@@ -327,8 +393,10 @@ namespace agent_memory {
                 manifest.payload_version = ResourceManifestPayloadVersion::V3;
             } else if(version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V4) {
                 manifest.payload_version = ResourceManifestPayloadVersion::V4;
-            } else {
+            } else if(version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V5) {
                 manifest.payload_version = ResourceManifestPayloadVersion::V5;
+            } else {
+                manifest.payload_version = ResourceManifestPayloadVersion::V6;
             }
 
             if(!is_valid_resource_manifest(manifest)) {
@@ -337,28 +405,18 @@ namespace agent_memory {
             return manifest;
         }
 
-        mdbxc::Config make_config(const MdbxResourceManifestStorageOptions& options) {
-            if(options.path.empty()) {
-                throw std::invalid_argument(
-                    "MdbxResourceManifestStorageOptions::path must not be empty"
-                );
-            }
-
-            mdbxc::Config config;
-            config.pathname = options.path;
-            config.max_dbs = 16;
-            config.no_subdir = true;
-            config.relative_to_exe = options.relative_to_exe;
-            return config;
-        }
-
     } // namespace
 
     class MdbxResourceManifestStorage::Impl final {
     public:
         explicit Impl(MdbxResourceManifestStorageOptions options)
             : m_table_prefix(sanitize_table_part(std::move(options.table_prefix)))
-            , m_connection(mdbxc::Connection::create(make_config(options)))
+            , m_context(options.context ? std::move(options.context)
+                                        : MdbxStorageContext::open(
+                                              options.path,
+                                              options.relative_to_exe,
+                                              options.max_dbs))
+            , m_connection(m_context->connection())
             , m_manifests(m_connection, table_name(m_table_prefix, "resource_manifests")) {}
 
         void upsert_manifest(ResourceManifest manifest) {
@@ -390,6 +448,7 @@ namespace agent_memory {
 
     private:
         std::string m_table_prefix;
+        std::shared_ptr<MdbxStorageContext> m_context;
         std::shared_ptr<mdbxc::Connection> m_connection;
         mdbxc::KeyValueTable<std::string, std::string> m_manifests;
     };

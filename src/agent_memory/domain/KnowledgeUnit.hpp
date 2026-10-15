@@ -107,12 +107,6 @@ namespace agent_memory {
         ResourceBodyDigest body_digest;
     };
 
-    /// \brief Declares whether a citation preview is original or derived text.
-    enum class SourceTextOrigin : std::uint8_t {
-        OriginalText,
-        DerivedExtraction
-    };
-
     /// \brief Declares the provenance guarantees carried by a source summary.
     enum class SourceReferenceMode : std::uint8_t {
         /// A quote located in one immutable resource revision.

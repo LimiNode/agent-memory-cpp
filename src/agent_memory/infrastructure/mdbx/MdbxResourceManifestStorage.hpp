@@ -13,6 +13,8 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+#include "MdbxStorageContext.hpp"
+
 namespace agent_memory {
 
     /// \brief Configuration for MDBX-backed resource manifest storage.
@@ -23,6 +25,8 @@ namespace agent_memory {
         ///       distinct input prefixes can map to the same table prefix.
         std::string table_prefix = "agent_memory";
         bool relative_to_exe = false;
+        std::int64_t max_dbs = kDefaultMdbxMaxDbs;
+        std::shared_ptr<MdbxStorageContext> context;
     };
 
     /// \brief MDBX-backed implementation of `IResourceManifestStorage`.

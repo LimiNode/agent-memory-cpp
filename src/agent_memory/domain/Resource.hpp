@@ -16,6 +16,24 @@
 
 namespace agent_memory {
 
+    /// \brief Declares whether imported text is original source text or derived.
+    enum class SourceTextOrigin : std::uint8_t {
+        OriginalText,
+        DerivedExtraction
+    };
+
+    /// \brief Provenance required when text was derived from another source.
+    struct DerivedTextProvenance final {
+        std::string source_media_type;
+        std::string extractor_id;
+        std::string extractor_version;
+    };
+
+    /// \brief Returns whether derived-text provenance is complete.
+    [[nodiscard]] bool is_valid_derived_text_provenance(
+        const DerivedTextProvenance& provenance
+    ) noexcept;
+
     /// \brief Algorithm identifier for a portable resource-body digest.
     enum class ResourceBodyDigestAlgorithm : std::uint8_t {
         Sha256
@@ -41,6 +59,8 @@ namespace agent_memory {
         std::uint64_t pipeline_config_hash = 0;
         /// \brief Optional for generic manifests; required by ResourceIndexer snapshots.
         std::optional<ResourceBodyDigest> body_digest;
+        SourceTextOrigin text_origin = SourceTextOrigin::OriginalText;
+        std::optional<DerivedTextProvenance> derived_text_provenance;
     };
 
     /// \brief Kind of derived record created from a resource revision.
@@ -84,7 +104,8 @@ namespace agent_memory {
         V2 = 2,
         V3 = 3,
         V4 = 4,
-        V5 = 5
+        V5 = 5,
+        V6 = 6
     };
 
     /// \brief Declares the writer-owned schema for a resource manifest.
