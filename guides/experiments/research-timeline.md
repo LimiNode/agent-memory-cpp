@@ -26,6 +26,15 @@ earlier measurements.
 is a duplicate with no unique evidence or provenance after its canonical parent
 has landed.
 
+## Preservation closure (2026-10-14)
+
+The historical research preservation pass is complete for Git-tracked source
+bytes. The [provenance closure and gap ledger](2026-10-14-provenance-closure.md)
+links PRs #503 and #506, their manifests, the 34-path divergent audit, and the
+receipt limitations in one place. It distinguishes byte-preserved source from
+experimentally reproducible evidence: missing datasets, qrels, and raw
+receipts remain explicit gaps and are not reconstructed from prose.
+
 ## Evidence and merge rules
 
 For a measurement PR with substantial raw output:
