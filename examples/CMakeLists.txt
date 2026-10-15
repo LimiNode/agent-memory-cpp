@@ -15,3 +15,14 @@ target_link_libraries(agent_memory_canonical_content
     PRIVATE
         agent_memory::agent_memory
 )
+
+if(AGENT_MEMORY_ENABLE_MDBX)
+    add_executable(agent_memory_durable_lexical_document_memory
+        durable_lexical_document_memory.cpp
+    )
+
+    target_link_libraries(agent_memory_durable_lexical_document_memory
+        PRIVATE
+            agent_memory::agent_memory
+    )
+endif()

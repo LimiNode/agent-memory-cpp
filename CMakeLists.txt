@@ -129,6 +129,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxResourceIndexRecordOwnerStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxWorkspaceStorageRegistry.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxDurableLexicalDocumentMemory.cpp
     )
 
     agent_memory_provide_mdbx_containers(AGENT_MEMORY_MDBX_CONTAINERS_TARGET)
@@ -169,6 +170,13 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND $<TARGET_FILE:agent_memory_canonical_content>
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+        if(AGENT_MEMORY_ENABLE_MDBX)
+            add_test(
+                NAME agent_memory_durable_lexical_document_memory_example
+                COMMAND $<TARGET_FILE:agent_memory_durable_lexical_document_memory>
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+        endif()
     endif()
     if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
         # Research self-tests are opt-in. An explicit request must fail closed
