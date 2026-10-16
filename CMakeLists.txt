@@ -30,6 +30,7 @@ add_library(agent_memory STATIC
     src/agent_memory/domain/CanonicalContent.cpp
     src/agent_memory/domain/Identifiers.cpp
     src/agent_memory/domain/KnowledgeUnit.cpp
+    src/agent_memory/domain/Sha256.cpp
     src/agent_memory/domain/Metadata.cpp
     src/agent_memory/domain/MetadataFilter.cpp
     src/agent_memory/domain/Resource.cpp

@@ -43,7 +43,8 @@ namespace agent_memory {
 
         [[nodiscard]] bool erase(const KnowledgeUnitId& id) override;
 
-        [[nodiscard]] std::vector<KnowledgeUnitId> scan_by_kind(
+        [[nodiscard]] std::vector<KnowledgeUnitId> scan_by_scope_and_kind(
+            const ScopeId& scope_id,
             KnowledgeUnitKind kind
         ) const override;
 

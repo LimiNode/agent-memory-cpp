@@ -51,7 +51,8 @@ namespace agent_memory {
         [[nodiscard]] virtual bool erase(const KnowledgeUnitId& id) = 0;
 
         /// \brief Lists ids for one kind in deterministic insertion order.
-        [[nodiscard]] virtual std::vector<KnowledgeUnitId> scan_by_kind(
+        [[nodiscard]] virtual std::vector<KnowledgeUnitId> scan_by_scope_and_kind(
+            const ScopeId& scope_id,
             KnowledgeUnitKind kind
         ) const = 0;
 

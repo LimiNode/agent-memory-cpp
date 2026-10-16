@@ -9,6 +9,9 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <iomanip>
+#include <locale>
+#include <sstream>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -235,7 +238,11 @@ namespace agent_memory {
             append_uint64(payload, summary.excerpt.offset);
             append_uint64(payload, summary.excerpt.length);
             append_bytes(payload, summary.quote_hash.data(), summary.quote_hash.size());
-            append_string(payload, std::to_string(summary.confidence));
+            std::ostringstream confidence;
+            confidence.imbue(std::locale::classic());
+            confidence << std::setprecision(std::numeric_limits<double>::max_digits10)
+                       << summary.confidence;
+            append_string(payload, confidence.str());
             append_string(
                 payload,
                 summary.text_origin == SourceTextOrigin::OriginalText
@@ -328,7 +335,11 @@ namespace agent_memory {
             append_uint64(payload, envelope.revision);
             append_hash(payload, envelope.content_hash);
             append_uint64(payload, envelope.content_hash_recipe_version);
-            append_string(payload, std::to_string(envelope.priority_weight));
+            std::ostringstream priority;
+            priority.imbue(std::locale::classic());
+            priority << std::setprecision(std::numeric_limits<double>::max_digits10)
+                     << envelope.priority_weight;
+            append_string(payload, priority.str());
             append_uint64(payload, envelope.supersedes.size());
             for(const auto id : envelope.supersedes) {
                 append_uint64(payload, id.value());
@@ -405,12 +416,6 @@ namespace agent_memory {
             return result;
         }
 
-        std::string global_kind_index_key(KnowledgeUnitKind kind) {
-            std::string result{"@kind:"};
-            result.append(to_string(kind));
-            return result;
-        }
-
         std::vector<KnowledgeUnitId> read_index(std::string_view payload) {
             PayloadReader reader{payload};
             const auto count = reader.read_uint64();
@@ -430,6 +435,21 @@ namespace agent_memory {
         }
 
         void validate_create_request(const KnowledgeUnitCreateRequest& request) {
+            if(request.kind != KnowledgeUnitKind::Chunk
+               || request.content_hash_recipe_version != 1) {
+                throw std::invalid_argument("M0 store supports only recipe-v1 Chunk requests");
+            }
+            const auto expected_hash = compute_chunk_content_hash(
+                request.scope_id,
+                request.primary_text,
+                request.sources,
+                request.content_hash_recipe_version
+            );
+            if(request.content_hash != expected_hash) {
+                throw std::invalid_argument(
+                    "Knowledge-unit content_hash does not match canonical Chunk identity"
+                );
+            }
             KnowledgeUnitEnvelope probe;
             probe.id = KnowledgeUnitId{1};
             probe.kind = request.kind;
@@ -493,8 +513,23 @@ namespace agent_memory {
             if(!is_valid_knowledge_unit_envelope(envelope)) {
                 throw std::invalid_argument("Invalid knowledge-unit envelope");
             }
+            if(envelope.kind != KnowledgeUnitKind::Chunk
+               || envelope.revision == 0
+               || envelope.content_hash_recipe_version != 1
+               || envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
+                throw std::invalid_argument("M0 store supports only recipe-v1 Chunk envelopes");
+            }
             if(envelope.kind == KnowledgeUnitKind::Chunk && envelope.sources.empty()) {
                 throw std::invalid_argument("Chunk knowledge units require a source summary");
+            }
+            if(envelope.content_hash != compute_chunk_content_hash(
+                   envelope.scope_id,
+                   envelope.primary_text,
+                   envelope.sources,
+                   envelope.content_hash_recipe_version)) {
+                throw std::invalid_argument(
+                    "Knowledge-unit content_hash does not match canonical Chunk identity"
+                );
             }
             const KnowledgeUnitKey key{
                 envelope.kind,
@@ -506,12 +541,9 @@ namespace agent_memory {
             const auto existing_payload = m_units.find(id_key(envelope.id), txn);
             if(existing_payload) {
                 const auto existing = deserialize_envelope(*existing_payload);
-                if(existing.kind != envelope.kind
-                   || existing.scope_id != envelope.scope_id
-                   || existing.primary_text != envelope.primary_text
-                   || existing.content_hash != envelope.content_hash) {
+                if(serialize_envelope(existing) != serialize_envelope(envelope)) {
                     throw std::invalid_argument(
-                        "Knowledge-unit immutable identity cannot be changed"
+                        "Knowledge-unit upsert only accepts an exact idempotent replay"
                     );
                 }
                 const auto indexed_id = m_content_keys.find(key_payload, txn);
@@ -574,7 +606,6 @@ namespace agent_memory {
                 envelope.content_hash
             };
             remove_index_entry(index_key(envelope.scope_id, envelope.kind), id, txn);
-            remove_index_entry(global_kind_index_key(envelope.kind), id, txn);
             m_content_keys.erase(content_key(key), txn);
             m_chunk_payloads.erase(id_key(id), txn);
             m_units.erase(id_key(id), txn);
@@ -582,9 +613,12 @@ namespace agent_memory {
             return true;
         }
 
-        std::vector<KnowledgeUnitId> scan_by_kind(KnowledgeUnitKind kind) const {
-            if(!is_valid_knowledge_unit_kind(kind)) return {};
-            const auto payload = m_kind_index.find(global_kind_index_key(kind));
+        std::vector<KnowledgeUnitId> scan_by_scope_and_kind(
+            const ScopeId& scope_id,
+            KnowledgeUnitKind kind
+        ) const {
+            if(scope_id.empty() || !is_valid_knowledge_unit_kind(kind)) return {};
+            const auto payload = m_kind_index.find(index_key(scope_id, kind));
             return payload ? read_index(*payload) : std::vector<KnowledgeUnitId>{};
         }
 
@@ -706,8 +740,15 @@ namespace agent_memory {
                 }
             }
             const auto previous = envelope;
+            bool retrieval_visible_change = false;
             if(patch.display_text) envelope.display_text = std::move(*patch.display_text);
-            if(patch.sources) envelope.sources = std::move(*patch.sources);
+            if(patch.display_text && envelope.display_text != previous.display_text) {
+                retrieval_visible_change = true;
+            }
+            if(patch.sources) {
+                envelope.sources = std::move(*patch.sources);
+                retrieval_visible_change = true;
+            }
             if(patch.lifecycle_state) {
                 if(*patch.lifecycle_state != envelope.lifecycle_state
                    && !is_valid_knowledge_unit_lifecycle_transition(
@@ -717,6 +758,9 @@ namespace agent_memory {
                     throw std::invalid_argument("Invalid knowledge-unit lifecycle transition");
                 }
                 envelope.lifecycle_state = *patch.lifecycle_state;
+                if(envelope.lifecycle_state != previous.lifecycle_state) {
+                    retrieval_visible_change = true;
+                }
             }
             if(patch.observed_at_ms) envelope.observed_at_ms = *patch.observed_at_ms;
             if(patch.priority_weight) envelope.priority_weight = *patch.priority_weight;
@@ -728,7 +772,9 @@ namespace agent_memory {
                 txn.commit();
                 return envelope;
             }
-            envelope.revision = previous.revision + 1;
+            envelope.revision = retrieval_visible_change
+                ? previous.revision + 1
+                : previous.revision;
             envelope.updated_at_ms = std::max(
                 previous.updated_at_ms,
                 envelope.observed_at_ms
@@ -762,7 +808,6 @@ namespace agent_memory {
             const mdbxc::Transaction& txn
         ) {
             append_index_entry(index_key(envelope.scope_id, envelope.kind), id, txn);
-            append_index_entry(global_kind_index_key(envelope.kind), id, txn);
         }
 
         void remove_index_entry(
@@ -858,10 +903,11 @@ namespace agent_memory {
         return m_impl->erase(id);
     }
 
-    std::vector<KnowledgeUnitId> MdbxKnowledgeUnitStore::scan_by_kind(
+    std::vector<KnowledgeUnitId> MdbxKnowledgeUnitStore::scan_by_scope_and_kind(
+        const ScopeId& scope_id,
         KnowledgeUnitKind kind
     ) const {
-        return m_impl->scan_by_kind(kind);
+        return m_impl->scan_by_scope_and_kind(scope_id, kind);
     }
 
     std::vector<KnowledgeUnitId> MdbxKnowledgeUnitStore::scan_by_scope(

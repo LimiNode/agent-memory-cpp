@@ -1,6 +1,8 @@
 #include <agent_memory/domain/KnowledgeUnit.hpp>
+#include <agent_memory/domain/Sha256.hpp>
 
 #include <array>
+#include <algorithm>
 #include <iostream>
 #include <limits>
 #include <string_view>
@@ -22,9 +24,9 @@ namespace {
         };
         summary.uri = "memory://guide#intro";
         summary.excerpt = agent_memory::TextRange{12, 24};
-        summary.quote_hash[0] = 7;
         summary.confidence = 0.9;
         summary.preview = "A stable cited preview.";
+        summary.quote_hash = agent_memory::compute_quote_hash(summary.preview);
         return summary;
     }
 
@@ -56,6 +58,12 @@ int main() {
     using agent_memory::KnowledgeUnitLifecycleState;
     using agent_memory::ScopeId;
     using agent_memory::SourceReferenceMode;
+
+    const auto abc_digest = agent_memory::sha256("abc");
+    constexpr std::array<std::uint8_t, 4> abc_prefix{{0xba, 0x78, 0x16, 0xbf}};
+    if(!std::equal(abc_prefix.begin(), abc_prefix.end(), abc_digest.begin())) {
+        return fail("SHA-256 implementation must match the standard abc vector");
+    }
 
     const auto global_scope = ScopeId::global();
     if(global_scope.value() != "global" || global_scope.empty()) {
