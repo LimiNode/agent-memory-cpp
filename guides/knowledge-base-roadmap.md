@@ -367,13 +367,26 @@ public:
     virtual std::optional<KnowledgeUnitEnvelope> find(const KnowledgeUnitId& id) const = 0;
     virtual void upsert(KnowledgeUnitEnvelope envelope) = 0;
     virtual bool erase(const KnowledgeUnitId& id) = 0;
-    virtual std::vector<KnowledgeUnitId> scan_by_kind(KnowledgeUnitKind kind) const = 0;
+    virtual std::vector<KnowledgeUnitId> scan_by_scope_and_kind(
+        const ScopeId& scope_id, KnowledgeUnitKind kind) const = 0;
     virtual std::vector<KnowledgeUnitId> scan_by_scope(const ScopeId& scope_id) const = 0;
+    virtual KnowledgeUnitEnvelope create_or_get_unit(
+        KnowledgeUnitCreateRequest request) = 0;
+    virtual KnowledgeUnitEnvelope update_mutable_fields(
+        const KnowledgeUnitId& id, KnowledgeUnitMutablePatch patch) = 0;
     // content-addressing lookup: KnowledgeUnitKey — отдельная struct (content-hash), служит
     // для dedup/upsert-by-content; возвращает текущий Id, под которым живёт этот content
     virtual std::optional<KnowledgeUnitId> find_by_content_key(const KnowledgeUnitKey& key) const = 0;
 };
 ```
+
+The M0 implementation is intentionally a narrow Chunk profile. `create_or_get_unit`
+computes and verifies the versioned canonical SHA-256 identity; a caller hash is
+only an assertion. `upsert` is insert-or-exact-replay and rejects lifecycle,
+revision, creation-time, recipe, or mutable-field changes. Ordinary changes go
+through `update_mutable_fields`; scoring-only `priority_weight` patches do not
+advance `revision`. Operational scans are scope-aware; any cross-scope scan is
+an explicit administrative capability, not this retrieval-facing API.
 
 ### 6.2. IComponentStore (если любой компонент включён)
 

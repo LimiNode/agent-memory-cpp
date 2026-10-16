@@ -1183,7 +1183,7 @@ DBI для компонентной архитектуры `Envelope + Component
 // Layer A — envelope (hot path), всегда открыт
 knowledge_units                       KeyValueTable<UnitId, KnowledgeUnitEnvelope>
 content_key_to_unit_id                KeyValueTable<KnowledgeUnitKey, UnitId>           // dedupe/migration
-knowledge_units_by_kind               ReverseIndexTable<CompositeKey<ScopeId, KnowledgeUnitKind>, UnitId>
+knowledge_units_by_kind               KeyValueTable<CompositeKey<ScopeId, KnowledgeUnitKind>, UnitId[]>
 
 // Layer B — operational components + separate per-kind payload DBIs
 unit_components                       TypeDiscriminatedTable<ComponentKind, UnitId,
@@ -1285,7 +1285,7 @@ dbi-review-projection-v1
 # name|owner|table_type|opens|wire_sync_support|replication_semantics|physical_key|migration_peak
 knowledge_units|core|KeyValueTable|always|kv_supported|logical_adapter_required|UnitId|1
 content_key_to_unit_id|core|KeyValueTable|always|kv_supported|derived_rebuildable|KnowledgeUnitKey|1
-knowledge_units_by_kind|core|ReverseIndexTable|always|dupsort_not_supported|derived_rebuildable|ScopeId,KnowledgeUnitKind|1
+knowledge_units_by_kind|core|KeyValueTable|always|kv_supported|derived_rebuildable|ScopeId,KnowledgeUnitKind|1
 unit_components|core|TypeDiscriminatedTable|component_profile|kv_supported_if_type_discriminated_is_kv_backed|logical_adapter_required|ComponentKind,UnitId|1
 qa_payloads|qa|KeyValueTable|QAPairs|kv_supported|logical_adapter_required|UnitId|1
 fact_payloads|facts|KeyValueTable|TemporalFact|kv_supported|logical_adapter_required|UnitId|1
@@ -1367,7 +1367,7 @@ _mdbxc_logical_delivery_watermarks|upstream_sync|UpstreamSystemDBI|UpstreamSync|
 |---|---|---|---|---|
 | `knowledge_units` | да (Layer A envelope hot path) | `agent_memory.knowledge_unit.v1` | TBD | Primary envelope storage по `UnitId` |
 | `content_key_to_unit_id` | да (Layer A dedupe/migration) | `agent_memory.content_key.v1` | TBD | Content-addressed lookup `KnowledgeUnitKey -> UnitId` |
-| `knowledge_units_by_kind` | да (Layer A, DUPSORT) | `agent_memory.unit_by_kind.v1` | TBD | Scope-aware reverse index `(ScopeId, KnowledgeUnitKind) -> UnitId[]` |
+| `knowledge_units_by_kind` | да (Layer A, bounded serialized list) | `agent_memory.unit_by_kind.v1` | TBD | Scope-aware reverse index `(ScopeId, KnowledgeUnitKind) -> UnitId[]` |
 | `unit_components` | по selector `component_profile` (Layer B operational) | `agent_memory.component.v1` | TBD | Typed components by physical key `(ComponentKind, UnitId)` |
 | `qa_payloads` | по capability `QAPairs` | `agent_memory.qa.v1` | TBD | Per-kind payload для `QAPair` units |
 | `fact_payloads` | по capability `TemporalFact` | `agent_memory.fact.v1` | TBD | Per-kind payload для `Fact` units |
@@ -1585,7 +1585,7 @@ budget автоматически; они считаются только при
 |---|---|---|---|
 | `knowledge_units` | `KeyValueTable<UnitId, KnowledgeUnitEnvelope>` (§5.5 Layer A) | Supported | Базовый KV путь; sync v0.1 покрывает |
 | `content_key_to_unit_id` | `KeyValueTable<KnowledgeUnitKey, UnitId>` (§5.5 Layer A) | Supported | Dedupe/migration lookup; KV путь |
-| `knowledge_units_by_kind` | `ReverseIndexTable<CompositeKey<ScopeId, KnowledgeUnitKind>, UnitId>` DUPSORT (§5.5) | **NOT supported** | DUPSORT не покрыт в v0.1; reverse index layer не синхронизируется |
+| `knowledge_units_by_kind` | `KeyValueTable<CompositeKey<ScopeId, KnowledgeUnitKind>, UnitId[]>` (§5.5) | Supported | M0 stores a bounded serialized ordered UnitId list; the index is derived and rebuildable |
 | `unit_components` | `TypeDiscriminatedTable<ComponentKind, UnitId, TypedComponentValue>` over `KeyValueTable<CompositeKey<ComponentKind, UnitId>, TypedValueBytes>` (§3.4) | Supported if implemented exactly as KV | The old `AnyValueTable<UnitId>` interpretation is forbidden because it loses components and is not sync-covered |
 | `qa_payloads`, `fact_payloads`, `conversation_episode_payloads`, `compiled_article_payloads`, `chunk_payloads` | `KeyValueTable<UnitId, PerKindPayload>` (§5.5 Layer B) | Supported | Per-kind payloads — обычные KV |
 | `source_refs` | `KeyValueTable<UnitId, std::vector<SourceRef>>` (§5.5 Layer B) | Supported | Full source refs; M1 capability |
