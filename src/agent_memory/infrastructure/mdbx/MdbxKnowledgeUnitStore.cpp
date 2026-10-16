@@ -256,6 +256,21 @@ namespace agent_memory {
             append_string(payload, summary.preview);
         }
 
+        bool source_summaries_equal(
+            const std::vector<SourceRefSummary>& left,
+            const std::vector<SourceRefSummary>& right
+        ) {
+            if(left.size() != right.size()) return false;
+            for(std::size_t index = 0; index < left.size(); ++index) {
+                std::string left_payload;
+                std::string right_payload;
+                append_source_summary(left_payload, left[index]);
+                append_source_summary(right_payload, right[index]);
+                if(left_payload != right_payload) return false;
+            }
+            return true;
+        }
+
         SourceRefSummary read_source_summary(PayloadReader& reader) {
             SourceRefSummary summary;
             summary.resource_id = ResourceId{reader.read_string()};
@@ -747,7 +762,9 @@ namespace agent_memory {
             }
             if(patch.sources) {
                 envelope.sources = std::move(*patch.sources);
-                retrieval_visible_change = true;
+                retrieval_visible_change = !source_summaries_equal(
+                    envelope.sources, previous.sources
+                );
             }
             if(patch.lifecycle_state) {
                 if(*patch.lifecycle_state != envelope.lifecycle_state

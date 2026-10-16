@@ -117,17 +117,22 @@ namespace agent_memory {
         };
         append("chunk");
         append(scope_id.value());
+        append("recipe_version");
         append_be(recipe_version, 2U);
         if(!sources.empty() && sources.front().resource_revision) {
             const auto& summary = sources.front();
+            append("resource_body_digest");
             canonical.append(reinterpret_cast<const char*>(
                 summary.resource_revision->body_digest.bytes.data()),
                 summary.resource_revision->body_digest.bytes.size());
+            append("chunk_offset");
             append_be(summary.excerpt.offset, sizeof(summary.excerpt.offset));
+            append("chunk_length");
             append_be(summary.excerpt.length, sizeof(summary.excerpt.length));
         } else {
             canonical.push_back('\0');
         }
+        append("normalized_text_digest");
         const auto text_digest = sha256(primary_text);
         canonical.append(reinterpret_cast<const char*>(text_digest.data()), text_digest.size());
         const auto digest = sha256(canonical);
