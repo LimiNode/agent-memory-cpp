@@ -475,8 +475,10 @@ namespace agent_memory {
             probe.content_hash = request.content_hash;
             probe.content_hash_recipe_version = request.content_hash_recipe_version;
             probe.priority_weight = request.priority_weight;
-            if(request.kind == KnowledgeUnitKind::Chunk && request.sources.empty()) {
-                throw std::invalid_argument("Chunk knowledge units require a source summary");
+            if(request.kind == KnowledgeUnitKind::Chunk && request.sources.size() != 1) {
+                throw std::invalid_argument(
+                    "M0 Chunk identity supports exactly one source summary"
+                );
             }
             if(!is_valid_knowledge_unit_envelope(probe)) {
                 throw std::invalid_argument("Invalid knowledge-unit create request");
@@ -509,10 +511,6 @@ namespace agent_memory {
                                             options.relative_to_exe,
                                             options.max_dbs))
             , m_units(m_context->connection(), table_name(m_prefix, "knowledge_units"))
-            , m_chunk_payloads(
-                m_context->connection(),
-                table_name(m_prefix, "chunk_payloads")
-            )
             , m_content_keys(
                 m_context->connection(),
                 table_name(m_prefix, "content_key_to_unit_id")
@@ -534,8 +532,10 @@ namespace agent_memory {
                || envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
                 throw std::invalid_argument("M0 store supports only recipe-v1 Chunk envelopes");
             }
-            if(envelope.kind == KnowledgeUnitKind::Chunk && envelope.sources.empty()) {
-                throw std::invalid_argument("Chunk knowledge units require a source summary");
+            if(envelope.kind == KnowledgeUnitKind::Chunk && envelope.sources.size() != 1) {
+                throw std::invalid_argument(
+                    "M0 Chunk identity supports exactly one source summary"
+                );
             }
             if(envelope.content_hash != compute_chunk_content_hash(
                    envelope.scope_id,
@@ -567,14 +567,6 @@ namespace agent_memory {
                         "Knowledge-unit content index does not match its envelope"
                     );
                 }
-                if(envelope.kind == KnowledgeUnitKind::Chunk) {
-                    const auto chunk_payload = m_chunk_payloads.find(id_key(envelope.id), txn);
-                    if(!chunk_payload || *chunk_payload != envelope.primary_text) {
-                        throw std::runtime_error(
-                            "Knowledge-unit chunk payload does not match its envelope"
-                        );
-                    }
-                }
                 m_units.insert_or_assign(id_key(envelope.id), serialize_envelope(envelope), txn);
                 txn.commit();
                 return;
@@ -593,13 +585,6 @@ namespace agent_memory {
             }
             m_units.insert_or_assign(id_key(envelope.id), serialize_envelope(envelope), txn);
             m_units.insert_or_assign(used_key, "1", txn);
-            if(envelope.kind == KnowledgeUnitKind::Chunk) {
-                m_chunk_payloads.insert_or_assign(
-                    id_key(envelope.id),
-                    envelope.primary_text,
-                    txn
-                );
-            }
             m_content_keys.insert_or_assign(key_payload, id_key(envelope.id), txn);
             append_index_entries(envelope, envelope.id, txn);
             advance_next_id(envelope.id, txn);
@@ -622,7 +607,6 @@ namespace agent_memory {
             };
             remove_index_entry(index_key(envelope.scope_id, envelope.kind), id, txn);
             m_content_keys.erase(content_key(key), txn);
-            m_chunk_payloads.erase(id_key(id), txn);
             m_units.erase(id_key(id), txn);
             txn.commit();
             return true;
@@ -664,13 +648,10 @@ namespace agent_memory {
                     );
                 }
                 auto existing = deserialize_envelope(*existing_payload);
-                if(existing.kind == KnowledgeUnitKind::Chunk) {
-                    const auto chunk_payload = m_chunk_payloads.find(id_key(existing_id), txn);
-                    if(!chunk_payload || *chunk_payload != existing.primary_text) {
-                        throw std::runtime_error(
-                            "Knowledge-unit chunk payload does not match its envelope"
-                        );
-                    }
+                if(existing.kind == KnowledgeUnitKind::Chunk && existing.sources.size() != 1) {
+                    throw std::runtime_error(
+                        "Persisted M0 Chunk has unsupported multi-source identity"
+                    );
                 }
                 txn.commit();
                 return existing;
@@ -696,13 +677,6 @@ namespace agent_memory {
             }
             m_units.insert_or_assign(id_key(id), serialize_envelope(envelope), txn);
             m_units.insert_or_assign(used_id_key(id), "1", txn);
-            if(envelope.kind == KnowledgeUnitKind::Chunk) {
-                m_chunk_payloads.insert_or_assign(
-                    id_key(id),
-                    envelope.primary_text,
-                    txn
-                );
-            }
             m_content_keys.insert_or_assign(key_payload, id_key(id), txn);
 
             append_index_entries(envelope, id, txn);
@@ -716,13 +690,10 @@ namespace agent_memory {
             const auto payload = m_units.find(id_key(id), txn);
             if(!payload) return std::nullopt;
             auto envelope = deserialize_envelope(*payload);
-            if(envelope.kind == KnowledgeUnitKind::Chunk) {
-                const auto chunk_payload = m_chunk_payloads.find(id_key(id), txn);
-                if(!chunk_payload || *chunk_payload != envelope.primary_text) {
-                    throw std::runtime_error(
-                        "Knowledge-unit chunk payload does not match its envelope"
-                    );
-                }
+            if(envelope.kind == KnowledgeUnitKind::Chunk && envelope.sources.size() != 1) {
+                throw std::runtime_error(
+                    "Persisted M0 Chunk has unsupported multi-source identity"
+                );
             }
             txn.commit();
             return envelope;
@@ -746,13 +717,10 @@ namespace agent_memory {
             const auto payload = m_units.find(id_key(id), txn);
             if(!payload) throw std::invalid_argument("Unknown knowledge-unit id");
             auto envelope = deserialize_envelope(*payload);
-            if(envelope.kind == KnowledgeUnitKind::Chunk) {
-                const auto chunk_payload = m_chunk_payloads.find(id_key(id), txn);
-                if(!chunk_payload || *chunk_payload != envelope.primary_text) {
-                    throw std::runtime_error(
-                        "Knowledge-unit chunk payload does not match its envelope"
-                    );
-                }
+            if(envelope.kind == KnowledgeUnitKind::Chunk && envelope.sources.size() != 1) {
+                throw std::runtime_error(
+                    "Persisted M0 Chunk has unsupported multi-source identity"
+                );
             }
             const auto previous = envelope;
             bool retrieval_visible_change = false;
@@ -781,8 +749,20 @@ namespace agent_memory {
             }
             if(patch.observed_at_ms) envelope.observed_at_ms = *patch.observed_at_ms;
             if(patch.priority_weight) envelope.priority_weight = *patch.priority_weight;
-            if(envelope.kind == KnowledgeUnitKind::Chunk && envelope.sources.empty()) {
-                throw std::invalid_argument("Chunk knowledge units require a source summary");
+            if(envelope.kind == KnowledgeUnitKind::Chunk && envelope.sources.size() != 1) {
+                throw std::invalid_argument(
+                    "M0 Chunk identity supports exactly one source summary"
+                );
+            }
+            if(envelope.kind == KnowledgeUnitKind::Chunk
+               && envelope.content_hash != compute_chunk_content_hash(
+                   envelope.scope_id,
+                   envelope.primary_text,
+                   envelope.sources,
+                   envelope.content_hash_recipe_version)) {
+                throw std::invalid_argument(
+                    "Mutable source update changes the immutable Chunk identity"
+                );
             }
             const bool changed = serialize_envelope(envelope) != serialize_envelope(previous);
             if(!changed) {
@@ -900,7 +880,6 @@ namespace agent_memory {
         std::string m_prefix;
         std::shared_ptr<MdbxStorageContext> m_context;
         mdbxc::KeyValueTable<std::string, std::string> m_units;
-        mdbxc::KeyValueTable<std::string, std::string> m_chunk_payloads;
         mdbxc::KeyValueTable<std::string, std::string> m_content_keys;
         mdbxc::KeyValueTable<std::string, std::string> m_kind_index;
     };

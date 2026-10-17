@@ -2820,3 +2820,11 @@ records, metadata/authority filtering, fusion and context construction.
 - `guides/memory-stacks-roadmap.md` — Layer 1–4 архитектура памяти; секция 11 описывает Layer 1 (storage primitives, к которому относится этот ТЗ), секция 12 — ownership rules для physical manifest, секция 9 — capability matrix (открытие DBI по capability), секция 10 — validation rules (включая обязательность `scope_id`)
 - `src/agent_memory/infrastructure/mdbx/MdbxDocumentStorage.cpp` — current usage
 - `src/agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.cpp` — current usage
+
+### M0 envelope-store ownership note
+
+The canonical manifest reserves `chunk_payloads` for a future locator-backed
+profile. The current M0 `MdbxKnowledgeUnitStore` opens only the envelope,
+content-key and insertion-order index DBIs; it does not populate a duplicate
+full-text payload table. A profile enabling `chunk_payloads` must define the
+locator/value codec and canonical-body resolver before claiming hydration.

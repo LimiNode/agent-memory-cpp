@@ -3,9 +3,11 @@
 #if AGENT_MEMORY_HAS_MDBX
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -71,6 +73,30 @@ namespace {
             request.content_hash_recipe_version
         );
         return request;
+    }
+
+    agent_memory::KnowledgeUnitEnvelope make_envelope(
+        std::string scope,
+        std::uint8_t content_seed,
+        std::uint64_t id,
+        std::string display
+    ) {
+        auto request = make_request(std::move(scope), content_seed, std::move(display));
+        agent_memory::KnowledgeUnitEnvelope envelope;
+        envelope.id = agent_memory::KnowledgeUnitId{id};
+        envelope.kind = request.kind;
+        envelope.scope_id = std::move(request.scope_id);
+        envelope.primary_text = std::move(request.primary_text);
+        envelope.display_text = std::move(request.display_text);
+        envelope.sources = std::move(request.sources);
+        envelope.created_at_ms = request.created_at_ms;
+        envelope.updated_at_ms = request.created_at_ms;
+        envelope.observed_at_ms = request.observed_at_ms;
+        envelope.revision = 1;
+        envelope.content_hash = request.content_hash;
+        envelope.content_hash_recipe_version = request.content_hash_recipe_version;
+        envelope.priority_weight = request.priority_weight;
+        return envelope;
     }
 
 } // namespace
@@ -142,15 +168,21 @@ int main() {
         expect(priority_only.revision == updated.revision,
                "priority-only patch must not advance envelope revision");
 
+        auto non_identity_source = make_source(
+            agent_memory::ResourceId{"resource:manual"},
+            7,
+            0x01
+        );
+        non_identity_source.uri = "https://example.test/source#updated";
+        non_identity_source.preview = "updated durable source preview";
+        non_identity_source.quote_hash = agent_memory::compute_quote_hash(
+            non_identity_source.preview
+        );
         const auto source_updated = store.update_mutable_fields(
             first.id,
             agent_memory::KnowledgeUnitMutablePatch{
                 std::nullopt,
-                std::vector<agent_memory::SourceRefSummary>{make_source(
-                    agent_memory::ResourceId{"resource:manual"},
-                    8,
-                    0x20
-                )},
+                std::vector<agent_memory::SourceRefSummary>{non_identity_source},
                 std::nullopt,
                 std::int64_t{160},
                 std::nullopt
@@ -158,8 +190,79 @@ int main() {
         );
         expect(source_updated.revision == 3,
                "source summary update must advance envelope revision");
-        expect(source_updated.sources.front().resource_revision->generation == 8,
-               "source summary update must replace the bound resource revision");
+        expect(source_updated.sources.front().uri == "https://example.test/source#updated",
+               "non-identity source summary update must be persisted");
+
+        bool rejected_identity_source_update = false;
+        auto changed_identity_source = make_source(
+            agent_memory::ResourceId{"resource:manual"},
+            8,
+            0x20
+        );
+        try {
+            (void)store.update_mutable_fields(
+                first.id,
+                agent_memory::KnowledgeUnitMutablePatch{
+                    std::nullopt,
+                    std::vector<agent_memory::SourceRefSummary>{changed_identity_source},
+                    std::nullopt,
+                    std::nullopt,
+                    std::nullopt
+                }
+            );
+        } catch(const std::invalid_argument&) {
+            rejected_identity_source_update = true;
+        }
+        expect(rejected_identity_source_update,
+               "source revision changes must not mutate Chunk identity in place");
+
+        bool rejected_invalid_quote_hash = false;
+        auto invalid_quote_request = make_request("tenant-a", 0x55, "invalid quote");
+        invalid_quote_request.sources.front().quote_hash[0] = static_cast<std::uint8_t>(
+            invalid_quote_request.sources.front().quote_hash[0] ^ 0xffU
+        );
+        invalid_quote_request.content_hash = agent_memory::compute_chunk_content_hash(
+            invalid_quote_request.scope_id,
+            invalid_quote_request.primary_text,
+            invalid_quote_request.sources,
+            invalid_quote_request.content_hash_recipe_version
+        );
+        try { (void)store.create_or_get_unit(std::move(invalid_quote_request)); }
+        catch(const std::invalid_argument&) { rejected_invalid_quote_hash = true; }
+        expect(rejected_invalid_quote_hash,
+               "create must reject a source summary with a stale quote hash");
+
+        bool rejected_overlong_primary_text = false;
+        auto overlong_request = make_request("tenant-a", 0x66, "overlong");
+        overlong_request.primary_text.assign(1025, 'x');
+        overlong_request.content_hash = agent_memory::compute_chunk_content_hash(
+            overlong_request.scope_id,
+            overlong_request.primary_text,
+            overlong_request.sources,
+            overlong_request.content_hash_recipe_version
+        );
+        try { (void)store.create_or_get_unit(std::move(overlong_request)); }
+        catch(const std::invalid_argument&) { rejected_overlong_primary_text = true; }
+        expect(rejected_overlong_primary_text,
+               "create must reject primary text beyond the bounded M0 seed");
+
+        bool rejected_multi_source = false;
+        auto multi_source_request = make_request("tenant-a", 0x33, "multi-source");
+        multi_source_request.sources.push_back(make_source(
+            agent_memory::ResourceId{"resource:second"},
+            1,
+            0x44
+        ));
+        multi_source_request.content_hash = agent_memory::compute_chunk_content_hash(
+            multi_source_request.scope_id,
+            multi_source_request.primary_text,
+            multi_source_request.sources,
+            multi_source_request.content_hash_recipe_version
+        );
+        try { (void)store.create_or_get_unit(std::move(multi_source_request)); }
+        catch(const std::invalid_argument&) { rejected_multi_source = true; }
+        expect(rejected_multi_source,
+               "M0 must reject multi-source Chunk identity until canonical hydration exists");
 
         bool rejected_empty_sources = false;
         try {
@@ -253,6 +356,51 @@ int main() {
             rejected_id_reuse = true;
         }
         expect(rejected_id_reuse, "erased knowledge-unit ids must never be reused");
+
+        const auto ordered_10 = make_envelope("tenant-order", 0x10, 10, "ten");
+        const auto ordered_100 = make_envelope("tenant-order", 0x20, 100, "one hundred");
+        const auto ordered_50 = make_envelope("tenant-order", 0x30, 50, "fifty");
+        store.upsert(ordered_10);
+        store.upsert(ordered_100);
+        store.upsert(ordered_50);
+        expect(store.scan_by_scope_and_kind(
+                   agent_memory::ScopeId{"tenant-order"},
+                   agent_memory::KnowledgeUnitKind::Chunk
+               ) == std::vector<agent_memory::KnowledgeUnitId>{
+                   agent_memory::KnowledgeUnitId{10},
+                   agent_memory::KnowledgeUnitId{100},
+                   agent_memory::KnowledgeUnitId{50}
+               }, "kind scan must preserve insertion order, not numeric order");
+        store.upsert(ordered_50);
+        expect(store.scan_by_scope_and_kind(
+                   agent_memory::ScopeId{"tenant-order"},
+                   agent_memory::KnowledgeUnitKind::Chunk
+               ).back().value() == 50,
+               "exact replay must not reorder an existing index entry");
+        expect(store.erase(agent_memory::KnowledgeUnitId{100}),
+               "ordered unit must be erasable");
+        expect(store.scan_by_scope_and_kind(
+                   agent_memory::ScopeId{"tenant-order"},
+                   agent_memory::KnowledgeUnitKind::Chunk
+               ) == std::vector<agent_memory::KnowledgeUnitId>{
+                   agent_memory::KnowledgeUnitId{10},
+                   agent_memory::KnowledgeUnitId{50}
+               }, "erase must remove only the erased index member");
+        bool rejected_ordered_reinsert = false;
+        try { store.upsert(ordered_100); }
+        catch(const std::invalid_argument&) { rejected_ordered_reinsert = true; }
+        expect(rejected_ordered_reinsert,
+               "an erased explicit id must remain permanently reserved");
+
+        bool rejected_conflicting_explicit_id = false;
+        auto conflicting_id = ordered_10;
+        conflicting_id.id = agent_memory::KnowledgeUnitId{102};
+        try { store.upsert(conflicting_id); }
+        catch(const std::invalid_argument&) { rejected_conflicting_explicit_id = true; }
+        expect(rejected_conflicting_explicit_id,
+               "conflicting content-key upsert must fail before mutating allocator state");
+        expect(!store.find(agent_memory::KnowledgeUnitId{102}),
+               "failed explicit upsert must leave no partial envelope row");
     }
 
     {
@@ -262,15 +410,22 @@ int main() {
         const auto restored = reopened.find(first_id);
         expect(restored && restored->display_text == "updated display",
                "knowledge-unit mutable state must survive reopen");
-        expect(restored->sources.front().resource_revision->body_digest.bytes[0] == 0x20,
+        expect(restored->sources.front().resource_revision->body_digest.bytes[0] == 0x01,
                "source body digest must survive reopen");
         expect(restored->priority_weight == 0.7,
                "fractional priority weight must round-trip losslessly");
         const auto next = reopened.create_or_get_unit(
             make_request("tenant-a", 0x02, "second")
         );
-        expect(next.id.value() > first_id.value(),
-               "knowledge-unit ids must remain monotonic after reopen");
+        expect(next.id.value() == 101,
+               "explicit high ids must advance the allocator frontier atomically");
+        expect(reopened.scan_by_scope_and_kind(
+                   agent_memory::ScopeId{"tenant-order"},
+                   agent_memory::KnowledgeUnitKind::Chunk
+               ) == std::vector<agent_memory::KnowledgeUnitId>{
+                   agent_memory::KnowledgeUnitId{10},
+                   agent_memory::KnowledgeUnitId{50}
+               }, "index insertion order must survive reopen");
     }
 
     std::filesystem::remove(path, error);

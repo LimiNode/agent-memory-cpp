@@ -292,6 +292,14 @@ struct CompiledArticlePayload {
 - **Per-kind payloads** — отдельные DBI: `qa_payloads`, `fact_payloads`, `conversation_episode_payloads`, `compiled_article_payloads`, `chunk_payloads`. Key = UnitId.
 - `MultiTableWriter` обеспечивает atomic coordinated writes (envelope + components + projections + secondary indexes в одной транзакции).
 
+The canonical per-kind payload contract is a future/profile capability. The
+current M0 MDBX envelope store deliberately does not open `chunk_payloads` and
+does not copy `primary_text` into a second payload table. `primary_text` is a
+bounded (1024-byte) retrieval seed/fallback; canonical body bytes remain owned
+by the content/artifact store. Locator-backed `ChunkPayload` hydration,
+including exact multi-span resolution, is deferred until a resolver and
+end-to-end fixture exist.
+
 ## 5. SearchProjections (retrieval-specific views)
 
 Layer C в ADR-001. `SearchProjection` — отдельное текстовое представление unit, оптимизированное под конкретный retrieval method.

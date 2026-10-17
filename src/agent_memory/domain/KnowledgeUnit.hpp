@@ -139,7 +139,9 @@ namespace agent_memory {
 
     /// \brief Computes the M0 Chunk identity hash from canonical identity material.
     /// \note The first source revision supplies the stable resource digest and
-    ///       chunk span; the normalized primary text is always included.
+    ///       chunk span; the normalized primary text is always included. The
+    ///       M0 MDBX store accepts exactly one source summary so no additional
+    ///       source can be silently omitted from identity.
     [[nodiscard]] ContentHash compute_chunk_content_hash(
         const ScopeId& scope_id,
         std::string_view primary_text,

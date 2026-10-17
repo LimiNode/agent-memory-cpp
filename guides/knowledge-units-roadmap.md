@@ -627,8 +627,10 @@ Identity vs mutable fields:
 
 ### 4.1. Allocation и инварианты
 
-- `KnowledgeUnitId` allocation is storage-owned. MDBX-backed storage obtains it
-  from `TableSequence(knowledge_units).next(txn)` inside the same write transaction
+- `KnowledgeUnitId` allocation is storage-owned. The canonical future adapter
+  may use `TableSequence(knowledge_units).next(txn)`; the current M0 MDBX store
+  uses an atomic `@next_id` frontier plus `@used:<id>` tombstones inside the
+  same write transaction
   that installs the content-key mapping. There is no public
   static allocation API in the canonical path.
 - Reuse id после erase запрещён (даже если соответствующий unit удалён).
@@ -821,10 +823,13 @@ chunk.detected_language = std::string{"cpp"};
 
 #### 5.1.3. Storage
 
-DBI `chunk_payloads` (key = UnitId) is canonical always-open. `ChunkPayload`
-всегда присутствует для Chunk kind (в отличие от optional payloads для других
-kinds). Write validation requires it when `kind == Chunk`; it does not require a
-capability flag and is not created dynamically on first write.
+The future canonical/profile contract may use DBI `chunk_payloads` (key =
+UnitId) for a locator-backed `ChunkPayload`. It must not duplicate canonical
+normalized body bytes. The current M0 envelope store intentionally defers this
+DBI: it stores only a bounded `primary_text` seed and one inline source/range
+summary, rejects multi-source identity, and makes no claim that exact
+canonical hydration is available. A profile may enable `chunk_payloads` only
+after a resolver and fixture prove the locator-to-body mapping.
 
 ### 5.2. QAPayload
 

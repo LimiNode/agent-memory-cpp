@@ -29,8 +29,9 @@ namespace agent_memory {
     /// \brief Transactional envelope store with content-key deduplication.
     ///
     /// The first M0 profile persists inline `SourceRefSummary` values only.
-    /// Full source references, projections and payload-specific stores remain
-    /// separate capabilities.
+    /// `primary_text` is a bounded retrieval seed; canonical body bytes and
+    /// locator-backed payloads remain separate capabilities. Exact hydration
+    /// and multi-source identity are intentionally deferred in M0.
     class MdbxKnowledgeUnitStore final : public IKnowledgeUnitStore {
     public:
         explicit MdbxKnowledgeUnitStore(MdbxKnowledgeUnitStoreOptions options);

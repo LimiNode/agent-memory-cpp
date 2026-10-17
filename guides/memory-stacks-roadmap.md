@@ -1536,9 +1536,12 @@ authoritative DBI budget checkpoint — в §5.5.1 того же TZ.
 `MemoryProfileSpec` выбирает logical capabilities: QAPairs, TemporalFact,
 ConversationMemory, CompiledArticles, FullSourceRefs,
 DenseVectors, LexicalBm25F, GraphRelations, TemporalValidity,
-SpeakerAttribution, UsageStats, and Compaction. `chunk_payloads` is a canonical always-open DBI, and
-`ChunkPayload` is required when writing `KnowledgeUnitKind::Chunk`; it is not a
-separate capability selector and does not require an additional kind selector.
+SpeakerAttribution, UsageStats, and Compaction. The future canonical profile
+may expose `chunk_payloads` for locator-backed `ChunkPayload`; it is not an
+inline copy of `primary_text`. The M0 envelope store does not open that DBI:
+it keeps only a bounded retrieval seed and defers exact canonical hydration
+until a resolver and fixture are available. Any profile that enables the DBI
+must specify its locator/value codec and capability signature.
 Concrete DBI names and table types for these capabilities are enumerated in TZ
 §5.5.
 
@@ -2121,3 +2124,10 @@ Per-mode подробные таблицы см. в `optimization-roadmap.md` с
   excluded;
   используется для drift detection.
 - **ADR** — Architecture Decision Record, раздел в этом документе с фиксированным решением.
+
+### M0 envelope-store clarification
+
+M0 stores a bounded `primary_text` retrieval seed and inline source summaries.
+It does not open or populate the future `chunk_payloads` DBI, and it does not
+claim exact canonical hydration. Locator-backed `ChunkPayload` is a later
+profile capability whose resolver and fixture must be specified before use.
