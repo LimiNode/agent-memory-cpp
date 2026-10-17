@@ -59,10 +59,38 @@ namespace {
         request.scope_id = agent_memory::ScopeId{std::move(scope)};
         request.primary_text = "The durable lexical memory slice.";
         request.display_text = std::move(display);
-        request.content_hash_recipe_version = 1;
+        request.content_hash_recipe_version = 2;
         request.sources.push_back(make_source(
             agent_memory::ResourceId{"resource:manual"},
             7,
+            content_seed
+        ));
+        request.created_at_ms = 100;
+        request.observed_at_ms = 120;
+        request.priority_weight = 0.5;
+        request.content_hash = agent_memory::compute_chunk_content_hash(
+            request.scope_id, request.primary_text, request.sources,
+            request.content_hash_recipe_version
+        );
+        return request;
+    }
+
+    agent_memory::KnowledgeUnitCreateRequest make_request_for_source(
+        std::string scope,
+        agent_memory::ResourceId resource_id,
+        std::uint64_t generation,
+        std::uint8_t content_seed,
+        std::string display
+    ) {
+        agent_memory::KnowledgeUnitCreateRequest request;
+        request.kind = agent_memory::KnowledgeUnitKind::Chunk;
+        request.scope_id = agent_memory::ScopeId{std::move(scope)};
+        request.primary_text = "The durable lexical memory slice.";
+        request.display_text = std::move(display);
+        request.content_hash_recipe_version = 2;
+        request.sources.push_back(make_source(
+            resource_id,
+            generation,
             content_seed
         ));
         request.created_at_ms = 100;
@@ -127,6 +155,38 @@ int main() {
         expect(duplicate.id == first.id, "same content key must deduplicate");
         expect(duplicate.display_text == "first display",
                "dedupe must not overwrite the existing envelope");
+
+        auto same_bytes_other_resource = make_request_for_source(
+            "tenant-a",
+            agent_memory::ResourceId{"resource:other"},
+            7,
+            0x01,
+            "same bytes, other resource"
+        );
+        const auto other_resource_unit = store.create_or_get_unit(
+            std::move(same_bytes_other_resource)
+        );
+        expect(other_resource_unit.id != first.id,
+               "equal body bytes from different resources must not deduplicate");
+        expect(other_resource_unit.sources.front().resource_id ==
+                   agent_memory::ResourceId{"resource:other"},
+               "deduplicated identity must retain the other resource provenance");
+
+        auto same_resource_next_generation = make_request_for_source(
+            "tenant-a",
+            agent_memory::ResourceId{"resource:manual"},
+            8,
+            0x01,
+            "same bytes, next generation"
+        );
+        const auto next_generation_unit = store.create_or_get_unit(
+            std::move(same_resource_next_generation)
+        );
+        expect(next_generation_unit.id != first.id,
+               "different resource generations must not deduplicate");
+        expect(next_generation_unit.sources.front().resource_revision->generation == 8,
+               "generation-specific identity must retain its provenance revision");
+
         auto mismatched_identity = make_request("tenant-a", 0x01, "different");
         mismatched_identity.primary_text = "different canonical text";
         mismatched_identity.content_hash = duplicate.content_hash;
@@ -289,13 +349,13 @@ int main() {
                "the same content hash in another scope must not deduplicate");
         expect(store.scan_by_scope_and_kind(
                    agent_memory::ScopeId{"tenant-a"},
-                   agent_memory::KnowledgeUnitKind::Chunk).size() == 1,
+                   agent_memory::KnowledgeUnitKind::Chunk).size() == 3,
                "kind scan must remain scope-aware");
         expect(store.scan_by_scope_and_kind(
                    agent_memory::ScopeId{"tenant-b"},
                    agent_memory::KnowledgeUnitKind::Chunk).size() == 1,
                "kind scan must find only the requested scope");
-        expect(store.scan_by_scope(agent_memory::ScopeId{"tenant-a"}).size() == 1,
+        expect(store.scan_by_scope(agent_memory::ScopeId{"tenant-a"}).size() == 3,
                "scope index must not leak another tenant's unit");
 
         store.upsert(source_updated); // exact replay is accepted
@@ -317,7 +377,7 @@ int main() {
         }
         expect(rejected_mutable_upsert, "upsert must reject mutable changes");
         auto recipe_mutation = source_updated;
-        recipe_mutation.content_hash_recipe_version = 2;
+        recipe_mutation.content_hash_recipe_version = 1;
         bool rejected_recipe_mutation = false;
         try { store.upsert(recipe_mutation); } catch(const std::invalid_argument&) {
             rejected_recipe_mutation = true;

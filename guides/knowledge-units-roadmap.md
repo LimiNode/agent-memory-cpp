@@ -552,6 +552,13 @@ presence + length framing. Unicode normalization and whitespace classes use
 Unicode 15.1.0 for recipe v1; changing Unicode data version requires a new
 recipe version.
 
+The current narrow M0 C++ Chunk implementation uses its own recipe version 2
+(`agent-memory.content-hash.v2`). It includes the immutable `ResourceId`,
+resource generation, body-digest algorithm and body digest, followed by the
+chunk span and primary-text digest. This prevents equal bytes from different
+resources or generations from being deduplicated. The full typed wire grammar
+above remains the broader roadmap contract and is not claimed by M0.
+
 `ScopeId::canonical_bytes()` is `UTF-8 NFC`, CRLF/CR -> LF, trim outer Unicode
 whitespace, ASCII lower-case for `[A-Z]`, and forbids empty result, NUL bytes
 and path traversal tokens (`..`, `.` as full path segment). Scope aliases must
@@ -1376,7 +1383,7 @@ enum class DerivedRecordKind : uint32_t {
 | GlobalIdentityComponent | `unit_components` (tag=GlobalIdentity) | durable-global-identity profile |
 | QAPayload | `qa_payloads` | QAPairs=true (enable_qa_payload) |
 | FactPayload | `fact_payloads` | enable_fact_payload=true |
-| ChunkPayload | `chunk_payloads` | Chunk kind (default, всегда) |
+| ChunkPayload | `chunk_payloads` | Optional `ChunkPayload` profile; not opened by M0 |
 | ConversationEpisodePayload | `conversation_episode_payloads` | ConversationMemory=true |
 | CompiledArticlePayload | `compiled_article_payloads` | CompiledArticles=true |
 | Full SourceRef vector | `source_refs` | `enable_full_source_refs=true` (M1) |

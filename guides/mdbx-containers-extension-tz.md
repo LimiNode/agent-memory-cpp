@@ -966,7 +966,8 @@ every kind family, absent/empty/non-empty fields, Unicode composed/decomposed
 equivalence, duplicate metadata key rejection, boundary integers/timestamps,
 legacy recipe v0 and C++11/C++17 equality.
 
-For `Chunk`, `resource_body_digest`, span/offset identity and normalized
+For `Chunk`, the immutable `ResourceRevisionRef` (`ResourceId`, generation,
+body-digest algorithm and digest), span/offset identity and normalized
 chunk-text digest are required inputs to `create_or_get_unit`, or storage must load them
 from authoritative `ResourceBodyStore` / chunk-normalization records before
 computing the hash. `ChunkPayload` alone is not sufficient identity material if
@@ -1291,7 +1292,7 @@ qa_payloads|qa|KeyValueTable|QAPairs|kv_supported|logical_adapter_required|UnitI
 fact_payloads|facts|KeyValueTable|TemporalFact|kv_supported|logical_adapter_required|UnitId|1
 conversation_episode_payloads|chat|KeyValueTable|ConversationMemory|kv_supported|logical_adapter_required|UnitId|1
 compiled_article_payloads|compiled_wiki|KeyValueTable|CompiledArticles|kv_supported|logical_adapter_required|UnitId|1
-chunk_payloads|ingestion|KeyValueTable|always|kv_supported|logical_adapter_required|UnitId|1
+chunk_payloads|ingestion|KeyValueTable|ChunkPayload|kv_supported|logical_adapter_required|UnitId|1
 source_refs|provenance|KeyValueTable|FullSourceRefs|kv_supported|logical_adapter_required|UnitId|1
 unit_projections|retrieval|KeyValueTable|indexed_retrieval|kv_supported|derived_rebuildable|ScopeId,UnitId,ProjectionKind,Revision|1
 embedding_meta|embeddings|KeyValueTable|DenseVectors|kv_supported|derived_rebuildable|ScopeId,ModelId,ModelVersion,ProjectionKind,UnitId|1
@@ -1373,7 +1374,7 @@ _mdbxc_logical_delivery_watermarks|upstream_sync|UpstreamSystemDBI|UpstreamSync|
 | `fact_payloads` | по capability `TemporalFact` | `agent_memory.fact.v1` | TBD | Per-kind payload для `Fact` units |
 | `conversation_episode_payloads` | по capability `ConversationMemory` | `agent_memory.episode.v1` | TBD | Per-kind payload для `ConversationEpisode` units |
 | `compiled_article_payloads` | по capability `CompiledArticles` | `agent_memory.compiled_article.v1` | TBD | Per-kind payload для `CompiledArticle` units |
-| `chunk_payloads` | да (canonical always-open) | `agent_memory.chunk.v1` | TBD | Per-kind payload для `Chunk` units; required when writing `KnowledgeUnitKind::Chunk` |
+| `chunk_payloads` | по selector `ChunkPayload` (future locator-backed profile) | `agent_memory.chunk.v1` | TBD | Optional per-kind payload для `Chunk`; M0 does not open or populate this DBI |
 | `source_refs` | по capability `FullSourceRefs` (M1) | `agent_memory.source_ref.v1` | TBD | Full `SourceRef` vector by `UnitId`; inline summaries remain in envelope |
 | `unit_projections` | по selector `indexed_retrieval` (Layer C projections) | `agent_memory.projection.v1` | TBD | Multi-version `(scope, unit, ProjectionKind, revision)` projections; TranslatedCanonical carries projection-level derivation metadata in the value |
 | `embedding_meta` | по capability `DenseVectors` | `agent_memory.embedding_meta.v1` | TBD | Версионированная мета (model_id, version, dim, encoder_id) |
@@ -1587,7 +1588,7 @@ budget автоматически; они считаются только при
 | `content_key_to_unit_id` | `KeyValueTable<KnowledgeUnitKey, UnitId>` (§5.5 Layer A) | Supported | Dedupe/migration lookup; KV путь |
 | `knowledge_units_by_kind` | `KeyValueTable<CompositeKey<ScopeId, KnowledgeUnitKind>, UnitId[]>` (§5.5) | Supported | M0 stores a bounded serialized ordered UnitId list; the index is derived and rebuildable |
 | `unit_components` | `TypeDiscriminatedTable<ComponentKind, UnitId, TypedComponentValue>` over `KeyValueTable<CompositeKey<ComponentKind, UnitId>, TypedValueBytes>` (§3.4) | Supported if implemented exactly as KV | The old `AnyValueTable<UnitId>` interpretation is forbidden because it loses components and is not sync-covered |
-| `qa_payloads`, `fact_payloads`, `conversation_episode_payloads`, `compiled_article_payloads`, `chunk_payloads` | `KeyValueTable<UnitId, PerKindPayload>` (§5.5 Layer B) | Supported | Per-kind payloads — обычные KV |
+| `qa_payloads`, `fact_payloads`, `conversation_episode_payloads`, `compiled_article_payloads`, `chunk_payloads` | `KeyValueTable<UnitId, PerKindPayload>` (§5.5 Layer B) | Profile-dependent | Per-kind payloads — ordinary KV; `chunk_payloads` requires the `ChunkPayload` profile |
 | `source_refs` | `KeyValueTable<UnitId, std::vector<SourceRef>>` (§5.5 Layer B) | Supported | Full source refs; M1 capability |
 | `unit_projections` | `KeyValueTable<CompositeKey<...>, SearchProjection>` (§5.5 Layer C) | Supported | Composite key — opaque bytes на wire (см. §1.5.5) |
 | `embedding_meta`, `embedding_vectors` | `KeyValueTable<CompositeKey<...>, …>` (§5.5) | Supported | Canonical application-owned vector projections; a generic `VectorStore` remains an optional rebuildable backend, not their identity authority. |

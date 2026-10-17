@@ -146,7 +146,7 @@ namespace agent_memory {
         const ScopeId& scope_id,
         std::string_view primary_text,
         const std::vector<SourceRefSummary>& sources,
-        std::uint16_t recipe_version = 1
+        std::uint16_t recipe_version = 2
     ) noexcept;
 
     /// \brief Lookup-critical canonical record for a durable knowledge unit.

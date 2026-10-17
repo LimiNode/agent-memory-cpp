@@ -74,7 +74,7 @@ canonical:
   - name: chunk_payloads
     owner: ingestion
     table_type: KeyValueTable
-    opens: always
+    opens: ChunkPayload
     wire_sync_support: kv_supported
     replication_semantics: logical_adapter_required
     physical_key: [UnitId]

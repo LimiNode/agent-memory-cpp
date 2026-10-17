@@ -43,7 +43,7 @@ namespace {
         envelope.observed_at_ms = 90;
         envelope.revision = 1;
         envelope.content_hash.bytes[0] = 1;
-        envelope.content_hash_recipe_version = 1;
+        envelope.content_hash_recipe_version = 2;
         envelope.priority_weight = 0.5;
         return envelope;
     }
@@ -135,6 +135,45 @@ int main() {
     const auto source = make_source_summary();
     if(!agent_memory::is_valid_source_ref_summary(source)) {
         return fail("complete source summary must be valid");
+    }
+
+    const auto chunk_hash = agent_memory::compute_chunk_content_hash(
+        ScopeId{"project:alpha"},
+        "A compact retrieval seed.",
+        std::vector<agent_memory::SourceRefSummary>{source},
+        2
+    );
+    constexpr std::array<std::uint8_t, 16> expected_chunk_hash{{
+        0x7e, 0xfd, 0xd5, 0x63, 0x36, 0x47, 0xc1, 0xbc,
+        0xc4, 0xb7, 0x46, 0x2e, 0xe7, 0xe2, 0xe1, 0xa0
+    }};
+    if(chunk_hash.bytes != expected_chunk_hash) {
+        return fail("recipe-v2 Chunk identity must match its golden vector");
+    }
+
+    auto other_resource = source;
+    other_resource.resource_id = agent_memory::ResourceId{"resource:other"};
+    other_resource.resource_revision->resource_id = other_resource.resource_id;
+    const auto other_resource_hash = agent_memory::compute_chunk_content_hash(
+        ScopeId{"project:alpha"},
+        "A compact retrieval seed.",
+        std::vector<agent_memory::SourceRefSummary>{other_resource},
+        2
+    );
+    if(chunk_hash == other_resource_hash) {
+        return fail("Chunk identity must distinguish different resource ids");
+    }
+
+    auto other_generation = source;
+    other_generation.resource_revision->generation += 1;
+    const auto other_generation_hash = agent_memory::compute_chunk_content_hash(
+        ScopeId{"project:alpha"},
+        "A compact retrieval seed.",
+        std::vector<agent_memory::SourceRefSummary>{other_generation},
+        2
+    );
+    if(chunk_hash == other_generation_hash) {
+        return fail("Chunk identity must distinguish different resource generations");
     }
 
     auto missing_revision = source;

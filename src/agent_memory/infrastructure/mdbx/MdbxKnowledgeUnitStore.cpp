@@ -451,8 +451,8 @@ namespace agent_memory {
 
         void validate_create_request(const KnowledgeUnitCreateRequest& request) {
             if(request.kind != KnowledgeUnitKind::Chunk
-               || request.content_hash_recipe_version != 1) {
-                throw std::invalid_argument("M0 store supports only recipe-v1 Chunk requests");
+               || request.content_hash_recipe_version != 2) {
+                throw std::invalid_argument("M0 store supports only recipe-v2 Chunk requests");
             }
             const auto expected_hash = compute_chunk_content_hash(
                 request.scope_id,
@@ -528,9 +528,9 @@ namespace agent_memory {
             }
             if(envelope.kind != KnowledgeUnitKind::Chunk
                || envelope.revision == 0
-               || envelope.content_hash_recipe_version != 1
+               || envelope.content_hash_recipe_version != 2
                || envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
-                throw std::invalid_argument("M0 store supports only recipe-v1 Chunk envelopes");
+                throw std::invalid_argument("M0 store supports only recipe-v2 Chunk envelopes");
             }
             if(envelope.kind == KnowledgeUnitKind::Chunk && envelope.sources.size() != 1) {
                 throw std::invalid_argument(

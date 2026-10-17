@@ -37,6 +37,7 @@ ALLOWED_SELECTORS = {
     "TemporalFact",
     "ConversationMemory",
     "CompiledArticles",
+    "ChunkPayload",
     "FullSourceRefs",
     "indexed_retrieval",
     "DenseVectors",

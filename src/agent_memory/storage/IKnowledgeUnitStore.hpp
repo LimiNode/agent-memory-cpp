@@ -23,7 +23,7 @@ namespace agent_memory {
         std::string primary_text;
         std::string display_text;
         ContentHash content_hash;
-        std::uint16_t content_hash_recipe_version = 1;
+        std::uint16_t content_hash_recipe_version = 2;
         std::vector<SourceRefSummary> sources;
         std::int64_t created_at_ms = 0;
         std::int64_t observed_at_ms = 0;

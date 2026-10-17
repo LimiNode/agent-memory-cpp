@@ -396,6 +396,12 @@ through `update_mutable_fields`; scoring-only `priority_weight` patches do not
 advance `revision`. Operational scans are scope-aware; any cross-scope scan is
 an explicit administrative capability, not this retrieval-facing API.
 
+For this M0 slice the accepted identity recipe is version 2. It binds the full
+immutable source-revision identity (`ResourceId`, generation, body-digest
+algorithm and digest), the chunk span, and the primary-text digest. Recipe v1
+records are not accepted by the M0 store; a future migration must preserve
+their old hashes before re-hashing them.
+
 ### 6.2. IComponentStore (если любой компонент включён)
 
 Backend — `TypeDiscriminatedTable`, DBI `unit_components`, physical key
@@ -439,8 +445,9 @@ authority and provenance rules before returning a `RetrievalHit`.
 - `IFactStore` — если `enable_fact_payload = true`.
 - `IEpisodeStore` — если `enable_conversation_episode = true`.
 - `IArticleStore` — если `enable_compiled_article = true`.
-- `IChunkStore` — backed by canonical always-open `chunk_payloads`; required
-  when writing `KnowledgeUnitKind::Chunk`.
+- `IChunkStore` — backed by the optional `ChunkPayload` profile and its
+  locator-backed `chunk_payloads` DBI; M0 does not open this DBI and stores only
+  the bounded envelope seed plus inline provenance.
 
 ### 6.6. Типичный DBI usage
 

@@ -104,7 +104,7 @@ namespace agent_memory {
         const std::vector<SourceRefSummary>& sources,
         std::uint16_t recipe_version
     ) noexcept {
-        std::string canonical{"agent-memory.content-hash.v1"};
+        std::string canonical{"agent-memory.content-hash.v2"};
         const auto append = [&canonical](std::string_view value) {
             canonical.append(std::to_string(value.size()));
             canonical.push_back(':');
@@ -121,6 +121,15 @@ namespace agent_memory {
         append_be(recipe_version, 2U);
         if(!sources.empty() && sources.front().resource_revision) {
             const auto& summary = sources.front();
+            append("resource_id");
+            append(summary.resource_revision->resource_id.value());
+            append("resource_generation");
+            append_be(summary.resource_revision->generation, sizeof(summary.resource_revision->generation));
+            append("resource_body_digest_algorithm");
+            append_be(
+                static_cast<std::uint8_t>(summary.resource_revision->body_digest.algorithm),
+                sizeof(std::uint8_t)
+            );
             append("resource_body_digest");
             canonical.append(reinterpret_cast<const char*>(
                 summary.resource_revision->body_digest.bytes.data()),
