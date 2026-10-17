@@ -24,7 +24,8 @@ namespace agent_memory {
         ScopeId scope_id;
         std::string primary_text;
         std::string display_text;
-        ContentHash content_hash;
+        /// Optional caller assertion; storage always computes the canonical hash.
+        std::optional<ContentHash> content_hash;
         std::uint16_t content_hash_recipe_version = 2;
         std::vector<SourceRefSummary> sources;
         std::int64_t created_at_ms = 0;

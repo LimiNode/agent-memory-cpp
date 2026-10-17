@@ -21,13 +21,12 @@ std::array<std::uint8_t, 32> sha256(std::string_view input) noexcept {
     std::array<std::uint32_t, 8> h{{0x6A09E667U,0xBB67AE85U,0x3C6EF372U,0xA54FF53AU,0x510E527FU,0x9B05688CU,0x1F83D9ABU,0x5BE0CD19U}};
     const std::uint64_t bit_count = static_cast<std::uint64_t>(input.size()) * 8U;
     const std::size_t total = ((input.size() + 9U + 63U) / 64U) * 64U;
-    const std::size_t pad_block = (input.size() / 64U +
-        (input.size() % 64U >= 56U ? 1U : 0U)) * 64U;
+    const std::size_t pad_offset = input.size();
     for(std::size_t offset = 0; offset < total; offset += 64U) {
         std::array<std::uint8_t, 64> block{};
         for(std::size_t i = 0; i < 64U && offset + i < input.size(); ++i) block[i] = static_cast<std::uint8_t>(input[offset + i]);
-        if(offset == pad_block) {
-            block[offset <= input.size() ? input.size() - offset : 0U] = 0x80U;
+        if(pad_offset >= offset && pad_offset < offset + 64U) {
+            block[pad_offset - offset] = 0x80U;
         }
         if(offset == total - 64U) {
             for(unsigned i = 0; i < 8U; ++i) {

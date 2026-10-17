@@ -151,14 +151,18 @@ namespace agent_memory {
 
             [[nodiscard]] double read_double() {
                 const auto text = read_string();
-                std::size_t consumed = 0;
                 double value = 0.0;
-                try {
-                    value = std::stod(text, &consumed);
-                } catch(const std::exception&) {
+                std::istringstream stream{text};
+                stream.imbue(std::locale::classic());
+                stream >> value;
+                if(stream.fail()) {
                     throw std::runtime_error("Invalid knowledge-unit double");
                 }
-                if(consumed != text.size() || !std::isfinite(value)) {
+                char trailing = 0;
+                if(stream >> trailing) {
+                    throw std::runtime_error("Invalid knowledge-unit double");
+                }
+                if(!std::isfinite(value)) {
                     throw std::runtime_error("Invalid knowledge-unit double");
                 }
                 return value;
@@ -474,7 +478,7 @@ namespace agent_memory {
             return payload;
         }
 
-        void validate_create_request(const KnowledgeUnitCreateRequest& request) {
+        ContentHash validate_create_request(const KnowledgeUnitCreateRequest& request) {
             if(request.kind != KnowledgeUnitKind::Chunk
                || request.content_hash_recipe_version != 2) {
                 throw std::invalid_argument("M0 store supports only recipe-v2 Chunk requests");
@@ -490,9 +494,9 @@ namespace agent_memory {
                 request.sources,
                 request.content_hash_recipe_version
             );
-            if(request.content_hash != expected_hash) {
+            if(request.content_hash && *request.content_hash != expected_hash) {
                 throw std::invalid_argument(
-                    "Knowledge-unit content_hash does not match canonical Chunk identity"
+                    "Knowledge-unit content_hash assertion does not match canonical Chunk identity"
                 );
             }
             KnowledgeUnitEnvelope probe;
@@ -502,12 +506,13 @@ namespace agent_memory {
             probe.primary_text = request.primary_text;
             probe.display_text = request.display_text;
             probe.sources = request.sources;
-            probe.content_hash = request.content_hash;
+            probe.content_hash = expected_hash;
             probe.content_hash_recipe_version = request.content_hash_recipe_version;
             probe.priority_weight = request.priority_weight;
             if(!is_valid_knowledge_unit_envelope(probe)) {
                 throw std::invalid_argument("Invalid knowledge-unit create request");
             }
+            return expected_hash;
         }
 
         mdbxc::Config make_config(const MdbxKnowledgeUnitStoreOptions& options) {
@@ -664,8 +669,8 @@ namespace agent_memory {
         }
 
         KnowledgeUnitEnvelope create_or_get_unit(KnowledgeUnitCreateRequest request) {
-            validate_create_request(request);
-            const KnowledgeUnitKey key{request.kind, request.scope_id, request.content_hash};
+            const auto content_hash = validate_create_request(request);
+            const KnowledgeUnitKey key{request.kind, request.scope_id, content_hash};
             const auto key_payload = content_key(key);
             auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
             if(const auto existing_id_payload = m_content_keys.find(key_payload, txn)) {
@@ -698,7 +703,7 @@ namespace agent_memory {
             envelope.updated_at_ms = request.created_at_ms;
             envelope.observed_at_ms = request.observed_at_ms;
             envelope.revision = 1;
-            envelope.content_hash = request.content_hash;
+            envelope.content_hash = content_hash;
             envelope.content_hash_recipe_version = request.content_hash_recipe_version;
             envelope.priority_weight = request.priority_weight;
             if(!is_valid_knowledge_unit_envelope(envelope)) {
@@ -759,7 +764,7 @@ namespace agent_memory {
             }
             if(patch.sources) {
                 envelope.sources = std::move(*patch.sources);
-                retrieval_visible_change = !source_summaries_equal(
+                retrieval_visible_change |= !source_summaries_equal(
                     envelope.sources, previous.sources
                 );
             }

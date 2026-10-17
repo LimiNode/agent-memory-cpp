@@ -121,7 +121,7 @@ namespace {
         envelope.updated_at_ms = request.created_at_ms;
         envelope.observed_at_ms = request.observed_at_ms;
         envelope.revision = 1;
-        envelope.content_hash = request.content_hash;
+        envelope.content_hash = *request.content_hash;
         envelope.content_hash_recipe_version = request.content_hash_recipe_version;
         envelope.priority_weight = request.priority_weight;
         return envelope;
@@ -141,7 +141,7 @@ int main() {
         });
 
         auto first_request = make_request("tenant-a", 0x01, "first display");
-        const auto key_hash = first_request.content_hash;
+        const auto key_hash = *first_request.content_hash;
         const auto first = store.create_or_get_unit(std::move(first_request));
         first_id = first.id;
         expect(first_id.value() == 1, "first knowledge-unit id must start at one");
@@ -155,6 +155,34 @@ int main() {
         expect(duplicate.id == first.id, "same content key must deduplicate");
         expect(duplicate.display_text == "first display",
                "dedupe must not overwrite the existing envelope");
+
+        auto no_assertion_request = make_request(
+            "tenant-no-assertion", 0x02, "storage computes the hash"
+        );
+        no_assertion_request.content_hash.reset();
+        const auto no_assertion_unit = store.create_or_get_unit(
+            std::move(no_assertion_request)
+        );
+        expect(
+            no_assertion_unit.content_hash
+                == agent_memory::compute_chunk_content_hash(
+                    no_assertion_unit.scope_id,
+                    no_assertion_unit.primary_text,
+                    no_assertion_unit.sources,
+                    no_assertion_unit.content_hash_recipe_version
+                ),
+            "M0 storage must compute content hash without a caller assertion"
+        );
+
+        auto bad_assertion_request = make_request(
+            "tenant-bad-assertion", 0x03, "rejected hash assertion"
+        );
+        bad_assertion_request.content_hash = agent_memory::ContentHash{};
+        bool rejected_bad_assertion = false;
+        try { (void)store.create_or_get_unit(std::move(bad_assertion_request)); }
+        catch(const std::invalid_argument&) { rejected_bad_assertion = true; }
+        expect(rejected_bad_assertion,
+               "M0 must reject a mismatched optional content hash assertion");
 
         auto legacy_request = make_request("tenant-legacy", 0x70, "legacy preview");
         legacy_request.sources.front().reference_mode =
@@ -328,6 +356,22 @@ int main() {
             }
         );
         store.upsert(deprecated_lifecycle_unit);
+
+        const auto combined_patch_unit = store.create_or_get_unit(
+            make_request("tenant-combined-patch", 0x73, "combined patch")
+        );
+        const auto combined_patch_result = store.update_mutable_fields(
+            combined_patch_unit.id,
+            agent_memory::KnowledgeUnitMutablePatch{
+                std::string{"combined display"},
+                combined_patch_unit.sources,
+                std::nullopt,
+                std::nullopt,
+                std::nullopt
+            }
+        );
+        expect(combined_patch_result.revision == combined_patch_unit.revision + 1,
+               "combined display and unchanged sources must advance revision once");
 
         bool rejected_invalid_quote_hash = false;
         auto invalid_quote_request = make_request("tenant-a", 0x55, "invalid quote");
