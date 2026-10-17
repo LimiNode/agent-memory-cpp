@@ -192,6 +192,28 @@ int main() {
         return fail("recipe-v2 Chunk identity must match its golden vector");
     }
 
+    const std::string boundary_text(56, 'a');
+    const auto boundary_chunk_hash = agent_memory::compute_chunk_content_hash(
+        ScopeId{"project:alpha"},
+        boundary_text,
+        std::vector<agent_memory::SourceRefSummary>{source},
+        2
+    );
+    constexpr std::array<std::uint8_t, 16> expected_boundary_chunk_hash{{
+        0x89, 0x83, 0xa3, 0xc6, 0x07, 0x40, 0xd7, 0x5c,
+        0x48, 0xd7, 0xc2, 0x2e, 0x64, 0x12, 0x86, 0xee
+    }};
+    if(boundary_chunk_hash.bytes != expected_boundary_chunk_hash) {
+        return fail("Chunk identity must use corrected SHA-256 boundary padding");
+    }
+    constexpr std::array<std::uint8_t, 16> expected_boundary_quote_hash{{
+        0xb3, 0x54, 0x39, 0xa4, 0xac, 0x6f, 0x09, 0x48,
+        0xb6, 0xd6, 0xf9, 0xe3, 0xc6, 0xaf, 0x0f, 0x5f
+    }};
+    if(agent_memory::compute_quote_hash(boundary_text) != expected_boundary_quote_hash) {
+        return fail("quote hash must use corrected SHA-256 boundary padding");
+    }
+
     auto other_resource = source;
     other_resource.resource_id = agent_memory::ResourceId{"resource:other"};
     other_resource.resource_revision->resource_id = other_resource.resource_id;
