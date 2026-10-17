@@ -15,8 +15,10 @@
 namespace agent_memory {
 
     /// \brief Input for creating or deduplicating one knowledge unit.
-    /// \note The M0 Chunk backend accepts one source/range summary. Canonical
-    ///       body hydration and multi-source identity are future capabilities.
+    /// \note The M0 Chunk backend accepts one revision-bound source/range
+    ///       summary. Legacy preview-only provenance is migration-only, while
+    ///       canonical body hydration and multi-source identity are future
+    ///       capabilities.
     struct KnowledgeUnitCreateRequest final {
         KnowledgeUnitKind kind = KnowledgeUnitKind::Chunk;
         ScopeId scope_id;

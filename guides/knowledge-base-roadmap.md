@@ -390,11 +390,14 @@ public:
 
 The M0 implementation is intentionally a narrow Chunk profile. `create_or_get_unit`
 computes and verifies the versioned canonical SHA-256 identity; a caller hash is
-only an assertion. `upsert` is insert-or-exact-replay and rejects lifecycle,
-revision, creation-time, recipe, or mutable-field changes. Ordinary changes go
-through `update_mutable_fields`; scoring-only `priority_weight` patches do not
-advance `revision`. Operational scans are scope-aware; any cross-scope scan is
-an explicit administrative capability, not this retrieval-facing API.
+only an assertion. M0 accepts only one `RevisionBoundQuote` source with a
+complete `ResourceRevisionRef`; `LegacyPreviewOnly` is reserved for an explicit
+migration path and is rejected by the M0 store. `upsert` is insert-or-exact-replay:
+new units must start `Active`, while an exact replay remains valid after a
+durable transition to `Superseded` or `Deprecated`. Lifecycle and other ordinary
+changes go through `update_mutable_fields`; scoring-only `priority_weight` patches
+do not advance `revision`. Operational scans are scope-aware; any cross-scope
+scan is an explicit administrative capability, not this retrieval-facing API.
 
 For this M0 slice the accepted identity recipe is version 2. It binds the full
 immutable source-revision identity (`ResourceId`, generation, body-digest

@@ -271,6 +271,14 @@ namespace agent_memory {
             return true;
         }
 
+        bool has_m0_chunk_identity_source(
+            const std::vector<SourceRefSummary>& sources
+        ) noexcept {
+            return sources.size() == 1
+                && sources.front().reference_mode == SourceReferenceMode::RevisionBoundQuote
+                && sources.front().resource_revision.has_value();
+        }
+
         SourceRefSummary read_source_summary(PayloadReader& reader) {
             SourceRefSummary summary;
             summary.resource_id = ResourceId{reader.read_string()};
@@ -413,6 +421,23 @@ namespace agent_memory {
             if(!is_valid_knowledge_unit_envelope(envelope)) {
                 throw std::runtime_error("Invalid persisted knowledge-unit envelope");
             }
+            if(
+                envelope.kind == KnowledgeUnitKind::Chunk
+                && (
+                    envelope.content_hash_recipe_version != 2
+                    || !has_m0_chunk_identity_source(envelope.sources)
+                    || envelope.content_hash != compute_chunk_content_hash(
+                        envelope.scope_id,
+                        envelope.primary_text,
+                        envelope.sources,
+                        envelope.content_hash_recipe_version
+                    )
+                )
+            ) {
+                throw std::runtime_error(
+                    "Persisted M0 Chunk identity does not match its canonical hash"
+                );
+            }
             return envelope;
         }
 
@@ -454,6 +479,11 @@ namespace agent_memory {
                || request.content_hash_recipe_version != 2) {
                 throw std::invalid_argument("M0 store supports only recipe-v2 Chunk requests");
             }
+            if(!has_m0_chunk_identity_source(request.sources)) {
+                throw std::invalid_argument(
+                    "M0 Chunk requests require one revision-bound source summary"
+                );
+            }
             const auto expected_hash = compute_chunk_content_hash(
                 request.scope_id,
                 request.primary_text,
@@ -475,11 +505,6 @@ namespace agent_memory {
             probe.content_hash = request.content_hash;
             probe.content_hash_recipe_version = request.content_hash_recipe_version;
             probe.priority_weight = request.priority_weight;
-            if(request.kind == KnowledgeUnitKind::Chunk && request.sources.size() != 1) {
-                throw std::invalid_argument(
-                    "M0 Chunk identity supports exactly one source summary"
-                );
-            }
             if(!is_valid_knowledge_unit_envelope(probe)) {
                 throw std::invalid_argument("Invalid knowledge-unit create request");
             }
@@ -528,13 +553,12 @@ namespace agent_memory {
             }
             if(envelope.kind != KnowledgeUnitKind::Chunk
                || envelope.revision == 0
-               || envelope.content_hash_recipe_version != 2
-               || envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
+               || envelope.content_hash_recipe_version != 2) {
                 throw std::invalid_argument("M0 store supports only recipe-v2 Chunk envelopes");
             }
-            if(envelope.kind == KnowledgeUnitKind::Chunk && envelope.sources.size() != 1) {
+            if(!has_m0_chunk_identity_source(envelope.sources)) {
                 throw std::invalid_argument(
-                    "M0 Chunk identity supports exactly one source summary"
+                    "M0 Chunk envelopes require one revision-bound source summary"
                 );
             }
             if(envelope.content_hash != compute_chunk_content_hash(
@@ -582,6 +606,11 @@ namespace agent_memory {
             const auto used_key = used_id_key(envelope.id);
             if(m_units.find(used_key, txn)) {
                 throw std::invalid_argument("Knowledge-unit id was already used");
+            }
+            if(envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
+                throw std::invalid_argument(
+                    "A new M0 knowledge unit must start in the Active lifecycle state"
+                );
             }
             m_units.insert_or_assign(id_key(envelope.id), serialize_envelope(envelope), txn);
             m_units.insert_or_assign(used_key, "1", txn);

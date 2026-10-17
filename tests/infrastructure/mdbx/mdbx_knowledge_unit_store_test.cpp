@@ -156,6 +156,44 @@ int main() {
         expect(duplicate.display_text == "first display",
                "dedupe must not overwrite the existing envelope");
 
+        auto legacy_request = make_request("tenant-legacy", 0x70, "legacy preview");
+        legacy_request.sources.front().reference_mode =
+            agent_memory::SourceReferenceMode::LegacyPreviewOnly;
+        legacy_request.sources.front().resource_revision.reset();
+        legacy_request.sources.front().excerpt = agent_memory::TextRange{};
+        legacy_request.sources.front().quote_hash = {};
+        legacy_request.content_hash = agent_memory::compute_chunk_content_hash(
+            legacy_request.scope_id,
+            legacy_request.primary_text,
+            legacy_request.sources,
+            legacy_request.content_hash_recipe_version
+        );
+        bool rejected_legacy_create = false;
+        try { (void)store.create_or_get_unit(std::move(legacy_request)); }
+        catch(const std::invalid_argument&) { rejected_legacy_create = true; }
+        expect(rejected_legacy_create,
+               "M0 create must reject legacy preview-only Chunk provenance");
+
+        auto legacy_envelope = make_envelope(
+            "tenant-legacy-upsert", 0x71, 900, "legacy preview upsert"
+        );
+        legacy_envelope.sources.front().reference_mode =
+            agent_memory::SourceReferenceMode::LegacyPreviewOnly;
+        legacy_envelope.sources.front().resource_revision.reset();
+        legacy_envelope.sources.front().excerpt = agent_memory::TextRange{};
+        legacy_envelope.sources.front().quote_hash = {};
+        legacy_envelope.content_hash = agent_memory::compute_chunk_content_hash(
+            legacy_envelope.scope_id,
+            legacy_envelope.primary_text,
+            legacy_envelope.sources,
+            legacy_envelope.content_hash_recipe_version
+        );
+        bool rejected_legacy_upsert = false;
+        try { store.upsert(std::move(legacy_envelope)); }
+        catch(const std::invalid_argument&) { rejected_legacy_upsert = true; }
+        expect(rejected_legacy_upsert,
+               "M0 upsert must reject legacy preview-only Chunk provenance");
+
         auto same_bytes_other_resource = make_request_for_source(
             "tenant-a",
             agent_memory::ResourceId{"resource:other"},
@@ -275,6 +313,21 @@ int main() {
         }
         expect(rejected_identity_source_update,
                "source revision changes must not mutate Chunk identity in place");
+
+        const auto lifecycle_unit = store.create_or_get_unit(
+            make_request("tenant-lifecycle", 0x72, "lifecycle replay")
+        );
+        const auto deprecated_lifecycle_unit = store.update_mutable_fields(
+            lifecycle_unit.id,
+            agent_memory::KnowledgeUnitMutablePatch{
+                std::nullopt,
+                std::nullopt,
+                agent_memory::KnowledgeUnitLifecycleState::Deprecated,
+                std::nullopt,
+                std::nullopt
+            }
+        );
+        store.upsert(deprecated_lifecycle_unit);
 
         bool rejected_invalid_quote_hash = false;
         auto invalid_quote_request = make_request("tenant-a", 0x55, "invalid quote");

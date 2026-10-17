@@ -1195,7 +1195,7 @@ qa_payloads                           KeyValueTable<UnitId, QAPayload>          
 fact_payloads                         KeyValueTable<UnitId, FactPayload>                 // capability TemporalFact
 conversation_episode_payloads         KeyValueTable<UnitId, ConversationEpisodePayload> // capability ConversationMemory
 compiled_article_payloads             KeyValueTable<UnitId, CompiledArticlePayload>     // capability CompiledArticles
-chunk_payloads                        KeyValueTable<UnitId, ChunkPayload>                // для kind == Chunk
+chunk_payloads                        KeyValueTable<UnitId, ChunkPayload>                // optional ChunkPayload profile; for kind == Chunk
 source_refs                           KeyValueTable<UnitId, std::vector<SourceRef>>      // capability FullSourceRefs
 
 // Layer C — search projections (multi-version)
