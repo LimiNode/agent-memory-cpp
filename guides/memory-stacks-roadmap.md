@@ -1536,9 +1536,12 @@ authoritative DBI budget checkpoint — в §5.5.1 того же TZ.
 `MemoryProfileSpec` выбирает logical capabilities: QAPairs, TemporalFact,
 ConversationMemory, CompiledArticles, FullSourceRefs,
 DenseVectors, LexicalBm25F, GraphRelations, TemporalValidity,
-SpeakerAttribution, UsageStats, and Compaction. `chunk_payloads` is a canonical always-open DBI, and
-`ChunkPayload` is required when writing `KnowledgeUnitKind::Chunk`; it is not a
-separate capability selector and does not require an additional kind selector.
+SpeakerAttribution, UsageStats, and Compaction. The future canonical profile
+may expose `chunk_payloads` for locator-backed `ChunkPayload`; it is not an
+inline copy of `primary_text`. The M0 envelope store does not open that DBI:
+it keeps only a bounded retrieval seed and defers exact canonical hydration
+until a resolver and fixture are available. Any profile that enables the DBI
+must specify its locator/value codec and capability signature.
 Concrete DBI names and table types for these capabilities are enumerated in TZ
 §5.5.
 
@@ -1738,19 +1741,26 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 
 ### Шаг 1: Envelope + базовые DBI
 
-> **Status.** The dependency-free value layer (`KnowledgeUnitEnvelope`, its
-> identity key, bounded inline source summaries, and lifecycle transition
-> rules) is implemented. Monotonic allocation, canonical content-hash
-> computation, serialization, MDBX DBIs, and `MemoryStack::open()` remain
-> separate follow-up PRs.
+> **Status.** The dependency-free value layer and the narrow durable M0 store
+> slice are implemented. That slice includes standalone `IKnowledgeUnitStore`,
+> `MdbxKnowledgeUnitStore`, monotonic `KnowledgeUnitId` allocation, recipe-v2
+> content hashing, envelope serialization, and the three identity/index DBIs
+> (`knowledge_units`, `content_key_to_unit_id`, `knowledge_units_by_kind`).
+> This does not complete the whole memory stack: `MemoryStack::open()`, full
+> profile/schema orchestration, importer integration, and remaining extensions
+> are follow-up work.
 
 - Создать `KnowledgeUnitEnvelope` struct (lean hot-path envelope, ~18 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, content_hash, content_hash_recipe_version, lineage fields, priority_weight).
-- MDBX DBI: default-open physical set from
-  `mdbx-containers-extension-tz.md` §5.5, including identity DBI
-  `knowledge_units`, `content_key_to_unit_id`, `knowledge_units_by_kind` and
-  `schema_info`.
-- Сериализация envelope через flat binary (msgpack или custom).
-- `MemoryStack::open()` для пустой spec (только envelope + lexical).
+- The standalone M0 store opens the three identity/index DBIs
+  `knowledge_units`, `content_key_to_unit_id`, and `knowledge_units_by_kind`;
+  the latter is a key-value table whose value is an ordered serialized
+  `UnitId[]`, not a native DUPSORT table. Full profile-driven DBI creation and
+  `schema_info` orchestration belong to `MemoryStack::open()` and remain
+  follow-up work.
+- Envelope serialization is implemented by the versioned M0 custom
+  length-delimited codec. This is not yet a compact fixed-width binary schema.
+- `MemoryStack::open()` for an empty spec (envelope + lexical) remains future
+  work.
 - Lifecycle FSM с 4 durable states (Active, Superseded, Deprecated, Erased). SoftSuppressed/cooldown — runtime state в UsageStatsComponent, не durable lifecycle.
 
 ### Шаг 1.5: Revision semantics + stale-filter
@@ -2121,3 +2131,10 @@ Per-mode подробные таблицы см. в `optimization-roadmap.md` с
   excluded;
   используется для drift detection.
 - **ADR** — Architecture Decision Record, раздел в этом документе с фиксированным решением.
+
+### M0 envelope-store clarification
+
+M0 stores a bounded `primary_text` retrieval seed and inline source summaries.
+It does not open or populate the future `chunk_payloads` DBI, and it does not
+claim exact canonical hydration. Locator-backed `ChunkPayload` is a later
+profile capability whose resolver and fixture must be specified before use.

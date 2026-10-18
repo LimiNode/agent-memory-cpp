@@ -87,8 +87,7 @@ namespace agent_memory {
         Erased
     };
 
-    /// \brief Truncated canonical content hash used for content-key lookup.
-    /// \note The versioned hash-computation pipeline is introduced separately.
+    /// \brief Truncated canonical SHA-256 content hash used for content-key lookup.
     struct ContentHash final {
         std::array<std::uint8_t, 16> bytes{};
     };
@@ -133,6 +132,24 @@ namespace agent_memory {
         std::string preview;
     };
 
+    /// \brief Computes the canonical quote hash required by RevisionBoundQuote.
+    [[nodiscard]] std::array<std::uint8_t, 16> compute_quote_hash(
+        std::string_view preview
+    ) noexcept;
+
+    /// \brief Computes the M0 Chunk identity hash from canonical identity material.
+    /// \note The first source revision supplies the stable resource digest and
+    ///       chunk span; the exact caller-supplied primary_text bytes are
+    ///       always included. The M0 MDBX store accepts exactly one source
+    ///       summary so no additional source can be silently omitted from
+    ///       identity.
+    [[nodiscard]] ContentHash compute_chunk_content_hash(
+        const ScopeId& scope_id,
+        std::string_view primary_text,
+        const std::vector<SourceRefSummary>& sources,
+        std::uint16_t recipe_version = 2
+    ) noexcept;
+
     /// \brief Lookup-critical canonical record for a durable knowledge unit.
     struct KnowledgeUnitEnvelope final {
         KnowledgeUnitId id;
@@ -176,9 +193,7 @@ namespace agent_memory {
         KnowledgeUnitLifecycleState to
     ) noexcept;
 
-    /// \brief Validates the compact M0 provenance summary shape.
-    /// \note This structural check does not recompute the quote hash. The
-    ///       canonical SHA-256 hash pipeline is a separate storage-layer step.
+    /// \brief Validates the compact M0 provenance summary and quote hash.
     [[nodiscard]] bool is_valid_source_ref_summary(
         const SourceRefSummary& summary
     ) noexcept;

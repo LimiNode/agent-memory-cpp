@@ -11,5 +11,6 @@
 #include "storage/CanonicalContentStore.hpp"
 #include "storage/IResourceIndexRecordOwnerStorage.hpp"
 #include "storage/IResourceManifestStorage.hpp"
+#include "storage/IKnowledgeUnitStore.hpp"
 
 #endif

@@ -24,11 +24,12 @@ canonical:
     migration_peak: 1
   - name: knowledge_units_by_kind
     owner: core
-    table_type: ReverseIndexTable
+    table_type: KeyValueTable
     opens: always
-    wire_sync_support: dupsort_not_supported
+    wire_sync_support: kv_supported
     replication_semantics: derived_rebuildable
     physical_key: [ScopeId, KnowledgeUnitKind]
+    value: serialized ordered UnitId list (bounded M0 index; rebuildable)
     migration_peak: 1
   - name: unit_components
     owner: core
@@ -73,7 +74,7 @@ canonical:
   - name: chunk_payloads
     owner: ingestion
     table_type: KeyValueTable
-    opens: always
+    opens: ChunkPayload
     wire_sync_support: kv_supported
     replication_semantics: logical_adapter_required
     physical_key: [UnitId]

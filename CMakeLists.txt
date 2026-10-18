@@ -30,6 +30,7 @@ add_library(agent_memory STATIC
     src/agent_memory/domain/CanonicalContent.cpp
     src/agent_memory/domain/Identifiers.cpp
     src/agent_memory/domain/KnowledgeUnit.cpp
+    src/agent_memory/domain/Sha256.cpp
     src/agent_memory/domain/Metadata.cpp
     src/agent_memory/domain/MetadataFilter.cpp
     src/agent_memory/domain/Resource.cpp
@@ -88,6 +89,7 @@ add_library(agent_memory STATIC
     src/agent_memory/retrieval/Retrieval.cpp
     src/agent_memory/storage/IDocumentStorage.cpp
     src/agent_memory/storage/CanonicalContentStore.cpp
+    src/agent_memory/storage/IKnowledgeUnitStore.cpp
     src/agent_memory/storage/IResourceIndexRecordOwnerStorage.cpp
     src/agent_memory/storage/IResourceManifestStorage.cpp
 )
@@ -132,6 +134,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxWorkspaceStorageRegistry.cpp
             src/agent_memory/infrastructure/mdbx/MdbxDurableLexicalDocumentMemory.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceImporter.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.cpp
     )
 
     agent_memory_provide_mdbx_containers(AGENT_MEMORY_MDBX_CONTAINERS_TARGET)

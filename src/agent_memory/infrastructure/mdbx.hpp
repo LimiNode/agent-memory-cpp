@@ -14,5 +14,6 @@
 #include "mdbx/MdbxWorkspaceStorageRegistry.hpp"
 #include "mdbx/MdbxDurableLexicalDocumentMemory.hpp"
 #include "mdbx/MdbxResourceImporter.hpp"
+#include "mdbx/MdbxKnowledgeUnitStore.hpp"
 
 #endif

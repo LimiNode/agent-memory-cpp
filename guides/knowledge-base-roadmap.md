@@ -292,6 +292,14 @@ struct CompiledArticlePayload {
 - **Per-kind payloads** — отдельные DBI: `qa_payloads`, `fact_payloads`, `conversation_episode_payloads`, `compiled_article_payloads`, `chunk_payloads`. Key = UnitId.
 - `MultiTableWriter` обеспечивает atomic coordinated writes (envelope + components + projections + secondary indexes в одной транзакции).
 
+The canonical per-kind payload contract is a future/profile capability. The
+current M0 MDBX envelope store deliberately does not open `chunk_payloads` and
+does not copy `primary_text` into a second payload table. `primary_text` is a
+bounded (1024-byte) retrieval seed/fallback; canonical body bytes remain owned
+by the content/artifact store. Locator-backed `ChunkPayload` hydration,
+including exact multi-span resolution, is deferred until a resolver and
+end-to-end fixture exist.
+
 ## 5. SearchProjections (retrieval-specific views)
 
 Layer C в ADR-001. `SearchProjection` — отдельное текстовое представление unit, оптимизированное под конкретный retrieval method.
@@ -367,13 +375,35 @@ public:
     virtual std::optional<KnowledgeUnitEnvelope> find(const KnowledgeUnitId& id) const = 0;
     virtual void upsert(KnowledgeUnitEnvelope envelope) = 0;
     virtual bool erase(const KnowledgeUnitId& id) = 0;
-    virtual std::vector<KnowledgeUnitId> scan_by_kind(KnowledgeUnitKind kind) const = 0;
+    virtual std::vector<KnowledgeUnitId> scan_by_scope_and_kind(
+        const ScopeId& scope_id, KnowledgeUnitKind kind) const = 0;
     virtual std::vector<KnowledgeUnitId> scan_by_scope(const ScopeId& scope_id) const = 0;
+    virtual KnowledgeUnitEnvelope create_or_get_unit(
+        KnowledgeUnitCreateRequest request) = 0;
+    virtual KnowledgeUnitEnvelope update_mutable_fields(
+        const KnowledgeUnitId& id, KnowledgeUnitMutablePatch patch) = 0;
     // content-addressing lookup: KnowledgeUnitKey — отдельная struct (content-hash), служит
     // для dedup/upsert-by-content; возвращает текущий Id, под которым живёт этот content
     virtual std::optional<KnowledgeUnitId> find_by_content_key(const KnowledgeUnitKey& key) const = 0;
 };
 ```
+
+The M0 implementation is intentionally a narrow Chunk profile. `create_or_get_unit`
+computes and verifies the versioned canonical SHA-256 identity; a caller hash is
+only an assertion. M0 accepts only one `RevisionBoundQuote` source with a
+complete `ResourceRevisionRef`; `LegacyPreviewOnly` is reserved for an explicit
+migration path and is rejected by the M0 store. `upsert` is insert-or-exact-replay:
+new units must start `Active`, while an exact replay remains valid after a
+durable transition to `Superseded` or `Deprecated`. Lifecycle and other ordinary
+changes go through `update_mutable_fields`; scoring-only `priority_weight` patches
+do not advance `revision`. Operational scans are scope-aware; any cross-scope
+scan is an explicit administrative capability, not this retrieval-facing API.
+
+For this M0 slice the accepted identity recipe is version 2. It binds the full
+immutable source-revision identity (`ResourceId`, generation, body-digest
+algorithm and digest), the chunk span, and the primary-text digest. Recipe v1
+records are not accepted by the M0 store; a future migration must preserve
+their old hashes before re-hashing them.
 
 ### 6.2. IComponentStore (если любой компонент включён)
 
@@ -418,8 +448,9 @@ authority and provenance rules before returning a `RetrievalHit`.
 - `IFactStore` — если `enable_fact_payload = true`.
 - `IEpisodeStore` — если `enable_conversation_episode = true`.
 - `IArticleStore` — если `enable_compiled_article = true`.
-- `IChunkStore` — backed by canonical always-open `chunk_payloads`; required
-  when writing `KnowledgeUnitKind::Chunk`.
+- `IChunkStore` — backed by the optional `ChunkPayload` profile and its
+  locator-backed `chunk_payloads` DBI; M0 does not open this DBI and stores only
+  the bounded envelope seed plus inline provenance.
 
 ### 6.6. Типичный DBI usage
 

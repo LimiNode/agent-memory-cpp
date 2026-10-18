@@ -92,6 +92,25 @@ Canonical decoded bytes
               raw | Zstd | Zstd + dictionary | packed body
 ```
 
+### 1.1. Version layers and fail-closed evolution
+
+The storage contract keeps these version domains distinct:
+
+1. domain/API schema (envelope and public request semantics);
+2. record codec (the byte codec and its payload version);
+3. physical DBI schema (name, key/value layout, flags and comparator);
+4. model/projection/recipe versions (derived retrieval materializations);
+5. profile/capability signature (the enabled logical feature set);
+6. physical body encoding generation (raw, framed compression or packed body).
+
+Additive record fields require a versioned codec. Unknown or newer versions fail
+closed. A DBI key/comparator/flag change requires a new DBI generation rather
+than in-place reinterpretation. A shadow rebuild must validate every record,
+publish the new generation atomically, and retain a crash-recovery/rollback
+path. Retirement is allowed only after an observation window and a check of
+the MDBX map/DBI budget. A new DBI per model or recipe is not justified without
+measurements showing that the additional physical state is necessary.
+
 ## 2. Three Domain Forms On One Shared Substrate
 
 | Domain | Canonical form | Normal edit operation | Typical derived views |

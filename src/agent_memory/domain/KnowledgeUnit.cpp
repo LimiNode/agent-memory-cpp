@@ -1,4 +1,5 @@
 #include "KnowledgeUnit.hpp"
+#include "Sha256.hpp"
 
 #include <algorithm>
 #include <array>
@@ -88,6 +89,65 @@ namespace agent_memory {
 
     bool ScopeId::empty() const noexcept {
         return m_value.empty();
+    }
+
+    std::array<std::uint8_t, 16> compute_quote_hash(std::string_view preview) noexcept {
+        const auto digest = sha256(preview);
+        std::array<std::uint8_t, 16> result{};
+        std::copy_n(digest.begin(), result.size(), result.begin());
+        return result;
+    }
+
+    ContentHash compute_chunk_content_hash(
+        const ScopeId& scope_id,
+        std::string_view primary_text,
+        const std::vector<SourceRefSummary>& sources,
+        std::uint16_t recipe_version
+    ) noexcept {
+        std::string canonical{"agent-memory.content-hash.v2"};
+        const auto append = [&canonical](std::string_view value) {
+            canonical.append(std::to_string(value.size()));
+            canonical.push_back(':');
+            canonical.append(value.data(), value.size());
+        };
+        const auto append_be = [&canonical](std::uint64_t value, std::size_t width) {
+            for(std::size_t index = 0; index < width; ++index) {
+                canonical.push_back(static_cast<char>(value >> ((width - index - 1U) * 8U)));
+            }
+        };
+        append("chunk");
+        append(scope_id.value());
+        append("recipe_version");
+        append_be(recipe_version, 2U);
+        if(!sources.empty() && sources.front().resource_revision) {
+            const auto& summary = sources.front();
+            append("resource_id");
+            append(summary.resource_revision->resource_id.value());
+            append("resource_generation");
+            append_be(summary.resource_revision->generation, sizeof(summary.resource_revision->generation));
+            append("resource_body_digest_algorithm");
+            append_be(
+                static_cast<std::uint8_t>(summary.resource_revision->body_digest.algorithm),
+                sizeof(std::uint8_t)
+            );
+            append("resource_body_digest");
+            canonical.append(reinterpret_cast<const char*>(
+                summary.resource_revision->body_digest.bytes.data()),
+                summary.resource_revision->body_digest.bytes.size());
+            append("chunk_offset");
+            append_be(summary.excerpt.offset, sizeof(summary.excerpt.offset));
+            append("chunk_length");
+            append_be(summary.excerpt.length, sizeof(summary.excerpt.length));
+        } else {
+            canonical.push_back('\0');
+        }
+        append("normalized_text_digest");
+        const auto text_digest = sha256(primary_text);
+        canonical.append(reinterpret_cast<const char*>(text_digest.data()), text_digest.size());
+        const auto digest = sha256(canonical);
+        ContentHash result;
+        std::copy_n(digest.begin(), result.bytes.size(), result.bytes.begin());
+        return result;
     }
 
     std::string_view to_string(KnowledgeUnitKind kind) noexcept {
@@ -183,6 +243,7 @@ namespace agent_memory {
             ) {
                 return false;
             }
+            if(summary.quote_hash != compute_quote_hash(summary.preview)) return false;
             break;
         case SourceReferenceMode::LegacyPreviewOnly:
             if(
