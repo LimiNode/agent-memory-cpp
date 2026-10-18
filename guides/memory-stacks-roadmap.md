@@ -1757,7 +1757,8 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
   `UnitId[]`, not a native DUPSORT table. Full profile-driven DBI creation and
   `schema_info` orchestration belong to `MemoryStack::open()` and remain
   follow-up work.
-- Envelope serialization is implemented by the M0 flat binary codec.
+- Envelope serialization is implemented by the versioned M0 custom
+  length-delimited codec. This is not yet a compact fixed-width binary schema.
 - `MemoryStack::open()` for an empty spec (envelope + lexical) remains future
   work.
 - Lifecycle FSM с 4 durable states (Active, Superseded, Deprecated, Erased). SoftSuppressed/cooldown — runtime state в UsageStatsComponent, не durable lifecycle.

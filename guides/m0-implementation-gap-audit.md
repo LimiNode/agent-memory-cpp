@@ -67,7 +67,9 @@ This PR does not claim that all M0 gates are complete. Multi-chunk importer
 integration, locator-backed `ChunkPayload` hydration, full `source_refs`, a
 general Original projection store, retrieval traces, lineage orchestration,
 complete MemoryStack profile integration, reindex protocols beyond this
-publication intent, recovery/compaction and maintenance are follow-up M0 work.
+publication intent, general recovery orchestration, compaction and maintenance
+are follow-up M0 work. Interrupted-publication recovery for this narrow slice
+is implemented and covered by its importer tests.
 Dense, hybrid, graph, temporal and other M1/M2 capabilities are explicitly
 excluded.
 

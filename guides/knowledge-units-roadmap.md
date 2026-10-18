@@ -1411,7 +1411,6 @@ enum class DerivedRecordKind : uint32_t {
 |---|---|---|
 | KnowledgeUnitEnvelope | `knowledge_units` | always |
 | KnowledgeUnit by kind | `knowledge_units_by_kind` | always (`KeyValueTable`; key = `(ScopeId, KnowledgeUnitKind)`, value = ordered serialized `UnitId[]`) |
-
 | UsageStatsComponent | `unit_components` (tag=UsageStats) | UsageStats=true |
 | SpeakerComponent | `unit_components` (tag=Speaker) | SpeakerAttribution=true |
 | TemporalComponent | `unit_components` (tag=Temporal) | TemporalValidity=true |
