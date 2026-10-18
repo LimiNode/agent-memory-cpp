@@ -59,6 +59,38 @@ void use_test_clock(
     options.clock_ms = [now_ms] { return now_ms; };
 }
 
+void append_framed(std::string& payload, std::string_view value) {
+    payload += std::to_string(value.size());
+    payload.push_back(':');
+    payload.append(value.data(), value.size());
+}
+
+std::string legacy_v3_intent(
+    std::string_view owner,
+    std::string_view scope,
+    std::string_view resource,
+    std::string_view uri,
+    std::string_view body,
+    std::uint64_t epoch,
+    std::uint64_t lease_deadline
+) {
+    std::string payload;
+    append_framed(payload, "agent_memory.resource_import_intent.v3");
+    append_framed(payload, owner);
+    append_framed(payload, std::to_string(epoch));
+    append_framed(payload, std::to_string(lease_deadline));
+    append_framed(payload, scope);
+    append_framed(payload, resource);
+    append_framed(payload, uri);
+    append_framed(payload, body);
+    append_framed(payload, "original");
+    append_framed(payload, "");
+    append_framed(payload, "");
+    append_framed(payload, "");
+    append_framed(payload, "1");
+    return payload;
+}
+
 std::string canonical_document_id(
     std::string_view scope,
     std::string_view resource
@@ -516,6 +548,42 @@ int main(int argc, char** argv) {
     }
     std::filesystem::remove(profile_path, error);
 
+    const auto legacy_v3_path = test_path("legacy_v3_intent");
+    std::filesystem::remove(legacy_v3_path, error);
+    {
+        const auto context = MdbxStorageContext::open(legacy_v3_path.string());
+        mdbxc::KeyValueTable<std::string, std::string> intents(
+            context->connection(), "agent_memory_resource_import_intents"
+        );
+        mdbxc::KeyValueTable<std::string, std::string> bindings(
+            context->connection(), "agent_memory_resource_import_bindings"
+        );
+        mdbxc::KeyValueTable<std::string, std::string> epochs(
+            context->connection(), "agent_memory_resource_import_epochs"
+        );
+        const auto payload = legacy_v3_intent(
+            "legacy-owner", "tenant-a", "resource:legacy-v3",
+            "https://example.test/legacy-v3", "legacy v3 body", 1, 100
+        );
+        auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        expect(bindings.insert("resource:legacy-v3", "tenant-a", txn),
+               "legacy v3 fixture binding was not created");
+        expect(epochs.insert("resource:legacy-v3", "1", txn),
+               "legacy v3 fixture epoch was not created");
+        expect(intents.insert("resource:legacy-v3", payload, txn),
+               "legacy v3 fixture intent was not created");
+        txn.commit();
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        use_test_clock(options, 1'000);
+        MdbxResourceImporter importer{std::move(options)};
+        const auto manifest = importer.find_manifest(ResourceId{"resource:legacy-v3"});
+        expect(manifest && manifest->revision.generation == 1 &&
+                   manifest->schema.schema_id == "agent_memory.m0_resource_importer",
+               "historical v3 intent was not recovered as lexical-only");
+    }
+    std::filesystem::remove(legacy_v3_path, error);
+
     const auto binding_a_path = test_path("binding_a");
     const auto binding_b_path = test_path("binding_b");
     std::filesystem::remove(binding_a_path, error);
@@ -580,6 +648,47 @@ int main(int argc, char** argv) {
     }
     std::filesystem::remove(pending_profile_path, error);
 
+    const auto recovery_admission_path = test_path("recovery_admission");
+    std::filesystem::remove(recovery_admission_path, error);
+    {
+        const auto context = MdbxStorageContext::open(recovery_admission_path.string());
+        MdbxResourceImporterOptions writer_options;
+        writer_options.context = context;
+        writer_options.publication_profile =
+            ResourceImportPublicationProfile::LexicalWithRawChunks;
+        writer_options.max_raw_body_bytes = 4'096;
+        use_test_clock(writer_options, 100);
+        writer_options.fault_injector = [](ResourceImporterFaultPoint point) {
+            if(point == ResourceImporterFaultPoint::AfterIntent) {
+                throw std::runtime_error("leave admission intent pending");
+            }
+        };
+        MdbxResourceImporter writer{std::move(writer_options)};
+        bool interrupted = false;
+        try {
+            (void)writer.import(original(
+                "resource:recovery-admission",
+                "https://example.test/recovery-admission",
+                std::string(2'048, 'a')
+            ));
+        } catch(const std::runtime_error&) { interrupted = true; }
+        expect(interrupted, "admission recovery fixture did not leave an intent");
+
+        MdbxResourceImporterOptions tighter_options;
+        tighter_options.context = context;
+        tighter_options.publication_profile =
+            ResourceImportPublicationProfile::LexicalWithRawChunks;
+        tighter_options.max_raw_body_bytes = 1'024;
+        use_test_clock(tighter_options, 1'000);
+        bool tighter_rejected = false;
+        try {
+            MdbxResourceImporter tighter{std::move(tighter_options)};
+        } catch(const std::invalid_argument&) { tighter_rejected = true; }
+        expect(tighter_rejected,
+               "recovery ignored the current raw body admission contract");
+    }
+    std::filesystem::remove(recovery_admission_path, error);
+
     const auto raw_fault_path = test_path("raw_fault");
     std::filesystem::remove(raw_fault_path, error);
     {
@@ -634,6 +743,62 @@ int main(int argc, char** argv) {
     }
     std::filesystem::remove(raw_fault_path, error);
 
+    const auto raw_takeover_path = test_path("raw_takeover");
+    std::filesystem::remove(raw_takeover_path, error);
+    {
+        const auto context = MdbxStorageContext::open(raw_takeover_path.string());
+        std::mutex coordination_mutex;
+        std::condition_variable coordination;
+        bool paused_after_raw = false;
+        bool resume_stale = false;
+        bool stale_rejected = false;
+        MdbxResourceImporterOptions stale_options;
+        stale_options.context = context;
+        stale_options.publication_profile =
+            ResourceImportPublicationProfile::LexicalWithRawChunks;
+        use_test_clock(stale_options, 100);
+        stale_options.fault_injector = [&](ResourceImporterFaultPoint point) {
+            if(point != ResourceImporterFaultPoint::AfterRawUnitPublication) return;
+            std::unique_lock<std::mutex> lock(coordination_mutex);
+            if(paused_after_raw) return;
+            paused_after_raw = true;
+            coordination.notify_all();
+            coordination.wait(lock, [&] { return resume_stale; });
+        };
+        MdbxResourceImporter stale{std::move(stale_options)};
+        std::thread stale_thread([&] {
+            try {
+                (void)stale.import(original(
+                    "resource:raw-takeover",
+                    "https://example.test/raw-takeover",
+                    std::string(2'500, 'z')
+                ));
+            } catch(const std::runtime_error&) { stale_rejected = true; }
+        });
+        {
+            std::unique_lock<std::mutex> lock(coordination_mutex);
+            coordination.wait(lock, [&] { return paused_after_raw; });
+        }
+        MdbxResourceImporterOptions successor_options;
+        successor_options.context = context;
+        successor_options.publication_profile =
+            ResourceImportPublicationProfile::LexicalWithRawChunks;
+        use_test_clock(successor_options, 1'000);
+        MdbxResourceImporter successor{std::move(successor_options)};
+        const auto recovered = successor.find_manifest(ResourceId{"resource:raw-takeover"});
+        {
+            std::lock_guard<std::mutex> lock(coordination_mutex);
+            resume_stale = true;
+        }
+        coordination.notify_all();
+        stale_thread.join();
+        expect(stale_rejected,
+               "stale writer was not fenced during raw publication");
+        expect(recovered && recovered->records.size() == 5,
+               "raw takeover did not recover a complete manifest");
+    }
+    std::filesystem::remove(raw_takeover_path, error);
+
     const auto admission_path = test_path("raw_admission");
     std::filesystem::remove(admission_path, error);
     {
@@ -667,6 +832,20 @@ int main(int argc, char** argv) {
     std::filesystem::remove(ordinal_path, error);
     expect(ordinal_limit_rejected,
            "raw chunk admission accepted a manifest ordinal overflow bound");
+
+    bool unknown_profile_rejected = false;
+    const auto unknown_profile_path = test_path("unknown_profile");
+    std::filesystem::remove(unknown_profile_path, error);
+    try {
+        MdbxResourceImporterOptions invalid_options;
+        invalid_options.path = unknown_profile_path.string();
+        invalid_options.publication_profile =
+            static_cast<ResourceImportPublicationProfile>(255);
+        MdbxResourceImporter invalid{std::move(invalid_options)};
+    } catch(const std::invalid_argument&) { unknown_profile_rejected = true; }
+    std::filesystem::remove(unknown_profile_path, error);
+    expect(unknown_profile_rejected,
+           "unknown publication profile was accepted by the importer");
 
     const auto boundary_path = test_path("raw_boundaries");
     std::filesystem::remove(boundary_path, error);

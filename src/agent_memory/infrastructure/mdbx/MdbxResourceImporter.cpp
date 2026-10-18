@@ -281,6 +281,11 @@ std::string publication_schema_id(
         sanitize_table_prefix(std::string{table_prefix});
 }
 
+bool is_valid_publication_profile(ResourceImportPublicationProfile profile) {
+    return profile == ResourceImportPublicationProfile::LexicalOnly ||
+        profile == ResourceImportPublicationProfile::LexicalWithRawChunks;
+}
+
 void validate_resource(const ObservedResource& resource) {
     if(resource.scope_id.empty() || resource.resource_id.empty()) {
         throw std::invalid_argument("resource scope and id must not be empty");
@@ -628,6 +633,9 @@ public:
         , m_max_raw_chunks(options.max_raw_chunks)
         , m_clock(options.clock_ms ? std::move(options.clock_ms) : system_clock_ms)
         , m_fault_injector(std::move(options.fault_injector)) {
+        if(!is_valid_publication_profile(m_publication_profile)) {
+            throw std::invalid_argument("resource importer has an unknown publication profile");
+        }
         if(m_lease_ms == 0) {
             throw std::invalid_argument("resource importer ownership lease must be positive");
         }
@@ -779,6 +787,10 @@ private:
             pending.publication_profile,
             m_publication_profile
         );
+        // Admission is part of the execution contract, not merely an
+        // admission-time hint. A recovery executor with tighter limits must
+        // fail closed before rewriting lexical data or creating raw units.
+        validate_admission(pending.resource);
         const auto expected_manifest = ensure_manifest_compatibility(
             pending.resource,
             pending.publication_profile
@@ -846,26 +858,22 @@ private:
                 request.primary_text = std::string{chunk};
                 request.display_text = request.primary_text;
                 request.sources = {std::move(source)};
-                raw_units.push_back(
-                    [&] {
-                        const auto envelope = m_knowledge_unit_store->create_or_get_unit(
-                            std::move(request)
-                        );
-                        if(envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
-                            throw std::runtime_error(
-                                "raw publication matched a non-active historical Chunk"
-                            );
-                        }
-                        assert_ownership(
-                            pending.resource.resource_id.value(),
-                            expected_payload
-                        );
-                        if(inject_faults) {
-                            inject(ResourceImporterFaultPoint::AfterRawUnitPublication);
-                        }
-                        return envelope.id;
-                    }()
+                const auto envelope = m_knowledge_unit_store->create_or_get_unit(
+                    std::move(request)
                 );
+                if(envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
+                    throw std::runtime_error(
+                        "raw publication matched a non-active historical Chunk"
+                    );
+                }
+                assert_ownership(
+                    pending.resource.resource_id.value(),
+                    expected_payload
+                );
+                raw_units.push_back(envelope.id);
+                if(inject_faults) {
+                    inject(ResourceImporterFaultPoint::AfterRawUnitPublication);
+                }
             }
         }
         const auto manifest = make_manifest(

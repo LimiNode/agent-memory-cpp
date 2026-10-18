@@ -57,7 +57,8 @@ same MDBX context and table prefix, so an arbitrary external store cannot be
 attached. Profile changes for an existing resource or pending intent fail
 closed and require an explicit migration. Raw admission is checked before an
 intent is written (16 MiB and 16,384 chunks by default; both are configurable
-within the uint32 manifest-ordinal bound).
+within the uint32 manifest-ordinal bound), and is rechecked by a recovery
+executor before any durable rewrite so a tighter recovery limit fails closed.
 
 Normal upserts replace only the affected in-memory lexical record. Full scope
 rebuild remains a reopen and stale-reader refresh strategy for this first
@@ -72,7 +73,7 @@ tokens remains durable but is omitted from BM25.
 
 The checked importer example and focused CTest cover ingest, manifest binding,
 lexical search, metadata-only update, interrupted-publication recovery, reopen,
-all five fault points, pending-visibility filtering, scope binding, SHA-256,
+all six fault points, pending-visibility filtering, scope binding, SHA-256,
 UTF-8 validation and derived-text provenance. The underlying lexical-memory
 tests still cover scope isolation, shared-context visibility, tokenless text
 and hydration.
@@ -108,6 +109,6 @@ monotonic `KnowledgeUnitId` and deduplicates by the immutable tuple
 revision-bound `SourceRefSummary` values survive close/reopen. Mutable display,
 source, lifecycle, observation and priority fields are updated transactionally;
 identity fields are not updateable. The M0 admission requires exactly one
-revision-bound source summary. Full source references, multi-chunk importer
-integration, locator-backed payload hydration, supersedence lineage,
+revision-bound source summary. Full source references, semantic multi-chunk
+segmentation, locator-backed payload hydration, supersedence lineage,
 projections and retrieval traces remain separate M0 follow-up gates.
