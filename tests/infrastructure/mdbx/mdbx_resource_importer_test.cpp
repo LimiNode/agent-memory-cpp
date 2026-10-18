@@ -163,7 +163,8 @@ void run_benchmark() {
                 ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk
             ).size();
         }
-        std::size_t admission_probe_records = 0;
+        // Synthetic post-import control; this is not production telemetry.
+        std::size_t synthetic_admission_probe_records = 0;
         {
             auto context = MdbxStorageContext::open(
                 path.string(), false, kDefaultMdbxMaxDbs
@@ -181,8 +182,8 @@ void run_benchmark() {
                 index.for_each_range(
                     lower,
                     upper,
-                    [&admission_probe_records](const std::string&, const std::string&) {
-                        ++admission_probe_records;
+                    [&synthetic_admission_probe_records](const std::string&, const std::string&) {
+                        ++synthetic_admission_probe_records;
                         return false;
                     },
                     txn
@@ -198,7 +199,7 @@ void run_benchmark() {
                   << " import_elapsed_ms=" << import_elapsed
                   << " index_scan_elapsed_ms=" << index_elapsed
                   << " index_scan_units=" << indexed_units
-                  << " admission_probe_records=" << admission_probe_records
+                  << " synthetic_admission_probe_records=" << synthetic_admission_probe_records
                   << " db_bytes=" << db_bytes
                   << " index_entry_writes=" << result.raw_units.size()
                   << " index_write_amplification=1"
