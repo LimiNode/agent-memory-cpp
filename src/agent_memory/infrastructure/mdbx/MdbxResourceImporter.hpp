@@ -12,6 +12,7 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+#include <atomic>
 #include <functional>
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +23,21 @@
 #include <vector>
 
 namespace agent_memory {
+
+    /// \brief Optional counters for importer performance investigations.
+    ///
+    /// These counters are observational only. A null diagnostics pointer
+    /// leaves the importer publication behavior unchanged.
+    struct MdbxResourceImporterDiagnostics final {
+        std::atomic<std::uint64_t> ownership_checks{0};
+        std::atomic<std::uint64_t> ownership_payload_materializations{0};
+        std::atomic<std::uint64_t> ownership_payload_bytes{0};
+        std::atomic<std::uint64_t> ownership_check_ns{0};
+        std::atomic<std::uint64_t> lexical_ns{0};
+        std::atomic<std::uint64_t> raw_unit_store_ns{0};
+        std::atomic<std::uint64_t> raw_unit_commits{0};
+        std::atomic<std::uint64_t> manifest_ns{0};
+    };
 
     /// \brief Durable publication profile for the M0 importer.
     enum class ResourceImportPublicationProfile : std::uint8_t {
@@ -60,6 +76,7 @@ namespace agent_memory {
         /// Optional deterministic wall-clock source returning Unix milliseconds.
         std::function<std::uint64_t()> clock_ms;
         std::function<void(ResourceImporterFaultPoint)> fault_injector;
+        std::shared_ptr<MdbxResourceImporterDiagnostics> diagnostics;
     };
 
     /// Maximum bounded candidate window used by importer-aware lexical search.

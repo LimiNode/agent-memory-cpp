@@ -4,6 +4,7 @@
 #if AGENT_MEMORY_HAS_MDBX
 
 #include <mdbx_containers/KeyValueTable.hpp>
+#include <mdbx_containers/common/Config.hpp>
 
 #include <array>
 #include <chrono>
@@ -136,21 +137,39 @@ void run_benchmark() {
         options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
         options.max_raw_body_bytes = body_bytes;
         options.max_raw_chunks = body_bytes / kMdbxResourceImporterRawChunkBytes;
+        const auto diagnostics = std::make_shared<MdbxResourceImporterDiagnostics>();
+        options.diagnostics = diagnostics;
         const auto body = std::string(body_bytes, 'b');
         const auto started = std::chrono::steady_clock::now();
         agent_memory::ResourceImportResult result;
+        double open_elapsed = 0.0;
+        double import_only_elapsed = 0.0;
+        double close_elapsed = 0.0;
         {
-            MdbxResourceImporter importer{std::move(options)};
+            const auto open_started = std::chrono::steady_clock::now();
+            auto importer = std::make_unique<MdbxResourceImporter>(std::move(options));
+            open_elapsed = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - open_started
+            ).count();
             const auto resource_id = body_bytes == 128U * 1024U
                 ? "resource:benchmark-128k"
                 : body_bytes == 1024U * 1024U
                     ? "resource:benchmark-1m"
                     : "resource:benchmark-4m";
-            result = importer.import(original(
+            const auto import_started = std::chrono::steady_clock::now();
+            result = importer->import(original(
                 resource_id,
                 "https://example.test/benchmark",
                 body
             ));
+            import_only_elapsed = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - import_started
+            ).count();
+            const auto close_started = std::chrono::steady_clock::now();
+            importer.reset();
+            close_elapsed = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - close_started
+            ).count();
         }
         const auto import_elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - started
@@ -197,9 +216,22 @@ void run_benchmark() {
         std::cout << "body_bytes=" << body_bytes
                   << " chunks=" << result.raw_units.size()
                   << " import_elapsed_ms=" << import_elapsed
+                  << " open_recover_ms=" << open_elapsed
+                  << " import_only_ms=" << import_only_elapsed
+                  << " close_ms=" << close_elapsed
                   << " index_scan_elapsed_ms=" << index_elapsed
                   << " index_scan_units=" << indexed_units
                   << " synthetic_admission_probe_records=" << synthetic_admission_probe_records
+                  << " ownership_checks=" << diagnostics->ownership_checks.load()
+                  << " ownership_payload_materializations="
+                  << diagnostics->ownership_payload_materializations.load()
+                  << " ownership_payload_bytes="
+                  << diagnostics->ownership_payload_bytes.load()
+                  << " ownership_check_ns=" << diagnostics->ownership_check_ns.load()
+                  << " lexical_ns=" << diagnostics->lexical_ns.load()
+                  << " raw_unit_store_ns=" << diagnostics->raw_unit_store_ns.load()
+                  << " raw_unit_commits=" << diagnostics->raw_unit_commits.load()
+                  << " manifest_ns=" << diagnostics->manifest_ns.load()
                   << " db_bytes=" << db_bytes
                   << " index_entry_writes=" << result.raw_units.size()
                   << " index_write_amplification=1"
@@ -208,11 +240,197 @@ void run_benchmark() {
     }
 }
 
+std::string diagnostic_body(std::size_t bytes, std::string_view corpus) {
+    const std::string pattern = corpus == "english"
+        ? "Durable memory preserves source provenance across revisions. "
+        : corpus == "russian"
+            ? "Память сохраняет проверяемую связь с исходным документом. "
+            : corpus == "technical"
+                ? "resource_id=doc-42 generation=17 tokenizer=bm25 score=0.991; "
+                : "b";
+    std::string body;
+    body.reserve(bytes);
+    while(body.size() + pattern.size() <= bytes) body += pattern;
+    if(body.empty()) body = pattern.substr(0, std::min(bytes, pattern.size()));
+    while(body.size() < bytes) body.push_back(corpus == "pathological" ? 'b' : ' ');
+    return body;
+}
+
+void run_corpus_benchmark(
+    std::size_t body_bytes,
+    std::string_view corpus
+) {
+    using namespace agent_memory;
+    const auto path = test_path((std::string{"corpus_"} + std::string{corpus}).c_str());
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    MdbxResourceImporterOptions options;
+    options.path = path.string();
+    options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+    options.max_raw_body_bytes = body_bytes;
+    options.max_raw_chunks = body_bytes / kMdbxResourceImporterRawChunkBytes + 2U;
+    const auto diagnostics = std::make_shared<MdbxResourceImporterDiagnostics>();
+    options.diagnostics = diagnostics;
+    const auto started = std::chrono::steady_clock::now();
+    {
+        MdbxResourceImporter importer{std::move(options)};
+        static_cast<void>(importer.import(original(
+            "resource:corpus-" + std::string{corpus},
+            "https://example.test/corpus",
+            diagnostic_body(body_bytes, corpus)
+        )));
+    }
+    const auto elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started
+    ).count();
+    std::cout << "corpus=" << corpus
+              << " body_bytes=" << body_bytes
+              << " import_elapsed_ms=" << elapsed
+              << " ownership_checks=" << diagnostics->ownership_checks.load()
+              << " ownership_payload_bytes=" << diagnostics->ownership_payload_bytes.load()
+              << " ownership_check_ns=" << diagnostics->ownership_check_ns.load()
+              << " lexical_ns=" << diagnostics->lexical_ns.load()
+              << " raw_unit_store_ns=" << diagnostics->raw_unit_store_ns.load()
+              << " raw_unit_commits=" << diagnostics->raw_unit_commits.load()
+              << " manifest_ns=" << diagnostics->manifest_ns.load()
+              << '\n';
+    std::filesystem::remove(path, error);
+}
+
+void run_fencing_benchmark(std::size_t body_bytes, std::size_t iterations) {
+    using namespace agent_memory;
+    const auto path = test_path("fencing");
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    const auto resource_id = std::string{"resource:fencing"};
+    MdbxResourceImporterOptions options;
+    options.path = path.string();
+    options.fault_injector = [](ResourceImporterFaultPoint point) {
+        if(point == ResourceImporterFaultPoint::AfterIntent) {
+            throw std::runtime_error("diagnostic intent pause");
+        }
+    };
+    try {
+        MdbxResourceImporter importer{std::move(options)};
+        static_cast<void>(importer.import(original(
+            resource_id,
+            "https://example.test/fencing",
+            std::string(body_bytes, 'b')
+        )));
+    } catch(const std::runtime_error&) {
+    }
+    auto context = MdbxStorageContext::open(path.string(), false, kDefaultMdbxMaxDbs);
+    mdbxc::KeyValueTable<std::string, std::string> intents(
+        context->connection(), "agent_memory_resource_import_intents"
+    );
+    mdbxc::KeyValueTable<std::string, std::string> tokens(
+        context->connection(), "agent_memory_diagnostic_fence_tokens"
+    );
+    const auto payload = intents.find(resource_id);
+    expect(payload.has_value(), "fencing benchmark intent was not persisted");
+    tokens.insert_or_assign(resource_id, std::string(32, 't'));
+    std::size_t full_bytes = 0;
+    auto started = std::chrono::steady_clock::now();
+    for(std::size_t i = 0; i < iterations; ++i) {
+        const auto value = intents.find(resource_id);
+        if(value) full_bytes += value->size();
+    }
+    const auto full_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - started
+    ).count();
+    started = std::chrono::steady_clock::now();
+    std::size_t token_bytes = 0;
+    for(std::size_t i = 0; i < iterations; ++i) {
+        const auto value = tokens.find(resource_id);
+        if(value) token_bytes += value->size();
+    }
+    const auto token_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - started
+    ).count();
+    std::cout << "fencing_body_bytes=" << body_bytes
+              << " iterations=" << iterations
+              << " full_payload_size=" << payload->size()
+              << " full_materialized_bytes=" << full_bytes
+              << " full_find_ns=" << full_ns
+              << " compact_token_bytes=" << token_bytes
+              << " compact_find_ns=" << token_ns
+              << '\n';
+    std::filesystem::remove(path, error);
+}
+
+void run_transaction_benchmark(std::size_t units) {
+    using namespace agent_memory;
+    for(const bool sync_durable : {true, false}) {
+        for(const std::size_t batch_size : {std::size_t{1}, std::size_t{16},
+                                            std::size_t{64}, std::size_t{128}}) {
+        const auto path = test_path(
+            (std::string{"txn_"} + (sync_durable ? "durable_" : "relaxed_") +
+             std::to_string(batch_size)).c_str()
+        );
+        std::error_code error;
+        std::filesystem::remove(path, error);
+        mdbxc::Config config;
+        config.pathname = path.string();
+        config.max_dbs = kDefaultMdbxMaxDbs;
+        config.no_subdir = true;
+        config.sync_durable = sync_durable;
+        auto context = MdbxStorageContext::attach(mdbxc::Connection::create(config));
+        mdbxc::KeyValueTable<std::string, std::string> table(
+            context->connection(), "agent_memory_diagnostic_batch"
+        );
+        const auto started = std::chrono::steady_clock::now();
+        std::size_t commits = 0;
+        for(std::size_t first = 0; first < units; first += batch_size) {
+            auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            const auto last = std::min(units, first + batch_size);
+            for(std::size_t i = first; i < last; ++i) {
+                table.insert_or_assign(
+                    "unit:" + std::to_string(i), std::string(1024, 'u'), txn
+                );
+            }
+            txn.commit();
+            ++commits;
+        }
+        const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started
+        ).count();
+        std::cout << "txn_sync_durable=" << (sync_durable ? "true" : "false")
+                  << " txn_units=" << units
+                  << " batch_size=" << batch_size
+                  << " commits=" << commits
+                  << " logical_payload_bytes=" << units * 1024U
+                  << " elapsed_us=" << elapsed
+                  << '\n';
+        std::filesystem::remove(path, error);
+        }
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     if(argc == 2 && std::string_view{argv[1]} == "--benchmark") {
         run_benchmark();
+        return 0;
+    }
+    if(argc >= 2 && std::string_view{argv[1]} == "--fencing-benchmark") {
+        run_fencing_benchmark(
+            argc >= 3 ? static_cast<std::size_t>(std::stoull(argv[2])) : 4U * 1024U * 1024U,
+            argc >= 4 ? static_cast<std::size_t>(std::stoull(argv[3])) : 8192U
+        );
+        return 0;
+    }
+    if(argc >= 2 && std::string_view{argv[1]} == "--transaction-benchmark") {
+        run_transaction_benchmark(
+            argc >= 3 ? static_cast<std::size_t>(std::stoull(argv[2])) : 1024U
+        );
+        return 0;
+    }
+    if(argc >= 4 && std::string_view{argv[1]} == "--corpus-benchmark") {
+        run_corpus_benchmark(
+            static_cast<std::size_t>(std::stoull(argv[2])),
+            argv[3]
+        );
         return 0;
     }
     using namespace agent_memory;
