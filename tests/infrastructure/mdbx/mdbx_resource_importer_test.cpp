@@ -1,4 +1,5 @@
 #include <agent_memory/infrastructure/mdbx/MdbxResourceImporter.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 
@@ -8,6 +9,9 @@
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
+#include <iostream>
+#include <limits>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -55,6 +59,38 @@ void use_test_clock(
     options.clock_ms = [now_ms] { return now_ms; };
 }
 
+void append_framed(std::string& payload, std::string_view value) {
+    payload += std::to_string(value.size());
+    payload.push_back(':');
+    payload.append(value.data(), value.size());
+}
+
+std::string legacy_v3_intent(
+    std::string_view owner,
+    std::string_view scope,
+    std::string_view resource,
+    std::string_view uri,
+    std::string_view body,
+    std::uint64_t epoch,
+    std::uint64_t lease_deadline
+) {
+    std::string payload;
+    append_framed(payload, "agent_memory.resource_import_intent.v3");
+    append_framed(payload, owner);
+    append_framed(payload, std::to_string(epoch));
+    append_framed(payload, std::to_string(lease_deadline));
+    append_framed(payload, scope);
+    append_framed(payload, resource);
+    append_framed(payload, uri);
+    append_framed(payload, body);
+    append_framed(payload, "original");
+    append_framed(payload, "");
+    append_framed(payload, "");
+    append_framed(payload, "");
+    append_framed(payload, "1");
+    return payload;
+}
+
 std::string canonical_document_id(
     std::string_view scope,
     std::string_view resource
@@ -73,9 +109,48 @@ std::string canonical_document_id(
     return "durable-lexical:" + encode(scope) + ':' + encode(resource);
 }
 
+void run_benchmark() {
+    using namespace agent_memory;
+    for(const std::size_t body_bytes : {std::size_t{128} * 1024U,
+                                        std::size_t{1024} * 1024U}) {
+        const auto path = test_path(body_bytes == 128U * 1024U
+            ? "benchmark_128k"
+            : "benchmark_1m");
+        std::error_code error;
+        std::filesystem::remove(path, error);
+        MdbxResourceImporterOptions options;
+        options.path = path.string();
+        options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        options.max_raw_body_bytes = body_bytes;
+        options.max_raw_chunks = body_bytes / kMdbxResourceImporterRawChunkBytes;
+        MdbxResourceImporter importer{std::move(options)};
+        const auto body = std::string(body_bytes, 'b');
+        const auto started = std::chrono::steady_clock::now();
+        const auto result = importer.import(original(
+            body_bytes == 128U * 1024U ? "resource:benchmark-128k" : "resource:benchmark-1m",
+            "https://example.test/benchmark",
+            body
+        ));
+        const auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - started
+        ).count();
+        std::cout << "body_bytes=" << body_bytes
+                  << " chunks=" << result.raw_units.size()
+                  << " elapsed_ms=" << elapsed
+                  << " logical_index_rewrites=" << result.raw_units.size()
+                  << " index_write_amplification=" << result.raw_units.size()
+                  << '\n';
+        std::filesystem::remove(path, error);
+    }
+}
+
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    if(argc == 2 && std::string_view{argv[1]} == "--benchmark") {
+        run_benchmark();
+        return 0;
+    }
     using namespace agent_memory;
     const auto path = test_path("contract");
     std::error_code error;
@@ -92,6 +167,7 @@ int main() {
         ));
         expect(first.revision.generation == 1, "initial import generation mismatch");
         expect(first.revision.body_digest.has_value(), "body digest was not published");
+        expect(first.raw_units.empty(), "lexical-only importer unexpectedly published raw units");
         expect(first.document_id.value().find("durable-lexical:") == 0,
                "document identity is not lexical-profile stable");
         const auto manifest = importer.find_manifest(first.resource_id);
@@ -337,6 +413,569 @@ int main() {
 
     const auto concurrency_path = test_path("concurrency");
     std::filesystem::remove(concurrency_path, error);
+
+    const auto wired_path = test_path("knowledge_units");
+    std::filesystem::remove(wired_path, error);
+    {
+        const auto context = MdbxStorageContext::open(wired_path.string());
+        MdbxKnowledgeUnitStoreOptions store_options;
+        store_options.context = context;
+        auto store = std::make_shared<MdbxKnowledgeUnitStore>(std::move(store_options));
+
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        use_test_clock(options, 100);
+        MdbxResourceImporter importer{std::move(options)};
+
+        std::string body;
+        for(int index = 0; index < 400; ++index) body += "Привет, durable chunk! ";
+        const auto imported = importer.import(original(
+            "resource:wired", "https://example.test/wired", body
+        ));
+        expect(imported.raw_units.size() > 1,
+               "wired importer did not split an oversized UTF-8 body");
+        const auto manifest = importer.find_manifest(imported.resource_id);
+        expect(manifest && manifest->records.size() == imported.raw_units.size() + 2,
+               "manifest did not publish one custom binding per raw unit");
+        expect(manifest->schema.schema_id ==
+                   "agent_memory.m0_resource_importer.raw_chunks@agent_memory",
+               "raw manifest did not persist its publication namespace");
+
+        std::string reconstructed;
+        std::uint64_t expected_offset = 0;
+        for(std::size_t index = 0; index < imported.raw_units.size(); ++index) {
+            const auto envelope = store->find(imported.raw_units[index]);
+            expect(envelope.has_value(), "raw unit was not persisted");
+            expect(envelope->sources.size() == 1,
+                   "raw unit did not retain exactly one source summary");
+            const auto& source = envelope->sources.front();
+            expect(source.reference_mode == SourceReferenceMode::RevisionBoundQuote,
+                   "raw unit source was not revision-bound");
+            expect(source.resource_revision &&
+                       source.resource_revision->resource_id == imported.resource_id &&
+                       source.resource_revision->generation == imported.revision.generation &&
+                       source.resource_revision->body_digest.bytes ==
+                           imported.revision.body_digest->bytes,
+                   "raw unit source revision binding is incomplete");
+            expect(source.excerpt.offset == expected_offset,
+                   "raw unit ranges are not contiguous");
+            expect(source.excerpt.length == envelope->primary_text.size(),
+                   "raw unit range length does not match primary text");
+            expect(envelope->primary_text.size() <= 1024,
+                   "raw unit exceeded the M0 primary text bound");
+            expect(source.preview.size() <= 256 &&
+                       envelope->primary_text.compare(0, source.preview.size(), source.preview) == 0,
+                   "raw unit preview is not a bounded prefix");
+            reconstructed += envelope->primary_text;
+            expected_offset += source.excerpt.length;
+
+            const auto binding = std::string{"knowledge_unit:"} +
+                std::to_string(imported.raw_units[index].value());
+            bool found_binding = false;
+            for(const auto& record : manifest->records) {
+                if(record.kind == DerivedRecordKind::Custom && record.key == binding) {
+                    found_binding = true;
+                    break;
+                }
+            }
+            expect(found_binding, "manifest missed a raw knowledge-unit binding");
+        }
+        expect(reconstructed == body, "UTF-8 chunk slicing changed the source body");
+
+        const auto repeated = importer.import(original(
+            "resource:wired", "https://example.test/wired", body
+        ));
+        expect(repeated.revision.generation == imported.revision.generation,
+               "idempotent wired import advanced the generation");
+        expect(repeated.raw_units == imported.raw_units,
+               "idempotent wired import allocated duplicate raw units");
+        const auto uri_changed = importer.import(original(
+            "resource:wired", "https://example.test/wired-v2", body
+        ));
+        expect(uri_changed.raw_units == imported.raw_units,
+               "URI-only update allocated a new raw unit identity");
+        const auto historical = store->find(imported.raw_units.front());
+        expect(historical && historical->sources.front().uri == "https://example.test/wired",
+               "raw source URI was rewritten instead of remaining historical");
+    }
+    {
+        const auto context = MdbxStorageContext::open(wired_path.string());
+        MdbxKnowledgeUnitStoreOptions store_options;
+        store_options.context = context;
+        auto store = std::make_shared<MdbxKnowledgeUnitStore>(std::move(store_options));
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        use_test_clock(options, 1'000);
+        MdbxResourceImporter importer{std::move(options)};
+        const auto manifest = importer.find_manifest(ResourceId{"resource:wired"});
+        expect(manifest && manifest->records.size() > 2,
+               "reopen lost wired manifest bindings");
+        expect(store->scan_by_scope_and_kind(ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk).size() > 1,
+               "reopen lost raw knowledge units");
+    }
+    std::filesystem::remove(wired_path, error);
+
+    const auto wired_recovery_path = test_path("knowledge_units_recovery");
+    std::filesystem::remove(wired_recovery_path, error);
+
+    const auto profile_path = test_path("publication_profile");
+    std::filesystem::remove(profile_path, error);
+    {
+        const auto context = MdbxStorageContext::open(profile_path.string());
+        MdbxResourceImporterOptions raw_options;
+        raw_options.context = context;
+        raw_options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        use_test_clock(raw_options, 100);
+        MdbxResourceImporter raw{std::move(raw_options)};
+        const auto result = raw.import(original(
+            "resource:profile", "https://example.test/profile", "profile-bound source"
+        ));
+        expect(result.raw_units.size() == 1, "raw profile did not publish its unit");
+
+        MdbxResourceImporterOptions lexical_options;
+        lexical_options.context = context;
+        use_test_clock(lexical_options, 100);
+        MdbxResourceImporter lexical{std::move(lexical_options)};
+        bool downgraded = false;
+        try {
+            (void)lexical.import(original(
+                "resource:profile", "https://example.test/profile", "profile-bound source"
+            ));
+        } catch(const std::runtime_error&) { downgraded = true; }
+        expect(downgraded, "wired resource silently downgraded to lexical-only");
+    }
+    std::filesystem::remove(profile_path, error);
+
+    const auto legacy_v3_path = test_path("legacy_v3_intent");
+    std::filesystem::remove(legacy_v3_path, error);
+    {
+        const auto context = MdbxStorageContext::open(legacy_v3_path.string());
+        mdbxc::KeyValueTable<std::string, std::string> intents(
+            context->connection(), "agent_memory_resource_import_intents"
+        );
+        mdbxc::KeyValueTable<std::string, std::string> bindings(
+            context->connection(), "agent_memory_resource_import_bindings"
+        );
+        mdbxc::KeyValueTable<std::string, std::string> epochs(
+            context->connection(), "agent_memory_resource_import_epochs"
+        );
+        const auto payload = legacy_v3_intent(
+            "legacy-owner", "tenant-a", "resource:legacy-v3",
+            "https://example.test/legacy-v3", "legacy v3 body", 1, 100
+        );
+        auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        expect(bindings.insert("resource:legacy-v3", "tenant-a", txn),
+               "legacy v3 fixture binding was not created");
+        expect(epochs.insert("resource:legacy-v3", "1", txn),
+               "legacy v3 fixture epoch was not created");
+        expect(intents.insert("resource:legacy-v3", payload, txn),
+               "legacy v3 fixture intent was not created");
+        txn.commit();
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        use_test_clock(options, 1'000);
+        MdbxResourceImporter importer{std::move(options)};
+        const auto manifest = importer.find_manifest(ResourceId{"resource:legacy-v3"});
+        expect(manifest && manifest->revision.generation == 1 &&
+                   manifest->schema.schema_id == "agent_memory.m0_resource_importer",
+               "historical v3 intent was not recovered as lexical-only");
+    }
+    std::filesystem::remove(legacy_v3_path, error);
+
+    const auto binding_a_path = test_path("binding_a");
+    const auto binding_b_path = test_path("binding_b");
+    std::filesystem::remove(binding_a_path, error);
+    std::filesystem::remove(binding_b_path, error);
+    {
+        MdbxResourceImporterOptions options;
+        options.path = binding_a_path.string();
+        options.table_prefix = "profile_a";
+        options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        MdbxResourceImporter importer{std::move(options)};
+        const auto result = importer.import(original(
+            "resource:binding", "https://example.test/binding", "binding source"
+        ));
+        expect(result.raw_units.size() == 1, "binding fixture did not publish its unit");
+
+        const auto context_b = MdbxStorageContext::open(binding_b_path.string());
+        MdbxKnowledgeUnitStoreOptions store_b_options;
+        store_b_options.context = context_b;
+        store_b_options.table_prefix = "profile_a";
+        MdbxKnowledgeUnitStore store_b{std::move(store_b_options)};
+        expect(store_b.scan_by_scope_and_kind(
+                    ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk
+                ).empty(),
+               "raw units leaked across MDBX environments");
+    }
+    std::filesystem::remove(binding_a_path, error);
+    std::filesystem::remove(binding_b_path, error);
+
+    const auto pending_profile_path = test_path("pending_profile");
+    std::filesystem::remove(pending_profile_path, error);
+    {
+        const auto context = MdbxStorageContext::open(pending_profile_path.string());
+        MdbxResourceImporterOptions raw_options;
+        raw_options.context = context;
+        raw_options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        use_test_clock(raw_options, 100);
+        raw_options.fault_injector = [](ResourceImporterFaultPoint point) {
+            if(point == ResourceImporterFaultPoint::AfterIntent) {
+                throw std::runtime_error("leave raw profile pending");
+            }
+        };
+        MdbxResourceImporter raw{std::move(raw_options)};
+        bool interrupted = false;
+        try {
+            (void)raw.import(original(
+                "resource:pending-profile",
+                "https://example.test/pending-profile",
+                "pending profile source"
+            ));
+        } catch(const std::runtime_error&) { interrupted = true; }
+        expect(interrupted, "raw profile pending fixture did not interrupt");
+
+        MdbxResourceImporterOptions lexical_options;
+        lexical_options.context = context;
+        use_test_clock(lexical_options, 1'000);
+        bool mismatch_rejected = false;
+        try {
+            MdbxResourceImporter lexical{std::move(lexical_options)};
+        } catch(const std::runtime_error&) { mismatch_rejected = true; }
+        expect(mismatch_rejected,
+               "unwired recovery completed a pending raw publication");
+    }
+    std::filesystem::remove(pending_profile_path, error);
+
+    const auto recovery_admission_path = test_path("recovery_admission");
+    std::filesystem::remove(recovery_admission_path, error);
+    {
+        const auto context = MdbxStorageContext::open(recovery_admission_path.string());
+        MdbxResourceImporterOptions writer_options;
+        writer_options.context = context;
+        writer_options.publication_profile =
+            ResourceImportPublicationProfile::LexicalWithRawChunks;
+        writer_options.max_raw_body_bytes = 4'096;
+        use_test_clock(writer_options, 100);
+        writer_options.fault_injector = [](ResourceImporterFaultPoint point) {
+            if(point == ResourceImporterFaultPoint::AfterIntent) {
+                throw std::runtime_error("leave admission intent pending");
+            }
+        };
+        MdbxResourceImporter writer{std::move(writer_options)};
+        bool interrupted = false;
+        try {
+            (void)writer.import(original(
+                "resource:recovery-admission",
+                "https://example.test/recovery-admission",
+                std::string(2'048, 'a')
+            ));
+        } catch(const std::runtime_error&) { interrupted = true; }
+        expect(interrupted, "admission recovery fixture did not leave an intent");
+
+        MdbxResourceImporterOptions tighter_options;
+        tighter_options.context = context;
+        tighter_options.publication_profile =
+            ResourceImportPublicationProfile::LexicalWithRawChunks;
+        tighter_options.max_raw_body_bytes = 1'024;
+        use_test_clock(tighter_options, 1'000);
+        bool tighter_rejected = false;
+        try {
+            MdbxResourceImporter tighter{std::move(tighter_options)};
+        } catch(const std::invalid_argument&) { tighter_rejected = true; }
+        expect(tighter_rejected,
+               "recovery ignored the current raw body admission contract");
+    }
+    std::filesystem::remove(recovery_admission_path, error);
+
+    const auto raw_fault_path = test_path("raw_fault");
+    std::filesystem::remove(raw_fault_path, error);
+    {
+        const auto context = MdbxStorageContext::open(raw_fault_path.string());
+        MdbxKnowledgeUnitStoreOptions store_options;
+        store_options.context = context;
+        auto store = std::make_shared<MdbxKnowledgeUnitStore>(std::move(store_options));
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        use_test_clock(options, 100);
+        int raw_writes = 0;
+        options.fault_injector = [&](ResourceImporterFaultPoint point) {
+            if(point == ResourceImporterFaultPoint::AfterRawUnitPublication &&
+               ++raw_writes == 2) {
+                throw std::runtime_error("interrupt during raw batch");
+            }
+        };
+        MdbxResourceImporter importer{std::move(options)};
+        std::string body(3'100, 'x');
+        bool interrupted = false;
+        try {
+            (void)importer.import(original(
+                "resource:raw-fault", "https://example.test/raw-fault", body
+            ));
+        } catch(const std::runtime_error&) { interrupted = true; }
+        expect(interrupted, "raw fault did not interrupt after the second unit");
+        expect(!importer.find_manifest(ResourceId{"resource:raw-fault"}),
+               "partial raw batch published a manifest");
+        expect(store->scan_by_scope_and_kind(
+                    ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk
+                ).size() == 2,
+               "raw fault fixture did not leave exactly two durable staging records");
+    }
+    {
+        const auto context = MdbxStorageContext::open(raw_fault_path.string());
+        MdbxKnowledgeUnitStoreOptions store_options;
+        store_options.context = context;
+        auto store = std::make_shared<MdbxKnowledgeUnitStore>(std::move(store_options));
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        use_test_clock(options, 1'000);
+        MdbxResourceImporter importer{std::move(options)};
+        const auto manifest = importer.find_manifest(ResourceId{"resource:raw-fault"});
+        expect(manifest && manifest->records.size() == 6,
+               "raw recovery did not publish the complete four-unit manifest");
+        expect(store->scan_by_scope_and_kind(
+                    ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk
+                ).size() == 4,
+               "raw recovery allocated duplicate or incomplete units");
+    }
+    std::filesystem::remove(raw_fault_path, error);
+
+    const auto raw_takeover_path = test_path("raw_takeover");
+    std::filesystem::remove(raw_takeover_path, error);
+    {
+        const auto context = MdbxStorageContext::open(raw_takeover_path.string());
+        std::mutex coordination_mutex;
+        std::condition_variable coordination;
+        bool paused_after_raw = false;
+        bool resume_stale = false;
+        bool stale_rejected = false;
+        MdbxResourceImporterOptions stale_options;
+        stale_options.context = context;
+        stale_options.publication_profile =
+            ResourceImportPublicationProfile::LexicalWithRawChunks;
+        use_test_clock(stale_options, 100);
+        stale_options.fault_injector = [&](ResourceImporterFaultPoint point) {
+            if(point != ResourceImporterFaultPoint::AfterRawUnitPublication) return;
+            std::unique_lock<std::mutex> lock(coordination_mutex);
+            if(paused_after_raw) return;
+            paused_after_raw = true;
+            coordination.notify_all();
+            coordination.wait(lock, [&] { return resume_stale; });
+        };
+        MdbxResourceImporter stale{std::move(stale_options)};
+        std::thread stale_thread([&] {
+            try {
+                (void)stale.import(original(
+                    "resource:raw-takeover",
+                    "https://example.test/raw-takeover",
+                    std::string(2'500, 'z')
+                ));
+            } catch(const std::runtime_error&) { stale_rejected = true; }
+        });
+        {
+            std::unique_lock<std::mutex> lock(coordination_mutex);
+            coordination.wait(lock, [&] { return paused_after_raw; });
+        }
+        MdbxResourceImporterOptions successor_options;
+        successor_options.context = context;
+        successor_options.publication_profile =
+            ResourceImportPublicationProfile::LexicalWithRawChunks;
+        use_test_clock(successor_options, 1'000);
+        MdbxResourceImporter successor{std::move(successor_options)};
+        const auto recovered = successor.find_manifest(ResourceId{"resource:raw-takeover"});
+        {
+            std::lock_guard<std::mutex> lock(coordination_mutex);
+            resume_stale = true;
+        }
+        coordination.notify_all();
+        stale_thread.join();
+        expect(stale_rejected,
+               "stale writer was not fenced during raw publication");
+        expect(recovered && recovered->records.size() == 5,
+               "raw takeover did not recover a complete manifest");
+    }
+    std::filesystem::remove(raw_takeover_path, error);
+
+    const auto admission_path = test_path("raw_admission");
+    std::filesystem::remove(admission_path, error);
+    {
+        MdbxResourceImporterOptions options;
+        options.path = admission_path.string();
+        options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        options.max_raw_body_bytes = 3;
+        MdbxResourceImporter importer{std::move(options)};
+        bool rejected = false;
+        try {
+            (void)importer.import(original(
+                "resource:too-large", "https://example.test/too-large", "four"
+            ));
+        } catch(const std::invalid_argument&) { rejected = true; }
+        expect(rejected, "raw body admission limit was not enforced before publication");
+    }
+    std::filesystem::remove(admission_path, error);
+
+    bool ordinal_limit_rejected = false;
+    const auto ordinal_path = test_path("raw_ordinal_overflow");
+    std::filesystem::remove(ordinal_path, error);
+    try {
+        MdbxResourceImporterOptions invalid_options;
+        invalid_options.path = ordinal_path.string();
+        invalid_options.publication_profile =
+            ResourceImportPublicationProfile::LexicalWithRawChunks;
+        invalid_options.max_raw_chunks =
+            static_cast<std::size_t>((std::numeric_limits<std::uint32_t>::max)()) + 1U;
+        MdbxResourceImporter invalid{std::move(invalid_options)};
+    } catch(const std::invalid_argument&) { ordinal_limit_rejected = true; }
+    std::filesystem::remove(ordinal_path, error);
+    expect(ordinal_limit_rejected,
+           "raw chunk admission accepted a manifest ordinal overflow bound");
+
+    bool unknown_profile_rejected = false;
+    const auto unknown_profile_path = test_path("unknown_profile");
+    std::filesystem::remove(unknown_profile_path, error);
+    try {
+        MdbxResourceImporterOptions invalid_options;
+        invalid_options.path = unknown_profile_path.string();
+        invalid_options.publication_profile =
+            static_cast<ResourceImportPublicationProfile>(255);
+        MdbxResourceImporter invalid{std::move(invalid_options)};
+    } catch(const std::invalid_argument&) { unknown_profile_rejected = true; }
+    std::filesystem::remove(unknown_profile_path, error);
+    expect(unknown_profile_rejected,
+           "unknown publication profile was accepted by the importer");
+
+    const auto boundary_path = test_path("raw_boundaries");
+    std::filesystem::remove(boundary_path, error);
+    {
+        const auto context = MdbxStorageContext::open(boundary_path.string());
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        options.max_raw_body_bytes = 1'025;
+        options.max_raw_chunks = 2;
+        MdbxResourceImporter importer{std::move(options)};
+        std::string body(1'023, 'x');
+        body.append("\xC3\xA9");
+        const auto result = importer.import(original(
+            "resource:raw-boundary", "https://example.test/raw-boundary", body
+        ));
+        expect(result.raw_units.size() == 2,
+               "UTF-8 boundary fixture did not produce two bounded chunks");
+        MdbxKnowledgeUnitStoreOptions store_options;
+        store_options.context = context;
+        MdbxKnowledgeUnitStore store{std::move(store_options)};
+        const auto first = store.find(result.raw_units.front());
+        const auto second = store.find(result.raw_units.back());
+        expect(first && second && first->primary_text.size() == 1'023 &&
+                   second->primary_text == "\xC3\xA9",
+               "UTF-8 boundary split bisected a code point");
+
+        MdbxResourceImporterOptions chunk_limit_options;
+        chunk_limit_options.context = context;
+        chunk_limit_options.publication_profile =
+            ResourceImportPublicationProfile::LexicalWithRawChunks;
+        chunk_limit_options.max_raw_body_bytes = 1'025;
+        chunk_limit_options.max_raw_chunks = 1;
+        MdbxResourceImporter chunk_limited{std::move(chunk_limit_options)};
+        bool chunk_limit_rejected = false;
+        try {
+            (void)chunk_limited.import(original(
+                "resource:raw-boundary-rejected",
+                "https://example.test/raw-boundary-rejected",
+                body
+            ));
+        } catch(const std::invalid_argument&) { chunk_limit_rejected = true; }
+        expect(chunk_limit_rejected,
+               "raw chunk-count limit did not reject before durable writes");
+    }
+    std::filesystem::remove(boundary_path, error);
+
+    const auto lifecycle_path = test_path("raw_lifecycle");
+    std::filesystem::remove(lifecycle_path, error);
+    {
+        const auto context = MdbxStorageContext::open(lifecycle_path.string());
+        MdbxKnowledgeUnitStoreOptions store_options;
+        store_options.context = context;
+        auto store = std::make_shared<MdbxKnowledgeUnitStore>(std::move(store_options));
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        MdbxResourceImporter importer{std::move(options)};
+        const auto lifecycle_case = [&](const char* id,
+                                        KnowledgeUnitLifecycleState state) {
+            const auto result = importer.import(original(
+                id, "https://example.test/lifecycle", "lifecycle source"
+            ));
+            auto unit = store->find(result.raw_units.front());
+            expect(unit.has_value(), "lifecycle fixture lost its raw unit");
+            static_cast<void>(store->update_mutable_fields(
+                unit->id,
+                KnowledgeUnitMutablePatch{std::nullopt, std::nullopt, state, std::nullopt, std::nullopt}
+            ));
+            bool rejected = false;
+            try {
+                (void)importer.import(original(
+                    id, "https://example.test/lifecycle", "lifecycle source"
+                ));
+            } catch(const std::runtime_error&) { rejected = true; }
+            expect(rejected, "non-active lifecycle unit was silently republished");
+        };
+        lifecycle_case("resource:deprecated", KnowledgeUnitLifecycleState::Deprecated);
+        lifecycle_case("resource:superseded", KnowledgeUnitLifecycleState::Superseded);
+        lifecycle_case("resource:erased", KnowledgeUnitLifecycleState::Erased);
+    }
+    std::filesystem::remove(lifecycle_path, error);
+    {
+        const auto context = MdbxStorageContext::open(wired_recovery_path.string());
+        MdbxKnowledgeUnitStoreOptions store_options;
+        store_options.context = context;
+        auto store = std::make_shared<MdbxKnowledgeUnitStore>(std::move(store_options));
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        use_test_clock(options, 100);
+        options.fault_injector = [](ResourceImporterFaultPoint point) {
+            if(point == ResourceImporterFaultPoint::AfterLexicalPublication) {
+                throw std::runtime_error("leave wired import pending");
+            }
+        };
+        MdbxResourceImporter importer{std::move(options)};
+        bool interrupted = false;
+        try {
+            (void)importer.import(original(
+                "resource:wired-recovery",
+                "https://example.test/wired-recovery",
+                "wired recovery source with durable units"
+            ));
+        } catch(const std::runtime_error&) { interrupted = true; }
+        expect(interrupted, "wired recovery fixture did not interrupt publication");
+        expect(store->scan_by_scope_and_kind(
+                    ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk
+                ).empty(),
+               "raw units were published before the wired recovery point");
+    }
+    {
+        const auto context = MdbxStorageContext::open(wired_recovery_path.string());
+        MdbxKnowledgeUnitStoreOptions store_options;
+        store_options.context = context;
+        auto store = std::make_shared<MdbxKnowledgeUnitStore>(std::move(store_options));
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        use_test_clock(options, 1'000);
+        MdbxResourceImporter importer{std::move(options)};
+        const auto recovered = importer.find_manifest(ResourceId{"resource:wired-recovery"});
+        expect(recovered && recovered->records.size() == 3,
+               "wired recovery did not publish the manifest binding");
+        expect(store->scan_by_scope_and_kind(
+                    ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk
+                ).size() == 1,
+               "wired recovery did not create the raw unit");
+    }
+    std::filesystem::remove(wired_recovery_path, error);
     {
         const auto context = MdbxStorageContext::open(concurrency_path.string());
         MdbxResourceImporterOptions first_options;

@@ -23,11 +23,18 @@
 
 namespace agent_memory {
 
+    /// \brief Durable publication profile for the M0 importer.
+    enum class ResourceImportPublicationProfile : std::uint8_t {
+        LexicalOnly,
+        LexicalWithRawChunks
+    };
+
     /// \brief Deterministic interruption points for importer recovery tests.
     enum class ResourceImporterFaultPoint {
         AfterIntent,
         BeforeLexicalPublication,
         AfterLexicalPublication,
+        AfterRawUnitPublication,
         BeforeManifestPublication,
         AfterManifestPublication
     };
@@ -39,6 +46,15 @@ namespace agent_memory {
         bool relative_to_exe = false;
         std::int64_t max_dbs = kDefaultMdbxMaxDbs;
         std::shared_ptr<MdbxStorageContext> context;
+        /// Explicitly selects whether the importer owns raw Chunk publication.
+        /// Raw mode constructs its MDBX store from this context and table
+        /// prefix; callers cannot attach an unrelated store or namespace.
+        ResourceImportPublicationProfile publication_profile =
+            ResourceImportPublicationProfile::LexicalOnly;
+        /// Admission bound for one raw-publication body.
+        std::size_t max_raw_body_bytes = 16U * 1024U * 1024U;
+        /// Admission bound for one raw-publication chunk batch.
+        std::size_t max_raw_chunks = 16U * 1024U;
         /// Lease used before another executor may recover an unfinished intent.
         std::uint64_t ownership_lease_ms = 30'000;
         /// Optional deterministic wall-clock source returning Unix milliseconds.
@@ -48,6 +64,7 @@ namespace agent_memory {
 
     /// Maximum bounded candidate window used by importer-aware lexical search.
     inline constexpr std::size_t kMdbxResourceImporterMaxSearchLimit = 1024;
+    inline constexpr std::size_t kMdbxResourceImporterRawChunkBytes = 1024;
 
     /// \brief M0 importer composing durable lexical content and manifests.
     ///
@@ -59,6 +76,9 @@ namespace agent_memory {
     /// executor; an expired intent may be recovered with a higher epoch.
     /// A failure between canonical, lexical and manifest transactions leaves
     /// the prior manifest visible and is completed on reopen or retry.
+    /// Raw units are durable staging records until the matching raw profile
+    /// manifest contains their bindings; low-level store scans are not a
+    /// publication query and may include orphaned staging history.
     class MdbxResourceImporter final : public IResourceImporter {
     public:
         explicit MdbxResourceImporter(MdbxResourceImporterOptions options);

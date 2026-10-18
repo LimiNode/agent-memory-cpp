@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace agent_memory {
 
@@ -26,14 +27,19 @@ namespace agent_memory {
 
     /// \brief Result of publishing one source/body revision.
     ///
-    /// This first profile publishes one lexical document and one chunk-shaped
-    /// record. It intentionally does not claim a KnowledgeUnitStore or a
-    /// general Original projection store.
+    /// The lexical-only profile publishes one document and one chunk-shaped
+    /// record. The explicit raw-chunk publication profile additionally
+    /// publishes revision-bound raw Chunk ids; this result still does not claim
+    /// a general Original projection store.
     struct ResourceImportResult final {
         ResourceId resource_id;
         ResourceRevision revision;
         DocumentId document_id;
         ChunkId chunk_id;
+        /// Raw revision-bound Chunk units bound by the raw publication profile;
+        /// empty for the lexical-only profile. Source URI is historical
+        /// revision metadata and is not rewritten by URI-only reimports.
+        std::vector<KnowledgeUnitId> raw_units;
     };
 
     /// \brief M0 importer boundary for observed UTF-8 resources.

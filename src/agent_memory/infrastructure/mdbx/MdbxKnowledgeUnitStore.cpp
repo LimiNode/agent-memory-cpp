@@ -515,20 +515,6 @@ namespace agent_memory {
             return expected_hash;
         }
 
-        mdbxc::Config make_config(const MdbxKnowledgeUnitStoreOptions& options) {
-            if(options.path.empty() && !options.context) {
-                throw std::invalid_argument(
-                    "MdbxKnowledgeUnitStoreOptions::path must not be empty"
-                );
-            }
-            mdbxc::Config config;
-            config.pathname = options.path;
-            config.max_dbs = options.max_dbs;
-            config.no_subdir = true;
-            config.relative_to_exe = options.relative_to_exe;
-            return config;
-        }
-
     } // namespace
 
     class MdbxKnowledgeUnitStore::Impl final {
@@ -549,7 +535,6 @@ namespace agent_memory {
                 m_context->connection(),
                 table_name(m_prefix, "knowledge_units_by_kind")
             ) {
-            (void)make_config(options);
         }
 
         void upsert(KnowledgeUnitEnvelope envelope) {
