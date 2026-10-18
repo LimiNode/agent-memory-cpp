@@ -1027,12 +1027,55 @@ public:
 };
 ```
 
+#### Query representation and derivation semantics
+
+The `QueryVariant` sketch above is intentionally small and does not make every
+retrieval input a plain text query. Adapters that use richer representations
+must preserve the following conceptual distinction until a future ADR fixes a
+public shape:
+
+| Representation | Purpose | Contract boundary |
+|---|---|---|
+| `OriginalText` | The caller's declared query | The query is the parent input for all derived variants. |
+| `RewrittenText` | A bounded lexical or semantic rewrite | It is a derived candidate-generation input, not a memory record. |
+| `HypotheticalPassage` | HyDE-style dense candidate generation | The generated passage is not source content, evidence, or an independent observation. |
+| `PrecomputedVector` | A vector produced from a declared query or hypothesis | The encoder identity, version and derivation remain bound to the execution trace; the vector is not evidence. |
+
+For every non-original variant, the host or adapter must be able to account for
+the parent query, transformer/provider and model revision, derivation or config
+digest, execution budget and any expiration or reuse boundary. These are
+execution/provenance requirements, not a request to add a new public enum or to
+persist query variants as knowledge. A future API may introduce a typed
+descriptor only through an ADR. Until then, `QueryVariant.text` must not be
+interpreted as proof that a hypothetical passage or generated rewrite is true.
+
+All variants remain subject to the same access frontier, source-revision
+validation, candidate budget and final source hydration rules as the original
+query.
+
 Integration:
   `MemoryStack::retrieve(plan)` builds `QueryTransformationContext` from the
   current query plus explicit, bounded session context and calls the transformer
   before retriever'ами.
   Каждый `QueryVariant` даёт свой набор кандидатов.
   RRF fusion combines across all variants.
+
+The adaptive boundary has three separate decisions:
+
+1. a pre-retrieval **retrieval-needed** decision, owned by the host or an
+   explicitly declared bounded router;
+2. post-retrieval candidate/evidence evaluation, which may request a bounded
+   corrective search; and
+3. critique of a generated answer, which belongs to the host/runtime after
+   context handoff and is not part of the storage or retrieval core.
+
+These decisions may use related research ideas, but one hook must not silently
+become an agent loop or a generation controller.
+
+The current `IRetrievalEvaluator` sketch receives ranking hits, not an implicit
+grant to inspect or trust source material. Evidence-level evaluation follows
+the existing access, revision and hydration sequence; a hit, snippet or
+projection score remains non-evidence until that sequence succeeds.
 
 ### IRetrievalEvaluator Hook (M2+)
 
@@ -1065,7 +1108,8 @@ public:
         const std::vector<RetrievalHit>& hits
     ) override {
         // Lightweight evaluator (fine-tuned T5 или rule-based).
-        // Confidence < threshold → CorrectiveSearch с web fallback.
+        // Confidence < threshold → CorrectiveSearch через явно объявленный
+        // route; implicit web fallback is not allowed.
     }
 };
 ```
@@ -1074,6 +1118,15 @@ Integration:
   `MemoryStack::retrieve(plan)` вызывает `evaluator.evaluate()` после retriever'ов.
   `Action::CorrectiveSearch` → повторный retrieval с расширенным query.
   `Action::FallbackToLLM` → return empty context (LLM отвечает без retrieval).
+
+Every corrective search consumes the same declared aggregate branch, attempt,
+token, latency and I/O budgets as the parent execution. It must leave a typed
+trace of the reason, parent execution, route and work consumed; it must not
+obtain hidden extra calls or an unbounded retry loop. `FallbackToLLM` means that
+the retrieval result is empty or unavailable for the host; it does not itself
+perform a network call. An external web or service route is valid only when the
+host explicitly declares it, authorizes it, gives it a budget and records its
+result and provenance.
 
 ## 8. Default Memory Stacks (готовые профили)
 
