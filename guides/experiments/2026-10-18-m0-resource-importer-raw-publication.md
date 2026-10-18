@@ -14,24 +14,29 @@ The baseline is commit `9d151088e788e39474c8d8e80689f24c06ebe7c4` and the
 append-only implementation is corrective-pass HEAD
 `edcd249e234a461163cd02e04765aa18a6ba96a8`. Each case uses a fresh
 temporary MDBX environment. `import_elapsed_ms` includes importer open,
-publication, and close. `index_scan_elapsed_ms` is a separate read-only
-`scan_by_scope_and_kind` operation after the importer has closed. The unit
-counts are logical records returned by that scan. `db_bytes` is the final MDBX
-file-size snapshot, not a count of bytes written during the run.
+publication, and close. `index phase ms` covers the separate read-only
+`scan_by_scope_and_kind` operation and the repeated bounded admission probes
+after the importer has closed. The unit counts are logical records returned by
+that scan. `db_bytes` is the final MDBX file-size snapshot, not a count of bytes
+written during the run.
 
 ## Matched results
 
-| body | chunks / scanned units | baseline import ms | v2 import ms | baseline index scan ms | v2 index scan ms | baseline db bytes | v2 db bytes |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 128 KiB | 128 / 128 | 465.243 | 197.12 | 14.2659 | 14.0241 | 16,777,216 | 16,777,216 |
-| 1 MiB | 1,024 / 1,024 | 6,896.47 | 2,950.08 | 14.5536 | 14.0337 | 16,777,216 | 16,777,216 |
-| 4 MiB | 4,096 / 4,096 | 46,827.3 | 26,166.5 | 16.4375 | 22.2090 | 33,554,432 | 33,554,432 |
+| body | chunks / scanned units | baseline import ms | v2 import ms | baseline index phase ms | v2 index phase ms | baseline admission probes | v2 admission probes | baseline db bytes | v2 db bytes |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 128 KiB | 128 / 128 | 486.449 | 496.921 | 30.2656 | 75.2107 | 0 | 128 | 16,777,216 | 16,777,216 |
+| 1 MiB | 1,024 / 1,024 | 6,924.54 | 6,945.66 | 30.7757 | 27.4143 | 0 | 1,024 | 16,777,216 | 16,777,216 |
+| 4 MiB | 4,096 / 4,096 | 45,331.7 | 32,753.5 | 37.0173 | 35.3794 | 0 | 4,096 | 33,554,432 | 33,554,432 |
 
-The v2 importer is faster in this run because it avoids rewriting the growing
-serialized list. Scan latency is comparable at these sizes; it is still a
-linear search over the group's entries. The identical file-size snapshots are
-MDBX allocation granularity observations, not evidence that the two layouts
-perform identical physical writes.
+The v2 importer is faster for the 4 MiB case in this run because it avoids
+rewriting the growing serialized list. The 128 KiB and 1 MiB differences are
+within the noise of this single Windows run; this receipt is not a claim of a
+fixed speedup. The index phase remains a linear scan for result materialization.
+The admission probe counter demonstrates the corrected existence check: v2
+examines one first entry per probe (`N` total for `N` sequential inserts), not
+the accumulated range. The identical file-size snapshots are MDBX allocation
+granularity observations, not evidence that the two layouts perform identical
+physical writes.
 
 ## Logical index-write accounting
 
@@ -39,9 +44,10 @@ The baseline rewrites the serialized `UnitId[]` value once per newly published
 Chunk. Its logical rewrite count is therefore 128, 1,024, and 4,096 for the
 three cases (amplification `N`). v2 writes one bounded append-only index entry
 per Chunk, so its logical entry count is the same 128, 1,024, and 4,096 while
-its rewrite amplification is `1`. These are logical counters; no OS-level
-write-trace or MDBX page-dirty accounting was collected, so they must not be
-reported as physical bytes written.
+its rewrite amplification is `1`. `admission_probe_records` is a read-path
+instrumentation counter, not a write counter. No OS-level write-trace or MDBX
+page-dirty accounting was collected, so none of these values may be reported
+as physical bytes written.
 
 ## Reproduction
 

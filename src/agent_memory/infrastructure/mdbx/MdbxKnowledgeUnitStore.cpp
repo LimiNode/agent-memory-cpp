@@ -663,11 +663,12 @@ namespace agent_memory {
             if(scope_id.empty() || !is_valid_knowledge_unit_kind(kind)) return {};
             const auto key = index_key(scope_id, kind);
             std::vector<KnowledgeUnitId> ids;
-            const auto schema_version = index_schema_version();
+            const auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+            const auto schema_version = index_schema_version(txn);
             bool has_legacy_entries = false;
             bool has_v2_entries = false;
             for(const auto& pair : m_kind_index.range<std::vector>(
-                    key, index_entry_upper_bound(key))) {
+                    key, index_entry_upper_bound(key), txn)) {
                 if(pair.first == key) {
                     has_legacy_entries = true;
                     const auto legacy_ids = read_index(pair.second);
@@ -885,8 +886,8 @@ namespace agent_memory {
             mark_v2_index(txn);
         }
 
-        std::string index_schema_version() const {
-            const auto payload = m_units.find(std::string{INDEX_SCHEMA_VERSION_KEY});
+        std::string index_schema_version(const mdbxc::Transaction& txn) const {
+            const auto payload = m_units.find(std::string{INDEX_SCHEMA_VERSION_KEY}, txn);
             if(!payload) return {};
             if(!is_index_schema_version(*payload)) {
                 throw std::runtime_error(
@@ -925,9 +926,16 @@ namespace agent_memory {
                 );
             }
             const bool has_legacy_entries = m_kind_index.find(key, txn).has_value();
-            const bool has_v2_entries = !m_kind_index.range<std::vector>(
-                index_entry_lower_bound(key), index_entry_upper_bound(key), txn
-            ).empty();
+            bool has_v2_entries = false;
+            m_kind_index.for_each_range(
+                index_entry_lower_bound(key),
+                index_entry_upper_bound(key),
+                [&has_v2_entries](const std::string&, const std::string&) {
+                    has_v2_entries = true;
+                    return false;
+                },
+                txn
+            );
             validate_index_format(schema_version, has_legacy_entries, has_v2_entries);
         }
 

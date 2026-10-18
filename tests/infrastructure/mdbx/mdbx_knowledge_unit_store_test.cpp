@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <sstream>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -448,6 +449,88 @@ int main() {
 
     const auto path = test_path();
     std::error_code error;
+    {
+        const auto snapshot_path = test_path();
+        std::error_code snapshot_error;
+        std::filesystem::remove(snapshot_path, snapshot_error);
+        {
+            auto context = agent_memory::MdbxStorageContext::open(
+                snapshot_path.string(), false, agent_memory::kDefaultMdbxMaxDbs
+            );
+            mdbxc::KeyValueTable<std::string, std::string> units(
+                context->connection(), "agent_memory_snapshot_knowledge_units"
+            );
+            mdbxc::KeyValueTable<std::string, std::string> index(
+                context->connection(), "agent_memory_snapshot_knowledge_units_by_kind"
+            );
+            units.insert_or_assign("@knowledge_units_by_kind_schema_version", "1");
+            index.insert_or_assign(
+                legacy_index_key("snapshot-scope", "chunk"),
+                encode_legacy_index({10})
+            );
+        }
+        {
+        auto reader_context = agent_memory::MdbxStorageContext::open(
+            snapshot_path.string(), false, agent_memory::kDefaultMdbxMaxDbs
+        );
+        mdbxc::KeyValueTable<std::string, std::string> reader_units(
+            reader_context->connection(), "agent_memory_snapshot_knowledge_units"
+        );
+        mdbxc::KeyValueTable<std::string, std::string> reader_index(
+            reader_context->connection(), "agent_memory_snapshot_knowledge_units_by_kind"
+        );
+        const auto reader_txn = reader_context->connection()->transaction(
+            mdbxc::TransactionMode::READ_ONLY
+        );
+        const auto marker_before = reader_units.find(
+            "@knowledge_units_by_kind_schema_version", reader_txn
+        );
+        {
+            std::thread writer([&reader_context] {
+                mdbxc::KeyValueTable<std::string, std::string> writer_units(
+                    reader_context->connection(), "agent_memory_snapshot_knowledge_units"
+                );
+                mdbxc::KeyValueTable<std::string, std::string> writer_index(
+                    reader_context->connection(),
+                    "agent_memory_snapshot_knowledge_units_by_kind"
+                );
+                auto writer_txn = reader_context->connection()->transaction(
+                    mdbxc::TransactionMode::WRITABLE
+                );
+                writer_index.erase(
+                    legacy_index_key("snapshot-scope", "chunk"), writer_txn
+                );
+                writer_index.insert_or_assign(
+                    legacy_index_key("snapshot-scope", "chunk") + std::string(8, '\0'),
+                    "10",
+                    writer_txn
+                );
+                writer_units.insert_or_assign(
+                    "@knowledge_units_by_kind_schema_version", "2", writer_txn
+                );
+                writer_txn.commit();
+            });
+            writer.join();
+        }
+        const auto marker_after = reader_units.find(
+            "@knowledge_units_by_kind_schema_version", reader_txn
+        );
+        const auto snapshot_entries = reader_index.range<std::vector>(
+            legacy_index_key("snapshot-scope", "chunk"),
+            legacy_index_key("snapshot-scope", "chunk") + std::string(8, '\xff'),
+            reader_txn
+        );
+        expect(marker_before && marker_after && *marker_before == "1" &&
+                   *marker_after == "1",
+               "read-only snapshot must keep the schema marker stable");
+        expect(snapshot_entries.size() == 1 && snapshot_entries.front().first ==
+                   legacy_index_key("snapshot-scope", "chunk"),
+               "read-only snapshot must keep the legacy index view stable");
+        reader_context.reset();
+        }
+        std::filesystem::remove(snapshot_path, snapshot_error);
+    }
+
     std::filesystem::remove(path, error);
 
     agent_memory::KnowledgeUnitId first_id;

@@ -1471,6 +1471,11 @@ key `(ComponentKind, UnitId)`. The tag is part of the key, so several
 components for the same unit cannot overwrite each other. Per-kind payloads —
 отдельные таблицы для изоляции schema и быстрого scan по kind.
 
+Admission only probes the first v2 key with a bounded cursor walk; it does not
+materialize the group's range on each append. Readers open one read-only MDBX
+transaction for both the marker and the by-kind range, so format validation is
+performed against one snapshot.
+
 ### 8.2. Capability-aware DBI Creation
 
 При `MemoryStack::open(spec)`:

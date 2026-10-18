@@ -109,6 +109,16 @@ std::string canonical_document_id(
     return "durable-lexical:" + encode(scope) + ':' + encode(resource);
 }
 
+std::string benchmark_kind_index_key(
+    std::string_view scope,
+    std::string_view kind
+) {
+    std::string key;
+    append_framed(key, scope);
+    append_framed(key, kind);
+    return key;
+}
+
 void run_benchmark() {
     using namespace agent_memory;
     for(const std::size_t body_bytes : {std::size_t{128} * 1024U,
@@ -153,6 +163,32 @@ void run_benchmark() {
                 ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk
             ).size();
         }
+        std::size_t admission_probe_records = 0;
+        {
+            auto context = MdbxStorageContext::open(
+                path.string(), false, kDefaultMdbxMaxDbs
+            );
+            mdbxc::KeyValueTable<std::string, std::string> index(
+                context->connection(), "agent_memory_knowledge_units_by_kind"
+            );
+            const auto base = benchmark_kind_index_key("tenant-a", "chunk");
+            const auto lower = base + std::string(8, '\0');
+            const auto upper = base + std::string(8, '\xff');
+            const auto txn = context->connection()->transaction(
+                mdbxc::TransactionMode::READ_ONLY
+            );
+            for(std::size_t probe = 0; probe < result.raw_units.size(); ++probe) {
+                index.for_each_range(
+                    lower,
+                    upper,
+                    [&admission_probe_records](const std::string&, const std::string&) {
+                        ++admission_probe_records;
+                        return false;
+                    },
+                    txn
+                );
+            }
+        }
         const auto index_elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - index_started
         ).count();
@@ -162,6 +198,7 @@ void run_benchmark() {
                   << " import_elapsed_ms=" << import_elapsed
                   << " index_scan_elapsed_ms=" << index_elapsed
                   << " index_scan_units=" << indexed_units
+                  << " admission_probe_records=" << admission_probe_records
                   << " db_bytes=" << db_bytes
                   << " index_entry_writes=" << result.raw_units.size()
                   << " index_write_amplification=1"
