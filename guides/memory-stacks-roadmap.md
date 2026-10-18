@@ -1741,19 +1741,25 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 
 ### Шаг 1: Envelope + базовые DBI
 
-> **Status.** The dependency-free value layer (`KnowledgeUnitEnvelope`, its
-> identity key, bounded inline source summaries, and lifecycle transition
-> rules) is implemented. Monotonic allocation, canonical content-hash
-> computation, serialization, MDBX DBIs, and `MemoryStack::open()` remain
-> separate follow-up PRs.
+> **Status.** The dependency-free value layer and the narrow durable M0 store
+> slice are implemented. That slice includes standalone `IKnowledgeUnitStore`,
+> `MdbxKnowledgeUnitStore`, monotonic `KnowledgeUnitId` allocation, recipe-v2
+> content hashing, envelope serialization, and the three identity/index DBIs
+> (`knowledge_units`, `content_key_to_unit_id`, `knowledge_units_by_kind`).
+> This does not complete the whole memory stack: `MemoryStack::open()`, full
+> profile/schema orchestration, importer integration, and remaining extensions
+> are follow-up work.
 
 - Создать `KnowledgeUnitEnvelope` struct (lean hot-path envelope, ~18 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, content_hash, content_hash_recipe_version, lineage fields, priority_weight).
-- MDBX DBI: default-open physical set from
-  `mdbx-containers-extension-tz.md` §5.5, including identity DBI
-  `knowledge_units`, `content_key_to_unit_id`, `knowledge_units_by_kind` and
-  `schema_info`.
-- Сериализация envelope через flat binary (msgpack или custom).
-- `MemoryStack::open()` для пустой spec (только envelope + lexical).
+- The standalone M0 store opens the three identity/index DBIs
+  `knowledge_units`, `content_key_to_unit_id`, and `knowledge_units_by_kind`;
+  the latter is a key-value table whose value is an ordered serialized
+  `UnitId[]`, not a native DUPSORT table. Full profile-driven DBI creation and
+  `schema_info` orchestration belong to `MemoryStack::open()` and remain
+  follow-up work.
+- Envelope serialization is implemented by the M0 flat binary codec.
+- `MemoryStack::open()` for an empty spec (envelope + lexical) remains future
+  work.
 - Lifecycle FSM с 4 durable states (Active, Superseded, Deprecated, Erased). SoftSuppressed/cooldown — runtime state в UsageStatsComponent, не durable lifecycle.
 
 ### Шаг 1.5: Revision semantics + stale-filter

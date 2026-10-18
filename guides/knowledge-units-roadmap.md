@@ -345,6 +345,13 @@ in legacy migration notes.
 - В envelope: `vector<SourceRefSummary>`, **максимум 3 summary на unit** (budget: ≤3 × ~256 байт ≈ 768 байт на envelope).
 - Полные цитаты не хранятся; `preview` используется как для UI, так и для BM25F indexing (через search projection).
 
+The envelope budget permits up to three summaries in the general roadmap
+contract. The current narrow M0 `IKnowledgeUnitStore` admission is stricter:
+`create_or_get_unit` and `upsert` require exactly one non-empty,
+revision-bound summary. Legacy preview-only and multi-source requests are
+reserved for a future migration/import contract and are rejected by this
+store.
+
 **M1 (добавление `source_refs` DBI):**
 - В envelope остаётся `vector<SourceRefSummary>` (≤3).
 - Полные `SourceRef` с `excerpt_text` хранятся в отдельной `source_refs` DBI (key = `KnowledgeUnitId` → `vector<SourceRef>`).
@@ -461,7 +468,10 @@ the current physical file path or importer-local location:
 
 - `Chunk`: `ResourceBody` digest, chunk span/offset identity and normalized
   chunk text digest. If raw body storage is external, the stable body digest
-  participates in identity; transient source path does not.
+  participates in identity; transient source path does not. The narrow M0
+  implementation below is a bounded exception to this broader recipe: it
+  hashes the `primary_text` bytes supplied by the caller and does not perform
+  Unicode, whitespace, or line-ending normalization.
 - `QAPair`: normalized question/answer payload fields and declared identity
   metadata.
 - `Fact`: canonical subject/predicate/object/time identity.
@@ -553,11 +563,49 @@ Unicode 15.1.0 for recipe v1; changing Unicode data version requires a new
 recipe version.
 
 The current narrow M0 C++ Chunk implementation uses its own recipe version 2
-(`agent-memory.content-hash.v2`). It includes the immutable `ResourceId`,
-resource generation, body-digest algorithm and body digest, followed by the
-chunk span and primary-text digest. This prevents equal bytes from different
-resources or generations from being deduplicated. The full typed wire grammar
-above remains the broader roadmap contract and is not claimed by M0.
+(`agent-memory.content-hash.v2`). It is a separate, intentionally smaller
+contract than recipe v1 above. For the exactly-one revision-bound source
+accepted by the M0 store, the canonical byte stream is:
+
+```text
+"agent-memory.content-hash.v2"
++ length-prefixed "chunk"
++ length-prefixed ScopeId.value()
++ length-prefixed "recipe_version"
++ u16 big-endian recipe version
++ length-prefixed "resource_id"
++ length-prefixed ResourceId.value()
++ length-prefixed "resource_generation"
++ u64 big-endian generation
++ length-prefixed "resource_body_digest_algorithm"
++ u8 algorithm value
++ length-prefixed "resource_body_digest"
++ 32 raw digest bytes
++ length-prefixed "chunk_offset"
++ u64 big-endian offset
++ length-prefixed "chunk_length"
++ u64 big-endian length
++ length-prefixed "normalized_text_digest"
++ 32 raw SHA-256(primary_text) bytes
+```
+
+Here `length-prefixed` means decimal byte length followed by `:` and then the
+literal or byte sequence. The initial recipe identifier is a literal prefix,
+not a length-prefixed value. Integer payloads are raw big-endian bytes; the
+integer itself is not wrapped in another textual framing. `ScopeId.value()` and
+`ResourceId.value()` are hashed exactly as supplied. `primary_text` is the
+bounded retrieval seed and its supplied UTF-8 bytes are hashed as-is: M0 does
+not apply Unicode NFC, whitespace, or line-ending normalization. The final
+SHA-256 covers the complete stream and the stored `ContentHash` is its first
+16 bytes. Recipe v2 is not equivalent to the roadmap recipe v1; changing this
+stream requires a new recipe version, golden vectors, and a migration plan.
+
+No-source and legacy preview-only requests are rejected before this identity is
+computed. Moving ownership to locator-backed canonical text/chunks therefore
+requires a separate versioned recipe and migration contract; see
+[`canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md)
+and the future locator-backed chunk work. The full typed wire grammar above
+remains the broader roadmap contract and is not claimed by M0.
 
 `ScopeId::canonical_bytes()` is `UTF-8 NFC`, CRLF/CR -> LF, trim outer Unicode
 whitespace, ASCII lower-case for `[A-Z]`, and forbids empty result, NUL bytes
@@ -623,7 +671,7 @@ Identity vs mutable fields:
 
 | Kind | Identity fields | Mutable fields (`revision++`) |
 |---|---|---|
-| `Chunk` | `ResourceRevisionRef`, resource body digest, span/offset identity, normalized chunk text digest | display text, source summaries, retrieval projections, lifecycle |
+| `Chunk` | `ResourceRevisionRef`, resource body digest, span/offset identity, normalized chunk text digest in the broader recipe; the narrow M0 slice uses the supplied `primary_text` digest as specified above | display text, source summaries, retrieval projections, lifecycle |
 | `QAPair` | normalized question/answer identity fields | display text, source summaries, usage/ranking metadata, projections, lifecycle |
 | `Fact` | subject/predicate/object/time identity | confidence, display text, non-identity source summaries, projections, lifecycle |
 | imported `Note` | `ResourceRevisionRef`, canonical payload text, stable `ResourceBody` digest | title/display summaries, source summaries, projections, lifecycle |
@@ -1362,7 +1410,8 @@ enum class DerivedRecordKind : uint32_t {
 | Component / Payload | DBI имя | Open when |
 |---|---|---|
 | KnowledgeUnitEnvelope | `knowledge_units` | always |
-| KnowledgeUnit by kind | `knowledge_units_by_kind` | always (scope-aware DUPSORT) |
+| KnowledgeUnit by kind | `knowledge_units_by_kind` | always (`KeyValueTable`; key = `(ScopeId, KnowledgeUnitKind)`, value = ordered serialized `UnitId[]`) |
+
 | UsageStatsComponent | `unit_components` (tag=UsageStats) | UsageStats=true |
 | SpeakerComponent | `unit_components` (tag=Speaker) | SpeakerAttribution=true |
 | TemporalComponent | `unit_components` (tag=Temporal) | TemporalValidity=true |
@@ -1388,6 +1437,11 @@ enum class DerivedRecordKind : uint32_t {
 | CompiledArticlePayload | `compiled_article_payloads` | CompiledArticles=true |
 | Full SourceRef vector | `source_refs` | `enable_full_source_refs=true` (M1) |
 | SearchProjections | `unit_projections` | indexed retrieval (always для BasicRag+) |
+
+The M0 key-value representation preserves observable insertion order and the
+ordered `UnitId[]` survives close/reopen. Native `DUPSORT`, `DUPFIXED`, and
+`INTEGERDUP` layouts are future benchmark or migration candidates only; they
+are not part of the production M0 layout.
 
 Operational components живут в единой `unit_components` DBI через
 `TypeDiscriminatedTable` (из `mdbx-containers-extension-tz.md`) with physical
