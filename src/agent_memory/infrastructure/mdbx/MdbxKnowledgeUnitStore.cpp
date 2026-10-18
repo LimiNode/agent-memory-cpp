@@ -24,6 +24,10 @@ namespace agent_memory {
             "agent_memory.knowledge_unit.v1";
         constexpr std::string_view NEXT_ID_KEY = "@next_id";
         constexpr std::string_view NEXT_INDEX_SEQUENCE_KEY = "@next_index_sequence";
+        constexpr std::string_view INDEX_SCHEMA_VERSION_KEY =
+            "@knowledge_units_by_kind_schema_version";
+        constexpr std::string_view INDEX_SCHEMA_VERSION_V1 = "1";
+        constexpr std::string_view INDEX_SCHEMA_VERSION_V2 = "2";
         constexpr std::size_t MAX_SOURCE_SUMMARIES = 3;
         constexpr std::size_t MAX_SOURCE_PREVIEW_BYTES = 256;
 
@@ -482,6 +486,12 @@ namespace agent_memory {
             return index_entry_key(base, std::numeric_limits<std::uint64_t>::max());
         }
 
+        bool is_index_schema_version(std::string_view version) {
+            return version.empty()
+                || version == INDEX_SCHEMA_VERSION_V1
+                || version == INDEX_SCHEMA_VERSION_V2;
+        }
+
         std::vector<KnowledgeUnitId> read_index(std::string_view payload) {
             PayloadReader reader{payload};
             const auto count = reader.read_uint64();
@@ -653,15 +663,21 @@ namespace agent_memory {
             if(scope_id.empty() || !is_valid_knowledge_unit_kind(kind)) return {};
             const auto key = index_key(scope_id, kind);
             std::vector<KnowledgeUnitId> ids;
+            const auto schema_version = index_schema_version();
+            bool has_legacy_entries = false;
+            bool has_v2_entries = false;
             for(const auto& pair : m_kind_index.range<std::vector>(
                     key, index_entry_upper_bound(key))) {
                 if(pair.first == key) {
+                    has_legacy_entries = true;
                     const auto legacy_ids = read_index(pair.second);
                     ids.insert(ids.end(), legacy_ids.begin(), legacy_ids.end());
                 } else {
+                    has_v2_entries = true;
                     ids.push_back(parse_id(pair.second));
                 }
             }
+            validate_index_format(schema_version, has_legacy_entries, has_v2_entries);
             return ids;
         }
 
@@ -832,6 +848,7 @@ namespace agent_memory {
             KnowledgeUnitId id,
             const mdbxc::Transaction& txn
         ) {
+            ensure_index_admission(key, txn);
             migrate_legacy_index(key, txn);
             const auto sequence = allocate_index_sequence(txn);
             m_kind_index.insert_or_assign(
@@ -839,6 +856,7 @@ namespace agent_memory {
                 id_key(id),
                 txn
             );
+            mark_v2_index(txn);
         }
 
         void append_index_entries(
@@ -854,6 +872,7 @@ namespace agent_memory {
             KnowledgeUnitId id,
             const mdbxc::Transaction& txn
         ) {
+            ensure_index_admission(key, txn);
             migrate_legacy_index(key, txn);
             const auto expected = id_key(id);
             for(const auto& pair : m_kind_index.range<std::vector>(
@@ -863,6 +882,61 @@ namespace agent_memory {
                     break;
                 }
             }
+            mark_v2_index(txn);
+        }
+
+        std::string index_schema_version() const {
+            const auto payload = m_units.find(std::string{INDEX_SCHEMA_VERSION_KEY});
+            if(!payload) return {};
+            if(!is_index_schema_version(*payload)) {
+                throw std::runtime_error(
+                    "Unsupported knowledge-unit by-kind index schema version"
+                );
+            }
+            return *payload;
+        }
+
+        static void validate_index_format(
+            std::string_view schema_version,
+            bool has_legacy_entries,
+            bool has_v2_entries
+        ) {
+            if(has_v2_entries && schema_version != INDEX_SCHEMA_VERSION_V2) {
+                throw std::runtime_error(
+                    "Knowledge-unit by-kind index has v2 entries without a v2 marker"
+                );
+            }
+            if(has_legacy_entries && has_v2_entries) {
+                throw std::runtime_error(
+                    "Knowledge-unit by-kind index mixes legacy and v2 entries"
+                );
+            }
+        }
+
+        void ensure_index_admission(
+            const std::string& key,
+            const mdbxc::Transaction& txn
+        ) {
+            const auto payload = m_units.find(std::string{INDEX_SCHEMA_VERSION_KEY}, txn);
+            const std::string schema_version = payload ? *payload : std::string{};
+            if(!is_index_schema_version(schema_version)) {
+                throw std::runtime_error(
+                    "Unsupported knowledge-unit by-kind index schema version"
+                );
+            }
+            const bool has_legacy_entries = m_kind_index.find(key, txn).has_value();
+            const bool has_v2_entries = !m_kind_index.range<std::vector>(
+                index_entry_lower_bound(key), index_entry_upper_bound(key), txn
+            ).empty();
+            validate_index_format(schema_version, has_legacy_entries, has_v2_entries);
+        }
+
+        void mark_v2_index(const mdbxc::Transaction& txn) {
+            m_units.insert_or_assign(
+                std::string{INDEX_SCHEMA_VERSION_KEY},
+                std::string{INDEX_SCHEMA_VERSION_V2},
+                txn
+            );
         }
 
         void migrate_legacy_index(

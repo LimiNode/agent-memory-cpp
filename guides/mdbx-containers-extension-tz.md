@@ -1239,6 +1239,15 @@ agent_memory_canonical_bodies         KeyValueTable<(DocumentId, BodyRevision, P
 agent_memory_canonical_ledgers        KeyValueTable<DocumentId, historical_block_id_ledger>
 ```
 
+The append-only by-kind layout is versioned by the
+`knowledge_units` metadata key `@knowledge_units_by_kind_schema_version`.
+Missing/`"1"` means a legacy-compatible environment; `"2"` means that a v2
+writer has activated the append-only layout. Upgrade is quiesced/offline: stop
+v1 writers before the first v2 write, because an old binary does not read v2
+entries. The v2 adapter migrates one scope/kind atomically, leaves untouched
+legacy groups readable, and rejects unsupported markers, v2 entries without
+the marker, or legacy keys coexisting with v2 entries in one group.
+
 For the C1 raw profile, a revision blob contains ordered block descriptors and
 the logical `BodyRevision` binding; it does not own block text. The body value
 contains decoded block text, a codec-independent algorithm-tagged SHA-256

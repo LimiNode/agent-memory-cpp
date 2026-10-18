@@ -112,10 +112,13 @@ std::string canonical_document_id(
 void run_benchmark() {
     using namespace agent_memory;
     for(const std::size_t body_bytes : {std::size_t{128} * 1024U,
-                                        std::size_t{1024} * 1024U}) {
+                                        std::size_t{1024} * 1024U,
+                                        std::size_t{4} * 1024U * 1024U}) {
         const auto path = test_path(body_bytes == 128U * 1024U
             ? "benchmark_128k"
-            : "benchmark_1m");
+            : body_bytes == 1024U * 1024U
+                ? "benchmark_1m"
+                : "benchmark_4m");
         std::error_code error;
         std::filesystem::remove(path, error);
         MdbxResourceImporterOptions options;
@@ -123,20 +126,43 @@ void run_benchmark() {
         options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
         options.max_raw_body_bytes = body_bytes;
         options.max_raw_chunks = body_bytes / kMdbxResourceImporterRawChunkBytes;
-        MdbxResourceImporter importer{std::move(options)};
         const auto body = std::string(body_bytes, 'b');
         const auto started = std::chrono::steady_clock::now();
-        const auto result = importer.import(original(
-            body_bytes == 128U * 1024U ? "resource:benchmark-128k" : "resource:benchmark-1m",
-            "https://example.test/benchmark",
-            body
-        ));
-        const auto elapsed = std::chrono::duration<double, std::milli>(
+        agent_memory::ResourceImportResult result;
+        {
+            MdbxResourceImporter importer{std::move(options)};
+            const auto resource_id = body_bytes == 128U * 1024U
+                ? "resource:benchmark-128k"
+                : body_bytes == 1024U * 1024U
+                    ? "resource:benchmark-1m"
+                    : "resource:benchmark-4m";
+            result = importer.import(original(
+                resource_id,
+                "https://example.test/benchmark",
+                body
+            ));
+        }
+        const auto import_elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - started
         ).count();
+        const auto index_started = std::chrono::steady_clock::now();
+        std::size_t indexed_units = 0;
+        {
+            MdbxKnowledgeUnitStore store({path.string(), "agent_memory", false});
+            indexed_units = store.scan_by_scope_and_kind(
+                ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk
+            ).size();
+        }
+        const auto index_elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - index_started
+        ).count();
+        const auto db_bytes = std::filesystem::file_size(path);
         std::cout << "body_bytes=" << body_bytes
                   << " chunks=" << result.raw_units.size()
-                  << " elapsed_ms=" << elapsed
+                  << " import_elapsed_ms=" << import_elapsed
+                  << " index_scan_elapsed_ms=" << index_elapsed
+                  << " index_scan_units=" << indexed_units
+                  << " db_bytes=" << db_bytes
                   << " index_entry_writes=" << result.raw_units.size()
                   << " index_write_amplification=1"
                   << '\n';
