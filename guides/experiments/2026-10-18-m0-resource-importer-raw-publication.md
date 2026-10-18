@@ -11,7 +11,8 @@ agent_memory_mdbx_resource_importer_test.exe --benchmark
 ```
 
 The baseline is commit `9d151088e788e39474c8d8e80689f24c06ebe7c4` and the
-append-only implementation is the corrective-pass HEAD. Each case uses a fresh
+append-only implementation is corrective-pass HEAD
+`edcd249e234a461163cd02e04765aa18a6ba96a8`. Each case uses a fresh
 temporary MDBX environment. `import_elapsed_ms` includes importer open,
 publication, and close. `index_scan_elapsed_ms` is a separate read-only
 `scan_by_scope_and_kind` operation after the importer has closed. The unit
@@ -44,9 +45,13 @@ reported as physical bytes written.
 
 ## Reproduction
 
-From the baseline worktree:
+The baseline source does not contain the benchmark output fields, so the
+baseline run uses the same temporary benchmark-only instrumentation as the v2
+test. Apply the committed test-file delta before configuring the baseline
+worktree:
 
 ```text
+git diff 9d151088e788e39474c8d8e80689f24c06ebe7c4 edcd249e234a461163cd02e04765aa18a6ba96a8 -- tests/infrastructure/mdbx/mdbx_resource_importer_test.cpp | git -C E:/_repoz/agent-memory-cpp/.worktrees/m0-index-baseline apply -
 cmake -S . -B .build/mdbx-baseline -G Ninja -DCMAKE_BUILD_TYPE=Release -DAGENT_MEMORY_BUILD_TESTS=ON -DAGENT_MEMORY_ENABLE_MDBX=ON -DAGENT_MEMORY_ENABLE_JSON=ON -DAGENT_MEMORY_MDBX_DEPS_MODE=BUNDLED
 cmake --build .build/mdbx-baseline --target agent_memory_mdbx_resource_importer_test -j 4
 .build/mdbx-baseline/bin/agent_memory_mdbx_resource_importer_test.exe --benchmark
