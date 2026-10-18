@@ -9,7 +9,7 @@ unit gates remain incomplete.
 | M0 gate | State before this PR | Result of this PR |
 | --- | --- | --- |
 | Raw resource ingest | Contracts and canonical C1 storage exist; no executable UTF-8 ingest/reopen path | Narrow `.md`/`.txt`/log-compatible UTF-8 text import with stable resource identity, manifest binding, durable intent recovery and reopen |
-| Chunk/Note units | Contract only | Narrow durable `Chunk` envelope store with content-key dedupe, reopen, scope-aware keys and mutable updates; multi-chunk importer integration and multi-kind payload stores remain open |
+| Chunk/Note units | Contract only | Narrow durable `Chunk` envelope store with content-key dedupe, reopen, scope-aware keys and mutable updates; the importer can optionally publish UTF-8-safe revision-bound raw Chunk units; multi-kind payload stores remain open |
 | Immutable knowledge-unit identity | Value contracts only | `KnowledgeUnitKey` is persisted separately from monotonic `KnowledgeUnitId`; no in-place identity mutation API is exposed |
 | Source summaries | Value contracts only | Inline revision-bound `SourceRefSummary` values are persisted; the M0 store admits exactly one such source per Chunk (the general envelope budget is at most three); full `source_refs` storage remains deferred |
 | Original projection | Contract only | Rebuildable BM25 view only; no general `IProjectionStore` implementation |
@@ -23,11 +23,16 @@ The smallest useful production surface is one vertical slice:
 
 `scope/resource -> durable canonical UTF-8 body -> deterministic BM25 index -> reopen -> search`
 
-The new `IResourceImporter`/`MdbxResourceImporter` surface composes the
-existing durable lexical memory with `MdbxResourceManifestStorage`. It accepts
-one host-observed UTF-8 resource, records a SHA-256 body digest and text-origin
+The `IResourceImporter`/`MdbxResourceImporter` surface composes the existing
+durable lexical memory with `MdbxResourceManifestStorage`. It accepts one
+host-observed UTF-8 resource, records a SHA-256 body digest and text-origin
 provenance, publishes document/chunk-shaped manifest records, and exposes
-manifest lookup plus lexical search. A durable import intent makes the
+manifest lookup plus lexical search. When wired to an `IKnowledgeUnitStore`, it
+also splits the body only at UTF-8 code-point boundaries (1024-byte maximum),
+creates revision-bound raw Chunk envelopes before manifest activation, returns
+their ids, and records `Custom` manifest bindings named
+`knowledge_unit:<numeric-id>`. Replays deduplicate by the recipe-v2 identity;
+the lexical-only profile remains unchanged. A durable import intent makes the
 lexical-first publication recoverable: an interruption leaves the previous
 manifest visible and is completed on reopen or by a later importer after the
 lease expires. Resource IDs are durably bound to one scope within this manifest
@@ -63,13 +68,15 @@ and hydration.
 
 ## Deliberate boundaries
 
-This PR does not claim that all M0 gates are complete. Multi-chunk importer
-integration, locator-backed `ChunkPayload` hydration, full `source_refs`, a
+This PR does not claim that all M0 gates are complete. Locator-backed
+`ChunkPayload` hydration, full `source_refs`, a
 general Original projection store, retrieval traces, lineage orchestration,
 complete MemoryStack profile integration, reindex protocols beyond this
 publication intent, general recovery orchestration, compaction and maintenance
 are follow-up M0 work. Interrupted-publication recovery for this narrow slice
-is implemented and covered by its importer tests.
+is implemented and covered by its importer tests. Replaced generations retain
+their old raw units until a later manifest-aware reclaim/compaction pass; the
+current slice never erases provenance eagerly.
 Dense, hybrid, graph, temporal and other M1/M2 capabilities are explicitly
 excluded.
 

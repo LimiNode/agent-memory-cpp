@@ -1,4 +1,5 @@
 #include <agent_memory/infrastructure/mdbx/MdbxResourceImporter.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 
@@ -92,6 +93,7 @@ int main() {
         ));
         expect(first.revision.generation == 1, "initial import generation mismatch");
         expect(first.revision.body_digest.has_value(), "body digest was not published");
+        expect(first.raw_units.empty(), "lexical-only importer unexpectedly published raw units");
         expect(first.document_id.value().find("durable-lexical:") == 0,
                "document identity is not lexical-profile stable");
         const auto manifest = importer.find_manifest(first.resource_id);
@@ -337,6 +339,149 @@ int main() {
 
     const auto concurrency_path = test_path("concurrency");
     std::filesystem::remove(concurrency_path, error);
+
+    const auto wired_path = test_path("knowledge_units");
+    std::filesystem::remove(wired_path, error);
+    {
+        const auto context = MdbxStorageContext::open(wired_path.string());
+        MdbxKnowledgeUnitStoreOptions store_options;
+        store_options.context = context;
+        auto store = std::make_shared<MdbxKnowledgeUnitStore>(std::move(store_options));
+
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.knowledge_unit_store = store;
+        use_test_clock(options, 100);
+        MdbxResourceImporter importer{std::move(options)};
+
+        std::string body;
+        for(int index = 0; index < 400; ++index) body += "Привет, durable chunk! ";
+        const auto imported = importer.import(original(
+            "resource:wired", "https://example.test/wired", body
+        ));
+        expect(imported.raw_units.size() > 1,
+               "wired importer did not split an oversized UTF-8 body");
+        const auto manifest = importer.find_manifest(imported.resource_id);
+        expect(manifest && manifest->records.size() == imported.raw_units.size() + 2,
+               "manifest did not publish one custom binding per raw unit");
+
+        std::string reconstructed;
+        std::uint64_t expected_offset = 0;
+        for(std::size_t index = 0; index < imported.raw_units.size(); ++index) {
+            const auto envelope = store->find(imported.raw_units[index]);
+            expect(envelope.has_value(), "raw unit was not persisted");
+            expect(envelope->sources.size() == 1,
+                   "raw unit did not retain exactly one source summary");
+            const auto& source = envelope->sources.front();
+            expect(source.reference_mode == SourceReferenceMode::RevisionBoundQuote,
+                   "raw unit source was not revision-bound");
+            expect(source.resource_revision &&
+                       source.resource_revision->resource_id == imported.resource_id &&
+                       source.resource_revision->generation == imported.revision.generation &&
+                       source.resource_revision->body_digest.bytes ==
+                           imported.revision.body_digest->bytes,
+                   "raw unit source revision binding is incomplete");
+            expect(source.excerpt.offset == expected_offset,
+                   "raw unit ranges are not contiguous");
+            expect(source.excerpt.length == envelope->primary_text.size(),
+                   "raw unit range length does not match primary text");
+            expect(envelope->primary_text.size() <= 1024,
+                   "raw unit exceeded the M0 primary text bound");
+            expect(source.preview.size() <= 256 &&
+                       envelope->primary_text.compare(0, source.preview.size(), source.preview) == 0,
+                   "raw unit preview is not a bounded prefix");
+            reconstructed += envelope->primary_text;
+            expected_offset += source.excerpt.length;
+
+            const auto binding = std::string{"knowledge_unit:"} +
+                std::to_string(imported.raw_units[index].value());
+            bool found_binding = false;
+            for(const auto& record : manifest->records) {
+                if(record.kind == DerivedRecordKind::Custom && record.key == binding) {
+                    found_binding = true;
+                    break;
+                }
+            }
+            expect(found_binding, "manifest missed a raw knowledge-unit binding");
+        }
+        expect(reconstructed == body, "UTF-8 chunk slicing changed the source body");
+
+        const auto repeated = importer.import(original(
+            "resource:wired", "https://example.test/wired", body
+        ));
+        expect(repeated.revision.generation == imported.revision.generation,
+               "idempotent wired import advanced the generation");
+        expect(repeated.raw_units == imported.raw_units,
+               "idempotent wired import allocated duplicate raw units");
+    }
+    {
+        const auto context = MdbxStorageContext::open(wired_path.string());
+        MdbxKnowledgeUnitStoreOptions store_options;
+        store_options.context = context;
+        auto store = std::make_shared<MdbxKnowledgeUnitStore>(std::move(store_options));
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.knowledge_unit_store = store;
+        use_test_clock(options, 1'000);
+        MdbxResourceImporter importer{std::move(options)};
+        const auto manifest = importer.find_manifest(ResourceId{"resource:wired"});
+        expect(manifest && manifest->records.size() > 2,
+               "reopen lost wired manifest bindings");
+        expect(store->scan_by_scope_and_kind(ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk).size() > 1,
+               "reopen lost raw knowledge units");
+    }
+    std::filesystem::remove(wired_path, error);
+
+    const auto wired_recovery_path = test_path("knowledge_units_recovery");
+    std::filesystem::remove(wired_recovery_path, error);
+    {
+        const auto context = MdbxStorageContext::open(wired_recovery_path.string());
+        MdbxKnowledgeUnitStoreOptions store_options;
+        store_options.context = context;
+        auto store = std::make_shared<MdbxKnowledgeUnitStore>(std::move(store_options));
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.knowledge_unit_store = store;
+        use_test_clock(options, 100);
+        options.fault_injector = [](ResourceImporterFaultPoint point) {
+            if(point == ResourceImporterFaultPoint::AfterLexicalPublication) {
+                throw std::runtime_error("leave wired import pending");
+            }
+        };
+        MdbxResourceImporter importer{std::move(options)};
+        bool interrupted = false;
+        try {
+            (void)importer.import(original(
+                "resource:wired-recovery",
+                "https://example.test/wired-recovery",
+                "wired recovery source with durable units"
+            ));
+        } catch(const std::runtime_error&) { interrupted = true; }
+        expect(interrupted, "wired recovery fixture did not interrupt publication");
+        expect(store->scan_by_scope_and_kind(
+                    ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk
+                ).empty(),
+               "raw units were published before the wired recovery point");
+    }
+    {
+        const auto context = MdbxStorageContext::open(wired_recovery_path.string());
+        MdbxKnowledgeUnitStoreOptions store_options;
+        store_options.context = context;
+        auto store = std::make_shared<MdbxKnowledgeUnitStore>(std::move(store_options));
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.knowledge_unit_store = store;
+        use_test_clock(options, 1'000);
+        MdbxResourceImporter importer{std::move(options)};
+        const auto recovered = importer.find_manifest(ResourceId{"resource:wired-recovery"});
+        expect(recovered && recovered->records.size() == 3,
+               "wired recovery did not publish the manifest binding");
+        expect(store->scan_by_scope_and_kind(
+                    ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk
+                ).size() == 1,
+               "wired recovery did not create the raw unit");
+    }
+    std::filesystem::remove(wired_recovery_path, error);
     {
         const auto context = MdbxStorageContext::open(concurrency_path.string());
         MdbxResourceImporterOptions first_options;

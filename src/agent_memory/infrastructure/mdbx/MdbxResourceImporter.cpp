@@ -1,4 +1,5 @@
 #include "MdbxResourceImporter.hpp"
+#include "MdbxKnowledgeUnitStore.hpp"
 
 #if AGENT_MEMORY_HAS_MDBX
 
@@ -14,6 +15,7 @@
 #include <random>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace agent_memory {
 namespace {
@@ -21,6 +23,8 @@ namespace {
 constexpr std::string_view kIntentVersionV3 =
     "agent_memory.resource_import_intent.v3";
 constexpr char kSeparator = '\x1f';
+constexpr std::size_t kMaxRawChunkBytes = 1024;
+constexpr std::size_t kMaxRawChunkPreviewBytes = 256;
 
 void append_size(std::string& out, std::size_t value) {
     out += std::to_string(value);
@@ -425,6 +429,43 @@ ResourceBodyDigest body_digest(std::string_view body) {
     return digest;
 }
 
+std::size_t utf8_code_point_width(std::string_view text, std::size_t offset) {
+    const auto lead = static_cast<unsigned char>(text[offset]);
+    if(lead <= 0x7fU) return 1;
+    if(lead <= 0xdfU) return 2;
+    if(lead <= 0xefU) return 3;
+    return 4;
+}
+
+std::size_t bounded_utf8_prefix(std::string_view text, std::size_t maximum) {
+    std::size_t length = 0;
+    while(length < text.size()) {
+        const auto width = utf8_code_point_width(text, length);
+        if(length + width > maximum) break;
+        length += width;
+    }
+    return length;
+}
+
+std::vector<TextRange> split_utf8_ranges(
+    std::string_view text,
+    std::size_t maximum
+) {
+    std::vector<TextRange> ranges;
+    for(std::size_t offset = 0; offset < text.size();) {
+        const auto length = bounded_utf8_prefix(text.substr(offset), maximum);
+        if(length == 0) {
+            throw std::runtime_error("UTF-8 chunk limit is too small for a code point");
+        }
+        ranges.push_back(TextRange{
+            static_cast<std::uint64_t>(offset),
+            static_cast<std::uint64_t>(length)
+        });
+        offset += length;
+    }
+    return ranges;
+}
+
 std::uint64_t content_hint(std::string_view body) {
     std::uint64_t value = 1469598103934665603ULL;
     for(const auto byte : body) {
@@ -437,7 +478,8 @@ std::uint64_t content_hint(std::string_view body) {
 ResourceManifest make_manifest(
     const ObservedResource& resource,
     std::uint64_t generation,
-    const ResourceBodyDigest& digest
+    const ResourceBodyDigest& digest,
+    const std::vector<KnowledgeUnitId>& raw_units
 ) {
     const auto document = document_id(resource);
     const auto chunk = chunk_id(resource);
@@ -455,6 +497,14 @@ ResourceManifest make_manifest(
         DerivedRecordRef{DerivedRecordKind::Document, ChunkId{}, document.value(), 0},
         DerivedRecordRef{DerivedRecordKind::Chunk, chunk, std::string{}, 0}
     };
+    for(std::size_t index = 0; index < raw_units.size(); ++index) {
+        manifest.records.push_back(DerivedRecordRef{
+            DerivedRecordKind::Custom,
+            ChunkId{},
+            "knowledge_unit:" + std::to_string(raw_units[index].value()),
+            static_cast<std::uint32_t>(index)
+        });
+    }
     manifest.schema = ResourceManifestSchema{
         "agent_memory.m0_resource_importer", 1
     };
@@ -518,6 +568,7 @@ public:
                 table_name(options.table_prefix, "resource_import_intents");
             return manifest_options;
         }())
+        , m_knowledge_unit_store(std::move(options.knowledge_unit_store))
         , m_intent_table_name(table_name(options.table_prefix, "resource_import_intents"))
         , m_intents(m_context->connection(), m_intent_table_name)
         , m_bindings(m_context->connection(), table_name(options.table_prefix, "resource_import_bindings"))
@@ -644,7 +695,57 @@ private:
         if(inject_faults) inject(ResourceImporterFaultPoint::AfterLexicalPublication);
         if(inject_faults) inject(ResourceImporterFaultPoint::BeforeManifestPublication);
         const auto digest = body_digest(pending.resource.utf8_body);
-        const auto manifest = make_manifest(pending.resource, generation, digest);
+        std::vector<KnowledgeUnitId> raw_units;
+        if(m_knowledge_unit_store) {
+            const auto ranges = split_utf8_ranges(
+                pending.resource.utf8_body,
+                kMaxRawChunkBytes
+            );
+            raw_units.reserve(ranges.size());
+            for(const auto range : ranges) {
+                const auto chunk = pending.resource.utf8_body.substr(
+                    static_cast<std::size_t>(range.offset),
+                    static_cast<std::size_t>(range.length)
+                );
+                const auto preview_length = bounded_utf8_prefix(
+                    chunk,
+                    kMaxRawChunkPreviewBytes
+                );
+                if(preview_length == 0) {
+                    throw std::runtime_error("raw Chunk preview is empty");
+                }
+                SourceRefSummary source;
+                source.resource_id = pending.resource.resource_id;
+                source.reference_mode = SourceReferenceMode::RevisionBoundQuote;
+                source.resource_revision = ResourceRevisionRef{
+                    pending.resource.resource_id,
+                    generation,
+                    digest
+                };
+                source.uri = pending.resource.source_uri;
+                source.excerpt = range;
+                source.preview.assign(chunk.data(), preview_length);
+                source.quote_hash = compute_quote_hash(source.preview);
+                source.confidence = 1.0;
+                source.text_origin = pending.resource.text_origin;
+
+                KnowledgeUnitCreateRequest request;
+                request.kind = KnowledgeUnitKind::Chunk;
+                request.scope_id = pending.resource.scope_id;
+                request.primary_text = std::string{chunk};
+                request.display_text = request.primary_text;
+                request.sources = {std::move(source)};
+                raw_units.push_back(
+                    m_knowledge_unit_store->create_or_get_unit(std::move(request)).id
+                );
+            }
+        }
+        const auto manifest = make_manifest(
+            pending.resource,
+            generation,
+            digest,
+            raw_units
+        );
         ensure_manifest_compatibility(pending.resource, manifest.revision, digest);
         assert_ownership(pending.resource.resource_id.value(), expected_payload);
         m_manifests.upsert_manifest_if_unchanged_guarded(
@@ -662,7 +763,8 @@ private:
             pending.resource.resource_id,
             manifest.revision,
             document_id(pending.resource),
-            chunk_id(pending.resource)
+            chunk_id(pending.resource),
+            std::move(raw_units)
         };
     }
 
@@ -883,6 +985,7 @@ private:
     std::shared_ptr<MdbxStorageContext> m_context;
     MdbxDurableLexicalDocumentMemory m_lexical;
     MdbxResourceManifestStorage m_manifests;
+    std::shared_ptr<IKnowledgeUnitStore> m_knowledge_unit_store;
     std::string m_intent_table_name;
     mdbxc::KeyValueTable<std::string, std::string> m_intents;
     mdbxc::KeyValueTable<std::string, std::string> m_bindings;

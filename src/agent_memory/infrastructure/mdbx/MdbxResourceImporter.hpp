@@ -23,6 +23,8 @@
 
 namespace agent_memory {
 
+    class IKnowledgeUnitStore;
+
     /// \brief Deterministic interruption points for importer recovery tests.
     enum class ResourceImporterFaultPoint {
         AfterIntent,
@@ -39,6 +41,10 @@ namespace agent_memory {
         bool relative_to_exe = false;
         std::int64_t max_dbs = kDefaultMdbxMaxDbs;
         std::shared_ptr<MdbxStorageContext> context;
+        /// Optional same-context store for revision-bound raw Chunk units.
+        /// When set, publication creates bounded units before the manifest is
+        /// activated and replays them idempotently during intent recovery.
+        std::shared_ptr<IKnowledgeUnitStore> knowledge_unit_store;
         /// Lease used before another executor may recover an unfinished intent.
         std::uint64_t ownership_lease_ms = 30'000;
         /// Optional deterministic wall-clock source returning Unix milliseconds.

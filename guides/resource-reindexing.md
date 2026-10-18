@@ -466,7 +466,12 @@ public:
 `IResourceImporter` resolves/allocates the stable ResourceId, appends the
 ResourceRevision and locator history, writes body/manifest, creates raw
 `Note`/`Chunk` units with required inline SourceRefSummary, then publishes
-`Original` projections. Publication is coordinated: a failed import leaves the
+`Original` projections. In the current MDBX M0 profile, the importer keeps the
+existing lexical-only mode and optionally wires an `IKnowledgeUnitStore`: the
+body is split at UTF-8 code-point boundaries into at most 1024-byte raw Chunk
+units, each bound to the exact resource generation, byte range and body digest.
+The active manifest records each resulting unit as a `Custom` binding
+`knowledge_unit:<numeric-id>`. Publication is coordinated: a failed import leaves the
 previous manifest/generation visible, or writes a new generation that becomes
 active only after all required units and projections exist. `ICuratedUnitNormalizer`
 is M1b: it may create Facts, QAPairs, concepts or cards with provenance, but
