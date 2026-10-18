@@ -22,8 +22,9 @@ namespace {
 
 constexpr std::string_view kIntentVersionV3 =
     "agent_memory.resource_import_intent.v3";
+constexpr std::string_view kIntentVersionV4 =
+    "agent_memory.resource_import_intent.v4";
 constexpr char kSeparator = '\x1f';
-constexpr std::size_t kMaxRawChunkBytes = 1024;
 constexpr std::size_t kMaxRawChunkPreviewBytes = 256;
 
 void append_size(std::string& out, std::size_t value) {
@@ -189,6 +190,8 @@ private:
 
 struct PendingImport final {
     ObservedResource resource;
+    ResourceImportPublicationProfile publication_profile =
+        ResourceImportPublicationProfile::LexicalOnly;
     std::string owner_id;
     std::uint64_t fencing_epoch = 0;
     std::uint64_t lease_expires_at_ms = 0;
@@ -252,14 +255,30 @@ std::uint64_t parse_decimal_u64(std::string_view text, std::string_view field) {
     return value;
 }
 
-std::string table_name(std::string prefix, std::string_view suffix) {
+std::string sanitize_table_prefix(std::string prefix) {
     if(prefix.empty()) prefix = "agent_memory";
     for(auto& c : prefix) {
         if(!std::isalnum(static_cast<unsigned char>(c))) c = '_';
     }
+    return prefix;
+}
+
+std::string table_name(std::string prefix, std::string_view suffix) {
+    prefix = sanitize_table_prefix(std::move(prefix));
     prefix.push_back('_');
     prefix.append(suffix.data(), suffix.size());
     return prefix;
+}
+
+std::string publication_schema_id(
+    ResourceImportPublicationProfile profile,
+    std::string_view table_prefix
+) {
+    if(profile == ResourceImportPublicationProfile::LexicalOnly) {
+        return "agent_memory.m0_resource_importer";
+    }
+    return "agent_memory.m0_resource_importer.raw_chunks@" +
+        sanitize_table_prefix(std::string{table_prefix});
 }
 
 void validate_resource(const ObservedResource& resource) {
@@ -332,7 +351,13 @@ void validate_resource(const ObservedResource& resource) {
 std::string serialize_intent(const PendingImport& pending) {
     const auto& resource = pending.resource;
     std::string payload;
-    append_string(payload, kIntentVersionV3);
+    append_string(payload, kIntentVersionV4);
+    append_string(
+        payload,
+        pending.publication_profile == ResourceImportPublicationProfile::LexicalOnly
+            ? "lexical_only"
+            : "lexical_with_raw_chunks"
+    );
     append_string(payload, pending.owner_id);
     append_string(payload, std::to_string(pending.fencing_epoch));
     append_string(payload, std::to_string(pending.lease_expires_at_ms));
@@ -360,10 +385,21 @@ std::string serialize_intent(const PendingImport& pending) {
 PendingImport deserialize_intent(std::string_view payload) {
     Reader reader{payload};
     const auto version = reader.string();
-    if(version != kIntentVersionV3) {
+    if(version != kIntentVersionV3 && version != kIntentVersionV4) {
         throw std::runtime_error("unsupported resource import intent version");
     }
     PendingImport pending;
+    if(version == kIntentVersionV4) {
+        const auto profile = reader.string();
+        if(profile == "lexical_only") {
+            pending.publication_profile = ResourceImportPublicationProfile::LexicalOnly;
+        } else if(profile == "lexical_with_raw_chunks") {
+            pending.publication_profile =
+                ResourceImportPublicationProfile::LexicalWithRawChunks;
+        } else {
+            throw std::runtime_error("resource import intent has an invalid publication profile");
+        }
+    }
     pending.owner_id = reader.string();
     pending.fencing_epoch = reader.u64();
     pending.lease_expires_at_ms = reader.u64();
@@ -479,7 +515,9 @@ ResourceManifest make_manifest(
     const ObservedResource& resource,
     std::uint64_t generation,
     const ResourceBodyDigest& digest,
-    const std::vector<KnowledgeUnitId>& raw_units
+    const std::vector<KnowledgeUnitId>& raw_units,
+    ResourceImportPublicationProfile profile,
+    std::string_view table_prefix
 ) {
     const auto document = document_id(resource);
     const auto chunk = chunk_id(resource);
@@ -506,7 +544,8 @@ ResourceManifest make_manifest(
         });
     }
     manifest.schema = ResourceManifestSchema{
-        "agent_memory.m0_resource_importer", 1
+        publication_schema_id(profile, table_prefix),
+        1
     };
     return manifest;
 }
@@ -543,6 +582,16 @@ bool same_import_request(
         );
 }
 
+bool manifest_has_raw_bindings(const ResourceManifest& manifest) {
+    for(const auto& record : manifest.records) {
+        if(record.kind == DerivedRecordKind::Custom &&
+           record.key.rfind("knowledge_unit:", 0) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 class MdbxResourceImporter::Impl final {
@@ -568,16 +617,32 @@ public:
                 table_name(options.table_prefix, "resource_import_intents");
             return manifest_options;
         }())
-        , m_knowledge_unit_store(std::move(options.knowledge_unit_store))
         , m_intent_table_name(table_name(options.table_prefix, "resource_import_intents"))
         , m_intents(m_context->connection(), m_intent_table_name)
         , m_bindings(m_context->connection(), table_name(options.table_prefix, "resource_import_bindings"))
         , m_epochs(m_context->connection(), table_name(options.table_prefix, "resource_import_epochs"))
         , m_lease_ms(options.ownership_lease_ms)
+        , m_publication_profile(options.publication_profile)
+        , m_table_prefix(sanitize_table_prefix(options.table_prefix))
+        , m_max_raw_body_bytes(options.max_raw_body_bytes)
+        , m_max_raw_chunks(options.max_raw_chunks)
         , m_clock(options.clock_ms ? std::move(options.clock_ms) : system_clock_ms)
         , m_fault_injector(std::move(options.fault_injector)) {
         if(m_lease_ms == 0) {
             throw std::invalid_argument("resource importer ownership lease must be positive");
+        }
+        if(m_publication_profile == ResourceImportPublicationProfile::LexicalWithRawChunks) {
+            if(m_max_raw_body_bytes == 0 || m_max_raw_chunks == 0 ||
+               m_max_raw_chunks > (std::numeric_limits<std::uint32_t>::max)()) {
+                throw std::invalid_argument("raw publication admission limits must be positive");
+            }
+            MdbxKnowledgeUnitStoreOptions store_options;
+            store_options.table_prefix = options.table_prefix;
+            store_options.max_dbs = options.max_dbs;
+            store_options.context = m_context;
+            m_knowledge_unit_store = std::make_shared<MdbxKnowledgeUnitStore>(
+                std::move(store_options)
+            );
         }
         m_owner_id = make_owner_id();
         recover_pending();
@@ -585,9 +650,14 @@ public:
 
     ResourceImportResult import(ObservedResource resource) {
         validate_resource(resource);
+        validate_admission(resource);
         std::lock_guard<std::mutex> lock(m_mutex);
-        ensure_manifest_compatibility(resource);
+        ensure_manifest_compatibility(resource, m_publication_profile);
         auto claim = claim_import(resource);
+        ensure_profile_compatibility(
+            claim.operation.publication_profile,
+            m_publication_profile
+        );
         if(!same_import_request(claim.operation.resource, resource)) {
             if(claim.operation.owner_id == m_owner_id ||
                claim.operation.lease_expires_at_ms > now_ms()) {
@@ -673,12 +743,46 @@ private:
         if(m_fault_injector) m_fault_injector(point);
     }
 
+    void validate_admission(const ObservedResource& resource) const {
+        if(m_publication_profile != ResourceImportPublicationProfile::LexicalWithRawChunks) {
+            return;
+        }
+        if(resource.utf8_body.size() > m_max_raw_body_bytes) {
+            throw std::invalid_argument("resource body exceeds the raw publication byte limit");
+        }
+        const auto ranges = split_utf8_ranges(
+            resource.utf8_body,
+            kMdbxResourceImporterRawChunkBytes
+        );
+        if(ranges.size() > m_max_raw_chunks) {
+            throw std::invalid_argument("resource exceeds the raw publication chunk limit");
+        }
+    }
+
+    static void ensure_profile_compatibility(
+        ResourceImportPublicationProfile required,
+        ResourceImportPublicationProfile configured
+    ) {
+        if(required != configured) {
+            throw std::runtime_error(
+                "resource import publication profile mismatch; explicit migration is required"
+            );
+        }
+    }
+
     ResourceImportResult complete(
         const PendingImport& pending,
         bool inject_faults,
         const std::string& expected_payload
     ) {
-        const auto expected_manifest = ensure_manifest_compatibility(pending.resource);
+        ensure_profile_compatibility(
+            pending.publication_profile,
+            m_publication_profile
+        );
+        const auto expected_manifest = ensure_manifest_compatibility(
+            pending.resource,
+            pending.publication_profile
+        );
         assert_ownership(pending.resource.resource_id.value(), expected_payload);
         if(inject_faults) inject(ResourceImporterFaultPoint::BeforeLexicalPublication);
         const auto generation = m_lexical.upsert_text_guarded(
@@ -699,10 +803,17 @@ private:
         if(m_knowledge_unit_store) {
             const auto ranges = split_utf8_ranges(
                 pending.resource.utf8_body,
-                kMaxRawChunkBytes
+                kMdbxResourceImporterRawChunkBytes
             );
             raw_units.reserve(ranges.size());
             for(const auto range : ranges) {
+                // Fencing is checked around every durable unit write.  A
+                // lease takeover may leave an idempotent staging record, but
+                // the stale executor must never continue toward publication.
+                assert_ownership(
+                    pending.resource.resource_id.value(),
+                    expected_payload
+                );
                 const auto chunk = pending.resource.utf8_body.substr(
                     static_cast<std::size_t>(range.offset),
                     static_cast<std::size_t>(range.length)
@@ -736,7 +847,24 @@ private:
                 request.display_text = request.primary_text;
                 request.sources = {std::move(source)};
                 raw_units.push_back(
-                    m_knowledge_unit_store->create_or_get_unit(std::move(request)).id
+                    [&] {
+                        const auto envelope = m_knowledge_unit_store->create_or_get_unit(
+                            std::move(request)
+                        );
+                        if(envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
+                            throw std::runtime_error(
+                                "raw publication matched a non-active historical Chunk"
+                            );
+                        }
+                        assert_ownership(
+                            pending.resource.resource_id.value(),
+                            expected_payload
+                        );
+                        if(inject_faults) {
+                            inject(ResourceImporterFaultPoint::AfterRawUnitPublication);
+                        }
+                        return envelope.id;
+                    }()
                 );
             }
         }
@@ -744,9 +872,16 @@ private:
             pending.resource,
             generation,
             digest,
-            raw_units
+            raw_units,
+            pending.publication_profile,
+            m_table_prefix
         );
-        ensure_manifest_compatibility(pending.resource, manifest.revision, digest);
+        ensure_manifest_compatibility(
+            pending.resource,
+            manifest.revision,
+            digest,
+            pending.publication_profile
+        );
         assert_ownership(pending.resource.resource_id.value(), expected_payload);
         m_manifests.upsert_manifest_if_unchanged_guarded(
             manifest,
@@ -779,7 +914,14 @@ private:
             if(operation.lease_expires_at_ms > now_ms()) {
                 continue;
             }
-            ensure_manifest_compatibility(operation.resource);
+            ensure_profile_compatibility(
+                operation.publication_profile,
+                m_publication_profile
+            );
+            ensure_manifest_compatibility(
+                operation.resource,
+                operation.publication_profile
+            );
             const auto takeover = takeover_pending(item.first, item.second, operation);
             complete(takeover.operation, false, takeover.payload);
         }
@@ -811,6 +953,7 @@ private:
         const auto epoch = next_epoch(key, txn);
         PendingImport claimed{
             resource,
+            m_publication_profile,
             m_owner_id,
             epoch,
             lease_deadline(now_ms(), m_lease_ms)
@@ -912,7 +1055,8 @@ private:
     }
 
     std::optional<ResourceManifest> ensure_manifest_compatibility(
-        const ObservedResource& resource
+        const ObservedResource& resource,
+        ResourceImportPublicationProfile profile
     ) const {
         const auto existing = m_manifests.find_manifest(resource.resource_id);
         if(!existing) return std::nullopt;
@@ -922,7 +1066,14 @@ private:
                 "export and explicitly migrate it before importing"
             );
         }
-        if(existing->schema.schema_id != "agent_memory.m0_resource_importer" ||
+        if(profile == ResourceImportPublicationProfile::LexicalOnly &&
+           manifest_has_raw_bindings(*existing)) {
+            throw std::runtime_error(
+                "raw publication manifest cannot be downgraded to lexical-only"
+            );
+        }
+        const auto expected_schema = publication_schema_id(profile, m_table_prefix);
+        if(existing->schema.schema_id != expected_schema ||
            existing->schema.schema_version != 1) {
             throw std::runtime_error(
                 "resource manifest belongs to a foreign schema and cannot be overwritten"
@@ -950,7 +1101,8 @@ private:
     void ensure_manifest_compatibility(
         const ObservedResource& resource,
         const ResourceRevision& revision,
-        const ResourceBodyDigest& digest
+        const ResourceBodyDigest& digest,
+        ResourceImportPublicationProfile profile
     ) const {
         const auto existing = m_manifests.find_manifest(resource.resource_id);
         if(!existing) return;
@@ -960,7 +1112,14 @@ private:
                 "export and explicitly migrate it before importing"
             );
         }
-        if(existing->schema.schema_id != "agent_memory.m0_resource_importer" ||
+        if(profile == ResourceImportPublicationProfile::LexicalOnly &&
+           manifest_has_raw_bindings(*existing)) {
+            throw std::runtime_error(
+                "raw publication manifest cannot be downgraded to lexical-only"
+            );
+        }
+        const auto expected_schema = publication_schema_id(profile, m_table_prefix);
+        if(existing->schema.schema_id != expected_schema ||
            existing->schema.schema_version != 1) {
             throw std::runtime_error(
                 "resource manifest belongs to a foreign schema and cannot be overwritten"
@@ -985,12 +1144,16 @@ private:
     std::shared_ptr<MdbxStorageContext> m_context;
     MdbxDurableLexicalDocumentMemory m_lexical;
     MdbxResourceManifestStorage m_manifests;
-    std::shared_ptr<IKnowledgeUnitStore> m_knowledge_unit_store;
+    std::shared_ptr<MdbxKnowledgeUnitStore> m_knowledge_unit_store;
     std::string m_intent_table_name;
     mdbxc::KeyValueTable<std::string, std::string> m_intents;
     mdbxc::KeyValueTable<std::string, std::string> m_bindings;
     mdbxc::KeyValueTable<std::string, std::string> m_epochs;
     std::uint64_t m_lease_ms;
+    ResourceImportPublicationProfile m_publication_profile;
+    std::string m_table_prefix;
+    std::size_t m_max_raw_body_bytes;
+    std::size_t m_max_raw_chunks;
     std::function<std::uint64_t()> m_clock;
     std::function<void(ResourceImporterFaultPoint)> m_fault_injector;
     std::string m_owner_id;

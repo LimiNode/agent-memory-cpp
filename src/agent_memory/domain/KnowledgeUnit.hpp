@@ -148,7 +148,7 @@ namespace agent_memory {
         std::string_view primary_text,
         const std::vector<SourceRefSummary>& sources,
         std::uint16_t recipe_version = 2
-    ) noexcept;
+    );
 
     /// \brief Lookup-critical canonical record for a durable knowledge unit.
     struct KnowledgeUnitEnvelope final {

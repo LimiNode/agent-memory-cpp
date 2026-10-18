@@ -103,7 +103,7 @@ namespace agent_memory {
         std::string_view primary_text,
         const std::vector<SourceRefSummary>& sources,
         std::uint16_t recipe_version
-    ) noexcept {
+    ) {
         std::string canonical{"agent-memory.content-hash.v2"};
         const auto append = [&canonical](std::string_view value) {
             canonical.append(std::to_string(value.size()));

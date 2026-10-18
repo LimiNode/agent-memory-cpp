@@ -28,16 +28,17 @@ namespace agent_memory {
     /// \brief Result of publishing one source/body revision.
     ///
     /// The lexical-only profile publishes one document and one chunk-shaped
-    /// record. An optional KnowledgeUnitStore wiring publishes revision-bound
-    /// raw Chunk ids; this result still does not claim a general Original
-    /// projection store.
+    /// record. The explicit raw-chunk publication profile additionally
+    /// publishes revision-bound raw Chunk ids; this result still does not claim
+    /// a general Original projection store.
     struct ResourceImportResult final {
         ResourceId resource_id;
         ResourceRevision revision;
         DocumentId document_id;
         ChunkId chunk_id;
-        /// Raw revision-bound Chunk units published when the importer is wired
-        /// to an `IKnowledgeUnitStore`; empty for the lexical-only profile.
+        /// Raw revision-bound Chunk units bound by the raw publication profile;
+        /// empty for the lexical-only profile. Source URI is historical
+        /// revision metadata and is not rewritten by URI-only reimports.
         std::vector<KnowledgeUnitId> raw_units;
     };
 

@@ -48,6 +48,17 @@ head after losing ownership. Same-body
 pipeline/provenance changes are rejected until an independent
 projection-generation contract exists.
 
+The importer has two explicit durable publication profiles: `LexicalOnly` and
+`LexicalWithRawChunks`. The profile is encoded in v4 intents and in the
+manifest schema id; v3 intents are read as the historical lexical-only
+profile. Raw manifests include the sanitized table namespace in their schema
+identity. A raw importer owns the `MdbxKnowledgeUnitStore` constructed from the
+same MDBX context and table prefix, so an arbitrary external store cannot be
+attached. Profile changes for an existing resource or pending intent fail
+closed and require an explicit migration. Raw admission is checked before an
+intent is written (16 MiB and 16,384 chunks by default; both are configurable
+within the uint32 manifest-ordinal bound).
+
 Normal upserts replace only the affected in-memory lexical record. Full scope
 rebuild remains a reopen and stale-reader refresh strategy for this first
 profile. When another instance publishes in the same scope during an upsert,
@@ -74,7 +85,9 @@ general Original projection store, retrieval traces, lineage orchestration,
 complete MemoryStack profile integration, reindex protocols beyond this
 publication intent, general recovery orchestration, compaction and maintenance
 are follow-up M0 work. Interrupted-publication recovery for this narrow slice
-is implemented and covered by its importer tests. Replaced generations retain
+is implemented and covered by its importer tests. Raw units created before a
+manifest commit are durable staging history: they are not listed in a
+manifest and must not be treated as published by a retrieval path. Replaced generations retain
 their old raw units until a later manifest-aware reclaim/compaction pass; the
 current slice never erases provenance eagerly.
 Dense, hybrid, graph, temporal and other M1/M2 capabilities are explicitly
