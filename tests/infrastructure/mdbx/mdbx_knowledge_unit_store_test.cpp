@@ -2,6 +2,8 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+#include <mdbx_containers/KeyValueTable.hpp>
+
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -127,9 +129,83 @@ namespace {
         return envelope;
     }
 
+    std::string encode_legacy_index(const std::vector<std::uint64_t>& ids) {
+        std::string payload;
+        const auto append = [&payload](std::string_view value) {
+            payload += std::to_string(value.size());
+            payload.push_back(':');
+            payload.append(value.data(), value.size());
+        };
+        append(std::to_string(ids.size()));
+        for(const auto id : ids) append(std::to_string(id));
+        return payload;
+    }
+
+    std::string legacy_index_key(
+        std::string_view scope,
+        std::string_view kind
+    ) {
+        std::string key;
+        const auto append = [&key](std::string_view value) {
+            key += std::to_string(value.size());
+            key.push_back(':');
+            key.append(value.data(), value.size());
+        };
+        append(scope);
+        append(kind);
+        return key;
+    }
+
 } // namespace
 
 int main() {
+    {
+        const auto legacy_path = test_path();
+        std::error_code legacy_error;
+        std::filesystem::remove(legacy_path, legacy_error);
+        {
+            auto context = agent_memory::MdbxStorageContext::open(
+                legacy_path.string(), false, agent_memory::kDefaultMdbxMaxDbs
+            );
+            mdbxc::KeyValueTable<std::string, std::string> legacy_index(
+                context->connection(), "agent_memory_legacy_knowledge_units_by_kind"
+            );
+            legacy_index.insert_or_assign(
+                legacy_index_key("legacy-scope", "chunk"),
+                encode_legacy_index({10, 100})
+            );
+        }
+        agent_memory::MdbxKnowledgeUnitStore migrated({
+            legacy_path.string(), "agent_memory_legacy", false
+        });
+        expect(migrated.scan_by_scope_and_kind(
+                   agent_memory::ScopeId{"legacy-scope"},
+                   agent_memory::KnowledgeUnitKind::Chunk
+               ) == std::vector<agent_memory::KnowledgeUnitId>{
+                   agent_memory::KnowledgeUnitId{10},
+                   agent_memory::KnowledgeUnitId{100}
+               }, "legacy serialized index must remain readable");
+        migrated.upsert(make_envelope("legacy-scope", 0x51, 200, "migrated"));
+        expect(migrated.scan_by_scope_and_kind(
+                   agent_memory::ScopeId{"legacy-scope"},
+                   agent_memory::KnowledgeUnitKind::Chunk
+               ) == std::vector<agent_memory::KnowledgeUnitId>{
+                   agent_memory::KnowledgeUnitId{10},
+                   agent_memory::KnowledgeUnitId{100},
+                   agent_memory::KnowledgeUnitId{200}
+               }, "legacy index must migrate before appending new entries");
+        expect(migrated.erase(agent_memory::KnowledgeUnitId{200}),
+               "migrated index entry must be erasable");
+        expect(migrated.scan_by_scope_and_kind(
+                   agent_memory::ScopeId{"legacy-scope"},
+                   agent_memory::KnowledgeUnitKind::Chunk
+               ) == std::vector<agent_memory::KnowledgeUnitId>{
+                   agent_memory::KnowledgeUnitId{10},
+                   agent_memory::KnowledgeUnitId{100}
+               }, "migrated index erase must preserve remaining order");
+        std::filesystem::remove(legacy_path, legacy_error);
+    }
+
     const auto path = test_path();
     std::error_code error;
     std::filesystem::remove(path, error);

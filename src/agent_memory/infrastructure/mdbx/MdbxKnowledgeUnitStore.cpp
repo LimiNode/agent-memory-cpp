@@ -23,6 +23,7 @@ namespace agent_memory {
         constexpr std::string_view PAYLOAD_VERSION =
             "agent_memory.knowledge_unit.v1";
         constexpr std::string_view NEXT_ID_KEY = "@next_id";
+        constexpr std::string_view NEXT_INDEX_SEQUENCE_KEY = "@next_index_sequence";
         constexpr std::size_t MAX_SOURCE_SUMMARIES = 3;
         constexpr std::size_t MAX_SOURCE_PREVIEW_BYTES = 256;
 
@@ -60,6 +61,12 @@ namespace agent_memory {
 
         void append_uint64(std::string& payload, std::uint64_t value) {
             append_string(payload, std::to_string(value));
+        }
+
+        void append_uint64_be(std::string& payload, std::uint64_t value) {
+            for(int shift = 56; shift >= 0; shift -= 8) {
+                payload.push_back(static_cast<char>((value >> shift) & 0xffU));
+            }
         }
 
         void append_int64(std::string& payload, std::int64_t value) {
@@ -460,6 +467,21 @@ namespace agent_memory {
             return result;
         }
 
+        std::string index_entry_key(std::string_view base, std::uint64_t sequence) {
+            // Big-endian bytes make MDBX's byte ordering match insertion order.
+            std::string result{base};
+            append_uint64_be(result, sequence);
+            return result;
+        }
+
+        std::string index_entry_lower_bound(std::string_view base) {
+            return index_entry_key(base, 0);
+        }
+
+        std::string index_entry_upper_bound(std::string_view base) {
+            return index_entry_key(base, std::numeric_limits<std::uint64_t>::max());
+        }
+
         std::vector<KnowledgeUnitId> read_index(std::string_view payload) {
             PayloadReader reader{payload};
             const auto count = reader.read_uint64();
@@ -469,13 +491,6 @@ namespace agent_memory {
             for(std::uint64_t i = 0; i < count; ++i) ids.emplace_back(reader.read_uint64());
             reader.require_end();
             return ids;
-        }
-
-        std::string write_index(const std::vector<KnowledgeUnitId>& ids) {
-            std::string payload;
-            append_uint64(payload, ids.size());
-            for(const auto id : ids) append_uint64(payload, id.value());
-            return payload;
         }
 
         ContentHash validate_create_request(const KnowledgeUnitCreateRequest& request) {
@@ -636,8 +651,18 @@ namespace agent_memory {
             KnowledgeUnitKind kind
         ) const {
             if(scope_id.empty() || !is_valid_knowledge_unit_kind(kind)) return {};
-            const auto payload = m_kind_index.find(index_key(scope_id, kind));
-            return payload ? read_index(*payload) : std::vector<KnowledgeUnitId>{};
+            const auto key = index_key(scope_id, kind);
+            std::vector<KnowledgeUnitId> ids;
+            for(const auto& pair : m_kind_index.range<std::vector>(
+                    key, index_entry_upper_bound(key))) {
+                if(pair.first == key) {
+                    const auto legacy_ids = read_index(pair.second);
+                    ids.insert(ids.end(), legacy_ids.begin(), legacy_ids.end());
+                } else {
+                    ids.push_back(parse_id(pair.second));
+                }
+            }
+            return ids;
         }
 
         std::vector<KnowledgeUnitId> scan_by_scope(const ScopeId& scope_id) const {
@@ -645,9 +670,7 @@ namespace agent_memory {
             std::vector<KnowledgeUnitId> ids;
             for(std::uint16_t raw = 0; raw <= 16; ++raw) {
                 const auto kind = static_cast<KnowledgeUnitKind>(raw);
-                const auto payload = m_kind_index.find(index_key(scope_id, kind));
-                if(!payload) continue;
-                const auto kind_ids = read_index(*payload);
+                const auto kind_ids = scan_by_scope_and_kind(scope_id, kind);
                 ids.insert(ids.end(), kind_ids.begin(), kind_ids.end());
             }
             return ids;
@@ -809,13 +832,13 @@ namespace agent_memory {
             KnowledgeUnitId id,
             const mdbxc::Transaction& txn
         ) {
-            auto ids = m_kind_index.find(key, txn)
-                ? read_index(*m_kind_index.find(key, txn))
-                : std::vector<KnowledgeUnitId>{};
-            if(std::find(ids.begin(), ids.end(), id) == ids.end()) {
-                ids.push_back(id);
-                m_kind_index.insert_or_assign(key, write_index(ids), txn);
-            }
+            migrate_legacy_index(key, txn);
+            const auto sequence = allocate_index_sequence(txn);
+            m_kind_index.insert_or_assign(
+                index_entry_key(key, sequence),
+                id_key(id),
+                txn
+            );
         }
 
         void append_index_entries(
@@ -831,14 +854,31 @@ namespace agent_memory {
             KnowledgeUnitId id,
             const mdbxc::Transaction& txn
         ) {
+            migrate_legacy_index(key, txn);
+            const auto expected = id_key(id);
+            for(const auto& pair : m_kind_index.range<std::vector>(
+                    index_entry_lower_bound(key), index_entry_upper_bound(key), txn)) {
+                if(pair.second == expected) {
+                    m_kind_index.erase(pair.first, txn);
+                    break;
+                }
+            }
+        }
+
+        void migrate_legacy_index(
+            const std::string& key,
+            const mdbxc::Transaction& txn
+        ) {
             const auto payload = m_kind_index.find(key, txn);
             if(!payload) return;
-            auto ids = read_index(*payload);
-            ids.erase(std::remove(ids.begin(), ids.end(), id), ids.end());
-            if(ids.empty()) {
-                m_kind_index.erase(key, txn);
-            } else {
-                m_kind_index.insert_or_assign(key, write_index(ids), txn);
+            const auto ids = read_index(*payload);
+            m_kind_index.erase(key, txn);
+            for(const auto id : ids) {
+                m_kind_index.insert_or_assign(
+                    index_entry_key(key, allocate_index_sequence(txn)),
+                    id_key(id),
+                    txn
+                );
             }
         }
 
@@ -894,6 +934,19 @@ namespace agent_memory {
                     txn
                 );
             }
+        }
+
+        std::uint64_t allocate_index_sequence(const mdbxc::Transaction& txn) {
+            std::uint64_t next = 1;
+            const std::string sequence_key{NEXT_INDEX_SEQUENCE_KEY};
+            if(const auto payload = m_units.find(sequence_key, txn)) {
+                next = parse_id(*payload).value();
+            }
+            if(next == std::numeric_limits<std::uint64_t>::max()) {
+                throw std::runtime_error("Knowledge-unit index sequence space exhausted");
+            }
+            m_units.insert_or_assign(sequence_key, std::to_string(next + 1), txn);
+            return next;
         }
 
         std::string m_prefix;

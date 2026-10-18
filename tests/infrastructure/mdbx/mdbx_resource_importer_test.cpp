@@ -137,8 +137,8 @@ void run_benchmark() {
         std::cout << "body_bytes=" << body_bytes
                   << " chunks=" << result.raw_units.size()
                   << " elapsed_ms=" << elapsed
-                  << " logical_index_rewrites=" << result.raw_units.size()
-                  << " index_write_amplification=" << result.raw_units.size()
+                  << " index_entry_writes=" << result.raw_units.size()
+                  << " index_write_amplification=1"
                   << '\n';
         std::filesystem::remove(path, error);
     }

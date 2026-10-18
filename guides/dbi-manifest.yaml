@@ -28,8 +28,8 @@ canonical:
     opens: always
     wire_sync_support: kv_supported
     replication_semantics: derived_rebuildable
-    physical_key: [ScopeId, KnowledgeUnitKind]
-    value: serialized ordered UnitId list (bounded M0 index; rebuildable)
+    physical_key: [ScopeId, KnowledgeUnitKind, IndexSequence]
+    value: UnitId (append-only ordered entry; rebuildable)
     migration_peak: 1
   - name: unit_components
     owner: core
