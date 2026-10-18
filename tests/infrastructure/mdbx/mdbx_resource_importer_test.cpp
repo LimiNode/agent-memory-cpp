@@ -224,6 +224,7 @@ void run_benchmark() {
                   << " index_scan_elapsed_ms=" << index_elapsed
                   << " index_scan_units=" << indexed_units
                   << " synthetic_admission_probe_records=" << synthetic_admission_probe_records
+                  << " ownership_lookup_attempts=" << diagnostics->ownership_lookup_attempts.load()
                   << " ownership_checks=" << diagnostics->ownership_checks.load()
                   << " ownership_payload_materializations="
                   << diagnostics->ownership_payload_materializations.load()
@@ -307,6 +308,7 @@ void run_corpus_benchmark(
               << " token_count=" << tokenization.tokens.size()
               << " unique_token_count=" << unique_tokens.size()
               << " import_elapsed_ms=" << elapsed
+              << " ownership_lookup_attempts=" << diagnostics->ownership_lookup_attempts.load()
               << " ownership_checks=" << diagnostics->ownership_checks.load()
               << " ownership_payload_bytes=" << diagnostics->ownership_payload_bytes.load()
               << " ownership_lookup_ns=" << diagnostics->ownership_lookup_ns.load()
@@ -432,15 +434,16 @@ void run_diagnostics_negative_checks() {
         std::error_code error;
         std::filesystem::remove(path, error);
         const auto diagnostics = std::make_shared<MdbxResourceImporterDiagnostics>();
+        const auto context = MdbxStorageContext::open(path.string(), false, kDefaultMdbxMaxDbs);
         MdbxResourceImporterOptions options;
         options.path = path.string();
+        options.context = context;
         options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
         options.max_raw_body_bytes = 1024;
         options.max_raw_chunks = 2;
         options.diagnostics = diagnostics;
-        options.fault_injector = [path, erase_intent](ResourceImporterFaultPoint point) {
+        options.fault_injector = [context, erase_intent](ResourceImporterFaultPoint point) {
             if(point != ResourceImporterFaultPoint::AfterRawUnitPublication) return;
-            auto context = MdbxStorageContext::open(path.string(), false, kDefaultMdbxMaxDbs);
             mdbxc::KeyValueTable<std::string, std::string> intents(
                 context->connection(), "agent_memory_resource_import_intents"
             );
@@ -458,14 +461,26 @@ void run_diagnostics_negative_checks() {
                 "https://example.test/diagnostic",
                 std::string(1024, 'b')
             )));
-        } catch(const std::runtime_error&) {
-            rejected = true;
+        } catch(const std::runtime_error& error_value) {
+            rejected = std::string_view{error_value.what()} ==
+                "resource import executor was fenced out";
         }
         expect(rejected, "diagnostic stale intent mutation was not rejected");
-        expect(diagnostics->ownership_checks.load() >= 3,
+        expect(diagnostics->ownership_lookup_attempts.load() >= 3,
                "diagnostic negative case did not execute post-write fencing");
-        expect(diagnostics->ownership_payload_materializations.load() >= 3,
-               "diagnostic materialization counter missed a fencing check");
+        if(erase_intent) {
+            expect(
+                diagnostics->ownership_payload_materializations.load() <
+                    diagnostics->ownership_lookup_attempts.load(),
+                "missing intent was incorrectly counted as materialized"
+            );
+        } else {
+            expect(
+                diagnostics->ownership_payload_materializations.load() ==
+                    diagnostics->ownership_lookup_attempts.load(),
+                "mismatched intent materialization count is inconsistent"
+            );
+        }
         expect(diagnostics->ownership_compare_ns.load() > 0,
                "diagnostic compare timer did not record a comparison");
         expect(

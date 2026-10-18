@@ -44,7 +44,7 @@ original serialized-list index; the candidate has append-only v2.
 | 1 MiB | 1,024 | 2,709.14 | 2,683.09 | 2,050 | 2,150,021,550 | 737.4 | 289.6 | 1,027.1 | 1,360.2 |
 | 4 MiB | 4,096 | 25,460.3 | 24,438.5 | 8,194 | 34,369,888,686 | 10,765.4 | 4,825.7 | 15,591.7 | 6,243.5 |
 
-The candidate speed ratios are approximately `0.99x`, `1.00x`, and `1.04x`.
+The candidate/base speed ratios are approximately `0.94x`, `1.01x`, and `1.04x`.
 The earlier single-run 1.8–2.4x result is not reproducible under this matched
 seven-run protocol. The index optimization remains structurally valid, but it is
 not the dominant end-to-end cost on this host.

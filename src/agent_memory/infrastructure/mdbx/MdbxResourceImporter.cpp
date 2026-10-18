@@ -1055,6 +1055,13 @@ private:
     }
 
     void assert_ownership(const std::string& key, const std::string& payload) const {
+        if(!m_diagnostics) {
+            const auto current = m_intents.find(key);
+            if(!current || *current != payload) {
+                throw std::runtime_error("resource import executor was fenced out");
+            }
+            return;
+        }
         const auto total_started = std::chrono::steady_clock::now();
         const auto lookup_started = std::chrono::steady_clock::now();
         const auto current = m_intents.find(key);
@@ -1062,28 +1069,27 @@ private:
         const auto compare_started = lookup_finished;
         const bool matches = current && *current == payload;
         const auto compare_finished = std::chrono::steady_clock::now();
-        if(m_diagnostics) {
-            ++m_diagnostics->ownership_checks;
+        ++m_diagnostics->ownership_lookup_attempts;
+        ++m_diagnostics->ownership_checks;
+        if(current) {
             ++m_diagnostics->ownership_payload_materializations;
-            if(current) {
-                m_diagnostics->ownership_payload_bytes += current->size();
-            }
-            record_duration(
-                &m_diagnostics->ownership_lookup_ns,
-                lookup_started,
-                lookup_finished
-            );
-            record_duration(
-                &m_diagnostics->ownership_compare_ns,
-                compare_started,
-                compare_finished
-            );
-            record_duration(
-                &m_diagnostics->ownership_total_ns,
-                total_started,
-                compare_finished
-            );
+            m_diagnostics->ownership_payload_bytes += current->size();
         }
+        record_duration(
+            &m_diagnostics->ownership_lookup_ns,
+            lookup_started,
+            lookup_finished
+        );
+        record_duration(
+            &m_diagnostics->ownership_compare_ns,
+            compare_started,
+            compare_finished
+        );
+        record_duration(
+            &m_diagnostics->ownership_total_ns,
+            total_started,
+            compare_finished
+        );
         if(!matches) {
             throw std::runtime_error("resource import executor was fenced out");
         }

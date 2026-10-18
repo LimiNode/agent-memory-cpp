@@ -29,6 +29,7 @@ namespace agent_memory {
     /// These counters are observational only. A null diagnostics pointer
     /// leaves the importer publication behavior unchanged.
     struct MdbxResourceImporterDiagnostics final {
+        std::atomic<std::uint64_t> ownership_lookup_attempts{0};
         std::atomic<std::uint64_t> ownership_checks{0};
         std::atomic<std::uint64_t> ownership_payload_materializations{0};
         std::atomic<std::uint64_t> ownership_payload_bytes{0};
