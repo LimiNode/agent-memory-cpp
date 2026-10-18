@@ -32,10 +32,12 @@ namespace agent_memory {
         std::atomic<std::uint64_t> ownership_checks{0};
         std::atomic<std::uint64_t> ownership_payload_materializations{0};
         std::atomic<std::uint64_t> ownership_payload_bytes{0};
-        std::atomic<std::uint64_t> ownership_check_ns{0};
+        std::atomic<std::uint64_t> ownership_lookup_ns{0};
+        std::atomic<std::uint64_t> ownership_compare_ns{0};
+        std::atomic<std::uint64_t> ownership_total_ns{0};
         std::atomic<std::uint64_t> lexical_ns{0};
         std::atomic<std::uint64_t> raw_unit_store_ns{0};
-        std::atomic<std::uint64_t> raw_unit_commits{0};
+        std::atomic<std::uint64_t> raw_store_calls{0};
         std::atomic<std::uint64_t> manifest_ns{0};
     };
 

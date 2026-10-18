@@ -872,7 +872,7 @@ private:
                     m_diagnostics ? &m_diagnostics->raw_unit_store_ns : nullptr,
                     raw_started
                 );
-                if(m_diagnostics) ++m_diagnostics->raw_unit_commits;
+                if(m_diagnostics) ++m_diagnostics->raw_store_calls;
                 if(envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
                     throw std::runtime_error(
                         "raw publication matched a non-active historical Chunk"
@@ -1055,17 +1055,36 @@ private:
     }
 
     void assert_ownership(const std::string& key, const std::string& payload) const {
-        const auto started = std::chrono::steady_clock::now();
+        const auto total_started = std::chrono::steady_clock::now();
+        const auto lookup_started = std::chrono::steady_clock::now();
         const auto current = m_intents.find(key);
+        const auto lookup_finished = std::chrono::steady_clock::now();
+        const auto compare_started = lookup_finished;
+        const bool matches = current && *current == payload;
+        const auto compare_finished = std::chrono::steady_clock::now();
         if(m_diagnostics) {
             ++m_diagnostics->ownership_checks;
             ++m_diagnostics->ownership_payload_materializations;
             if(current) {
                 m_diagnostics->ownership_payload_bytes += current->size();
             }
-            record_duration(&m_diagnostics->ownership_check_ns, started);
+            record_duration(
+                &m_diagnostics->ownership_lookup_ns,
+                lookup_started,
+                lookup_finished
+            );
+            record_duration(
+                &m_diagnostics->ownership_compare_ns,
+                compare_started,
+                compare_finished
+            );
+            record_duration(
+                &m_diagnostics->ownership_total_ns,
+                total_started,
+                compare_finished
+            );
         }
-        if(!current || *current != payload) {
+        if(!matches) {
             throw std::runtime_error("resource import executor was fenced out");
         }
     }
@@ -1074,10 +1093,18 @@ private:
         std::atomic<std::uint64_t>* destination,
         std::chrono::steady_clock::time_point started
     ) {
+        record_duration(destination, started, std::chrono::steady_clock::now());
+    }
+
+    static void record_duration(
+        std::atomic<std::uint64_t>* destination,
+        std::chrono::steady_clock::time_point started,
+        std::chrono::steady_clock::time_point finished
+    ) {
         if(destination) {
             *destination += static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    std::chrono::steady_clock::now() - started
+                    finished - started
                 ).count()
             );
         }

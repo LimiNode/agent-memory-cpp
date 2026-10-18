@@ -38,11 +38,11 @@ same Windows/MinGW Release host; they are not a cross-machine capacity claim.
 The table reports medians of seven runs. The baseline executable has the
 original serialized-list index; the candidate has append-only v2.
 
-| body | chunks | baseline import ms | candidate import ms | candidate ownership checks | candidate logical intent bytes | candidate fence ms | candidate raw-store ms |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 128 KiB | 128 | 183.134 | 185.421 | 258 | 33,872,304 | 16.6 | 118.8 |
-| 1 MiB | 1,024 | 2,709.14 | 2,707.09 | 2,050 | 2,150,021,550 | 754.8 | 1,380.3 |
-| 4 MiB | 4,096 | 25,460.3 | 24,550.9 | 8,194 | 34,369,888,686 | 10,776.9 | 6,340.0 |
+| body | chunks | baseline import ms | candidate import ms | candidate ownership checks | candidate logical intent bytes | candidate lookup ms | candidate compare ms | candidate total fence ms | candidate raw-store ms |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 128 KiB | 128 | 183.134 | 194.874 | 258 | 33,872,304 | 19.4 | 3.3 | 22.7 | 120.4 |
+| 1 MiB | 1,024 | 2,709.14 | 2,683.09 | 2,050 | 2,150,021,550 | 737.4 | 289.6 | 1,027.1 | 1,360.2 |
+| 4 MiB | 4,096 | 25,460.3 | 24,438.5 | 8,194 | 34,369,888,686 | 10,765.4 | 4,825.7 | 15,591.7 | 6,243.5 |
 
 The candidate speed ratios are approximately `0.99x`, `1.00x`, and `1.04x`.
 The earlier single-run 1.8–2.4x result is not reproducible under this matched
@@ -50,11 +50,26 @@ seven-run protocol. The index optimization remains structurally valid, but it is
 not the dominant end-to-end cost on this host.
 
 `ownership_payload_bytes` is a logical sum of deserialized intent values, not
-physical disk I/O. At 4 MiB, 8,194 checks materialize about 34.4 GiB of intent
-payload. The direct fencing control (`--fencing-benchmark 4194304 8192`) measured
-12.284 s for full-intent `find()` calls and 9.012 ms for equal-count reads of a
-32-byte token. This confirms H1 as an algorithmic cost; it does not authorize
-replacing the durable guard with a local or end-only check.
+physical disk I/O. At 4 MiB, 8,194 checks materialize exactly 34,369,888,686
+bytes (about 32.0 GiB) of intent payload. The corrected phase counters include
+both the full string comparison and the lookup: the 4 MiB median is about
+10.765 s lookup, 4.826 s comparison, and 15.592 s total fencing. The direct
+fencing control (`--fencing-benchmark 4194304 8192`) measured 12.587 s for
+full-intent `find()` calls and 9.380 ms for equal-count reads of a 32-byte
+token. This confirms H1 as an algorithmic cost; it does not authorize replacing
+the durable guard with a local or end-only check.
+
+The seven raw import timings, retained rather than only summarized, were:
+
+| run | baseline 128 KiB | candidate 128 KiB | baseline 1 MiB | candidate 1 MiB | baseline 4 MiB | candidate 4 MiB |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 183.010 | 198.349 | 2,745.680 | 2,657.630 | 25,460.3 | 24,438.5 |
+| 2 | 183.134 | 194.175 | 2,735.570 | 2,671.190 | 25,638.7 | 24,205.1 |
+| 3 | 186.945 | 194.874 | 2,709.140 | 2,683.090 | 26,033.1 | 24,266.4 |
+| 4 | 182.393 | 196.318 | 2,797.280 | 2,680.980 | 25,520.3 | 24,384.4 |
+| 5 | 183.945 | 188.252 | 2,696.170 | 2,693.780 | 25,234.5 | 24,663.6 |
+| 6 | 182.901 | 192.547 | 2,668.850 | 2,691.330 | 25,076.9 | 24,557.6 |
+| 7 | 189.001 | 194.985 | 2,706.570 | 2,697.810 | 25,319.0 | 24,513.5 |
 
 The diagnostic phase counters show that candidate 4 MiB time is split mainly
 between fencing and raw-unit storage. Lexical work is roughly 0.3–0.4 s and
@@ -70,30 +85,33 @@ produced:
 
 | sync_durable | batch | commits | elapsed us |
 |---|---:|---:|---:|
-| true | 1 | 1,024 | 732,126 |
-| true | 16 | 64 | 395,236 |
-| true | 64 | 16 | 367,140 |
-| true | 128 | 8 | 354,303 |
-| false | 1 | 1,024 | 690,875 |
-| false | 16 | 64 | 427,193 |
-| false | 64 | 16 | 375,385 |
-| false | 128 | 8 | 365,371 |
+| true | 1 | 1,024 | 708,031 |
+| true | 16 | 64 | 411,611 |
+| true | 64 | 16 | 384,883 |
+| true | 128 | 8 | 359,101 |
 
-This confirms that transaction count is material in a controlled write loop,
-but it does not measure a safe batched `KnowledgeUnitStore` publication. The
-production configuration remains durable (`sync_durable=true`); relaxed mode is
-diagnostic only. A future batching PR must preserve per-manifest visibility,
-takeover fencing, crash recovery, and idempotent IDs.
+This confirms that transaction count is material in a controlled write loop.
+Only the pinned default durable mode was measured: `sync_durable=false` is not
+an MDBX relaxed-mode switch because `MDBX_SYNC_DURABLE` is zero. No SAFE_NOSYNC
+comparison is claimed. This benchmark does not measure a safe batched
+`KnowledgeUnitStore` publication. A future batching PR must preserve
+per-manifest visibility, takeover fencing, crash recovery, and idempotent IDs.
 
 ## Corpus control
 
 The original `bbbb...` body is retained as a pathological long-token stress
-case. At 1 MiB, one-run candidate timings were approximately 6.22 s for the
-English sentence corpus, 2.86 s for Russian UTF-8 text, and 4.20 s for the
-technical identifier corpus, compared with about 2.71 s for the pathological
-case in the repeated matched run. These are directional controls, not a
-statistical corpus study; they demonstrate that tokenizer/corpus shape is an
-independent variable and must not be conflated with MDBX index performance.
+case. The corpus control now reports tokenizer counts and uses genuinely varying
+technical identifiers. At 1 MiB, the measured controls were:
+
+| corpus | UTF-8 bytes | tokens | unique tokens | import ms | lexical ms |
+|---|---:|---:|---:|---:|---:|
+| English | 1,048,576 | 120,323 | 7 | 2,777.37 | 126.82 |
+| Russian UTF-8 | 1,048,576 | 67,963 | 7 | 2,691.36 | 116.29 |
+| Technical identifiers | 1,048,576 | 199,365 | 34,237 | 2,822.61 | 185.46 |
+
+These are directional controls, not a statistical corpus study; they demonstrate
+that tokenizer/corpus shape is an independent variable and must not be
+conflated with MDBX index performance.
 
 ## Conclusions and sequencing
 
@@ -103,7 +121,8 @@ independent variable and must not be conflated with MDBX index performance.
   atomic takeover, crash recovery, and an explicit wire-format compatibility
   story. No such replacement is implemented here.
 * H2 is supported by the synthetic transaction control and by the per-unit
-  `raw_unit_store_ns` counter, but a production-safe bounded batch has not yet
+  `raw_unit_store_ns` counter (the diagnostic `raw_store_calls` count is not a
+  physical commit count), but a production-safe bounded batch has not yet
   been designed. It is a separate performance PR.
 * The lexical corpus materially changes timings. Keep both representative text
   and long-token stress inputs in future receipts.

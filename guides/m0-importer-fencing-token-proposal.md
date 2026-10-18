@@ -51,10 +51,18 @@ manifest from a stale executor.
 ## Migration and compatibility
 
 The current v4 intent remains readable. Enabling token-guarded publication
-requires an environment marker/profile version. Upgrade is offline/quiesced:
-stop v1 writers, create/verify tokens for all pending intents, then enable the
-new writer. Old binaries must fail admission rather than silently ignoring the
-token table. No general migration manager is required.
+requires an environment marker/profile version and a mandatory quiesced/offline
+upgrade. A previously released legacy binary does not know this marker and
+cannot automatically fail closed; safe rolling upgrade with such a writer is
+not supported. Stop all legacy writers, create/verify tokens for pending
+intents, then enable the token-aware writer. Only versions that explicitly
+understand the marker may provide automatic admission rejection. No general
+migration manager is required.
+
+The guard must be integrated into every participating durable write boundary:
+canonical content, lexical catalog, raw-unit store, manifest publication, and
+intent release. Checking only the outer `assert_ownership()` calls is
+insufficient because a takeover can race an inner transaction.
 
 ## Scope and expected payoff
 

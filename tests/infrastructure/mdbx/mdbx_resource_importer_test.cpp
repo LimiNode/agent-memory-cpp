@@ -5,6 +5,7 @@
 
 #include <mdbx_containers/KeyValueTable.hpp>
 #include <mdbx_containers/common/Config.hpp>
+#include <agent_memory/lexical/StandardTokenizer.hpp>
 
 #include <array>
 #include <chrono>
@@ -17,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_set>
 
 namespace {
 
@@ -227,10 +229,12 @@ void run_benchmark() {
                   << diagnostics->ownership_payload_materializations.load()
                   << " ownership_payload_bytes="
                   << diagnostics->ownership_payload_bytes.load()
-                  << " ownership_check_ns=" << diagnostics->ownership_check_ns.load()
+                  << " ownership_lookup_ns=" << diagnostics->ownership_lookup_ns.load()
+                  << " ownership_compare_ns=" << diagnostics->ownership_compare_ns.load()
+                  << " ownership_total_ns=" << diagnostics->ownership_total_ns.load()
                   << " lexical_ns=" << diagnostics->lexical_ns.load()
                   << " raw_unit_store_ns=" << diagnostics->raw_unit_store_ns.load()
-                  << " raw_unit_commits=" << diagnostics->raw_unit_commits.load()
+                  << " raw_store_calls=" << diagnostics->raw_store_calls.load()
                   << " manifest_ns=" << diagnostics->manifest_ns.load()
                   << " db_bytes=" << db_bytes
                   << " index_entry_writes=" << result.raw_units.size()
@@ -241,13 +245,22 @@ void run_benchmark() {
 }
 
 std::string diagnostic_body(std::size_t bytes, std::string_view corpus) {
+    if(corpus == "technical") {
+        std::string body;
+        body.reserve(bytes);
+        for(std::size_t i = 0; body.size() < bytes; ++i) {
+            body += "resource_id=doc-" + std::to_string(i) +
+                " generation=" + std::to_string(i % 97U) +
+                " tokenizer=bm25 score=0." + std::to_string(i % 1000U) + "; ";
+        }
+        body.resize(bytes);
+        return body;
+    }
     const std::string pattern = corpus == "english"
         ? "Durable memory preserves source provenance across revisions. "
         : corpus == "russian"
             ? "Память сохраняет проверяемую связь с исходным документом. "
-            : corpus == "technical"
-                ? "resource_id=doc-42 generation=17 tokenizer=bm25 score=0.991; "
-                : "b";
+            : "b";
     std::string body;
     body.reserve(bytes);
     while(body.size() + pattern.size() <= bytes) body += pattern;
@@ -271,13 +284,18 @@ void run_corpus_benchmark(
     options.max_raw_chunks = body_bytes / kMdbxResourceImporterRawChunkBytes + 2U;
     const auto diagnostics = std::make_shared<MdbxResourceImporterDiagnostics>();
     options.diagnostics = diagnostics;
+    const auto body = diagnostic_body(body_bytes, corpus);
+    StandardTokenizer tokenizer;
+    const auto tokenization = tokenizer.tokenize(body);
+    std::unordered_set<std::string> unique_tokens;
+    for(const auto& token : tokenization.tokens) unique_tokens.insert(token.text);
     const auto started = std::chrono::steady_clock::now();
     {
         MdbxResourceImporter importer{std::move(options)};
         static_cast<void>(importer.import(original(
             "resource:corpus-" + std::string{corpus},
             "https://example.test/corpus",
-            diagnostic_body(body_bytes, corpus)
+            body
         )));
     }
     const auto elapsed = std::chrono::duration<double, std::milli>(
@@ -285,13 +303,18 @@ void run_corpus_benchmark(
     ).count();
     std::cout << "corpus=" << corpus
               << " body_bytes=" << body_bytes
+              << " utf8_bytes=" << body.size()
+              << " token_count=" << tokenization.tokens.size()
+              << " unique_token_count=" << unique_tokens.size()
               << " import_elapsed_ms=" << elapsed
               << " ownership_checks=" << diagnostics->ownership_checks.load()
               << " ownership_payload_bytes=" << diagnostics->ownership_payload_bytes.load()
-              << " ownership_check_ns=" << diagnostics->ownership_check_ns.load()
+              << " ownership_lookup_ns=" << diagnostics->ownership_lookup_ns.load()
+              << " ownership_compare_ns=" << diagnostics->ownership_compare_ns.load()
+              << " ownership_total_ns=" << diagnostics->ownership_total_ns.load()
               << " lexical_ns=" << diagnostics->lexical_ns.load()
               << " raw_unit_store_ns=" << diagnostics->raw_unit_store_ns.load()
-              << " raw_unit_commits=" << diagnostics->raw_unit_commits.load()
+              << " raw_store_calls=" << diagnostics->raw_store_calls.load()
               << " manifest_ns=" << diagnostics->manifest_ns.load()
               << '\n';
     std::filesystem::remove(path, error);
@@ -360,12 +383,10 @@ void run_fencing_benchmark(std::size_t body_bytes, std::size_t iterations) {
 
 void run_transaction_benchmark(std::size_t units) {
     using namespace agent_memory;
-    for(const bool sync_durable : {true, false}) {
-        for(const std::size_t batch_size : {std::size_t{1}, std::size_t{16},
-                                            std::size_t{64}, std::size_t{128}}) {
+    for(const std::size_t batch_size : {std::size_t{1}, std::size_t{16},
+                                        std::size_t{64}, std::size_t{128}}) {
         const auto path = test_path(
-            (std::string{"txn_"} + (sync_durable ? "durable_" : "relaxed_") +
-             std::to_string(batch_size)).c_str()
+            (std::string{"txn_durable_"} + std::to_string(batch_size)).c_str()
         );
         std::error_code error;
         std::filesystem::remove(path, error);
@@ -373,7 +394,6 @@ void run_transaction_benchmark(std::size_t units) {
         config.pathname = path.string();
         config.max_dbs = kDefaultMdbxMaxDbs;
         config.no_subdir = true;
-        config.sync_durable = sync_durable;
         auto context = MdbxStorageContext::attach(mdbxc::Connection::create(config));
         mdbxc::KeyValueTable<std::string, std::string> table(
             context->connection(), "agent_memory_diagnostic_batch"
@@ -394,7 +414,7 @@ void run_transaction_benchmark(std::size_t units) {
         const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - started
         ).count();
-        std::cout << "txn_sync_durable=" << (sync_durable ? "true" : "false")
+        std::cout << "txn_sync_durable=true"
                   << " txn_units=" << units
                   << " batch_size=" << batch_size
                   << " commits=" << commits
@@ -402,7 +422,59 @@ void run_transaction_benchmark(std::size_t units) {
                   << " elapsed_us=" << elapsed
                   << '\n';
         std::filesystem::remove(path, error);
+    }
+}
+
+void run_diagnostics_negative_checks() {
+    using namespace agent_memory;
+    for(const bool erase_intent : {false, true}) {
+        const auto path = test_path(erase_intent ? "diagnostics_missing" : "diagnostics_mismatch");
+        std::error_code error;
+        std::filesystem::remove(path, error);
+        const auto diagnostics = std::make_shared<MdbxResourceImporterDiagnostics>();
+        MdbxResourceImporterOptions options;
+        options.path = path.string();
+        options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        options.max_raw_body_bytes = 1024;
+        options.max_raw_chunks = 2;
+        options.diagnostics = diagnostics;
+        options.fault_injector = [path, erase_intent](ResourceImporterFaultPoint point) {
+            if(point != ResourceImporterFaultPoint::AfterRawUnitPublication) return;
+            auto context = MdbxStorageContext::open(path.string(), false, kDefaultMdbxMaxDbs);
+            mdbxc::KeyValueTable<std::string, std::string> intents(
+                context->connection(), "agent_memory_resource_import_intents"
+            );
+            if(erase_intent) {
+                expect(intents.erase("resource:diagnostic"), "negative test could not erase intent");
+            } else {
+                intents.insert_or_assign("resource:diagnostic", "mismatched-payload");
+            }
+        };
+        bool rejected = false;
+        try {
+            MdbxResourceImporter importer{std::move(options)};
+            static_cast<void>(importer.import(original(
+                "resource:diagnostic",
+                "https://example.test/diagnostic",
+                std::string(1024, 'b')
+            )));
+        } catch(const std::runtime_error&) {
+            rejected = true;
         }
+        expect(rejected, "diagnostic stale intent mutation was not rejected");
+        expect(diagnostics->ownership_checks.load() >= 3,
+               "diagnostic negative case did not execute post-write fencing");
+        expect(diagnostics->ownership_payload_materializations.load() >= 3,
+               "diagnostic materialization counter missed a fencing check");
+        expect(diagnostics->ownership_compare_ns.load() > 0,
+               "diagnostic compare timer did not record a comparison");
+        expect(
+            diagnostics->ownership_total_ns.load() >=
+                diagnostics->ownership_lookup_ns.load() +
+                diagnostics->ownership_compare_ns.load(),
+            "diagnostic total timer is below lookup plus compare"
+        );
+        std::filesystem::remove(path, error);
     }
 }
 
@@ -433,6 +505,7 @@ int main(int argc, char** argv) {
         );
         return 0;
     }
+    run_diagnostics_negative_checks();
     using namespace agent_memory;
     const auto path = test_path("contract");
     std::error_code error;
