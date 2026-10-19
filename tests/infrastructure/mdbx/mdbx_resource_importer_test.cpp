@@ -884,6 +884,144 @@ void run_inner_guard_negative_checks() {
            "inner guard test database could not be removed");
 }
 
+void run_lexical_catalog_guard_race_check() {
+    using namespace agent_memory;
+    const auto path = test_path("lexical_catalog_guard_race");
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    auto context = MdbxStorageContext::open(path.string());
+
+    const ScopeId scope{"tenant-catalog"};
+    const ResourceId baseline_resource{"baseline"};
+    const ResourceId guarded_resource{"guarded"};
+    const std::string intent_key = "resource:catalog-race";
+    const std::string scope_version_key = "scope-version\x1f" + scope.value();
+    const auto encode_document_component = [](std::string_view value) {
+        static constexpr char digits[] = "0123456789abcdef";
+        std::string encoded;
+        encoded.reserve(value.size() * 2U);
+        for(const auto byte : value) {
+            const auto octet = static_cast<unsigned char>(byte);
+            encoded.push_back(digits[octet >> 4U]);
+            encoded.push_back(digits[octet & 0x0fU]);
+        }
+        return encoded;
+    };
+    const DocumentId guarded_document_id{
+        "durable-lexical:" + encode_document_component(scope.value()) + ':' +
+        encode_document_component(guarded_resource.value())
+    };
+
+    {
+        mdbxc::KeyValueTable<std::string, std::string> intents(
+            context->connection(), "agent_memory_resource_import_intents"
+        );
+        intents.insert_or_assign(intent_key, "intent-v1");
+        mdbxc::KeyValueTable<std::string, std::string> tokens(
+            context->connection(), "agent_memory_resource_import_fencing_tokens"
+        );
+        tokens.insert_or_assign(intent_key, "token-v1");
+    }
+
+    {
+        MdbxDurableLexicalDocumentMemoryOptions baseline_options;
+        baseline_options.context = context;
+        MdbxDurableLexicalDocumentMemory baseline{std::move(baseline_options)};
+        expect(
+            baseline.upsert_text(
+                scope,
+                baseline_resource,
+                "https://example.test/baseline",
+                "Baseline lexical visibility remains intact."
+            ) == 1,
+            "lexical catalog guard baseline publication failed"
+        );
+        {
+            mdbxc::KeyValueTable<std::string, std::string> catalog(
+                context->connection(), "agent_memory_durable_lexical_catalog"
+            );
+            const auto version = catalog.find(scope_version_key);
+            expect(version && *version == "1", "baseline scope version mismatch");
+        }
+
+        bool token_mutated_after_canonical = false;
+        MdbxDurableLexicalDocumentMemoryOptions guarded_options;
+        guarded_options.context = context;
+        guarded_options.fault_injector = [&](DurableLexicalDocumentMemoryFaultPoint point) {
+            if(point != DurableLexicalDocumentMemoryFaultPoint::BeforeCatalogPublication ||
+               token_mutated_after_canonical) {
+                return;
+            }
+            mdbxc::KeyValueTable<std::string, std::string> tokens(
+                context->connection(), "agent_memory_resource_import_fencing_tokens"
+            );
+            auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            tokens.insert_or_assign(intent_key, "token-v2", txn);
+            txn.commit();
+            token_mutated_after_canonical = true;
+        };
+        MdbxDurableLexicalDocumentMemory guarded{std::move(guarded_options)};
+
+        bool rejected = false;
+        try {
+            static_cast<void>(guarded.upsert_text_guarded(
+                scope,
+                guarded_resource,
+                "https://example.test/guarded",
+                "Catalog fencing rejects a token changed after canonical publication.",
+                DurableLexicalPublicationGuard{
+                    "agent_memory_resource_import_intents",
+                    intent_key,
+                    "",
+                    "agent_memory_resource_import_fencing_tokens",
+                    "token-v1"
+                }
+            ));
+        } catch(const std::runtime_error& error_value) {
+            rejected = std::string_view{error_value.what()}.find("fence rejected") !=
+                std::string_view::npos;
+        }
+        expect(token_mutated_after_canonical,
+               "lexical catalog guard did not mutate token after canonical publication");
+        expect(rejected, "lexical catalog guard accepted a changed token");
+        MdbxCanonicalContentStoreOptions canonical_options;
+        canonical_options.context = context;
+        MdbxCanonicalContentStore canonical{std::move(canonical_options)};
+        expect(
+            canonical.read_current(guarded_document_id).has_value(),
+            "lexical catalog guard did not reach the post-canonical publication point"
+        );
+        expect(
+            guarded.search(scope, "catalog fencing", 5).empty(),
+            "lexical catalog guard exposed a fenced publication"
+        );
+        expect(
+            guarded.search(scope, "baseline lexical", 5).size() == 1,
+            "lexical catalog guard changed existing visibility"
+        );
+        {
+            mdbxc::KeyValueTable<std::string, std::string> catalog(
+                context->connection(), "agent_memory_durable_lexical_catalog"
+            );
+            const auto version = catalog.find(scope_version_key);
+            expect(version && *version == "1",
+                   "fenced lexical publication advanced the scope version");
+            mdbxc::KeyValueTable<std::string, std::string> tokens(
+                context->connection(), "agent_memory_resource_import_fencing_tokens"
+            );
+            const auto token = tokens.find(intent_key);
+            expect(token && *token == "token-v2",
+                   "lexical catalog guard token mutation was not durable");
+        }
+    }
+
+    context.reset();
+    expect(
+        std::filesystem::remove(path, error) || !std::filesystem::exists(path),
+        "lexical catalog guard test database could not be removed"
+    );
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -915,6 +1053,7 @@ int main(int argc, char** argv) {
     run_fencing_schema_negative_checks();
     run_offline_fencing_migration_checks();
     run_inner_guard_negative_checks();
+    run_lexical_catalog_guard_race_check();
     using namespace agent_memory;
     const auto path = test_path("contract");
     std::error_code error;
