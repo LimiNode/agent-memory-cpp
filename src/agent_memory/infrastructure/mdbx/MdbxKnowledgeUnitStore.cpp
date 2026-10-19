@@ -708,6 +708,7 @@ namespace agent_memory {
             KnowledgeUnitCreateRequest request,
             const std::optional<MdbxKnowledgeUnitPublicationGuard>& guard = std::nullopt
         ) {
+            validate_guard_resource_binding(request, guard);
             auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
             validate_publication_guard(guard, txn);
             auto envelope = create_or_get_unit_in_transaction(std::move(request), txn);
@@ -724,6 +725,9 @@ namespace agent_memory {
             }
             if(requests.size() > kMdbxKnowledgeUnitMaxBatchSize) {
                 throw std::invalid_argument("Knowledge-unit batch exceeds the M0 limit");
+            }
+            for(const auto& request : requests) {
+                validate_guard_resource_binding(request, guard);
             }
             auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
             validate_publication_guard(guard, txn);
@@ -809,6 +813,19 @@ namespace agent_memory {
             if(!token || *token != guard->expected_token) {
                 throw std::runtime_error(
                     "knowledge-unit publication fence rejected"
+                );
+            }
+        }
+
+        static void validate_guard_resource_binding(
+            const KnowledgeUnitCreateRequest& request,
+            const std::optional<MdbxKnowledgeUnitPublicationGuard>& guard
+        ) {
+            if(!guard) return;
+            if(request.sources.size() != 1 ||
+               request.sources.front().resource_id.value() != guard->key) {
+                throw std::invalid_argument(
+                    "knowledge-unit publication guard does not match the source resource"
                 );
             }
         }

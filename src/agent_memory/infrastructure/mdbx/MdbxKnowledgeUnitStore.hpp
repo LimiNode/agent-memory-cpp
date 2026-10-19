@@ -34,6 +34,7 @@ namespace agent_memory {
 
     struct MdbxKnowledgeUnitPublicationGuard final {
         std::string table_name;
+        /// ResourceId key of the token table and of the guarded source.
         std::string key;
         std::string expected_token;
     };
@@ -86,7 +87,9 @@ namespace agent_memory {
 
         /// Creates or replays a bounded batch while checking one durable token
         /// in the same writable transaction as every envelope and index write.
-        /// A stale token rejects the whole batch without partial publication.
+        /// Every request must contain exactly one source whose ResourceId equals
+        /// `guard.key`; a stale or cross-resource token rejects the whole batch
+        /// without partial publication.
         [[nodiscard]] std::vector<KnowledgeUnitEnvelope> create_or_get_units_guarded(
             std::vector<KnowledgeUnitCreateRequest> requests,
             MdbxKnowledgeUnitPublicationGuard guard
