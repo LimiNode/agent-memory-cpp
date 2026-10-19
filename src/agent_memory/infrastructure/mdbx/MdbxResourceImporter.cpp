@@ -632,7 +632,8 @@ public:
         , m_max_raw_body_bytes(options.max_raw_body_bytes)
         , m_max_raw_chunks(options.max_raw_chunks)
         , m_clock(options.clock_ms ? std::move(options.clock_ms) : system_clock_ms)
-        , m_fault_injector(std::move(options.fault_injector)) {
+        , m_fault_injector(std::move(options.fault_injector))
+        , m_diagnostics(std::move(options.diagnostics)) {
         if(!is_valid_publication_profile(m_publication_profile)) {
             throw std::invalid_argument("resource importer has an unknown publication profile");
         }
@@ -797,6 +798,7 @@ private:
         );
         assert_ownership(pending.resource.resource_id.value(), expected_payload);
         if(inject_faults) inject(ResourceImporterFaultPoint::BeforeLexicalPublication);
+        const auto lexical_started = std::chrono::steady_clock::now();
         const auto generation = m_lexical.upsert_text_guarded(
             pending.resource.scope_id,
             pending.resource.resource_id,
@@ -807,6 +809,10 @@ private:
                 pending.resource.resource_id.value(),
                 expected_payload
             }
+        );
+        record_duration(
+            m_diagnostics ? &m_diagnostics->lexical_ns : nullptr,
+            lexical_started
         );
         if(inject_faults) inject(ResourceImporterFaultPoint::AfterLexicalPublication);
         if(inject_faults) inject(ResourceImporterFaultPoint::BeforeManifestPublication);
@@ -858,9 +864,15 @@ private:
                 request.primary_text = std::string{chunk};
                 request.display_text = request.primary_text;
                 request.sources = {std::move(source)};
+                const auto raw_started = std::chrono::steady_clock::now();
                 const auto envelope = m_knowledge_unit_store->create_or_get_unit(
                     std::move(request)
                 );
+                record_duration(
+                    m_diagnostics ? &m_diagnostics->raw_unit_store_ns : nullptr,
+                    raw_started
+                );
+                if(m_diagnostics) ++m_diagnostics->raw_store_calls;
                 if(envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
                     throw std::runtime_error(
                         "raw publication matched a non-active historical Chunk"
@@ -891,6 +903,7 @@ private:
             pending.publication_profile
         );
         assert_ownership(pending.resource.resource_id.value(), expected_payload);
+        const auto manifest_started = std::chrono::steady_clock::now();
         m_manifests.upsert_manifest_if_unchanged_guarded(
             manifest,
             expected_manifest,
@@ -899,6 +912,10 @@ private:
                 pending.resource.resource_id.value(),
                 expected_payload
             }
+        );
+        record_duration(
+            m_diagnostics ? &m_diagnostics->manifest_ns : nullptr,
+            manifest_started
         );
         if(inject_faults) inject(ResourceImporterFaultPoint::AfterManifestPublication);
         release_expected(pending.resource.resource_id.value(), expected_payload);
@@ -1038,9 +1055,64 @@ private:
     }
 
     void assert_ownership(const std::string& key, const std::string& payload) const {
+        if(!m_diagnostics) {
+            const auto current = m_intents.find(key);
+            if(!current || *current != payload) {
+                throw std::runtime_error("resource import executor was fenced out");
+            }
+            return;
+        }
+        const auto total_started = std::chrono::steady_clock::now();
+        const auto lookup_started = std::chrono::steady_clock::now();
         const auto current = m_intents.find(key);
-        if(!current || *current != payload) {
+        const auto lookup_finished = std::chrono::steady_clock::now();
+        const auto compare_started = lookup_finished;
+        const bool matches = current && *current == payload;
+        const auto compare_finished = std::chrono::steady_clock::now();
+        ++m_diagnostics->ownership_lookup_attempts;
+        ++m_diagnostics->ownership_checks;
+        if(current) {
+            ++m_diagnostics->ownership_payload_materializations;
+            m_diagnostics->ownership_payload_bytes += current->size();
+        }
+        record_duration(
+            &m_diagnostics->ownership_lookup_ns,
+            lookup_started,
+            lookup_finished
+        );
+        record_duration(
+            &m_diagnostics->ownership_compare_ns,
+            compare_started,
+            compare_finished
+        );
+        record_duration(
+            &m_diagnostics->ownership_total_ns,
+            total_started,
+            compare_finished
+        );
+        if(!matches) {
             throw std::runtime_error("resource import executor was fenced out");
+        }
+    }
+
+    static void record_duration(
+        std::atomic<std::uint64_t>* destination,
+        std::chrono::steady_clock::time_point started
+    ) {
+        record_duration(destination, started, std::chrono::steady_clock::now());
+    }
+
+    static void record_duration(
+        std::atomic<std::uint64_t>* destination,
+        std::chrono::steady_clock::time_point started,
+        std::chrono::steady_clock::time_point finished
+    ) {
+        if(destination) {
+            *destination += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    finished - started
+                ).count()
+            );
         }
     }
 
@@ -1164,6 +1236,7 @@ private:
     std::size_t m_max_raw_chunks;
     std::function<std::uint64_t()> m_clock;
     std::function<void(ResourceImporterFaultPoint)> m_fault_injector;
+    std::shared_ptr<MdbxResourceImporterDiagnostics> m_diagnostics;
     std::string m_owner_id;
     mutable std::mutex m_mutex;
 };
