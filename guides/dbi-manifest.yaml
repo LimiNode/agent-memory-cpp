@@ -293,15 +293,17 @@ profile_deltas:
         physical_key: [DocumentId]
         migration_peak: 1
   - name: durable_lexical_document_memory
-    dbis: 4
-    migration_peak: 4
+    dbis: 6
+    migration_peak: 6
     default: false
     names:
       - agent_memory_durable_lexical_catalog
       - agent_memory_resource_import_intents
       - agent_memory_resource_import_bindings
       - agent_memory_resource_import_epochs
-    note: Rebuildable M0 lexical profile plus importer coordination tables. Canonical text remains owned by canonical_content_c1; the lexical catalog stores per-resource revision bindings and scope generations, while importer intents, fencing epochs, and durable ResourceId-to-ScopeId bindings use separate adapter-owned tables.
+      - agent_memory_resource_import_fencing_tokens
+      - agent_memory_resource_import_fencing_schema
+    note: Rebuildable M0 lexical profile plus importer coordination tables. Canonical text remains owned by canonical_content_c1; the lexical catalog stores per-resource revision bindings and scope generations, while importer intents, compact fencing tokens/schema marker, fencing epochs, and durable ResourceId-to-ScopeId bindings use separate adapter-owned tables.
     dbi_entries:
       - name: agent_memory_durable_lexical_catalog
         owner: lexical
@@ -334,6 +336,22 @@ profile_deltas:
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [ResourceId]
+        migration_peak: 1
+      - name: agent_memory_resource_import_fencing_tokens
+        owner: ingestion
+        table_type: KeyValueTable
+        opens: indexed_retrieval
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [ResourceId]
+        migration_peak: 1
+      - name: agent_memory_resource_import_fencing_schema
+        owner: ingestion
+        table_type: KeyValueTable
+        opens: always
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [SchemaMarker]
         migration_peak: 1
   - name: legacy_document_resource_adapter
     dbis: 6
@@ -698,10 +716,10 @@ expanded_peak_reference:
   source_refs_by_resource: 1
   global_unit_id_to_local_id: 1
   runtime_sequence_index: 1
-  durable_lexical_document_memory: 4
+  durable_lexical_document_memory: 6
   sync_system_be72a2b: 9
   migration_dual_write_reserve: 8
-  total: 68
+  total: 70
 
 runtime_integration_mapping:
   a0_a2_component_only_new_runtime_dbis: 0

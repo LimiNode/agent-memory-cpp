@@ -22,8 +22,15 @@ namespace agent_memory {
         std::string path;
         std::string table_prefix = "agent_memory";
         bool relative_to_exe = false;
-        std::int64_t max_dbs = kDefaultMdbxMaxDbs;
-        std::shared_ptr<MdbxStorageContext> context;
+    std::int64_t max_dbs = kDefaultMdbxMaxDbs;
+    std::shared_ptr<MdbxStorageContext> context;
+    std::string publication_token_guard_table_name;
+};
+
+    struct MdbxKnowledgeUnitPublicationGuard final {
+        std::string table_name;
+        std::string key;
+        std::string expected_token;
     };
 
     /// \brief Transactional envelope store with content-key deduplication.
@@ -56,6 +63,11 @@ namespace agent_memory {
         [[nodiscard]] KnowledgeUnitEnvelope create_or_get_unit(
             KnowledgeUnitCreateRequest request
         ) override;
+
+        [[nodiscard]] KnowledgeUnitEnvelope create_or_get_unit_guarded(
+            KnowledgeUnitCreateRequest request,
+            MdbxKnowledgeUnitPublicationGuard guard
+        );
 
         [[nodiscard]] std::optional<KnowledgeUnitEnvelope> find(
             const KnowledgeUnitId& id

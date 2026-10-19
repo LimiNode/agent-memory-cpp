@@ -47,6 +47,8 @@ struct MdbxCanonicalContentStoreOptions final {
     std::shared_ptr<MdbxStorageContext> context; ///< Optional host/shared MDBX context.
     /// Optional pre-opened table used by guarded canonical publication.
     std::string publication_guard_table_name;
+    /// Optional compact fencing-token table used by guarded publication.
+    std::string publication_token_guard_table_name;
 };
 
 /// \brief Durable compare token checked in the canonical write transaction.
@@ -54,6 +56,8 @@ struct MdbxCanonicalPublicationGuard final {
     std::string table_name;
     std::string key;
     std::string expected_value;
+    std::string token_table_name;
+    std::string expected_token;
 };
 
 /// \brief Durable raw/plain canonical document-content store.
