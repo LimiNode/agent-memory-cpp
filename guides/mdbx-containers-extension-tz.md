@@ -1184,7 +1184,7 @@ DBI для компонентной архитектуры `Envelope + Component
 // Layer A — envelope (hot path), всегда открыт
 knowledge_units                       KeyValueTable<UnitId, KnowledgeUnitEnvelope>
 content_key_to_unit_id                KeyValueTable<KnowledgeUnitKey, UnitId>           // dedupe/migration
-knowledge_units_by_kind               KeyValueTable<CompositeKey<ScopeId, KnowledgeUnitKind>, UnitId[]>
+knowledge_units_by_kind               KeyValueTable<IndexKey<ScopeId, KnowledgeUnitKind, IndexSequence>, UnitId>
 
 // Layer B — operational components + separate per-kind payload DBIs
 unit_components                       TypeDiscriminatedTable<ComponentKind, UnitId,
@@ -1239,6 +1239,15 @@ agent_memory_canonical_bodies         KeyValueTable<(DocumentId, BodyRevision, P
 agent_memory_canonical_ledgers        KeyValueTable<DocumentId, historical_block_id_ledger>
 ```
 
+The append-only by-kind layout is versioned by the
+`knowledge_units` metadata key `@knowledge_units_by_kind_schema_version`.
+Missing/`"1"` means a legacy-compatible environment; `"2"` means that a v2
+writer has activated the append-only layout. Upgrade is quiesced/offline: stop
+v1 writers before the first v2 write, because an old binary does not read v2
+entries. The v2 adapter migrates one scope/kind atomically, leaves untouched
+legacy groups readable, and rejects unsupported markers, v2 entries without
+the marker, or legacy keys coexisting with v2 entries in one group.
+
 For the C1 raw profile, a revision blob contains ordered block descriptors and
 the logical `BodyRevision` binding; it does not own block text. The body value
 contains decoded block text, a codec-independent algorithm-tagged SHA-256
@@ -1286,7 +1295,7 @@ dbi-review-projection-v1
 # name|owner|table_type|opens|wire_sync_support|replication_semantics|physical_key|migration_peak
 knowledge_units|core|KeyValueTable|always|kv_supported|logical_adapter_required|UnitId|1
 content_key_to_unit_id|core|KeyValueTable|always|kv_supported|derived_rebuildable|KnowledgeUnitKey|1
-knowledge_units_by_kind|core|KeyValueTable|always|kv_supported|derived_rebuildable|ScopeId,KnowledgeUnitKind|1
+knowledge_units_by_kind|core|KeyValueTable|always|kv_supported|derived_rebuildable|ScopeId,KnowledgeUnitKind,IndexSequence|1
 unit_components|core|TypeDiscriminatedTable|component_profile|kv_supported_if_type_discriminated_is_kv_backed|logical_adapter_required|ComponentKind,UnitId|1
 qa_payloads|qa|KeyValueTable|QAPairs|kv_supported|logical_adapter_required|UnitId|1
 fact_payloads|facts|KeyValueTable|TemporalFact|kv_supported|logical_adapter_required|UnitId|1
@@ -1368,7 +1377,7 @@ _mdbxc_logical_delivery_watermarks|upstream_sync|UpstreamSystemDBI|UpstreamSync|
 |---|---|---|---|---|
 | `knowledge_units` | да (Layer A envelope hot path) | `agent_memory.knowledge_unit.v1` | TBD | Primary envelope storage по `UnitId` |
 | `content_key_to_unit_id` | да (Layer A dedupe/migration) | `agent_memory.content_key.v1` | TBD | Content-addressed lookup `KnowledgeUnitKey -> UnitId` |
-| `knowledge_units_by_kind` | да (Layer A, bounded serialized list) | `agent_memory.unit_by_kind.v1` | TBD | Scope-aware reverse index `(ScopeId, KnowledgeUnitKind) -> UnitId[]` |
+| `knowledge_units_by_kind` | да (Layer A, append-only entries) | `agent_memory.unit_by_kind.v2` | TBD | Scope-aware reverse index `(ScopeId, KnowledgeUnitKind, IndexSequence) -> UnitId`; legacy v1 lists migrate lazily |
 | `unit_components` | по selector `component_profile` (Layer B operational) | `agent_memory.component.v1` | TBD | Typed components by physical key `(ComponentKind, UnitId)` |
 | `qa_payloads` | по capability `QAPairs` | `agent_memory.qa.v1` | TBD | Per-kind payload для `QAPair` units |
 | `fact_payloads` | по capability `TemporalFact` | `agent_memory.fact.v1` | TBD | Per-kind payload для `Fact` units |
@@ -1586,7 +1595,7 @@ budget автоматически; они считаются только при
 |---|---|---|---|
 | `knowledge_units` | `KeyValueTable<UnitId, KnowledgeUnitEnvelope>` (§5.5 Layer A) | Supported | Базовый KV путь; sync v0.1 покрывает |
 | `content_key_to_unit_id` | `KeyValueTable<KnowledgeUnitKey, UnitId>` (§5.5 Layer A) | Supported | Dedupe/migration lookup; KV путь |
-| `knowledge_units_by_kind` | `KeyValueTable<CompositeKey<ScopeId, KnowledgeUnitKind>, UnitId[]>` (§5.5) | Supported | M0 stores a bounded serialized ordered UnitId list; the index is derived and rebuildable |
+| `knowledge_units_by_kind` | `KeyValueTable<IndexKey<ScopeId, KnowledgeUnitKind, IndexSequence>, UnitId>` (§5.5) | Supported | M0 stores one append-only ordered entry per UnitId; legacy serialized lists migrate lazily and the index remains derived/rebuildable |
 | `unit_components` | `TypeDiscriminatedTable<ComponentKind, UnitId, TypedComponentValue>` over `KeyValueTable<CompositeKey<ComponentKind, UnitId>, TypedValueBytes>` (§3.4) | Supported if implemented exactly as KV | The old `AnyValueTable<UnitId>` interpretation is forbidden because it loses components and is not sync-covered |
 | `qa_payloads`, `fact_payloads`, `conversation_episode_payloads`, `compiled_article_payloads`, `chunk_payloads` | `KeyValueTable<UnitId, PerKindPayload>` (§5.5 Layer B) | Profile-dependent | Per-kind payloads — ordinary KV; `chunk_payloads` requires the `ChunkPayload` profile |
 | `source_refs` | `KeyValueTable<UnitId, std::vector<SourceRef>>` (§5.5 Layer B) | Supported | Full source refs; M1 capability |
