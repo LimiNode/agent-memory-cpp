@@ -1339,6 +1339,8 @@ agent_memory_durable_lexical_catalog|lexical|KeyValueTable|indexed_retrieval|kv_
 agent_memory_resource_import_intents|ingestion|KeyValueTable|indexed_retrieval|kv_supported|logical_adapter_required|ResourceId|1
 agent_memory_resource_import_bindings|ingestion|KeyValueTable|indexed_retrieval|kv_supported|logical_adapter_required|ResourceId|1
 agent_memory_resource_import_epochs|ingestion|KeyValueTable|indexed_retrieval|kv_supported|logical_adapter_required|ResourceId|1
+agent_memory_resource_import_fencing_tokens|ingestion|KeyValueTable|indexed_retrieval|kv_supported|logical_adapter_required|ResourceId|1
+agent_memory_resource_import_fencing_schema|ingestion|KeyValueTable|always|kv_supported|logical_adapter_required|SchemaMarker|1
 jobs_by_id|runtime_services|KeyValueTable|RuntimeQueue|kv_supported|raw_mirror_only|JobId|1
 jobs_scheduled|runtime_services|RangeIndexTable|RuntimeQueue|kv_supported_if_range_is_kv_backed|raw_mirror_only|RunAfterMs,JobId|1
 jobs_ready|runtime_services|RangeIndexTable|RuntimeQueue|kv_supported_if_range_is_kv_backed|raw_mirror_only|PriorityRank,JobId|1
@@ -1531,13 +1533,13 @@ resource_body_chunked=2
 source_refs_by_resource=1
 global_unit_id_to_local_id=1
 runtime_sequence_index=1
-durable_lexical_document_memory=4
+durable_lexical_document_memory=6
 sync_system_be72a2b=9
 migration_dual_write_reserve=8
-total=68
-headroom=28
+total=70
+headroom=26
 minimum_free_slots=16
-headroom_above_minimum=12
+headroom_above_minimum=10
 ```
 
 ### 5.5.2. Operational limits for one MDBX environment

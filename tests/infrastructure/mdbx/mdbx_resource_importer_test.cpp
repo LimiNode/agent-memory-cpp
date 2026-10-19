@@ -11,6 +11,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -432,9 +433,12 @@ void run_diagnostics_negative_checks() {
     for(const bool erase_intent : {false, true}) {
         const auto path = test_path(erase_intent ? "diagnostics_missing" : "diagnostics_mismatch");
         std::error_code error;
-        std::filesystem::remove(path, error);
+        if(std::filesystem::exists(path)) {
+            expect(std::filesystem::remove(path, error),
+                   "diagnostic test database could not be reset");
+        }
         const auto diagnostics = std::make_shared<MdbxResourceImporterDiagnostics>();
-        const auto context = MdbxStorageContext::open(path.string(), false, kDefaultMdbxMaxDbs);
+        auto context = MdbxStorageContext::open(path.string(), false, kDefaultMdbxMaxDbs);
         MdbxResourceImporterOptions options;
         options.path = path.string();
         options.context = context;
@@ -447,10 +451,15 @@ void run_diagnostics_negative_checks() {
             mdbxc::KeyValueTable<std::string, std::string> intents(
                 context->connection(), "agent_memory_resource_import_intents"
             );
+            mdbxc::KeyValueTable<std::string, std::string> tokens(
+                context->connection(), "agent_memory_resource_import_fencing_tokens"
+            );
             if(erase_intent) {
                 expect(intents.erase("resource:diagnostic"), "negative test could not erase intent");
+                expect(tokens.erase("resource:diagnostic"), "negative test could not erase token");
             } else {
                 intents.insert_or_assign("resource:diagnostic", "mismatched-payload");
+                tokens.insert_or_assign("resource:diagnostic", "mismatched-token");
             }
         };
         bool rejected = false;
@@ -489,7 +498,100 @@ void run_diagnostics_negative_checks() {
                 diagnostics->ownership_compare_ns.load(),
             "diagnostic total timer is below lookup plus compare"
         );
+        context.reset();
+        expect(std::filesystem::remove(path, error) || !std::filesystem::exists(path),
+               "diagnostic test database could not be removed");
+    }
+}
+
+void run_fencing_schema_negative_checks() {
+    using namespace agent_memory;
+    struct Case final {
+        const char* suffix;
+        std::function<void(const std::shared_ptr<MdbxStorageContext>&)> setup;
+        const char* expected;
+    };
+    const auto payload = legacy_v3_intent(
+        "legacy-owner", "tenant-a", "resource:fencing-schema",
+        "https://example.test/fencing-schema", "schema body", 1, 100
+    );
+    const std::vector<Case> cases{
+        {
+            "fencing_missing_token",
+            [payload](const auto& context) {
+                mdbxc::KeyValueTable<std::string, std::string> marker(
+                    context->connection(), "agent_memory_resource_import_fencing_schema"
+                );
+                marker.insert_or_assign("schema", "agent_memory.resource_import_fencing.v1");
+                mdbxc::KeyValueTable<std::string, std::string> intents(
+                    context->connection(), "agent_memory_resource_import_intents"
+                );
+                intents.insert_or_assign("resource:fencing-schema", payload);
+            },
+            "missing or does not match"
+        },
+        {
+            "fencing_mismatched_token",
+            [payload](const auto& context) {
+                mdbxc::KeyValueTable<std::string, std::string> marker(
+                    context->connection(), "agent_memory_resource_import_fencing_schema"
+                );
+                marker.insert_or_assign("schema", "agent_memory.resource_import_fencing.v1");
+                mdbxc::KeyValueTable<std::string, std::string> intents(
+                    context->connection(), "agent_memory_resource_import_intents"
+                );
+                intents.insert_or_assign("resource:fencing-schema", payload);
+                mdbxc::KeyValueTable<std::string, std::string> tokens(
+                    context->connection(), "agent_memory_resource_import_fencing_tokens"
+                );
+                tokens.insert_or_assign("resource:fencing-schema", "wrong-token");
+            },
+            "missing or does not match"
+        },
+        {
+            "fencing_orphan_token",
+            [](const auto& context) {
+                mdbxc::KeyValueTable<std::string, std::string> marker(
+                    context->connection(), "agent_memory_resource_import_fencing_schema"
+                );
+                marker.insert_or_assign("schema", "agent_memory.resource_import_fencing.v1");
+                mdbxc::KeyValueTable<std::string, std::string> tokens(
+                    context->connection(), "agent_memory_resource_import_fencing_tokens"
+                );
+                tokens.insert_or_assign("resource:orphan", "orphan-token");
+            },
+            "orphaned"
+        },
+        {
+            "fencing_bad_schema",
+            [](const auto& context) {
+                mdbxc::KeyValueTable<std::string, std::string> marker(
+                    context->connection(), "agent_memory_resource_import_fencing_schema"
+                );
+                marker.insert_or_assign("schema", "agent_memory.resource_import_fencing.v0");
+            },
+            "unsupported resource import fencing schema marker"
+        }
+    };
+    for(const auto& item : cases) {
+        const auto path = test_path(item.suffix);
+        std::error_code error;
         std::filesystem::remove(path, error);
+        auto context = MdbxStorageContext::open(path.string());
+        item.setup(context);
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        bool rejected = false;
+        try {
+            MdbxResourceImporter importer{std::move(options)};
+        } catch(const std::runtime_error& error_value) {
+            rejected = std::string_view{error_value.what()}.find(item.expected) !=
+                std::string_view::npos;
+        }
+        expect(rejected, "fencing schema corruption was not rejected");
+        context.reset();
+        expect(std::filesystem::remove(path, error) || !std::filesystem::exists(path),
+               "fencing schema test database could not be removed");
     }
 }
 
@@ -521,6 +623,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     run_diagnostics_negative_checks();
+    run_fencing_schema_negative_checks();
     using namespace agent_memory;
     const auto path = test_path("contract");
     std::error_code error;
@@ -946,11 +1049,15 @@ int main(int argc, char** argv) {
         MdbxResourceImporterOptions options;
         options.context = context;
         use_test_clock(options, 1'000);
-        MdbxResourceImporter importer{std::move(options)};
-        const auto manifest = importer.find_manifest(ResourceId{"resource:legacy-v3"});
-        expect(manifest && manifest->revision.generation == 1 &&
-                   manifest->schema.schema_id == "agent_memory.m0_resource_importer",
-               "historical v3 intent was not recovered as lexical-only");
+        bool rejected = false;
+        try {
+            MdbxResourceImporter importer{std::move(options)};
+        } catch(const std::runtime_error& error_value) {
+            rejected = std::string_view{error_value.what()}.find(
+                "quiesced offline upgrade"
+            ) != std::string_view::npos;
+        }
+        expect(rejected, "legacy v3 intent was not held for offline token upgrade");
     }
     std::filesystem::remove(legacy_v3_path, error);
 

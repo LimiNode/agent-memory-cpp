@@ -31,6 +31,8 @@ constexpr std::string_view kPendingPayloadVersionV2 =
     "agent_memory.durable_lexical_pending.v2";
 constexpr std::string_view kPendingPayloadVersionV3 =
     "agent_memory.durable_lexical_pending.v3";
+constexpr std::string_view kPendingPayloadVersionV4 =
+    "agent_memory.durable_lexical_pending.v4";
 constexpr std::string_view kBodyBlockId = "body";
 constexpr char kKeySeparator = '\x1f';
 
@@ -281,7 +283,11 @@ std::string serialize_pending(const PendingOperation& operation) {
     std::string payload;
     append_string(
         payload,
-        operation.guard ? kPendingPayloadVersionV3 : kPendingPayloadVersionV2
+        operation.guard
+            ? (operation.guard->expected_token.empty()
+                   ? kPendingPayloadVersionV3
+                   : kPendingPayloadVersionV4)
+            : kPendingPayloadVersionV2
     );
     append_string(payload, operation.scope_id.value());
     append_string(payload, operation.resource_id.value());
@@ -292,6 +298,10 @@ std::string serialize_pending(const PendingOperation& operation) {
         append_string(payload, operation.guard->table_name);
         append_string(payload, operation.guard->key);
         append_string(payload, operation.guard->expected_value);
+        if(!operation.guard->expected_token.empty()) {
+            append_string(payload, operation.guard->token_table_name);
+            append_string(payload, operation.guard->expected_token);
+        }
     }
     return payload;
 }
@@ -299,7 +309,8 @@ std::string serialize_pending(const PendingOperation& operation) {
 PendingOperation deserialize_pending(std::string_view payload) {
     PayloadReader reader{payload};
     const auto version = reader.read_string();
-    if(version != kPendingPayloadVersionV2 && version != kPendingPayloadVersionV3) {
+    if(version != kPendingPayloadVersionV2 && version != kPendingPayloadVersionV3 &&
+       version != kPendingPayloadVersionV4) {
         throw std::runtime_error("unsupported durable lexical pending payload version");
     }
     PendingOperation operation{
@@ -310,11 +321,13 @@ PendingOperation deserialize_pending(std::string_view payload) {
         reader.read_string(),
         std::nullopt
     };
-    if(version == kPendingPayloadVersionV3) {
+    if(version == kPendingPayloadVersionV3 || version == kPendingPayloadVersionV4) {
         operation.guard = DurableLexicalPublicationGuard{
             reader.read_string(),
             reader.read_string(),
-            reader.read_string()
+            reader.read_string(),
+            version == kPendingPayloadVersionV4 ? reader.read_string() : std::string{},
+            version == kPendingPayloadVersionV4 ? reader.read_string() : std::string{}
         };
         if(operation.guard->table_name.empty() || operation.guard->key.empty()) {
             throw std::runtime_error("durable lexical publication guard is incomplete");
@@ -408,9 +421,17 @@ public:
             canonical_options.context = m_context;
             canonical_options.publication_guard_table_name =
                 table_name(options.table_prefix, "resource_import_intents");
+            canonical_options.publication_token_guard_table_name =
+                table_name(options.table_prefix, "resource_import_fencing_tokens");
             return canonical_options;
         }())
         , m_fault_injector(std::move(options.fault_injector)) {
+        publication_guard_table(
+            table_name(options.table_prefix, "resource_import_intents")
+        );
+        publication_guard_table(
+            table_name(options.table_prefix, "resource_import_fencing_tokens")
+        );
         reject_legacy_catalog();
         recover_pending_operations();
         m_entries = load_entries();
@@ -715,7 +736,9 @@ private:
             return MdbxCanonicalPublicationGuard{
                 operation.guard->table_name,
                 operation.guard->key,
-                operation.guard->expected_value
+                operation.guard->expected_value,
+                operation.guard->token_table_name,
+                operation.guard->expected_token
             };
         };
         for(;;) {
@@ -787,7 +810,9 @@ private:
 
         if(guard_table) {
             const auto current_guard = guard_table->find(operation.guard->key, txn);
-            if(!current_guard || *current_guard != operation.guard->expected_value) {
+            if(!current_guard ||
+               (operation.guard->expected_token.empty() &&
+                *current_guard != operation.guard->expected_value)) {
                 if(!m_catalog.erase(pending, txn)) {
                     txn.rollback();
                     throw std::runtime_error(
@@ -796,6 +821,22 @@ private:
                 }
                 txn.commit();
                 return {PublicationStatus::Fenced, 0};
+            }
+            if(!operation.guard->expected_token.empty()) {
+                auto& token_table = publication_guard_table(
+                    operation.guard->token_table_name
+                );
+                const auto token = token_table.find(operation.guard->key, txn);
+                if(!token || *token != operation.guard->expected_token) {
+                    if(!m_catalog.erase(pending, txn)) {
+                        txn.rollback();
+                        throw std::runtime_error(
+                            "fenced durable lexical operation could not clear its intent"
+                        );
+                    }
+                    txn.commit();
+                    return {PublicationStatus::Fenced, 0};
+                }
             }
         }
 
