@@ -104,6 +104,18 @@ namespace agent_memory {
         explicit MdbxResourceImporter(MdbxResourceImporterOptions options);
         ~MdbxResourceImporter() override;
 
+        /// \brief Performs the explicit quiesced/offline upgrade from legacy
+        ///        v3/v4 intents to the tokenized fencing schema.
+        ///
+        /// No legacy writer may be running while this operation executes.
+        /// The operation is atomic and idempotent; it creates a token for
+        /// every existing intent and installs the current schema marker.
+        /// Rolling upgrades are intentionally unsupported.
+        static void migrate_legacy_fencing_state(
+            const std::shared_ptr<MdbxStorageContext>& context,
+            std::string_view table_prefix = "agent_memory"
+        );
+
         MdbxResourceImporter(const MdbxResourceImporter&) = delete;
         MdbxResourceImporter& operator=(const MdbxResourceImporter&) = delete;
 

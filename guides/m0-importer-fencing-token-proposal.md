@@ -60,10 +60,14 @@ The current v4 intent remains readable. Enabling token-guarded publication
 requires an environment marker/profile version and a mandatory quiesced/offline
 upgrade. A previously released legacy binary does not know this marker and
 cannot automatically fail closed; safe rolling upgrade with such a writer is
-not supported. Stop all legacy writers, create/verify tokens for pending
-intents, then enable the token-aware writer. Only versions that explicitly
-understand the marker may provide automatic admission rejection. No general
-migration manager is required.
+not supported. Stop all legacy writers, open the environment with the narrow
+`MdbxResourceImporter::migrate_legacy_fencing_state(context)` administrative
+operation, and commit the marker plus one token for every v3/v4 intent in one
+transaction. Reopen with the token-aware writer and verify recovery before
+allowing writers to resume. The operation is deliberately not a general
+migration manager and rejects unknown markers, orphan tokens, and token/intent
+mismatches. Only versions that explicitly understand the marker may provide
+automatic admission rejection.
 
 The guard must be integrated into every participating durable write boundary:
 canonical content, lexical catalog, raw-unit store, manifest publication, and

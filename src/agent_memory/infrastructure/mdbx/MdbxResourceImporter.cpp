@@ -293,45 +293,78 @@ void preflight_fencing_schema(
         context->connection(),
         table_name(std::string{table_prefix}, kFencingTokenTableSuffix)
     );
-    const auto stored_marker = marker.find(std::string{kFencingSchemaKey});
-    if(!stored_marker) {
+    const auto validate_snapshot = [&](const mdbxc::Transaction& txn,
+                                       bool allow_missing_marker) {
+        const auto stored_marker = marker.find(std::string{kFencingSchemaKey}, txn);
         std::vector<std::pair<std::string, std::string>> existing_intents;
         std::vector<std::pair<std::string, std::string>> existing_tokens;
-        intents.load(existing_intents);
-        tokens.load(existing_tokens);
-        if(!existing_intents.empty() || !existing_tokens.empty()) {
-            throw std::runtime_error(
-                "resource import fencing schema requires a quiesced offline upgrade"
-            );
+        intents.load(existing_intents, txn);
+        tokens.load(existing_tokens, txn);
+        if(!stored_marker) {
+            if(!allow_missing_marker || !existing_intents.empty() ||
+               !existing_tokens.empty()) {
+                throw std::runtime_error(
+                    "resource import fencing schema requires a quiesced offline upgrade"
+                );
+            }
+            return false;
         }
-        marker.insert_or_assign(
-            std::string{kFencingSchemaKey},
-            std::string{kFencingSchemaVersion}
-        );
+        if(*stored_marker != kFencingSchemaVersion) {
+            throw std::runtime_error("unsupported resource import fencing schema marker");
+        }
+        for(const auto& item : existing_intents) {
+            const auto token = tokens.find(item.first, txn);
+            if(!token || *token != fencing_token(item.second)) {
+                throw std::runtime_error(
+                    "resource import fencing token is missing or does not match intent"
+                );
+            }
+        }
+        for(const auto& item : existing_tokens) {
+            bool found = false;
+            for(const auto& intent : existing_intents) {
+                if(intent.first == item.first) {
+                    found = true;
+                    break;
+                }
+            }
+            if(!found) {
+                throw std::runtime_error("resource import fencing token is orphaned");
+            }
+        }
+        return true;
+    };
+
+    auto read_txn = context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+    const auto initialized = validate_snapshot(read_txn, true);
+    read_txn.rollback();
+    if(initialized) return;
+
+    // A writable recheck closes the first-open TOCTOU window: only one
+    // concurrent opener can install the marker, and it must still observe an
+    // empty intent/token set.
+    auto init_txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    const auto stored_marker = marker.find(std::string{kFencingSchemaKey}, init_txn);
+    if(stored_marker) {
+        static_cast<void>(validate_snapshot(init_txn, false));
+        init_txn.commit();
         return;
     }
-    if(*stored_marker != kFencingSchemaVersion) {
-        throw std::runtime_error("unsupported resource import fencing schema marker");
-    }
     std::vector<std::pair<std::string, std::string>> existing_intents;
-    intents.load(existing_intents);
-    for(const auto& item : existing_intents) {
-        const auto token = tokens.find(item.first);
-        if(!token || *token != fencing_token(item.second)) {
-            throw std::runtime_error(
-                "resource import fencing token is missing or does not match intent"
-            );
-        }
-    }
     std::vector<std::pair<std::string, std::string>> existing_tokens;
-    tokens.load(existing_tokens);
-    for(const auto& item : existing_tokens) {
-        if(!intents.find(item.first)) {
-            throw std::runtime_error(
-                "resource import fencing token is orphaned"
-            );
-        }
+    intents.load(existing_intents, init_txn);
+    tokens.load(existing_tokens, init_txn);
+    if(!existing_intents.empty() || !existing_tokens.empty()) {
+        init_txn.rollback();
+        throw std::runtime_error(
+            "resource import fencing schema requires a quiesced offline upgrade"
+        );
     }
+    marker.insert_or_assign(
+        std::string{kFencingSchemaKey},
+        std::string{kFencingSchemaVersion}, init_txn
+    );
+    init_txn.commit();
 }
 
 std::string publication_schema_id(
@@ -1136,6 +1169,13 @@ private:
             txn.rollback();
             throw std::runtime_error("resource import intent changed during recovery");
         }
+        const auto stored_token = m_tokens.find(key, txn);
+        if(!stored_token || *stored_token != fencing_token(*existing)) {
+            txn.rollback();
+            throw std::runtime_error(
+                "resource import fencing token is missing or does not match intent"
+            );
+        }
         if(operation.lease_expires_at_ms > now_ms()) {
             txn.rollback();
             throw std::runtime_error("live resource import intent cannot be taken over");
@@ -1253,7 +1293,8 @@ private:
             throw std::runtime_error("resource import intent disappeared before release");
         }
         const auto existing_token = m_tokens.find(key, txn);
-        if(!existing_token || *existing_token != token) {
+        if(!existing_token || *existing_token != token ||
+           *existing_token != fencing_token(*existing)) {
             txn.rollback();
             throw std::runtime_error("resource import fencing token changed during publication");
         }
@@ -1376,6 +1417,65 @@ private:
     std::string m_owner_id;
     mutable std::mutex m_mutex;
 };
+
+void MdbxResourceImporter::migrate_legacy_fencing_state(
+    const std::shared_ptr<MdbxStorageContext>& context,
+    std::string_view table_prefix
+) {
+    if(!context) {
+        throw std::invalid_argument("legacy fencing migration requires a storage context");
+    }
+    mdbxc::KeyValueTable<std::string, std::string> marker(
+        context->connection(),
+        table_name(std::string{table_prefix}, "resource_import_fencing_schema")
+    );
+    mdbxc::KeyValueTable<std::string, std::string> intents(
+        context->connection(),
+        table_name(std::string{table_prefix}, "resource_import_intents")
+    );
+    mdbxc::KeyValueTable<std::string, std::string> tokens(
+        context->connection(),
+        table_name(std::string{table_prefix}, kFencingTokenTableSuffix)
+    );
+    auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    const auto stored_marker = marker.find(std::string{kFencingSchemaKey}, txn);
+    if(stored_marker && *stored_marker != kFencingSchemaVersion) {
+        txn.rollback();
+        throw std::runtime_error("unsupported resource import fencing schema marker");
+    }
+    std::vector<std::pair<std::string, std::string>> existing_intents;
+    std::vector<std::pair<std::string, std::string>> existing_tokens;
+    intents.load(existing_intents, txn);
+    tokens.load(existing_tokens, txn);
+    for(const auto& item : existing_intents) {
+        // Parsing is intentional: only legacy v3/v4 intent envelopes are
+        // eligible for this narrow administrative migration.
+        static_cast<void>(deserialize_intent(item.second));
+        const auto expected = fencing_token(item.second);
+        const auto existing = tokens.find(item.first, txn);
+        if(existing && *existing != expected) {
+            txn.rollback();
+            throw std::runtime_error(
+                "resource import fencing token is missing or does not match intent"
+            );
+        }
+        if(!existing) tokens.insert_or_assign(item.first, expected, txn);
+    }
+    for(const auto& item : existing_tokens) {
+        if(!intents.find(item.first, txn)) {
+            txn.rollback();
+            throw std::runtime_error("resource import fencing token is orphaned");
+        }
+    }
+    if(!stored_marker) {
+        marker.insert_or_assign(
+            std::string{kFencingSchemaKey},
+            std::string{kFencingSchemaVersion},
+            txn
+        );
+    }
+    txn.commit();
+}
 
 MdbxResourceImporter::MdbxResourceImporter(MdbxResourceImporterOptions options)
     : m_impl(std::make_unique<Impl>(std::move(options))) {}

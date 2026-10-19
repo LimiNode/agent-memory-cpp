@@ -48,7 +48,10 @@ atomic release, stale takeover fencing, and idempotent raw recovery. Additional
 schema-negative cases reject missing or mismatched tokens, orphan tokens, and
 unsupported schema markers. Legacy v3/v4 pending intents are held for the
 quiesced/offline token upgrade instead of being auto-recovered by a mixed
-binary deployment.
+binary deployment. The explicit
+`MdbxResourceImporter::migrate_legacy_fencing_state()` helper performs that
+upgrade atomically and is covered by reopen/recovery regression fixtures; safe
+rolling operation with an old writer remains unsupported.
 
 The raw KnowledgeUnit `create_or_get_unit()` API is unchanged for ordinary
 callers; the importer uses a separate guarded entry point that checks the token

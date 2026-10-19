@@ -1,4 +1,7 @@
 #include <agent_memory/infrastructure/mdbx/MdbxResourceImporter.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxCanonicalContentStore.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxDurableLexicalDocumentMemory.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
@@ -80,6 +83,34 @@ std::string legacy_v3_intent(
 ) {
     std::string payload;
     append_framed(payload, "agent_memory.resource_import_intent.v3");
+    append_framed(payload, owner);
+    append_framed(payload, std::to_string(epoch));
+    append_framed(payload, std::to_string(lease_deadline));
+    append_framed(payload, scope);
+    append_framed(payload, resource);
+    append_framed(payload, uri);
+    append_framed(payload, body);
+    append_framed(payload, "original");
+    append_framed(payload, "");
+    append_framed(payload, "");
+    append_framed(payload, "");
+    append_framed(payload, "1");
+    return payload;
+}
+
+std::string legacy_v4_intent(
+    std::string_view profile,
+    std::string_view owner,
+    std::string_view scope,
+    std::string_view resource,
+    std::string_view uri,
+    std::string_view body,
+    std::uint64_t epoch,
+    std::uint64_t lease_deadline
+) {
+    std::string payload;
+    append_framed(payload, "agent_memory.resource_import_intent.v4");
+    append_framed(payload, profile);
     append_framed(payload, owner);
     append_framed(payload, std::to_string(epoch));
     append_framed(payload, std::to_string(lease_deadline));
@@ -595,6 +626,248 @@ void run_fencing_schema_negative_checks() {
     }
 }
 
+void run_offline_fencing_migration_checks() {
+    using namespace agent_memory;
+    struct Case final {
+        const char* suffix;
+        std::string payload;
+        ResourceImportPublicationProfile profile;
+        const char* resource_id;
+    };
+    const std::vector<Case> cases{
+        {
+            "offline_migrate_v3",
+            legacy_v3_intent(
+                "legacy-owner", "tenant-a", "resource:offline-v3",
+                "https://example.test/offline-v3", "legacy v3 body", 1, 1
+            ),
+            ResourceImportPublicationProfile::LexicalOnly,
+            "resource:offline-v3"
+        },
+        {
+            "offline_migrate_v4",
+            legacy_v4_intent(
+                "lexical_with_raw_chunks", "legacy-owner", "tenant-a",
+                "resource:offline-v4", "https://example.test/offline-v4",
+                "legacy v4 body", 3, 1
+            ),
+            ResourceImportPublicationProfile::LexicalWithRawChunks,
+            "resource:offline-v4"
+        }
+    };
+    for(const auto& item : cases) {
+        const auto path = test_path(item.suffix);
+        std::error_code error;
+        std::filesystem::remove(path, error);
+        auto context = MdbxStorageContext::open(path.string());
+        {
+            mdbxc::KeyValueTable<std::string, std::string> intents(
+                context->connection(), "agent_memory_resource_import_intents"
+            );
+            intents.insert_or_assign(item.resource_id, item.payload);
+            mdbxc::KeyValueTable<std::string, std::string> bindings(
+                context->connection(), "agent_memory_resource_import_bindings"
+            );
+            bindings.insert_or_assign(item.resource_id, "tenant-a");
+            mdbxc::KeyValueTable<std::string, std::string> epochs(
+                context->connection(), "agent_memory_resource_import_epochs"
+            );
+            epochs.insert_or_assign(
+                item.resource_id,
+                std::string_view{item.suffix} == "offline_migrate_v4" ? "3" : "1"
+            );
+        }
+
+        MdbxResourceImporter::migrate_legacy_fencing_state(context);
+        {
+            mdbxc::KeyValueTable<std::string, std::string> marker(
+                context->connection(), "agent_memory_resource_import_fencing_schema"
+            );
+            mdbxc::KeyValueTable<std::string, std::string> tokens(
+                context->connection(), "agent_memory_resource_import_fencing_tokens"
+            );
+            const auto marker_value = marker.find("schema");
+            const auto token_value = tokens.find(item.resource_id);
+            expect(marker_value && *marker_value == "agent_memory.resource_import_fencing.v1",
+                   "offline fencing migration did not install schema marker");
+            expect(token_value && !token_value->empty(),
+                   "offline fencing migration did not create token");
+        }
+
+        MdbxResourceImporterOptions options;
+        options.context = context;
+        options.publication_profile = item.profile;
+        options.max_raw_body_bytes = 1024;
+        options.max_raw_chunks = 4;
+        {
+            MdbxResourceImporter importer{std::move(options)};
+            const auto manifest = importer.find_manifest(ResourceId{item.resource_id});
+            expect(manifest.has_value(), "offline migration recovery did not publish manifest");
+        }
+        if(item.profile == ResourceImportPublicationProfile::LexicalWithRawChunks) {
+            MdbxKnowledgeUnitStoreOptions store_options;
+            store_options.context = context;
+            MdbxKnowledgeUnitStore store{std::move(store_options)};
+            expect(store.scan_by_scope(ScopeId{"tenant-a"}).size() == 1,
+                   "offline migration created duplicate raw units");
+        }
+        context.reset();
+        context = MdbxStorageContext::open(path.string());
+        MdbxResourceImporterOptions reopened_options;
+        reopened_options.context = context;
+        reopened_options.publication_profile = item.profile;
+        reopened_options.max_raw_body_bytes = 1024;
+        reopened_options.max_raw_chunks = 4;
+        {
+            MdbxResourceImporter reopened{std::move(reopened_options)};
+            expect(
+                reopened.find_manifest(ResourceId{item.resource_id}).has_value(),
+                "offline migration manifest disappeared after reopen"
+            );
+        }
+        if(item.profile == ResourceImportPublicationProfile::LexicalWithRawChunks) {
+            MdbxKnowledgeUnitStoreOptions store_options;
+            store_options.context = context;
+            MdbxKnowledgeUnitStore store{std::move(store_options)};
+            expect(store.scan_by_scope(ScopeId{"tenant-a"}).size() == 1,
+                   "offline migration reopen duplicated raw units");
+        }
+        context.reset();
+        expect(std::filesystem::remove(path, error) || !std::filesystem::exists(path),
+               "offline fencing migration database could not be removed");
+    }
+}
+
+void run_inner_guard_negative_checks() {
+    using namespace agent_memory;
+    const auto path = test_path("inner_guards");
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    auto context = MdbxStorageContext::open(path.string());
+    {
+        mdbxc::KeyValueTable<std::string, std::string> intents(
+            context->connection(), "agent_memory_resource_import_intents"
+        );
+        mdbxc::KeyValueTable<std::string, std::string> tokens(
+            context->connection(), "agent_memory_resource_import_fencing_tokens"
+        );
+        intents.insert_or_assign("resource:inner", "current-intent");
+        tokens.insert_or_assign("resource:inner", "current-token");
+    }
+
+    {
+    bool canonical_rejected = false;
+    MdbxCanonicalContentStoreOptions canonical_options;
+    canonical_options.context = context;
+    canonical_options.publication_guard_table_name =
+        "agent_memory_resource_import_intents";
+    canonical_options.publication_token_guard_table_name =
+        "agent_memory_resource_import_fencing_tokens";
+    MdbxCanonicalContentStore canonical{std::move(canonical_options)};
+    CanonicalDocumentRevision initial;
+    initial.document_id = DocumentId{"inner-canonical"};
+    initial.revision = 0;
+    initial.blocks.push_back(ContentBlock{
+        ContentBlockId{"block"}, 1, ContentBlockKind::Paragraph, std::nullopt, "text"
+    });
+    try {
+        canonical.create_document_guarded(
+            initial,
+            MdbxCanonicalPublicationGuard{
+                "agent_memory_resource_import_intents", "resource:inner", "",
+                "agent_memory_resource_import_fencing_tokens", "stale-token"
+            }
+        );
+    } catch(const std::runtime_error&) { canonical_rejected = true; }
+    expect(canonical_rejected, "canonical inner guard accepted stale token");
+    expect(!canonical.read_current(DocumentId{"inner-canonical"}).has_value(),
+           "canonical stale guard changed the head");
+
+    bool lexical_rejected = false;
+    MdbxDurableLexicalDocumentMemoryOptions lexical_options;
+    lexical_options.context = context;
+    MdbxDurableLexicalDocumentMemory lexical{std::move(lexical_options)};
+    try {
+        static_cast<void>(lexical.upsert_text_guarded(
+            ScopeId{"tenant-a"}, ResourceId{"resource:inner"},
+            "https://example.test/inner", "guarded text",
+            DurableLexicalPublicationGuard{
+                "agent_memory_resource_import_intents", "resource:inner", "",
+                "agent_memory_resource_import_fencing_tokens", "stale-token"
+            }
+        ));
+    } catch(const std::runtime_error&) { lexical_rejected = true; }
+    expect(lexical_rejected, "lexical inner guard accepted stale token");
+    expect(lexical.search(ScopeId{"tenant-a"}, "guarded", 5).empty(),
+           "lexical stale guard published a revision");
+
+    bool raw_rejected = false;
+    MdbxKnowledgeUnitStoreOptions raw_options;
+    raw_options.context = context;
+    raw_options.publication_token_guard_table_name =
+        "agent_memory_resource_import_fencing_tokens";
+    MdbxKnowledgeUnitStore raw{std::move(raw_options)};
+    KnowledgeUnitCreateRequest request;
+    request.kind = KnowledgeUnitKind::Chunk;
+    request.scope_id = ScopeId{"tenant-a"};
+    request.primary_text = "guarded unit";
+    request.display_text = request.primary_text;
+    SourceRefSummary source;
+    source.resource_id = ResourceId{"resource:inner"};
+    source.resource_revision = ResourceRevisionRef{
+        ResourceId{"resource:inner"}, 1, ResourceBodyDigest{}
+    };
+    source.uri = "https://example.test/inner";
+    source.excerpt = TextRange{0, 7};
+    source.preview = request.primary_text;
+    source.quote_hash = compute_quote_hash(source.preview);
+    request.sources.push_back(std::move(source));
+    request.content_hash_recipe_version = 2;
+    try {
+        static_cast<void>(raw.create_or_get_unit_guarded(
+            request,
+            MdbxKnowledgeUnitPublicationGuard{
+                "agent_memory_resource_import_fencing_tokens", "resource:inner",
+                "stale-token"
+            }
+        ));
+    } catch(const std::runtime_error&) { raw_rejected = true; }
+    expect(raw_rejected, "raw inner guard accepted stale token");
+    expect(raw.scan_by_scope(ScopeId{"tenant-a"}).empty(),
+           "raw stale guard inserted a knowledge unit");
+
+    bool manifest_rejected = false;
+    MdbxResourceManifestStorageOptions manifest_options;
+    manifest_options.context = context;
+    manifest_options.publication_guard_table_name =
+        "agent_memory_resource_import_intents";
+    manifest_options.publication_token_guard_table_name =
+        "agent_memory_resource_import_fencing_tokens";
+    MdbxResourceManifestStorage manifests{std::move(manifest_options)};
+    ResourceManifest manifest;
+    manifest.revision.resource_id = ResourceId{"resource:inner"};
+    manifest.revision.generation = 1;
+    manifest.revision.body_digest = ResourceBodyDigest{};
+    manifest.payload_version = ResourceManifestPayloadVersion::V6;
+    try {
+        manifests.upsert_manifest_if_unchanged_guarded(
+            manifest, std::nullopt,
+            MdbxManifestPublicationGuard{
+                "agent_memory_resource_import_intents", "resource:inner", "",
+                "agent_memory_resource_import_fencing_tokens", "stale-token"
+            }
+        );
+    } catch(const std::runtime_error&) { manifest_rejected = true; }
+    expect(manifest_rejected, "manifest inner guard accepted stale token");
+    expect(!manifests.find_manifest(ResourceId{"resource:inner"}).has_value(),
+           "manifest stale guard published a manifest");
+    }
+
+    context.reset();
+    expect(std::filesystem::remove(path, error) || !std::filesystem::exists(path),
+           "inner guard test database could not be removed");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -624,6 +897,8 @@ int main(int argc, char** argv) {
     }
     run_diagnostics_negative_checks();
     run_fencing_schema_negative_checks();
+    run_offline_fencing_migration_checks();
+    run_inner_guard_negative_checks();
     using namespace agent_memory;
     const auto path = test_path("contract");
     std::error_code error;
