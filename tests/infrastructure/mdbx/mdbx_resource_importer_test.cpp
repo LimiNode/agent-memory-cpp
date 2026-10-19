@@ -778,7 +778,11 @@ void run_inner_guard_negative_checks() {
                 "agent_memory_resource_import_fencing_tokens", "stale-token"
             }
         );
-    } catch(const std::runtime_error&) { canonical_rejected = true; }
+    } catch(const std::runtime_error& error_value) {
+        canonical_rejected =
+            std::string_view{error_value.what()}.find("token changed") !=
+            std::string_view::npos;
+    }
     expect(canonical_rejected, "canonical inner guard accepted stale token");
     expect(!canonical.read_current(DocumentId{"inner-canonical"}).has_value(),
            "canonical stale guard changed the head");
@@ -796,7 +800,11 @@ void run_inner_guard_negative_checks() {
                 "agent_memory_resource_import_fencing_tokens", "stale-token"
             }
         ));
-    } catch(const std::runtime_error&) { lexical_rejected = true; }
+    } catch(const std::runtime_error& error_value) {
+        lexical_rejected =
+            std::string_view{error_value.what()}.find("fence rejected") !=
+            std::string_view::npos;
+    }
     expect(lexical_rejected, "lexical inner guard accepted stale token");
     expect(lexical.search(ScopeId{"tenant-a"}, "guarded", 5).empty(),
            "lexical stale guard published a revision");
@@ -831,7 +839,11 @@ void run_inner_guard_negative_checks() {
                 "stale-token"
             }
         ));
-    } catch(const std::runtime_error&) { raw_rejected = true; }
+    } catch(const std::runtime_error& error_value) {
+        raw_rejected =
+            std::string_view{error_value.what()}.find("knowledge-unit publication fence rejected") !=
+            std::string_view::npos;
+    }
     expect(raw_rejected, "raw inner guard accepted stale token");
     expect(raw.scan_by_scope(ScopeId{"tenant-a"}).empty(),
            "raw stale guard inserted a knowledge unit");
@@ -857,7 +869,11 @@ void run_inner_guard_negative_checks() {
                 "agent_memory_resource_import_fencing_tokens", "stale-token"
             }
         );
-    } catch(const std::runtime_error&) { manifest_rejected = true; }
+    } catch(const std::runtime_error& error_value) {
+        manifest_rejected =
+            std::string_view{error_value.what()}.find("fence rejected the token") !=
+            std::string_view::npos;
+    }
     expect(manifest_rejected, "manifest inner guard accepted stale token");
     expect(!manifests.find_manifest(ResourceId{"resource:inner"}).has_value(),
            "manifest stale guard published a manifest");

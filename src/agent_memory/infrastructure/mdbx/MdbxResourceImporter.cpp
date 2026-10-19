@@ -14,6 +14,7 @@
 #include <mutex>
 #include <random>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -320,15 +321,13 @@ void preflight_fencing_schema(
                 );
             }
         }
+        std::unordered_set<std::string> intent_keys;
+        intent_keys.reserve(existing_intents.size());
+        for(const auto& intent : existing_intents) {
+            intent_keys.insert(intent.first);
+        }
         for(const auto& item : existing_tokens) {
-            bool found = false;
-            for(const auto& intent : existing_intents) {
-                if(intent.first == item.first) {
-                    found = true;
-                    break;
-                }
-            }
-            if(!found) {
+            if(intent_keys.find(item.first) == intent_keys.end()) {
                 throw std::runtime_error("resource import fencing token is orphaned");
             }
         }
