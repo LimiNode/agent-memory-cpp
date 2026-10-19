@@ -708,33 +708,43 @@ namespace agent_memory {
             KnowledgeUnitCreateRequest request,
             const std::optional<MdbxKnowledgeUnitPublicationGuard>& guard = std::nullopt
         ) {
+            auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            validate_publication_guard(guard, txn);
+            auto envelope = create_or_get_unit_in_transaction(std::move(request), txn);
+            txn.commit();
+            return envelope;
+        }
+
+        std::vector<KnowledgeUnitEnvelope> create_or_get_units(
+            std::vector<KnowledgeUnitCreateRequest> requests,
+            const std::optional<MdbxKnowledgeUnitPublicationGuard>& guard = std::nullopt
+        ) {
+            if(requests.empty()) {
+                throw std::invalid_argument("Knowledge-unit batch must not be empty");
+            }
+            if(requests.size() > kMdbxKnowledgeUnitMaxBatchSize) {
+                throw std::invalid_argument("Knowledge-unit batch exceeds the M0 limit");
+            }
+            auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            validate_publication_guard(guard, txn);
+            std::vector<KnowledgeUnitEnvelope> envelopes;
+            envelopes.reserve(requests.size());
+            for(auto& request : requests) {
+                envelopes.push_back(create_or_get_unit_in_transaction(
+                    std::move(request), txn
+                ));
+            }
+            txn.commit();
+            return envelopes;
+        }
+
+        KnowledgeUnitEnvelope create_or_get_unit_in_transaction(
+            KnowledgeUnitCreateRequest request,
+            const mdbxc::Transaction& txn
+        ) {
             const auto content_hash = validate_create_request(request);
             const KnowledgeUnitKey key{request.kind, request.scope_id, content_hash};
             const auto key_payload = content_key(key);
-            auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
-            if(guard) {
-                if(guard->table_name.empty() || guard->key.empty() ||
-                   guard->expected_token.empty()) {
-                    txn.rollback();
-                    throw std::invalid_argument(
-                        "knowledge-unit publication guard is incomplete"
-                    );
-                }
-                if(!m_publication_token_guard_table ||
-                   guard->table_name != m_publication_token_guard_table_name) {
-                    txn.rollback();
-                    throw std::invalid_argument(
-                        "knowledge-unit publication token table is not configured"
-                    );
-                }
-                const auto token = m_publication_token_guard_table->find(guard->key, txn);
-                if(!token || *token != guard->expected_token) {
-                    txn.rollback();
-                    throw std::runtime_error(
-                        "knowledge-unit publication fence rejected"
-                    );
-                }
-            }
             if(const auto existing_id_payload = m_content_keys.find(key_payload, txn)) {
                 const auto existing_id = parse_id(*existing_id_payload);
                 const auto existing_payload = m_units.find(id_key(existing_id), txn);
@@ -749,7 +759,6 @@ namespace agent_memory {
                         "Persisted M0 Chunk has unsupported multi-source identity"
                     );
                 }
-                txn.commit();
                 return existing;
             }
 
@@ -776,8 +785,32 @@ namespace agent_memory {
             m_content_keys.insert_or_assign(key_payload, id_key(id), txn);
 
             append_index_entries(envelope, id, txn);
-            txn.commit();
             return envelope;
+        }
+
+        void validate_publication_guard(
+            const std::optional<MdbxKnowledgeUnitPublicationGuard>& guard,
+            const mdbxc::Transaction& txn
+        ) const {
+            if(!guard) return;
+            if(guard->table_name.empty() || guard->key.empty() ||
+               guard->expected_token.empty()) {
+                throw std::invalid_argument(
+                    "knowledge-unit publication guard is incomplete"
+                );
+            }
+            if(!m_publication_token_guard_table ||
+               guard->table_name != m_publication_token_guard_table_name) {
+                throw std::invalid_argument(
+                    "knowledge-unit publication token table is not configured"
+                );
+            }
+            const auto token = m_publication_token_guard_table->find(guard->key, txn);
+            if(!token || *token != guard->expected_token) {
+                throw std::runtime_error(
+                    "knowledge-unit publication fence rejected"
+                );
+            }
         }
 
         std::optional<KnowledgeUnitEnvelope> find(const KnowledgeUnitId& id) const {
@@ -1117,6 +1150,20 @@ namespace agent_memory {
         MdbxKnowledgeUnitPublicationGuard guard
     ) {
         return m_impl->create_or_get_unit(std::move(request), guard);
+    }
+
+    std::vector<KnowledgeUnitEnvelope> MdbxKnowledgeUnitStore::create_or_get_units(
+        std::vector<KnowledgeUnitCreateRequest> requests
+    ) {
+        return m_impl->create_or_get_units(std::move(requests));
+    }
+
+    std::vector<KnowledgeUnitEnvelope>
+    MdbxKnowledgeUnitStore::create_or_get_units_guarded(
+        std::vector<KnowledgeUnitCreateRequest> requests,
+        MdbxKnowledgeUnitPublicationGuard guard
+    ) {
+        return m_impl->create_or_get_units(std::move(requests), guard);
     }
 
     std::optional<KnowledgeUnitEnvelope> MdbxKnowledgeUnitStore::find(

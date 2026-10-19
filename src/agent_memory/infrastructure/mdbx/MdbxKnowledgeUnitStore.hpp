@@ -7,15 +7,20 @@
 
 #include <agent_memory/storage/IKnowledgeUnitStore.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #if AGENT_MEMORY_HAS_MDBX
 
 #include "MdbxStorageContext.hpp"
 
 namespace agent_memory {
+
+    /// Maximum number of knowledge-unit requests in one durable batch.
+    inline constexpr std::size_t kMdbxKnowledgeUnitMaxBatchSize = 128;
 
     /// \brief Configuration for the durable M0 knowledge-unit store.
     struct MdbxKnowledgeUnitStoreOptions final {
@@ -66,6 +71,24 @@ namespace agent_memory {
 
         [[nodiscard]] KnowledgeUnitEnvelope create_or_get_unit_guarded(
             KnowledgeUnitCreateRequest request,
+            MdbxKnowledgeUnitPublicationGuard guard
+        );
+
+        /// Creates or replays a bounded batch in one writable MDBX transaction.
+        ///
+        /// The batch is atomic: validation, content-key deduplication, id
+        /// allocation, envelope writes, and by-kind index updates all commit
+        /// together or none of them become visible. Empty and oversized
+        /// batches are rejected.
+        [[nodiscard]] std::vector<KnowledgeUnitEnvelope> create_or_get_units(
+            std::vector<KnowledgeUnitCreateRequest> requests
+        );
+
+        /// Creates or replays a bounded batch while checking one durable token
+        /// in the same writable transaction as every envelope and index write.
+        /// A stale token rejects the whole batch without partial publication.
+        [[nodiscard]] std::vector<KnowledgeUnitEnvelope> create_or_get_units_guarded(
+            std::vector<KnowledgeUnitCreateRequest> requests,
             MdbxKnowledgeUnitPublicationGuard guard
         );
 
