@@ -341,3 +341,25 @@ Limitations: the fixture is intentionally tiny, uses one frozen tokenizer
 profile, has no stale-posting or update replay, and contains no learned-sparse
 artifact. Model inference, compressed postings, WAND/BMW, and MDBX remain
 unmeasured.
+
+## PR3 C++ parity (2026-10-20)
+
+PR3 is an opt-in research test on top of the published PR2 runner. The C++
+exporter exercises independent golden cases for empty input, CamelCase,
+snake_case, C++ identifiers, Windows/POSIX paths, CLI flags, Unicode, ASCII
+lowercasing, repeated terms, symbols, byte ranges, and token positions. The
+golden file is hand-authored and is not generated from the current tokenizer.
+
+The Python comparator emits three separate gates:
+
+| Gate | Evidence | Interpretation |
+| --- | --- | --- |
+| `cpp_tokenizer_contract` | C++ text/kind/range/position vs golden data | must pass before scorer work is trusted |
+| `python_scorer_parity` | exported C++ token streams and `ExactLexicalIndex` results vs Python BM25, including filters | float tolerance is `2e-6`; no production API change |
+| `lifecycle_parity` | in-memory `ExactLexicalIndex` update/erase fixture | diagnostic only; MDBX publication is not delegated to the index |
+| `native_tokenizer_delta` | diagnostic comparison with the portable Python tokenizer | expected differences are recorded, not hidden |
+
+The receipt status is `SEPARATE_GATES`; it is deliberately not an unconditional
+`PARITY_PASS`. The exporter and comparator do not become lifecycle authority.
+MDBX publication remains governed by active manifest bindings and the existing
+importer/recovery/stale-writer tests; raw `scan_*` access remains diagnostic.

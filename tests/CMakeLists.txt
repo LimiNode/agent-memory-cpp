@@ -457,6 +457,31 @@ target_link_libraries(agent_memory_standard_tokenizer_test
 
 add_test(NAME agent_memory_standard_tokenizer_test COMMAND agent_memory_standard_tokenizer_test)
 
+add_executable(agent_memory_lexical_parity_export
+    ../tools/lexical-research/cpp_lexical_parity_export.cpp
+)
+
+target_link_libraries(agent_memory_lexical_parity_export
+    PRIVATE
+        agent_memory::agent_memory
+)
+
+add_test(
+    NAME agent_memory_lexical_parity_export_smoke
+    COMMAND agent_memory_lexical_parity_export
+)
+
+if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
+    add_test(
+        NAME agent_memory_cpp_lexical_parity_self_test
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/../tools/lexical-research/run_cpp_lexical_parity.py
+                --cpp-exporter $<TARGET_FILE:agent_memory_lexical_parity_export>
+                --golden ${CMAKE_CURRENT_SOURCE_DIR}/../tools/lexical-research/fixtures/cpp_tokenizer_golden.json
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+    )
+endif()
+
 add_executable(agent_memory_lexical_value_types_test
     lexical/lexical_value_types_test.cpp
 )
