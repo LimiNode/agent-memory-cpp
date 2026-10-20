@@ -248,9 +248,199 @@ namespace {
         return key;
     }
 
+void run_bounded_batch_checks() {
+     using namespace agent_memory;
+     const auto path = test_path();
+     std::error_code error;
+     std::filesystem::remove(path, error);
+
+     {
+     MdbxKnowledgeUnitStore store({path.string(), "agent_memory_batch", false});
+     bool rejected_empty = false;
+     try { (void)store.create_or_get_units({}); }
+     catch(const std::invalid_argument&) { rejected_empty = true; }
+     expect(rejected_empty, "empty knowledge-unit batch was accepted");
+     std::vector<KnowledgeUnitCreateRequest> initial;
+     initial.push_back(make_request("tenant-batch", 0x41, "batch-1"));
+     initial.push_back(make_request("tenant-batch", 0x42, "batch-2"));
+     initial.push_back(make_request("tenant-batch", 0x43, "batch-3"));
+     const auto first_batch = store.create_or_get_units(std::move(initial));
+     expect(first_batch.size() == 3, "batch must return one envelope per request");
+     expect(first_batch[0].id.value() == 1 && first_batch[1].id.value() == 2 &&
+                first_batch[2].id.value() == 3,
+            "batch allocator must assign monotonic ids");
+     expect(store.scan_by_scope_and_kind(
+                ScopeId{"tenant-batch"}, KnowledgeUnitKind::Chunk
+            ).size() == 3,
+            "batch must publish every index entry");
+
+     std::vector<KnowledgeUnitCreateRequest> deduplicated;
+     deduplicated.push_back(make_request("tenant-batch", 0x42, "ignored"));
+     deduplicated.push_back(make_request("tenant-batch", 0x44, "batch-4"));
+     const auto replay_batch = store.create_or_get_units(std::move(deduplicated));
+     expect(replay_batch.size() == 2 && replay_batch[0].id.value() == 2 &&
+                replay_batch[0].display_text == "batch-2" &&
+                replay_batch[1].id.value() == 4,
+            "batch must preserve content-key deduplication and order");
+
+     std::vector<KnowledgeUnitCreateRequest> invalid_batch;
+     invalid_batch.push_back(make_request("tenant-batch", 0x45, "must rollback"));
+     auto invalid_request = make_request("tenant-batch", 0x46, "invalid");
+     invalid_request.sources.clear();
+     invalid_batch.push_back(std::move(invalid_request));
+     bool rejected_invalid_batch = false;
+     try { (void)store.create_or_get_units(std::move(invalid_batch)); }
+     catch(const std::invalid_argument&) { rejected_invalid_batch = true; }
+     expect(rejected_invalid_batch, "invalid batch request was accepted");
+     expect(!store.find_by_content_key(KnowledgeUnitKey{
+                KnowledgeUnitKind::Chunk, ScopeId{"tenant-batch"},
+                make_request("tenant-batch", 0x45, "must rollback").content_hash.value()
+            }),
+            "failed batch left a partial content-key mapping");
+     const auto after_rollback = store.create_or_get_unit(
+         make_request("tenant-batch", 0x47, "after rollback")
+     );
+     expect(after_rollback.id.value() == 5,
+            "failed batch advanced the monotonic allocator");
+
+     std::vector<KnowledgeUnitCreateRequest> intra_batch_duplicates;
+     intra_batch_duplicates.push_back(make_request("tenant-batch", 0x48, "first"));
+     intra_batch_duplicates.push_back(make_request("tenant-batch", 0x48, "ignored"));
+     const auto intra_batch_result = store.create_or_get_units(
+         std::move(intra_batch_duplicates)
+     );
+     expect(intra_batch_result.size() == 2 &&
+                intra_batch_result[0].id == intra_batch_result[1].id &&
+                intra_batch_result[0].display_text == "first",
+            "identical content keys in one batch must deduplicate");
+     expect(store.scan_by_scope_and_kind(
+                ScopeId{"tenant-batch"}, KnowledgeUnitKind::Chunk
+            ).size() == 6,
+            "intra-batch deduplication must leave one index entry");
+
+     std::vector<KnowledgeUnitCreateRequest> bounded;
+     bounded.reserve(kMdbxKnowledgeUnitMaxBatchSize);
+     for(std::size_t index = 0; index < kMdbxKnowledgeUnitMaxBatchSize; ++index) {
+         bounded.push_back(make_request(
+             "tenant-batch-same-scope",
+             static_cast<std::uint8_t>(index),
+             "bounded-" + std::to_string(index)
+         ));
+     }
+     const auto bounded_result = store.create_or_get_units(std::move(bounded));
+     expect(bounded_result.size() == kMdbxKnowledgeUnitMaxBatchSize,
+            "maximum bounded batch size was not accepted");
+     expect(store.scan_by_scope_and_kind(
+                ScopeId{"tenant-batch-same-scope"}, KnowledgeUnitKind::Chunk
+            ).size() == kMdbxKnowledgeUnitMaxBatchSize,
+            "maximum batch must preserve one scope's by-kind order");
+     auto oversized = make_request("tenant-oversized-0", 0xa0, "oversized");
+     std::vector<KnowledgeUnitCreateRequest> oversized_batch;
+     oversized_batch.resize(kMdbxKnowledgeUnitMaxBatchSize + 1, oversized);
+     bool rejected_oversized = false;
+     try { (void)store.create_or_get_units(std::move(oversized_batch)); }
+     catch(const std::invalid_argument&) { rejected_oversized = true; }
+     expect(rejected_oversized, "oversized knowledge-unit batch was accepted");
+     }
+
+     const auto guarded_path = test_path();
+     std::filesystem::remove(guarded_path, error);
+     auto context = MdbxStorageContext::open(guarded_path.string());
+     {
+         mdbxc::KeyValueTable<std::string, std::string> tokens(
+             context->connection(), "agent_memory_resource_import_fencing_tokens"
+         );
+         tokens.insert_or_assign("resource:batch", "token-v1");
+     }
+     {
+     MdbxKnowledgeUnitStoreOptions guarded_options;
+     guarded_options.context = context;
+     guarded_options.table_prefix = "agent_memory_batch_guarded";
+     guarded_options.publication_token_guard_table_name =
+         "agent_memory_resource_import_fencing_tokens";
+     MdbxKnowledgeUnitStore guarded_store{std::move(guarded_options)};
+     std::vector<KnowledgeUnitCreateRequest> guarded_requests;
+     guarded_requests.push_back(make_request_for_source(
+         "tenant-guarded", ResourceId{"resource:batch"}, 1, 0xb1, "guarded-1"
+     ));
+     guarded_requests.push_back(make_request_for_source(
+         "tenant-guarded", ResourceId{"resource:batch"}, 2, 0xb2, "guarded-2"
+     ));
+     const auto guarded_result = guarded_store.create_or_get_units_guarded(
+         std::move(guarded_requests),
+         MdbxKnowledgeUnitPublicationGuard{
+             "agent_memory_resource_import_fencing_tokens", "resource:batch", "token-v1"
+         }
+     );
+     expect(guarded_result.size() == 2,
+            "guarded batch did not publish all envelopes");
+     {
+         mdbxc::KeyValueTable<std::string, std::string> tokens(
+             context->connection(), "agent_memory_resource_import_fencing_tokens"
+         );
+         auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+         tokens.insert_or_assign("resource:batch", "token-v2", txn);
+         txn.commit();
+     }
+     std::vector<KnowledgeUnitCreateRequest> stale_requests;
+     stale_requests.push_back(make_request_for_source(
+         "tenant-guarded", ResourceId{"resource:batch"}, 3, 0xb3, "stale-1"
+     ));
+     stale_requests.push_back(make_request_for_source(
+         "tenant-guarded", ResourceId{"resource:batch"}, 4, 0xb4, "stale-2"
+     ));
+     bool rejected_stale = false;
+     try {
+         (void)guarded_store.create_or_get_units_guarded(
+             std::move(stale_requests),
+             MdbxKnowledgeUnitPublicationGuard{
+                 "agent_memory_resource_import_fencing_tokens", "resource:batch", "token-v1"
+             }
+         );
+     } catch(const std::runtime_error& error_value) {
+         rejected_stale = std::string_view{error_value.what()}.find(
+             "knowledge-unit publication fence rejected"
+         ) != std::string_view::npos;
+     }
+     expect(rejected_stale, "guarded batch accepted a stale durable token");
+     expect(guarded_store.scan_by_scope(ScopeId{"tenant-guarded"}).size() == 2,
+            "stale guarded batch partially published envelopes");
+     std::vector<KnowledgeUnitCreateRequest> cross_resource_requests;
+     cross_resource_requests.push_back(make_request_for_source(
+         "tenant-guarded", ResourceId{"resource:batch"}, 5, 0xb5, "cross-a"
+     ));
+     cross_resource_requests.push_back(make_request_for_source(
+         "tenant-guarded", ResourceId{"resource:other"}, 1, 0xb6, "cross-b"
+     ));
+     bool rejected_cross_resource = false;
+     try {
+         (void)guarded_store.create_or_get_units_guarded(
+             std::move(cross_resource_requests),
+             MdbxKnowledgeUnitPublicationGuard{
+                 "agent_memory_resource_import_fencing_tokens", "resource:batch", "token-v2"
+             }
+         );
+     } catch(const std::invalid_argument& error_value) {
+         rejected_cross_resource = std::string_view{error_value.what()}.find(
+             "does not match the source resource"
+         ) != std::string_view::npos;
+     }
+     expect(rejected_cross_resource,
+            "guarded batch accepted a request for a different resource");
+     expect(guarded_store.scan_by_scope(ScopeId{"tenant-guarded"}).size() == 2,
+            "cross-resource guarded batch partially published envelopes");
+     }
+     context.reset();
+     expect(std::filesystem::remove(guarded_path, error) ||
+                !std::filesystem::exists(guarded_path),
+            "guarded batch test database could not be removed");
+     std::filesystem::remove(path, error);
+ }
+
 } // namespace
 
 int main() {
+     run_bounded_batch_checks();
     {
         const auto legacy_path = test_path();
         std::error_code legacy_error;
