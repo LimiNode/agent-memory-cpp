@@ -355,9 +355,9 @@ The Python comparator emits three separate gates:
 | Gate | Evidence | Interpretation |
 | --- | --- | --- |
 | `cpp_tokenizer_contract` | C++ text/kind/range/position vs golden data | must pass before scorer work is trusted |
-| `python_scorer_parity` | exported C++ token streams and `ExactLexicalIndex` results vs Python BM25, including filters | float tolerance is `2e-6`; no production API change |
-| `lifecycle_parity` | in-memory `ExactLexicalIndex` update/erase fixture | diagnostic only; MDBX publication is not delegated to the index |
-| `native_tokenizer_delta` | diagnostic comparison with the portable Python tokenizer | expected differences are recorded, not hidden |
+| `python_scorer_parity` | actual C++ document/query token streams and `ExactLexicalIndex` results vs Python BM25, including repeated terms, ties/near-ties, scores, and explicit multi-field filters | float tolerance is `2e-6`; no production API change |
+| `lifecycle_parity` | in-memory `ExactLexicalIndex` update/erase fixture, including post-update scores and post-erase visibility | diagnostic only; MDBX publication is not delegated to the index |
+| `native_tokenizer_delta` | diagnostic comparison with the portable Python tokenizer, including text/kind/range/position records on both sides | expected differences are recorded, not hidden; all declared negative cases are required |
 
 The receipt status is `SEPARATE_GATES`; it is deliberately not an unconditional
 `PARITY_PASS`. The exporter and comparator do not become lifecycle authority.

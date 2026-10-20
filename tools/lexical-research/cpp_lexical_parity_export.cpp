@@ -20,6 +20,22 @@ using agent_memory::StandardTokenizer;
 using agent_memory::Token;
 using agent_memory::TokenizeOptions;
 
+struct FixtureDocument final {
+    std::string chunk_id;
+    std::string resource_id;
+    std::string scope;
+    std::string language;
+    std::string text;
+    agent_memory::TokenizationResult tokenization;
+};
+
+struct FixtureQuery final {
+    std::string name;
+    std::string text;
+    std::vector<std::string> terms;
+    std::vector<agent_memory::MetadataFilter> metadata_filters;
+};
+
 std::string json_quote(const std::string_view value) {
     std::ostringstream output;
     output << '"';
@@ -64,19 +80,64 @@ void emit_tokens(std::ostream& output, const agent_memory::TokenizationResult& r
 }
 
 LexicalDocumentRecord make_record(
-    const std::string_view chunk_id,
-    const std::string_view resource_id,
-    const std::string_view scope,
+    const FixtureDocument& document,
     std::vector<Token> tokens
 ) {
     Metadata metadata;
-    metadata.set("scope", std::string{scope});
+    metadata.set("scope", document.scope);
+    metadata.set("lang", document.language);
     return LexicalDocumentRecord{
-        ChunkId{std::string{chunk_id}},
-        ResourceRevision{ResourceId{std::string{resource_id}}, 1, 1, 1},
+        ChunkId{document.chunk_id},
+        ResourceRevision{ResourceId{document.resource_id}, 1, 1, 1},
         std::move(tokens),
         std::move(metadata)
     };
+}
+
+FixtureDocument make_document(
+    const StandardTokenizer& tokenizer,
+    const std::string_view chunk_id,
+    const std::string_view resource_id,
+    const std::string_view scope,
+    const std::string_view language,
+    const std::string_view text
+) {
+    return FixtureDocument{
+        std::string{chunk_id},
+        std::string{resource_id},
+        std::string{scope},
+        std::string{language},
+        std::string{text},
+        tokenizer.tokenize(text)
+    };
+}
+
+FixtureQuery make_query(
+    const StandardTokenizer& tokenizer,
+    const std::string_view name,
+    const std::string_view text,
+    std::vector<agent_memory::MetadataFilter> metadata_filters = {}
+) {
+    const auto tokenization = tokenizer.tokenize(text);
+    std::vector<std::string> terms;
+    terms.reserve(tokenization.tokens.size());
+    for(const auto& token : tokenization.tokens) {
+        terms.push_back(token.text);
+    }
+    return FixtureQuery{
+        std::string{name},
+        std::string{text},
+        std::move(terms),
+        std::move(metadata_filters)
+    };
+}
+
+LexicalSearchQuery to_search_query(const FixtureQuery& fixture) {
+    LexicalSearchQuery query;
+    query.terms = fixture.terms;
+    query.limit = 10;
+    query.metadata_filters = fixture.metadata_filters;
+    return query;
 }
 
 void emit_results(std::ostream& output, const std::vector<agent_memory::LexicalSearchResult>& results) {
@@ -87,6 +148,52 @@ void emit_results(std::ostream& output, const std::vector<agent_memory::LexicalS
                << ",\"score\":" << std::setprecision(9) << results[index].score << '}';
     }
     output << ']';
+}
+
+void emit_filters(
+    std::ostream& output,
+    const std::vector<agent_memory::MetadataFilter>& filters
+) {
+    output << '[';
+    for(std::size_t index = 0; index < filters.size(); ++index) {
+        if(index != 0) output << ',';
+        output << "{\"key\":" << json_quote(filters[index].key)
+               << ",\"value\":" << json_quote(filters[index].value) << '}';
+    }
+    output << ']';
+}
+
+void emit_document(std::ostream& output, const FixtureDocument& document) {
+    output << "{\"chunk_id\":" << json_quote(document.chunk_id)
+           << ",\"resource_id\":" << json_quote(document.resource_id)
+           << ",\"scope\":" << json_quote(document.scope)
+           << ",\"lang\":" << json_quote(document.language)
+           << ",\"text\":" << json_quote(document.text)
+           << ",\"tokens\":";
+    emit_tokens(output, document.tokenization);
+    output << '}';
+}
+
+void emit_query(
+    std::ostream& output,
+    const FixtureQuery& query,
+    const std::vector<agent_memory::LexicalSearchResult>& results
+) {
+    output << "{\"name\":" << json_quote(query.name)
+           << ",\"text\":" << json_quote(query.text)
+           << ",\"query_tokens\":";
+    const StandardTokenizer tokenizer;
+    emit_tokens(output, tokenizer.tokenize(query.text));
+    output << ",\"terms\":[";
+    for(std::size_t index = 0; index < query.terms.size(); ++index) {
+        if(index != 0) output << ',';
+        output << json_quote(query.terms[index]);
+    }
+    output << "],\"metadata_filters\":";
+    emit_filters(output, query.metadata_filters);
+    output << ",\"results\":";
+    emit_results(output, results);
+    output << '}';
 }
 
 } // namespace
@@ -123,38 +230,61 @@ int main() {
     emit_tokens(std::cout, symbol_result);
     std::cout << "}],\"index\":{";
 
+    const std::vector<FixtureDocument> documents{
+        make_document(tokenizer, "chunk:a", "resource:alpha", "public", "en", "agent memory agent system"),
+        make_document(tokenizer, "chunk:b", "resource:alpha", "private", "en", "memory system"),
+        make_document(tokenizer, "chunk:c", "resource:beta", "public", "ru", "agent"),
+        make_document(tokenizer, "chunk:d", "resource:tie", "public", "en", "tie"),
+        make_document(tokenizer, "chunk:e", "resource:tie", "public", "en", "tie"),
+        make_document(tokenizer, "chunk:f", "resource:tie", "public", "fr", "tie tie")
+    };
+    const std::vector<FixtureQuery> queries{
+        make_query(tokenizer, "agent_memory", "agent memory"),
+        make_query(
+            tokenizer,
+            "system_public_en",
+            "system",
+            {agent_memory::MetadataFilter{"scope", "public"}, agent_memory::MetadataFilter{"lang", "en"}}
+        ),
+        make_query(tokenizer, "agent_repeated", "agent agent memory"),
+        make_query(tokenizer, "tie", "tie")
+    };
+
     ExactLexicalIndex index;
-    const auto d1 = tokenizer.tokenize("agent memory agent system");
-    const auto d2 = tokenizer.tokenize("memory system");
-    const auto d3 = tokenizer.tokenize("agent");
-    index.upsert(make_record("chunk:a", "resource:alpha", "public", d1.tokens));
-    index.upsert(make_record("chunk:b", "resource:alpha", "private", d2.tokens));
-    index.upsert(make_record("chunk:c", "resource:beta", "public", d3.tokens));
+    for(const auto& document : documents) {
+        index.upsert(make_record(document, document.tokenization.tokens));
+    }
 
-    LexicalSearchQuery query;
-    query.terms = {"agent", "memory"};
-    query.limit = 10;
-    const auto initial_results = index.search(query);
-    LexicalSearchQuery filtered;
-    filtered.terms = {"system"};
-    filtered.limit = 10;
-    filtered.metadata_filters = {agent_memory::MetadataFilter{"scope", "public"}};
-    const auto filtered_results = index.search(filtered);
+    std::vector<std::vector<agent_memory::LexicalSearchResult>> query_results;
+    query_results.reserve(queries.size());
+    for(const auto& fixture : queries) {
+        query_results.push_back(index.search(to_search_query(fixture)));
+    }
 
-    index.upsert(make_record("chunk:a", "resource:alpha", "public", tokenizer.tokenize("updated").tokens));
-    const auto after_update = index.search(query);
+    const auto lifecycle_query = to_search_query(queries.front());
+    index.upsert(make_record(
+        make_document(tokenizer, "chunk:a", "resource:alpha", "public", "en", "updated"),
+        tokenizer.tokenize("updated").tokens
+    ));
+    const auto after_update = index.search(lifecycle_query);
     const auto erased = index.erase(ChunkId{"chunk:b"});
+    const auto after_erase = index.search(lifecycle_query);
     const auto after_erase_size = index.size();
 
-    std::cout << "\"documents\":[{\"chunk_id\":\"chunk:a\",\"resource_id\":\"resource:alpha\",\"scope\":\"public\",\"tokens\":[\"agent\",\"memory\",\"agent\",\"system\"]},"
-                 "{\"chunk_id\":\"chunk:b\",\"resource_id\":\"resource:alpha\",\"scope\":\"private\",\"tokens\":[\"memory\",\"system\"]},"
-                 "{\"chunk_id\":\"chunk:c\",\"resource_id\":\"resource:beta\",\"scope\":\"public\",\"tokens\":[\"agent\"]}],";
-    std::cout << "\"queries\":[{\"name\":\"agent_memory\",\"terms\":[\"agent\",\"memory\"],\"results\":";
-    emit_results(std::cout, initial_results);
-    std::cout << "},{\"name\":\"system_public\",\"terms\":[\"system\"],\"results\":";
-    emit_results(std::cout, filtered_results);
-    std::cout << "}],\"lifecycle\":{\"after_update_results\":";
+    std::cout << "\"documents\":[";
+    for(std::size_t index_value = 0; index_value < documents.size(); ++index_value) {
+        if(index_value != 0) std::cout << ',';
+        emit_document(std::cout, documents[index_value]);
+    }
+    std::cout << "],\"queries\":[";
+    for(std::size_t index_value = 0; index_value < queries.size(); ++index_value) {
+        if(index_value != 0) std::cout << ',';
+        emit_query(std::cout, queries[index_value], query_results[index_value]);
+    }
+    std::cout << "],\"lifecycle\":{\"query_name\":\"agent_memory\",\"after_update_results\":";
     emit_results(std::cout, after_update);
+    std::cout << ",\"after_erase_results\":";
+    emit_results(std::cout, after_erase);
     std::cout << ",\"erase_chunk_b\":" << (erased ? "true" : "false")
               << ",\"size_after_erase\":" << after_erase_size << "}}}\n";
 }
