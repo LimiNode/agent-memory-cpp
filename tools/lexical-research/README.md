@@ -22,7 +22,14 @@ py -3 tools/lexical-research/run_lexical_protocol.py `
 
 The runner currently implements only the protocol BM25 control. Its tokenizer
 and scorer are a portable fixture implementation, not evidence that the Python
-path is byte-for-byte equivalent to `ExactLexicalIndex`. PR3 must add an
-explicit parity check against the C++ baseline before using it for algorithmic
-claims. Model inference, WAND/BMW traversal, compressed postings, and production
-MDBX are intentionally out of scope.
+path is byte-for-byte equivalent to `ExactLexicalIndex`. PR3 must add separate
+tokenizer, scorer, and lifecycle parity checks against the C++ baseline before
+using it for algorithmic claims. Model inference, WAND/BMW traversal,
+compressed postings, and production MDBX are intentionally out of scope.
+
+The `--limit` value is the candidate depth and defaults to 50 so that the
+reported `Recall@50` is not silently truncated. The receipt separates one-time
+index build from query preprocessing, scoring, and end-to-end query timing.
+With fewer than 20 query observations, p95/p99 are marked `directional` rather
+than treated as tail-latency evidence. Python timings must not be compared
+directly with production C++ latency.

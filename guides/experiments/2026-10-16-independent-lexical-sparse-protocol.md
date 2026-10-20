@@ -276,10 +276,11 @@ rather than production integration.
 - append measured results to this research line rather than replacing this
   protocol note.
 
-## PR2 runner smoke (2026-10-16)
+## PR2 runner smoke (2026-10-20, refreshed after M0 publication)
 
-Context: `research/lexical-alternatives-runner`, initially based on protocol
-commit `01f168e1`. This is a harness check, not an algorithm comparison.
+Context: `research/lexical-alternatives-runner`, rebased onto the merged M0
+publication baseline `1e221eedf41860c65685dbd3b184922ae68b1d3a`. This is a
+harness check, not an algorithm comparison.
 
 Command:
 
@@ -296,9 +297,14 @@ for the no-answer case.
 
 Actual result: `verified` at the runner commit recorded by the PR. The self-test passed with
 `Recall@1/5/10/50 = 1.0`, `nDCG@10 = 1.0`, `MRR = 1.0`, and no-answer accuracy
-`1.0`. A separate three-repeat receipt was written outside Git under
+`1.0`. The receipt now records a one-time index-build measurement separately
+from query preprocessing, scoring, and end-to-end timing. `--limit` is the
+candidate depth and defaults to `50`; a lower depth marks Recall@50 as
+truncated instead of presenting it as a complete measurement. A separate
+three-repeat receipt was written outside Git under
 `.artifacts/lexical-protocol-smoke.json`; its p50/p95/p99 values are local
-Python directional timings and are not performance evidence.
+Python directional timings (the smoke has fewer than 20 observations) and are
+not performance evidence.
 
 Interpretation: PR2 now provides a small, hash-bound corpus/qrels input and a
 portable BM25 control for subsequent scorer plugins. It does not establish
