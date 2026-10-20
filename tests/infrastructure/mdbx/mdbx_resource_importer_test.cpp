@@ -47,6 +47,18 @@ std::filesystem::path test_path(const char* suffix) {
         (std::string{"agent_memory_m0_importer_"} + suffix + ".mdbx");
 }
 
+void remove_database_or_fail(const std::filesystem::path& path) {
+    std::error_code error;
+    const bool existed = std::filesystem::exists(path, error);
+    expect(!error, "benchmark database existence check failed");
+    if(existed) {
+        expect(std::filesystem::remove(path, error) && !error,
+               "benchmark database could not be removed");
+    }
+    expect(!std::filesystem::exists(path, error) && !error,
+           "benchmark database was not clean after removal");
+}
+
 agent_memory::ObservedResource original(
     std::string resource_id,
     std::string uri,
@@ -305,9 +317,12 @@ void run_batch_benchmark(std::size_t repeats, bool utf8) {
             std::size_t chunks = 0;
             std::size_t raw_store_calls = 0;
             std::uintmax_t db_bytes = 0;
+            std::size_t baseline_chunks = 0;
+            std::size_t baseline_raw_store_calls = 0;
+            std::uintmax_t baseline_db_bytes = 0;
+            bool have_baseline = false;
             for(std::size_t run = 0; run < repeats; ++run) {
-                std::error_code error;
-                std::filesystem::remove(path, error);
+                remove_database_or_fail(path);
                 MdbxResourceImporterOptions options;
                 options.path = path.string();
                 options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
@@ -336,7 +351,22 @@ void run_batch_benchmark(std::size_t repeats, bool utf8) {
                 ).count();
                 chunks = result.raw_units.size();
                 raw_store_calls = diagnostics->raw_store_calls.load();
+                expect(std::filesystem::exists(path),
+                       "benchmark import did not create a database");
                 db_bytes = std::filesystem::file_size(path);
+                if(!have_baseline) {
+                    baseline_chunks = chunks;
+                    baseline_raw_store_calls = raw_store_calls;
+                    baseline_db_bytes = db_bytes;
+                    have_baseline = true;
+                } else {
+                    expect(chunks == baseline_chunks,
+                           "benchmark chunk count changed between repeats");
+                    expect(raw_store_calls == baseline_raw_store_calls,
+                           "benchmark store-call count changed between repeats");
+                    expect(db_bytes == baseline_db_bytes,
+                           "benchmark database size changed between repeats");
+                }
                 samples.push_back(elapsed);
                 std::cout << "batch_size=" << batch_size
                           << " body_bytes=" << body_bytes
@@ -347,7 +377,7 @@ void run_batch_benchmark(std::size_t repeats, bool utf8) {
                           << " raw_store_calls=" << raw_store_calls
                           << " db_bytes=" << db_bytes
                           << '\n';
-                std::filesystem::remove(path, error);
+                remove_database_or_fail(path);
             }
             std::sort(samples.begin(), samples.end());
             const auto middle = samples.size() / 2;
@@ -1820,8 +1850,18 @@ int main(int argc, char** argv) {
             const auto manifest = importer.find_manifest(
                 ResourceId{"resource:raw-batch-boundary"}
             );
-            expect(manifest && manifest->records.size() == 259U,
+            expect(manifest && manifest->state == ResourceManifestState::Active &&
+                       manifest->records.size() == 259U,
                    "default batch recovery published an incomplete manifest");
+            std::size_t custom_bindings = 0;
+            for(const auto& record : manifest->records) {
+                if(record.kind != DerivedRecordKind::Custom) continue;
+                ++custom_bindings;
+                expect(record.key.rfind("knowledge_unit:", 0) == 0,
+                       "default batch manifest contains an unexpected custom binding");
+            }
+            expect(custom_bindings == recovered.raw_units.size(),
+                   "default batch manifest custom binding count is incomplete");
             for(std::size_t index = 0; index < recovered.raw_units.size(); ++index) {
                 const auto envelope = store.find(recovered.raw_units[index]);
                 expect(envelope.has_value(), "default batch recovery lost a raw unit");
@@ -1831,9 +1871,21 @@ int main(int argc, char** argv) {
                        ),
                        "default batch recovery changed raw unit content or order");
                 expect(envelope->sources.size() == 1 &&
-                           envelope->sources.front().excerpt.offset ==
+                       envelope->sources.front().excerpt.offset ==
                                index * kMdbxResourceImporterRawChunkBytes,
                        "default batch recovery changed raw unit provenance order");
+                const auto binding = std::string{"knowledge_unit:"} +
+                    std::to_string(recovered.raw_units[index].value());
+                std::size_t binding_matches = 0;
+                for(const auto& record : manifest->records) {
+                    if(record.kind == DerivedRecordKind::Custom && record.key == binding) {
+                        ++binding_matches;
+                        expect(record.ordinal == index,
+                               "default batch manifest binding ordinal changed");
+                    }
+                }
+                expect(binding_matches == 1,
+                       "default batch manifest binding is missing or duplicated");
             }
             const auto repeated = importer.import(original(
                 "resource:raw-batch-boundary",
