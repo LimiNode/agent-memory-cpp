@@ -1,11 +1,11 @@
 # Independent Lexical and Sparse Retrieval Research Protocol
 
-Date: 2026-10-16
+Date: 2026-10-20
 
 Status: `PROTOCOL_ONLY` — no experiment result and no production recommendation
 
 Branch: `research/lexical-alternatives`
-Base: `fa0ddb2f6fb87ae2536599c5d95d2eeff99e09c3` (`LimiNode/main`, after PR #514)
+Base: `1e221eedf41860c65685dbd3b184922ae68b1d3a` (`LimiNode/main`, after PR #526)
 
 ## Research question
 
@@ -26,9 +26,15 @@ The current reference path is sufficient for controlled experiments:
 - `RetrievalEvalRunner`, `Evaluation`, and `BenchmarkReport` already provide
   dataset validation, qrels-based `Recall@K`, `nDCG@K`, MRR, no-answer and
   latency reporting;
-- the durable M0 path from PR #508/#514 rebuilds a lexical view from canonical
-  UTF-8 resource text, but does not yet provide the full projection-aware M1
-  lifecycle.
+- the durable M0 path rebuilds one lexical document per resource from canonical
+  UTF-8 text; the optional raw-publication profile additionally emits multiple
+  revision-bound `Chunk` KnowledgeUnits;
+- raw chunks are durable staging records until their active resource manifest
+  contains the corresponding bindings. `MdbxKnowledgeUnitStore::scan_*` is a
+  storage diagnostic and is not an importer-visible retrieval query;
+- `Original`/`SearchProjection` records remain a planned projection-aware
+  contract. The current C++ lexical baseline is chunk-shaped and does not claim
+  a general `IProjectionStore` implementation.
 
 The roadmap distinction is binding: scoring quality, query expansion, tokenizer,
 physical postings, traversal/pruning, and optional model inference are separate
@@ -99,8 +105,8 @@ qrels, scope/access filters, candidate depth, final `K`, and tie rule. The
 minimum arm set is:
 
 1. `KeywordOverlapIndex` for tiny-KB deterministic lower-bound checks;
-2. exhaustive `ExactLexicalIndex` BM25 on `Original.body` (the mandatory
-   lexical oracle);
+2. exhaustive `ExactLexicalIndex` BM25 on the declared frozen token stream
+   (the mandatory scorer oracle; `Original.body` is a future projection arm);
 3. classical alternatives (BM25+, BM25L, TF-IDF/pivoted, QL-Dirichlet,
    DFR-PL2/DPH) using the same token stream;
 4. code-aware exact/phrase/proximity and optional fuzzy/n-gram arms;
@@ -111,9 +117,12 @@ minimum arm set is:
 8. MaxScore/WAND/BMW and compressed postings compared to the exhaustive oracle
    using the same scoring function and active statistics epoch.
 
-The current M0 importer is a one-resource/one-chunk path. Until the unit and
-projection stores are stable, the first runner may use in-memory records or a
-read-only export; it must not invent a production projection schema.
+The benchmark must declare its indexing unit. The current M0 lexical arm is one
+durable lexical document per resource; the raw-publication arm is a separate
+set of revision-bound `Chunk` units and must not be silently substituted for
+the lexical document arm. Until `IProjectionStore` and projection freshness
+contracts are implemented, runners may use in-memory records or a read-only
+export, but must not invent a production projection schema.
 
 ### Query classes
 
@@ -126,7 +135,8 @@ The query set must contain labeled slices for:
 - Russian inflectional variants and mixed Russian/English text;
 - semantic intent without a literal term match;
 - long documents and multi-section material;
-- source update, stale posting, and deleted-unit lifecycle cases.
+- source update, stale-writer non-resurrection, and deleted-unit lifecycle
+  cases;
 
 Each slice needs qrels. If a slice has no qrels, it is a diagnostic only and
 must be reported as incomplete rather than folded into a quality average.
@@ -146,6 +156,7 @@ Cost:
 - query preprocessing and optional model inference;
 - candidate search, posting visits, scored documents, and pruning rate;
 - p50/p95/p99 query latency with one warmup and at least five measured repeats;
+  p95/p99 from a five-sample smoke run are directional/inconclusive only;
 - index build, update/reindex, and delete visibility time;
 - logical posting bytes, physical bytes, decoded integers/positions, peak RSS,
   and model footprint;
@@ -219,11 +230,12 @@ No merge is performed by the research agent.
 | Stage / PR | Deliverable | Explicit exclusions |
 | --- | --- | --- |
 | PR1 — protocol and matrix (this note) | sources, applicability matrix, benchmark design, hypotheses, implementation order | no source/API/MDBX changes, no result claim |
-| PR2 — isolated runner | read-only/in-memory runner over existing lexical/eval contracts; stable corpus/qrels manifest and smoke fixture | no public API, no mandatory ML, no production layout |
-| PR3 — classical and code-aware bake-off | BM25 variants, QL/DFR, identifier/phrase/proximity/fuzzy/n-gram diagnostics | no learned model dependency |
-| PR4 — execution and compression | impact postings, MaxScore/WAND/BMW, VByte/Stream VByte/BP128/FastPFOR; exhaustive parity and epoch negatives | no promotion without exact oracle and lifecycle checks |
-| PR5 — learned sparse and quantization | offline SPLADE/uniCOIL/DeepImpact-compatible artifacts, INT8 then INT5 impacts | no model in C++ core or MDBX production schema |
-| PR6 — decision record | consolidate evidence, reject/promote candidates, recommend post-M0 integration order | no integration before `KnowledgeUnitStore`/`IProjectionStore` stabilization |
+| PR2 — isolated runner | read-only/in-memory runner, separated build/query timing, stable corpus/qrels manifest and smoke fixture | no public API, no mandatory ML, no production layout |
+| PR3 — C++ parity | tokenizer contract, scorer parity, diagnostic tokenizer delta, and lifecycle coverage audit | no algorithm bake-off, no production API changes |
+| PR4 — classical and code-aware bake-off | BM25 variants, QL/DFR, identifier/phrase/proximity/fuzzy/n-gram diagnostics | no learned model dependency |
+| PR5 — execution and compression | impact postings, MaxScore/WAND/BMW, VByte/Stream VByte/BP128/FastPFOR; exhaustive parity and epoch negatives | no promotion without exact oracle and lifecycle checks |
+| PR6 — learned sparse and quantization | offline SPLADE/uniCOIL/DeepImpact-compatible artifacts, INT8 then INT5 impacts | no model in C++ core or MDBX production schema |
+| PR7 — decision record | consolidate evidence, reject/promote candidates, recommend post-M0 integration order | no integration before `KnowledgeUnitStore`/`IProjectionStore` stabilization |
 
 Recommended post-M0 order is therefore: code-aware exact/phrase support, then
 exhaustive fielded BM25F, then execution/compression, then learned sparse only
@@ -236,19 +248,22 @@ Actual result: `not checked` — this PR contains no benchmark run. The matrix i
 an investigation map, not an evidence release and not a production decision.
 
 Limitations include the unfinished projection-aware M0/M1 lifecycle, the
-one-resource/one-chunk durable path, incomplete local qrels for Russian and
-semantic slices, unknown model-weight terms for some external checkpoints, and
-the absence of a learned-sparse/WAND runner in the current tree. Those gaps are
-why the next PR is a runner/protocol implementation rather than an integration.
+separate lexical-document and raw-chunk publication units, incomplete local
+qrels for Russian and semantic slices, unknown model-weight terms for some
+external checkpoints, and the absence of a learned-sparse/WAND runner in the
+current tree. Those gaps are why the next PRs are parity and methodology gates
+rather than production integration.
 
 ## Follow-up checks
 
 - freeze a small, stable code/path/Russian mixed corpus and qrels manifest;
 - implement the read-only runner with the existing `RetrievalEvalRunner` and
   `BenchmarkReport` contracts;
-- verify BM25 parity against `ExactLexicalIndex` before adding alternatives;
-- add lifecycle negative fixtures for stale postings, deleted units, and
-  statistics-epoch/generation mismatch;
+- verify scorer parity against `ExactLexicalIndex` on exported C++ token
+  streams before adding alternatives;
+- audit existing MDBX fixtures for pending visibility, manifest bindings,
+  scope isolation, recovery, and stale-writer non-resurrection before adding
+  lifecycle tests;
 - obtain explicit license/model terms before downloading any learned-sparse
   checkpoint;
 - append measured results to this research line rather than replacing this
