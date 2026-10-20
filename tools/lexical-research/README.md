@@ -30,6 +30,8 @@ compressed postings, and production MDBX are intentionally out of scope.
 The `--limit` value is the candidate depth and defaults to 50 so that the
 reported `Recall@50` is not silently truncated. The receipt separates one-time
 index build from query preprocessing, scoring, and end-to-end query timing.
-With fewer than 20 query observations, p95/p99 are marked `directional` rather
-than treated as tail-latency evidence. Python timings must not be compared
-directly with production C++ latency.
+Tail percentiles use every query-repeat sample; the per-query receipt retains
+the median for compatibility. Fewer than 100 raw query-repeat observations are
+marked `directional`, 100–999 are `descriptive`, and only 1000 or more are
+`measured`. Python timings must not be compared directly with production C++
+latency.

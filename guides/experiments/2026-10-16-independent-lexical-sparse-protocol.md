@@ -162,8 +162,10 @@ Cost:
 
 - query preprocessing and optional model inference;
 - candidate search, posting visits, scored documents, and pruning rate;
-- p50/p95/p99 query latency with one warmup and at least five measured repeats;
-  p95/p99 from a five-sample smoke run are directional/inconclusive only;
+- p50/p95/p99 query latency with one warmup and repeated query observations;
+  percentiles use every query-repeat sample. Fewer than 100 observations are
+  directional, 100--999 are descriptive, and at least 1000 are required for
+  the receipt's `measured` status;
 - index build, update/reindex, and delete visibility time;
 - logical posting bytes, physical bytes, decoded integers/positions, peak RSS,
   and model footprint;
@@ -303,8 +305,8 @@ candidate depth and defaults to `50`; a lower depth marks Recall@50 as
 truncated instead of presenting it as a complete measurement. A separate
 three-repeat receipt was written outside Git under
 `.artifacts/lexical-protocol-smoke.json`; its p50/p95/p99 values are local
-Python directional timings (the smoke has fewer than 20 observations) and are
-not performance evidence.
+Python directional timings (the smoke has 15 raw query-repeat observations)
+and are not performance evidence.
 
 Interpretation: PR2 now provides a small, hash-bound corpus/qrels input and a
 portable BM25 control for subsequent scorer plugins. It does not establish

@@ -227,9 +227,9 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
         preprocessing_ms = statistics.median(preprocessing_samples)
         scoring_ms = statistics.median(scoring_samples)
         end_to_end_ms = statistics.median(end_to_end_samples)
-        preprocessing_timings.append(preprocessing_ms)
-        scoring_timings.append(scoring_ms)
-        end_to_end_timings.append(end_to_end_ms)
+        preprocessing_timings.extend(preprocessing_samples)
+        scoring_timings.extend(scoring_samples)
+        end_to_end_timings.extend(end_to_end_samples)
         query_runs.append({
             "query_id": query["id"],
             "query_class": query.get("query_class", "unspecified"),
@@ -306,7 +306,17 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
                 "p99": percentile(end_to_end_timings, 0.99),
             },
             "sample_count": len(end_to_end_timings),
-            "statistical_status": "directional" if len(end_to_end_timings) < 20 else "measured",
+            "query_count": len(query_runs),
+            "repeat_count": repeats,
+            "observation_unit": "one_query_repeat",
+            "aggregation": "raw_query_repeat_samples; query receipt latency is per-query median",
+            "statistical_status": (
+                "directional"
+                if len(end_to_end_timings) < 100
+                else "descriptive"
+                if len(end_to_end_timings) < 1000
+                else "measured"
+            ),
             "scope": "local_python_query_only_after_index_build",
         },
         "latency_ms": {
