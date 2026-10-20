@@ -72,8 +72,12 @@ namespace agent_memory {
             ResourceImportPublicationProfile::LexicalOnly;
         /// Admission bound for one raw-publication body.
         std::size_t max_raw_body_bytes = 16U * 1024U * 1024U;
-        /// Admission bound for one raw-publication chunk batch.
+        /// Admission bound for the total number of raw chunks in one body.
         std::size_t max_raw_chunks = 16U * 1024U;
+        /// Number of raw Chunk requests committed by one guarded MDBX batch.
+        /// The bound is also the unit of recovery and fault injection: a
+        /// committed batch is replayed atomically after takeover.
+        std::size_t raw_chunk_batch_size = 128U;
         /// Lease used before another executor may recover an unfinished intent.
         std::uint64_t ownership_lease_ms = 30'000;
         /// Optional deterministic wall-clock source returning Unix milliseconds.

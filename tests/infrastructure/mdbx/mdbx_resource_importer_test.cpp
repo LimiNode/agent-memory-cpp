@@ -277,6 +277,52 @@ void run_benchmark() {
     }
 }
 
+void run_batch_benchmark() {
+    using namespace agent_memory;
+    for(const std::size_t body_bytes : {std::size_t{128} * 1024U,
+                                        std::size_t{1024} * 1024U,
+                                        std::size_t{4} * 1024U * 1024U}) {
+        for(const std::size_t batch_size : {std::size_t{1}, std::size_t{16},
+                                            std::size_t{64}, std::size_t{128}}) {
+            const auto suffix = std::string{"batch_"} +
+                std::to_string(body_bytes) + "_" + std::to_string(batch_size);
+            const auto path = test_path(suffix.c_str());
+            std::error_code error;
+            std::filesystem::remove(path, error);
+            MdbxResourceImporterOptions options;
+            options.path = path.string();
+            options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+            options.max_raw_body_bytes = body_bytes;
+            options.max_raw_chunks = body_bytes / kMdbxResourceImporterRawChunkBytes;
+            options.raw_chunk_batch_size = batch_size;
+            const auto diagnostics = std::make_shared<MdbxResourceImporterDiagnostics>();
+            options.diagnostics = diagnostics;
+            const auto body = std::string(body_bytes, 'b');
+            const auto started = std::chrono::steady_clock::now();
+            ResourceImportResult result;
+            {
+                MdbxResourceImporter importer{std::move(options)};
+                result = importer.import(original(
+                    "resource:batch-benchmark",
+                    "https://example.test/batch-benchmark",
+                    body
+                ));
+            }
+            const auto elapsed = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - started
+            ).count();
+            std::cout << "batch_size=" << batch_size
+                      << " body_bytes=" << body_bytes
+                      << " chunks=" << result.raw_units.size()
+                      << " import_elapsed_ms=" << elapsed
+                      << " raw_store_calls=" << diagnostics->raw_store_calls.load()
+                      << " db_bytes=" << std::filesystem::file_size(path)
+                      << '\n';
+            std::filesystem::remove(path, error);
+        }
+    }
+}
+
 std::string diagnostic_body(std::size_t bytes, std::string_view corpus) {
     if(corpus == "technical") {
         std::string body;
@@ -1029,6 +1075,10 @@ int main(int argc, char** argv) {
         run_benchmark();
         return 0;
     }
+    if(argc == 2 && std::string_view{argv[1]} == "--batch-benchmark") {
+        run_batch_benchmark();
+        return 0;
+    }
     if(argc >= 2 && std::string_view{argv[1]} == "--fencing-benchmark") {
         run_fencing_benchmark(
             argc >= 3 ? static_cast<std::size_t>(std::stoull(argv[2])) : 4U * 1024U * 1024U,
@@ -1606,12 +1656,13 @@ int main(int argc, char** argv) {
         MdbxResourceImporterOptions options;
         options.context = context;
         options.publication_profile = ResourceImportPublicationProfile::LexicalWithRawChunks;
+        options.raw_chunk_batch_size = 2;
         use_test_clock(options, 100);
         int raw_writes = 0;
         options.fault_injector = [&](ResourceImporterFaultPoint point) {
             if(point == ResourceImporterFaultPoint::AfterRawUnitPublication &&
-               ++raw_writes == 2) {
-                throw std::runtime_error("interrupt during raw batch");
+               ++raw_writes == 1) {
+                throw std::runtime_error("interrupt after raw batch");
             }
         };
         MdbxResourceImporter importer{std::move(options)};
@@ -1622,7 +1673,7 @@ int main(int argc, char** argv) {
                 "resource:raw-fault", "https://example.test/raw-fault", body
             ));
         } catch(const std::runtime_error&) { interrupted = true; }
-        expect(interrupted, "raw fault did not interrupt after the second unit");
+        expect(interrupted, "raw fault did not interrupt after the first batch");
         expect(!importer.find_manifest(ResourceId{"resource:raw-fault"}),
                "partial raw batch published a manifest");
         expect(store->scan_by_scope_and_kind(
@@ -1739,6 +1790,25 @@ int main(int argc, char** argv) {
     std::filesystem::remove(ordinal_path, error);
     expect(ordinal_limit_rejected,
            "raw chunk admission accepted a manifest ordinal overflow bound");
+
+    for(const auto invalid_batch_size : {std::size_t{0},
+                                         kMdbxKnowledgeUnitMaxBatchSize + 1U}) {
+        const auto batch_path = test_path(
+            (std::string{"raw_batch_size_"} + std::to_string(invalid_batch_size)).c_str()
+        );
+        std::filesystem::remove(batch_path, error);
+        bool rejected = false;
+        try {
+            MdbxResourceImporterOptions invalid_options;
+            invalid_options.path = batch_path.string();
+            invalid_options.publication_profile =
+                ResourceImportPublicationProfile::LexicalWithRawChunks;
+            invalid_options.raw_chunk_batch_size = invalid_batch_size;
+            MdbxResourceImporter invalid{std::move(invalid_options)};
+        } catch(const std::invalid_argument&) { rejected = true; }
+        expect(rejected, "raw chunk batch admission accepted an invalid bound");
+        std::filesystem::remove(batch_path, error);
+    }
 
     bool unknown_profile_rejected = false;
     const auto unknown_profile_path = test_path("unknown_profile");

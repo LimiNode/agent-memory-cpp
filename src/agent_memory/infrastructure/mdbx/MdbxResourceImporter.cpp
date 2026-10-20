@@ -749,6 +749,7 @@ public:
         , m_table_prefix(sanitize_table_prefix(options.table_prefix))
         , m_max_raw_body_bytes(options.max_raw_body_bytes)
         , m_max_raw_chunks(options.max_raw_chunks)
+        , m_raw_chunk_batch_size(options.raw_chunk_batch_size)
         , m_clock(options.clock_ms ? std::move(options.clock_ms) : system_clock_ms)
         , m_fault_injector(std::move(options.fault_injector))
         , m_diagnostics(std::move(options.diagnostics)) {
@@ -760,8 +761,12 @@ public:
         }
         if(m_publication_profile == ResourceImportPublicationProfile::LexicalWithRawChunks) {
             if(m_max_raw_body_bytes == 0 || m_max_raw_chunks == 0 ||
-               m_max_raw_chunks > (std::numeric_limits<std::uint32_t>::max)()) {
-                throw std::invalid_argument("raw publication admission limits must be positive");
+               m_max_raw_chunks > (std::numeric_limits<std::uint32_t>::max)() ||
+               m_raw_chunk_batch_size == 0 ||
+               m_raw_chunk_batch_size > kMdbxKnowledgeUnitMaxBatchSize) {
+                throw std::invalid_argument(
+                    "raw publication admission and batch limits are invalid"
+                );
             }
             MdbxKnowledgeUnitStoreOptions store_options;
             store_options.table_prefix = options.table_prefix;
@@ -948,49 +953,59 @@ private:
                 kMdbxResourceImporterRawChunkBytes
             );
             raw_units.reserve(ranges.size());
-            for(const auto range : ranges) {
-                // Fencing is checked around every durable unit write.  A
-                // lease takeover may leave an idempotent staging record, but
+            for(std::size_t batch_begin = 0; batch_begin < ranges.size();
+                batch_begin += m_raw_chunk_batch_size) {
+                const auto batch_end = std::min(
+                    ranges.size(), batch_begin + m_raw_chunk_batch_size
+                );
+                // Fencing is checked before and after every durable batch.
+                // A lease takeover may leave an idempotent staging batch, but
                 // the stale executor must never continue toward publication.
                 assert_ownership(
                     pending.resource.resource_id.value(),
                     expected_token
                 );
-                const auto chunk = pending.resource.utf8_body.substr(
-                    static_cast<std::size_t>(range.offset),
-                    static_cast<std::size_t>(range.length)
-                );
-                const auto preview_length = bounded_utf8_prefix(
-                    chunk,
-                    kMaxRawChunkPreviewBytes
-                );
-                if(preview_length == 0) {
-                    throw std::runtime_error("raw Chunk preview is empty");
-                }
-                SourceRefSummary source;
-                source.resource_id = pending.resource.resource_id;
-                source.reference_mode = SourceReferenceMode::RevisionBoundQuote;
-                source.resource_revision = ResourceRevisionRef{
-                    pending.resource.resource_id,
-                    generation,
-                    digest
-                };
-                source.uri = pending.resource.source_uri;
-                source.excerpt = range;
-                source.preview.assign(chunk.data(), preview_length);
-                source.quote_hash = compute_quote_hash(source.preview);
-                source.confidence = 1.0;
-                source.text_origin = pending.resource.text_origin;
+                std::vector<KnowledgeUnitCreateRequest> requests;
+                requests.reserve(batch_end - batch_begin);
+                for(std::size_t index = batch_begin; index < batch_end; ++index) {
+                    const auto range = ranges[index];
+                    const auto chunk = pending.resource.utf8_body.substr(
+                        static_cast<std::size_t>(range.offset),
+                        static_cast<std::size_t>(range.length)
+                    );
+                    const auto preview_length = bounded_utf8_prefix(
+                        chunk,
+                        kMaxRawChunkPreviewBytes
+                    );
+                    if(preview_length == 0) {
+                        throw std::runtime_error("raw Chunk preview is empty");
+                    }
+                    SourceRefSummary source;
+                    source.resource_id = pending.resource.resource_id;
+                    source.reference_mode = SourceReferenceMode::RevisionBoundQuote;
+                    source.resource_revision = ResourceRevisionRef{
+                        pending.resource.resource_id,
+                        generation,
+                        digest
+                    };
+                    source.uri = pending.resource.source_uri;
+                    source.excerpt = range;
+                    source.preview.assign(chunk.data(), preview_length);
+                    source.quote_hash = compute_quote_hash(source.preview);
+                    source.confidence = 1.0;
+                    source.text_origin = pending.resource.text_origin;
 
-                KnowledgeUnitCreateRequest request;
-                request.kind = KnowledgeUnitKind::Chunk;
-                request.scope_id = pending.resource.scope_id;
-                request.primary_text = std::string{chunk};
-                request.display_text = request.primary_text;
-                request.sources = {std::move(source)};
+                    KnowledgeUnitCreateRequest request;
+                    request.kind = KnowledgeUnitKind::Chunk;
+                    request.scope_id = pending.resource.scope_id;
+                    request.primary_text = std::string{chunk};
+                    request.display_text = request.primary_text;
+                    request.sources = {std::move(source)};
+                    requests.push_back(std::move(request));
+                }
                 const auto raw_started = std::chrono::steady_clock::now();
-                const auto envelope = m_knowledge_unit_store->create_or_get_unit_guarded(
-                    std::move(request),
+                const auto envelopes = m_knowledge_unit_store->create_or_get_units_guarded(
+                    std::move(requests),
                     MdbxKnowledgeUnitPublicationGuard{
                         m_token_table_name,
                         pending.resource.resource_id.value(),
@@ -1002,17 +1017,21 @@ private:
                     raw_started
                 );
                 if(m_diagnostics) ++m_diagnostics->raw_store_calls;
-                if(envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
-                    throw std::runtime_error(
-                        "raw publication matched a non-active historical Chunk"
-                    );
+                if(envelopes.size() != batch_end - batch_begin) {
+                    throw std::runtime_error("raw publication returned an incomplete batch");
                 }
-                assert_ownership(
-                    pending.resource.resource_id.value(),
-                    expected_token
-                );
-                raw_units.push_back(envelope.id);
+                for(const auto& envelope : envelopes) {
+                    if(envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
+                        throw std::runtime_error(
+                            "raw publication matched a non-active historical Chunk"
+                        );
+                    }
+                    raw_units.push_back(envelope.id);
+                }
+                assert_ownership(pending.resource.resource_id.value(), expected_token);
                 if(inject_faults) {
+                    // A fault after this point models interruption after the
+                    // whole durable batch, not after an individual envelope.
                     inject(ResourceImporterFaultPoint::AfterRawUnitPublication);
                 }
             }
@@ -1410,6 +1429,7 @@ private:
     std::string m_table_prefix;
     std::size_t m_max_raw_body_bytes;
     std::size_t m_max_raw_chunks;
+    std::size_t m_raw_chunk_batch_size;
     std::function<std::uint64_t()> m_clock;
     std::function<void(ResourceImporterFaultPoint)> m_fault_injector;
     std::shared_ptr<MdbxResourceImporterDiagnostics> m_diagnostics;
