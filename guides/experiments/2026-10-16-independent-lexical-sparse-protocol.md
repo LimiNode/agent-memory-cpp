@@ -165,7 +165,10 @@ Cost:
 - p50/p95/p99 query latency with one warmup and repeated query observations;
   percentiles use every query-repeat sample. Fewer than 100 observations are
   directional, 100--999 are descriptive, and at least 1000 are required for
-  the receipt's `measured` status;
+  the receipt's `measured` status. `sample_count` is the number of
+  query-repeat observations, not independent queries; `measured` describes
+  only that sample distribution and does not guarantee a statistically stable
+  p99;
 - index build, update/reindex, and delete visibility time;
 - logical posting bytes, physical bytes, decoded integers/positions, peak RSS,
   and model footprint;
@@ -307,7 +310,9 @@ three-repeat receipt was written outside Git under
 `.artifacts/lexical-protocol-smoke.json`; its p50/p95/p99 values are local
 Python directional timings (the smoke has 15 raw query-repeat observations)
 and are not performance evidence. The receipt's `sample_count` is explicitly
-`query_count * repeat_count`; the backward-compatible per-query `latency_ms`
+`query_count * repeat_count`; repeats of the same query are not independent
+queries. The `measured` label describes the observed sample distribution and
+does not assert p99 stability. The backward-compatible per-query `latency_ms`
 field remains the median of that query's repeats.
 
 Interpretation: PR2 now provides a small, hash-bound corpus/qrels input and a

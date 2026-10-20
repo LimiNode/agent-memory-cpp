@@ -310,6 +310,7 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
             "repeat_count": repeats,
             "observation_unit": "one_query_repeat",
             "aggregation": "raw_query_repeat_samples; query receipt latency is per-query median",
+            "sample_count_semantics": "query_repeat_observations_not_independent_queries",
             "statistical_status": (
                 "directional"
                 if len(end_to_end_timings) < 100
@@ -317,6 +318,8 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
                 if len(end_to_end_timings) < 1000
                 else "measured"
             ),
+            "measured_status_semantics": "measured_sample_distribution_only",
+            "tail_stability_claim": "none",
             "scope": "local_python_query_only_after_index_build",
         },
         "latency_ms": {
@@ -349,6 +352,15 @@ def self_test(dataset_path: Path) -> None:
         raise AssertionError("sub-50 candidate depth must be marked truncated")
     if truncated["quality"]["recall_at"]["50"] is not None:
         raise AssertionError("truncated Recall@50 must not be reported as a number")
+    timing = report["timing"]
+    if timing["sample_count"] != timing["query_count"] * timing["repeat_count"]:
+        raise AssertionError("sample_count must count query-repeat observations")
+    if timing["sample_count_semantics"] != "query_repeat_observations_not_independent_queries":
+        raise AssertionError("timing receipt must reject an independent-query interpretation")
+    if timing["measured_status_semantics"] != "measured_sample_distribution_only":
+        raise AssertionError("measured status must remain scoped to the observed sample distribution")
+    if timing["tail_stability_claim"] != "none":
+        raise AssertionError("repeat-count thresholds must not claim stable tail latency")
     dataset = read_json(dataset_path)
     invalid_cases = (
         ("unknown qrel query", {"qrels": [{"query_id": "missing", "doc_id": "d1", "grade": 1}]}),

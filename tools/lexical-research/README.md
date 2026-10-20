@@ -33,5 +33,8 @@ index build from query preprocessing, scoring, and end-to-end query timing.
 Tail percentiles use every query-repeat sample; the per-query receipt retains
 the median for compatibility. Fewer than 100 raw query-repeat observations are
 marked `directional`, 100–999 are `descriptive`, and only 1000 or more are
-`measured`. Python timings must not be compared directly with production C++
-latency.
+`measured`. Here `sample_count = query_count * repeat_count`: repeated runs of
+the same queries are observations, not independent queries. `measured` names
+the observed sample distribution only; it does not claim that p99 is
+statistically stable. Python timings must not be compared directly with
+production C++ latency.
