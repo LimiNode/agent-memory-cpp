@@ -306,7 +306,9 @@ truncated instead of presenting it as a complete measurement. A separate
 three-repeat receipt was written outside Git under
 `.artifacts/lexical-protocol-smoke.json`; its p50/p95/p99 values are local
 Python directional timings (the smoke has 15 raw query-repeat observations)
-and are not performance evidence.
+and are not performance evidence. The receipt's `sample_count` is explicitly
+`query_count * repeat_count`; the backward-compatible per-query `latency_ms`
+field remains the median of that query's repeats.
 
 Interpretation: PR2 now provides a small, hash-bound corpus/qrels input and a
 portable BM25 control for subsequent scorer plugins. It does not establish
