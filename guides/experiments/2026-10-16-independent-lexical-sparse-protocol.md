@@ -350,14 +350,16 @@ snake_case, C++ identifiers, Windows/POSIX paths, CLI flags, Unicode, ASCII
 lowercasing, repeated terms, symbols, byte ranges, and token positions. The
 golden file is hand-authored and is not generated from the current tokenizer.
 
-The Python comparator emits three separate gates:
+The Python comparator emits four independent core gates plus a mandatory
+mutation self-test:
 
 | Gate | Evidence | Interpretation |
 | --- | --- | --- |
 | `cpp_tokenizer_contract` | C++ text/kind/range/position vs golden data | must pass before scorer work is trusted |
 | `python_scorer_parity` | actual C++ document/query token streams and `ExactLexicalIndex` results vs Python BM25, including repeated terms, ties/near-ties, scores, and explicit multi-field filters | float tolerance is `2e-6`; no production API change |
 | `lifecycle_parity` | in-memory `ExactLexicalIndex` update/erase fixture, including post-update scores and post-erase visibility | diagnostic only; MDBX publication is not delegated to the index |
-| `native_tokenizer_delta` | diagnostic comparison with the portable Python tokenizer, including text/kind/range/position records on both sides | expected differences are recorded, not hidden; all declared negative cases are required |
+| `native_tokenizer_delta` | diagnostic comparison with the portable Python tokenizer and C++ tokenizer | Python kind is an `unknown` placeholder and Python spans use a `casefold().find()` heuristic; they are not an exact Python kind/span contract, especially when Unicode case folding changes length |
+| `mutation_self_test` | positive control plus in-memory mutation of one golden token and one exported C++ BM25 score | each mutation must fail its intended gate and every mandatory failure must produce a non-zero comparator exit code |
 
 The receipt status is `SEPARATE_GATES`; it is deliberately not an unconditional
 `PARITY_PASS`. The exporter and comparator do not become lifecycle authority.

@@ -9,6 +9,7 @@ authority for MDBX publication.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import subprocess
@@ -19,6 +20,12 @@ from run_lexical_protocol import score_bm25, tokenize
 
 
 KIND_NAMES = {"word": "Word", "number": "Number", "identifier": "Identifier", "path": "Path", "symbol": "Symbol", "custom": "Custom"}
+CORE_GATE_EXPECTATIONS = {
+    "cpp_tokenizer_contract": "PASS",
+    "python_scorer_parity": "PASS",
+    "lifecycle_parity": "PASS",
+    "native_tokenizer_delta": "EXPECTED_DIFFERENCE",
+}
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -217,14 +224,18 @@ def native_delta_gate(export: dict[str, Any]) -> dict[str, Any]:
         "delta_count": len(deltas),
         "deltas": deltas,
         "expected_negative_cases": sorted(expected_negative),
+        "python_token_representation": {
+            "status": "HEURISTIC_DIAGNOSTIC_ONLY",
+            "kind_semantics": "unknown_placeholder_not_a_token_kind_contract",
+            "span_semantics": "casefold_find_heuristic_not_exact_byte_ranges",
+            "unicode_casefold_length_stability": "not_assumed",
+        },
     }
 
 
-def run(executable: Path, golden_path: Path) -> dict[str, Any]:
-    export = export_cpp(executable)
-    golden = load_json(golden_path)
+def build_receipt(export: dict[str, Any], golden: dict[str, Any]) -> dict[str, Any]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "SEPARATE_GATES",
         "cpp_tokenizer_contract": tokenizer_gate(export, golden),
         "python_scorer_parity": scorer_gate(export),
@@ -233,25 +244,108 @@ def run(executable: Path, golden_path: Path) -> dict[str, Any]:
     }
 
 
+def receipt_exit_code(receipt: dict[str, Any]) -> int:
+    core_passed = all(
+        receipt.get(gate_name, {}).get("status") == expected_status
+        for gate_name, expected_status in CORE_GATE_EXPECTATIONS.items()
+    )
+    mutation_passed = receipt.get("mutation_self_test", {}).get("status", "PASS") == "PASS"
+    return 0 if core_passed and mutation_passed else 1
+
+
+def mutation_self_test(
+    export: dict[str, Any], golden: dict[str, Any], positive_receipt: dict[str, Any]
+) -> dict[str, Any]:
+    mutated_golden = copy.deepcopy(golden)
+    token_case = next(
+        (name for name, tokens in mutated_golden.get("cases", {}).items() if tokens),
+        None,
+    )
+    if token_case is None:
+        raise ValueError("mutation self-test requires at least one golden token")
+    mutated_golden["cases"][token_case][0][0] += "__mutation__"
+    tokenizer_failure = build_receipt(export, mutated_golden)
+
+    mutated_export = copy.deepcopy(export)
+    score_query = next(
+        (
+            query
+            for query in mutated_export.get("index", {}).get("queries", [])
+            if query.get("results")
+        ),
+        None,
+    )
+    if score_query is None:
+        raise ValueError("mutation self-test requires at least one exported scorer result")
+    score_query["results"][0]["score"] += 1.0
+    scorer_failure = build_receipt(mutated_export, golden)
+
+    checks = {
+        "positive_control": {
+            "expected_exit_code": 0,
+            "observed_exit_code": receipt_exit_code(positive_receipt),
+        },
+        "golden_token_mutation": {
+            "case": token_case,
+            "expected_gate_status": "FAIL",
+            "observed_gate_status": tokenizer_failure["cpp_tokenizer_contract"]["status"],
+            "expected_exit_code": 1,
+            "observed_exit_code": receipt_exit_code(tokenizer_failure),
+        },
+        "exported_bm25_score_mutation": {
+            "query": score_query["name"],
+            "expected_gate_status": "FAIL",
+            "observed_gate_status": scorer_failure["python_scorer_parity"]["status"],
+            "expected_exit_code": 1,
+            "observed_exit_code": receipt_exit_code(scorer_failure),
+        },
+    }
+    passed = all(
+        check["observed_exit_code"] == check["expected_exit_code"]
+        and (
+            "expected_gate_status" not in check
+            or check["observed_gate_status"] == check["expected_gate_status"]
+        )
+        for check in checks.values()
+    )
+    return {
+        "status": "PASS" if passed else "FAIL",
+        "check_count": len(checks),
+        "scope": "in_memory_export_and_golden_mutations_only",
+        "checks": checks,
+    }
+
+
+def run(executable: Path, golden_path: Path) -> dict[str, Any]:
+    export = export_cpp(executable)
+    golden = load_json(golden_path)
+    receipt = build_receipt(export, golden)
+    receipt["mutation_self_test"] = mutation_self_test(export, golden, receipt)
+    return receipt
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cpp-exporter", type=Path, required=True)
     parser.add_argument("--golden", type=Path, required=True)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--mutation-self-test-only", action="store_true")
     args = parser.parse_args()
     try:
         receipt = run(args.cpp_exporter, args.golden)
+        if args.mutation_self_test_only:
+            receipt = {
+                "schema_version": receipt["schema_version"],
+                "status": "MUTATION_SELF_TEST",
+                "mutation_self_test": receipt["mutation_self_test"],
+            }
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         print(json.dumps(receipt, indent=2, sort_keys=True))
-        gates = (
-            receipt["cpp_tokenizer_contract"],
-            receipt["python_scorer_parity"],
-            receipt["lifecycle_parity"],
-            receipt["native_tokenizer_delta"],
-        )
-        return 0 if all(gate["status"] in {"PASS", "EXPECTED_DIFFERENCE"} for gate in gates) else 1
+        if args.mutation_self_test_only:
+            return 0 if receipt["mutation_self_test"]["status"] == "PASS" else 1
+        return receipt_exit_code(receipt)
     except (OSError, ValueError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
         print(f"cpp lexical parity: {error}")
         return 1

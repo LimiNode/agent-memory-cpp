@@ -951,6 +951,13 @@ jobs:
           --golden tools/lexical-research/fixtures/cpp_tokenizer_golden.json
           --output artifacts/lexical-parity-receipt.json
 
+      - name: Run lexical parity mutation self-test
+        run: >
+          ctest --test-dir build-lexical-parity
+          --build-config Release
+          --output-on-failure
+          --tests-regex agent_memory_cpp_lexical_parity_mutation_self_test
+
       - name: Upload lexical parity receipt
         if: always()
         uses: actions/upload-artifact@v4

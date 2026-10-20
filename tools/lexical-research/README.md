@@ -72,7 +72,20 @@ streams, then compares BM25 TF/DF/IDF statistics, ordering, scores, repeated
 terms, ties, near-ties, and explicit multi-field filters; `lifecycle_parity`
 checks scores and visibility after the in-memory update/erase fixture;
 `native_tokenizer_delta` records expected differences between the portable
-fixture tokenizer and the C++ tokenizer. A top-level `SEPARATE_GATES` status is
-intentionally not an unconditional `PARITY_PASS`. The exporter is a research
-fixture and does not establish MDBX publication lifecycle authority; existing
-importer/manifest tests remain the lifecycle evidence.
+fixture tokenizer and the C++ tokenizer. Python `kind` values in that delta are
+`unknown` placeholders, and Python offsets/lengths come from a
+`casefold().find()` heuristic. They are diagnostic records, not a Python token
+kind contract or exact byte ranges; Unicode case folding may change string
+length.
+
+Every comparator run also executes three mutation controls. The positive
+control must pass, changing one hand-authored golden token must make
+`cpp_tokenizer_contract` fail, and changing one exported C++ BM25 score must
+make `python_scorer_parity` fail. Each mandatory gate failure must produce a
+non-zero comparator exit code. The `mutation_self_test` result is included in
+the receipt and is also registered as a separate CTest.
+
+A top-level `SEPARATE_GATES` status is intentionally not an unconditional
+`PARITY_PASS`. The exporter is a research fixture and does not establish MDBX
+publication lifecycle authority; existing importer/manifest tests remain the
+lifecycle evidence.

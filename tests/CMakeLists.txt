@@ -480,6 +480,16 @@ if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
                 --golden ${CMAKE_CURRENT_SOURCE_DIR}/../tools/lexical-research/fixtures/cpp_tokenizer_golden.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
     )
+
+    add_test(
+        NAME agent_memory_cpp_lexical_parity_mutation_self_test
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/../tools/lexical-research/run_cpp_lexical_parity.py
+                --cpp-exporter $<TARGET_FILE:agent_memory_lexical_parity_export>
+                --golden ${CMAKE_CURRENT_SOURCE_DIR}/../tools/lexical-research/fixtures/cpp_tokenizer_golden.json
+                --mutation-self-test-only
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+    )
 endif()
 
 add_executable(agent_memory_lexical_value_types_test
