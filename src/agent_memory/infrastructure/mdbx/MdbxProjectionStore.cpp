@@ -14,7 +14,7 @@
 namespace agent_memory {
 namespace {
 
-constexpr std::string_view kPayloadVersion = "agent_memory.search_projection.v1";
+constexpr std::string_view kPayloadVersion = "agent_memory.projection.v1";
 
 std::string table_name(const std::string& prefix) {
     std::string value = prefix.empty() ? "agent_memory" : prefix;
@@ -39,7 +39,7 @@ void append_u64(std::string& out, std::uint64_t value) {
 }
 
 std::uint64_t read_u64(std::string_view payload, std::size_t& position) {
-    if(payload.size() - position < 8) {
+    if(position > payload.size() || payload.size() - position < 8) {
         throw std::runtime_error("projection payload ended before an integer");
     }
     std::uint64_t value = 0;
@@ -58,7 +58,11 @@ std::string read_string(std::string_view payload, std::size_t& position) {
         const auto c = static_cast<unsigned char>(payload[position++]);
         if(c < '0' || c > '9') throw std::runtime_error("projection payload size is invalid");
         digit = true;
-        size = size * 10U + static_cast<std::size_t>(c - '0');
+        const auto value = static_cast<std::size_t>(c - '0');
+        if(size > (std::numeric_limits<std::size_t>::max() - value) / 10U) {
+            throw std::runtime_error("projection payload string size overflows");
+        }
+        size = size * 10U + value;
     }
     if(!digit || position >= payload.size()) throw std::runtime_error("projection payload size missing");
     ++position;
@@ -117,6 +121,28 @@ SearchProjection deserialize(std::string_view payload) {
         throw std::runtime_error("invalid persisted search projection");
     }
     return projection;
+}
+
+struct ProjectionKeyIdentity final {
+    ScopeId scope_id;
+    KnowledgeUnitId unit_id;
+    ProjectionKind kind;
+    std::uint64_t projection_revision = 0;
+};
+
+ProjectionKeyIdentity decode_key(std::string_view key) {
+    std::size_t position = 0;
+    ProjectionKeyIdentity identity{
+        ScopeId{read_string(key, position)},
+        KnowledgeUnitId{read_u64(key, position)},
+        static_cast<ProjectionKind>(read_u64(key, position)),
+        read_u64(key, position)
+    };
+    if(position != key.size() || identity.scope_id.empty() || identity.unit_id.empty()
+       || !is_valid_projection_kind(identity.kind) || identity.projection_revision == 0) {
+        throw std::runtime_error("invalid persisted search projection key");
+    }
+    return identity;
 }
 
 std::string serialize(const SearchProjection& projection) {
@@ -199,8 +225,17 @@ std::vector<SearchProjection> MdbxProjectionStore::list(
     m_impl->projections.for_each_range(
         lower,
         upper,
-        [&](const std::string&, const std::string& payload) {
+        [&](const std::string& key, const std::string& payload) {
+            const auto key_identity = decode_key(key);
             auto projection = deserialize(payload);
+            if(projection.scope_id.value() != key_identity.scope_id.value()
+               || projection.unit_id.value() != key_identity.unit_id.value()
+               || projection.kind != key_identity.kind
+               || projection.version.projection_revision != key_identity.projection_revision
+               || projection.scope_id.value() != scope_id.value()
+               || projection.unit_id.value() != unit_id.value()) {
+                throw std::runtime_error("search projection key and payload identity mismatch");
+            }
             if(!kind || projection.kind == *kind) result.push_back(std::move(projection));
             return true;
         },
