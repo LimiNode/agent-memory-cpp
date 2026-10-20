@@ -17,7 +17,7 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | Typed multimodal result / source hydration | `knowledge-base-roadmap.md`, `artifact-provenance-roadmap.md`, `multimodal-binary-retrieval-roadmap.md` | Contract only | host materialization adapter and per-modality hydration/conformance fixtures remain unimplemented | add text/image/audio/video revision-and-locator fixture |
 | Knowledge units | `knowledge-units-roadmap.md`, `m0-implementation-gap-audit.md` | Implemented (M0 durable Chunk envelope + importer binding subset) | supersedence lineage, non-Chunk payload stores and full lifecycle policy remain unimplemented | add supersede/lineage and payload-specific M0 fixtures |
 | Payload contracts/views | `knowledge-base-roadmap.md` | Contract only | all payload DBIs | one payload family at a time |
-| Search projections | `lexical-search-roadmap.md` | Contract only | generation-aware publisher | projection lifecycle gate |
+| Search projections | `lexical-search-roadmap.md` | Implemented (revision-aware Original M0 slice) | importer wiring, full-body hydration, projection-aware postings/index lifecycle and reclamation | add bounded projection-to-lexical retrieval fixture |
 | Lexical retrieval | `lexical-search-roadmap.md`, `m0-implementation-gap-audit.md` | Implemented (durable lexical importer slice) | BM25F/product-wide projection lifecycle, traces and non-text modalities remain unimplemented | add the next bounded lexical projection/retrieval fixture |
 | Dense retrieval | `embedding.md`, `optimization-roadmap.md` | Contract only | embedder adapter and exact index path | exact dense MVP |
 | ExactVectorIndex | `optimization-roadmap.md` | Docs/tests only | canonical library integration | oracle benchmark |

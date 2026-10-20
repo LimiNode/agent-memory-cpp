@@ -12,7 +12,7 @@ unit gates remain incomplete.
 | Chunk/Note units | Contract only | Narrow durable `Chunk` envelope store with content-key dedupe, reopen, scope-aware keys and mutable updates; the importer can optionally publish UTF-8-safe revision-bound raw Chunk units; multi-kind payload stores remain open |
 | Immutable knowledge-unit identity | Value contracts only | `KnowledgeUnitKey` is persisted separately from monotonic `KnowledgeUnitId`; no in-place identity mutation API is exposed |
 | Source summaries | Value contracts only | Inline revision-bound `SourceRefSummary` values are persisted; the M0 store admits exactly one such source per Chunk (the general envelope budget is at most three); full `source_refs` storage remains deferred |
-| Original projection | Contract only | Rebuildable BM25 view only; no general `IProjectionStore` implementation |
+| Original projection | Implemented (revision-aware M0 publisher/store) | Bounded envelope-seed projection is durable and reopen-tested; importer wiring, full ChunkPayload hydration, projection-aware BM25 postings and lifecycle reclamation remain open |
 | Lexical retrieval | In-memory tokenizer/index primitives exist; coverage says roadmap only for the product path | Deterministic BM25 product path over durable canonical bodies, exercised through the importer |
 | Scope isolation | Contract and some storage slices exist | Covered for ingest, reopen and search in this profile |
 | Retrieval trace | Missing product path | Not addressed |
@@ -82,7 +82,7 @@ and hydration.
 
 This PR does not claim that all M0 gates are complete. Locator-backed
 `ChunkPayload` hydration, full `source_refs`, a
-general Original projection store, retrieval traces, lineage orchestration,
+projection-to-importer orchestration, full-body Original hydration, retrieval traces, lineage orchestration,
 complete MemoryStack profile integration, reindex protocols beyond this
 publication intent, general recovery orchestration, compaction and maintenance
 are follow-up M0 work. Interrupted-publication recovery for this narrow slice
