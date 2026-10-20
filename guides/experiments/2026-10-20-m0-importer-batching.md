@@ -75,3 +75,28 @@ renewal under a transaction near the 30-second operational budget. Follow-up
 work should repeat the matrix on representative corpora and test interruption
 between batches, takeover, repeat import, duplicate IDs, and manifest retention
 for larger documents before changing the default batch size.
+
+## Follow-up validation from `main` after PR #527
+
+The importer regression suite now exercises the actual default batch size at
+the boundary `128 + 128 + 1`. It interrupts after the first and second
+committed batches, verifies that no manifest is visible before recovery, then
+reopens the environment and checks all 257 raw units, their source offsets,
+content order, manifest state, and every `knowledge_unit:<id>` manifest
+binding with its exact ordinal. This is a recovery fixture, not a benchmark
+claim.
+
+The batch benchmark accepts a repeat count and an optional deterministic UTF-8
+corpus. Each cell uses a fresh MDBX environment. It prints every sample and a
+summary with median, minimum, and maximum elapsed time:
+
+```text
+agent_memory_mdbx_resource_importer_test.exe --batch-benchmark 5 utf8
+```
+
+`chunks`, `raw_store_calls`, and `db_bytes` are repeated logical/physical
+controls; the harness fails closed if the database cannot be removed or
+recreated, and asserts that those controls remain unchanged across repeats;
+only elapsed time is summarized statistically. Results from this
+follow-up must record runner, compiler/build flags, MDBX settings, corpus mode,
+repeat count, and raw output before making a default-batch recommendation.
