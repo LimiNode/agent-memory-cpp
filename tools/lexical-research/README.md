@@ -68,8 +68,9 @@ py -3 tools/lexical-research/run_cpp_lexical_parity.py `
 The receipt keeps four gates independent: `cpp_tokenizer_contract` compares
 text, `TokenKind`, byte range, and position with hand-authored golden data;
 `python_scorer_parity` consumes the actual C++-tokenized document and query
-streams, then compares BM25 TF/DF/IDF statistics, ordering, scores, repeated
-terms, ties, near-ties, and explicit multi-field filters; `lifecycle_parity`
+streams, recomputes BM25 document statistics from those streams, and compares
+the resulting ordering and scores, including repeated terms, ties, near-ties,
+and explicit multi-field filters; `lifecycle_parity`
 checks scores and visibility after the in-memory update/erase fixture;
 `native_tokenizer_delta` records expected differences between the portable
 fixture tokenizer and the C++ tokenizer. Python `kind` values in that delta are
