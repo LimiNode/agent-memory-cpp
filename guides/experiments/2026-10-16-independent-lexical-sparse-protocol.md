@@ -283,8 +283,9 @@ rather than production integration.
 
 ## PR2 runner smoke (2026-10-20, refreshed after M0 publication)
 
-Context: `research/lexical-alternatives-runner`, rebased onto the merged M0
-publication baseline `1e221eedf41860c65685dbd3b184922ae68b1d3a`. This is a
+Context: `research/lexical-alternatives-runner`, originally rebased onto the
+historical M0 publication baseline `1e221eedf41860c65685dbd3b184922ae68b1d3a`.
+The current stacked branch is based on the restacked PR1 above. This is a
 harness check, not an algorithm comparison.
 
 Command:
