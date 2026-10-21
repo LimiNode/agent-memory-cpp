@@ -1061,8 +1061,13 @@ private:
                         // below is the sole publication boundary, so an
                         // interrupted run can leave rows that recovery
                         // replays idempotently without making them visible.
+                        // Projection revision follows the persisted envelope
+                        // revision. Mutable envelope updates therefore create
+                        // a new immutable projection key instead of trying to
+                        // overwrite an older projection with a new freshness
+                        // token.
                         m_projection_store->put(make_original_projection(
-                            envelope, 1
+                            envelope, envelope.revision
                         ));
                     }
                 }

@@ -1226,12 +1226,26 @@ void run_manifest_aware_original_publication_check() {
            "recovery did not publish an active manifest");
     expect(manifest->records.size() == 6,
            "manifest did not bind document, chunk, raw unit and Original projection");
+    auto mutable_patch = KnowledgeUnitMutablePatch{};
+    mutable_patch.display_text = "updated display text";
+    const auto updated = raw_store.update_mutable_fields(
+        first_staged_unit, std::move(mutable_patch)
+    );
+    expect(updated.revision == 2,
+           "mutable envelope update did not advance the unit revision");
+    const auto replayed = recovered.import(original(
+        "resource:manifest-original",
+        "https://example.test/manifest-original",
+        body
+    ));
+    expect(replayed.raw_units == staged_units,
+           "replay after a mutable update allocated new raw unit ids");
+    expect(projection_store.list(
+               ScopeId{"tenant-b"}, first_staged_unit, ProjectionKind::Original
+           ).empty(),
+           "Original projection leaked across scopes");
     for(std::size_t index = 0; index < 2; ++index) {
-        const auto unit_id = recovered.import(original(
-            "resource:manifest-original",
-            "https://example.test/manifest-original",
-            body
-        )).raw_units[index];
+        const auto unit_id = replayed.raw_units[index];
         const auto expected = std::string{"original_projection:"} +
             std::to_string(unit_id.value());
         const auto it = std::find_if(
@@ -1246,10 +1260,25 @@ void run_manifest_aware_original_publication_check() {
         const auto projections = projection_store.list(
             ScopeId{"tenant-a"}, unit_id, ProjectionKind::Original
         );
-        expect(projections.size() == 1 && projections.front().body ==
-                   std::string(1024, 'o'),
+        expect(projections.size() == (index == 0 ? 2U : 1U) &&
+                   projections.front().body == std::string(1024, 'o'),
                "recovery did not preserve the Original projection identity");
+        if(index == 0) {
+            expect(projections.back().version.projection_revision == 2,
+                   "mutable envelope revision did not allocate a new projection revision");
+        }
     }
+    const auto repeated = recovered.import(original(
+        "resource:manifest-original",
+        "https://example.test/manifest-original",
+        body
+    ));
+    expect(repeated.raw_units == staged_units,
+           "repeated Original import changed raw unit identity");
+    expect(projection_store.list(
+               ScopeId{"tenant-a"}, first_staged_unit, ProjectionKind::Original
+           ).size() == 2,
+           "repeated import duplicated the current Original projection");
     }
     context.reset();
     {
@@ -1259,7 +1288,7 @@ void run_manifest_aware_original_publication_check() {
         });
         expect(reopened_projection_store.list(
                    ScopeId{"tenant-a"}, first_staged_unit, ProjectionKind::Original
-               ).size() == 1,
+               ).size() == 2,
                "Original projection did not survive reopen");
     }
     expect(std::filesystem::remove(path, error) || !std::filesystem::exists(path),
