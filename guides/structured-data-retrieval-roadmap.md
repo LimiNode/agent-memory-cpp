@@ -110,14 +110,16 @@ canonical row, the dependent structured indexes and only those semantic views
 whose input frontier intersects the changed content. Rebuilding an entire
 table index for every changed row is not a requirement of this profile.
 
-The first tabular release slice should establish deterministic TSV/CSV parsing,
-schema and locator receipts, table discovery, exact row/cell retrieval and
-targeted revision invalidation. SQL pushdown, AI operators, row embeddings and
-backend-specific optimisations remain later milestones. A small bake-off on
-representative text-heavy, mixed-type and large numerical tables should compare
-table-only, table-plus-schema and optional row projections using table Recall@K,
-row/cell citation accuracy, memory, update cost and retrieval p95 before a
-default beyond table-level discovery is adopted.
+The first public structured-data release profile is a bounded TSV/CSV source
+profile under M1b Structured Knowledge. It must establish deterministic
+parsing, schema and locator receipts, table discovery, exact row/cell
+retrieval and targeted revision invalidation before it is advertised as
+supported. SQL pushdown, AI operators, row embeddings and backend-specific
+optimisations remain later milestones. A small bake-off on representative
+text-heavy, mixed-type and large numerical tables should compare table-only,
+table-plus-schema and optional row projections using table Recall@K, row/cell
+citation accuracy, memory, update cost and retrieval p95; that bake-off does
+not gate the baseline parser/retrieval implementation.
 
 ## Optional typed AI operators
 
