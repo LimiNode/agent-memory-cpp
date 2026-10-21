@@ -88,6 +88,19 @@ std::string projection_key(
     return key;
 }
 
+ProjectionKind decode_projection_kind(std::uint64_t raw_kind) {
+    if(raw_kind > std::numeric_limits<std::uint16_t>::max()) {
+        throw std::runtime_error("projection kind is out of range");
+    }
+    const auto kind = static_cast<ProjectionKind>(
+        static_cast<std::uint16_t>(raw_kind)
+    );
+    if(!is_valid_projection_kind(kind)) {
+        throw std::runtime_error("unsupported projection kind");
+    }
+    return kind;
+}
+
 SearchProjection deserialize(std::string_view payload) {
     std::size_t position = 0;
     if(read_string(payload, position) != kPayloadVersion) {
@@ -96,7 +109,7 @@ SearchProjection deserialize(std::string_view payload) {
     SearchProjection projection;
     projection.scope_id = ScopeId{read_string(payload, position)};
     projection.unit_id = KnowledgeUnitId{read_u64(payload, position)};
-    projection.kind = static_cast<ProjectionKind>(read_u64(payload, position));
+    projection.kind = decode_projection_kind(read_u64(payload, position));
     projection.version.unit_revision_at_build = read_u64(payload, position);
     projection.version.projection_revision = read_u64(payload, position);
     projection.version.derivation_generation = read_u64(payload, position);
@@ -135,7 +148,7 @@ ProjectionKeyIdentity decode_key(std::string_view key) {
     ProjectionKeyIdentity identity{
         ScopeId{read_string(key, position)},
         KnowledgeUnitId{read_u64(key, position)},
-        static_cast<ProjectionKind>(read_u64(key, position)),
+        decode_projection_kind(read_u64(key, position)),
         read_u64(key, position)
     };
     if(position != key.size() || identity.scope_id.empty() || identity.unit_id.empty()
@@ -233,7 +246,8 @@ std::vector<SearchProjection> MdbxProjectionStore::list(
                || projection.kind != key_identity.kind
                || projection.version.projection_revision != key_identity.projection_revision
                || projection.scope_id.value() != scope_id.value()
-               || projection.unit_id.value() != unit_id.value()) {
+               || projection.unit_id.value() != unit_id.value()
+               || key != projection_key(projection)) {
                 throw std::runtime_error("search projection key and payload identity mismatch");
             }
             if(!kind || projection.kind == *kind) result.push_back(std::move(projection));

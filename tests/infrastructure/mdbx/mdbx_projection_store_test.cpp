@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -71,6 +72,40 @@ std::string projection_key(const agent_memory::ScopeId& scope,
     return key;
 }
 
+std::size_t skip_string(std::string_view payload, std::size_t position) {
+    const auto colon = payload.find(':', position);
+    if(colon == std::string_view::npos) throw std::runtime_error("invalid test string");
+    const auto size = static_cast<std::size_t>(
+        std::stoull(std::string{payload.substr(position, colon - position)})
+    );
+    return colon + 1U + size;
+}
+
+std::size_t payload_kind_offset(std::string_view payload) {
+    auto position = skip_string(payload, 0);
+    position = skip_string(payload, position);
+    return position + 8U;
+}
+
+std::size_t key_kind_offset(std::string_view key) {
+    return skip_string(key, 0) + 8U;
+}
+
+void overwrite_u64(std::string& value, std::size_t position, std::uint64_t number) {
+    if(position + 8U > value.size()) throw std::runtime_error("invalid test integer offset");
+    for(int shift = 56; shift >= 0; shift -= 8)
+        value[position++] = static_cast<char>((number >> shift) & 0xffU);
+}
+
+bool throws_message(const std::function<void()>& operation, std::string_view message) {
+    try {
+        operation();
+    } catch(const std::runtime_error& error) {
+        return error.what() == message;
+    }
+    return false;
+}
+
 } // namespace
 
 int main() {
@@ -78,6 +113,8 @@ int main() {
     const auto path = test_path();
     std::error_code error;
     std::filesystem::remove(path, error);
+    expect(!error && !std::filesystem::exists(path),
+           "projection test database was not cleanly removed before opening");
     const ScopeId scope{"tenant-a"};
     const ScopeId other_scope{"tenant-b"};
     const KnowledgeUnitId id{42};
@@ -158,6 +195,39 @@ int main() {
             mdbxc::TransactionMode::WRITABLE);
         table.insert_or_assign(original_key, *original_payload, restore_txn);
         restore_txn.commit();
+
+        auto invalid_payload_kind = *original_payload;
+        overwrite_u64(invalid_payload_kind, payload_kind_offset(invalid_payload_kind), 65'537);
+        auto invalid_payload_txn = context->connection()->transaction(
+            mdbxc::TransactionMode::WRITABLE);
+        table.insert_or_assign(original_key, invalid_payload_kind, invalid_payload_txn);
+        invalid_payload_txn.commit();
+        expect(throws_message(
+                   [&] { (void)store.list(scope, id); },
+                   "projection kind is out of range"),
+               "payload kind truncation was accepted");
+        auto restore_payload_txn = context->connection()->transaction(
+            mdbxc::TransactionMode::WRITABLE);
+        table.insert_or_assign(original_key, *original_payload, restore_payload_txn);
+        restore_payload_txn.commit();
+
+        auto invalid_key = original_key;
+        overwrite_u64(invalid_key, key_kind_offset(invalid_key), 65'537);
+        auto invalid_key_txn = context->connection()->transaction(
+            mdbxc::TransactionMode::WRITABLE);
+        table.erase(original_key, invalid_key_txn);
+        table.insert_or_assign(invalid_key, *original_payload, invalid_key_txn);
+        invalid_key_txn.commit();
+        expect(throws_message(
+                   [&] { (void)store.list(scope, id); },
+                   "projection kind is out of range"),
+               "key kind truncation was accepted");
+        auto restore_key_txn = context->connection()->transaction(
+            mdbxc::TransactionMode::WRITABLE);
+        table.erase(invalid_key, restore_key_txn);
+        table.insert_or_assign(original_key, *original_payload, restore_key_txn);
+        restore_key_txn.commit();
+
         auto malformed = *original_payload;
         const auto colon = malformed.find(':');
         expect(colon != std::string::npos, "projection payload fixture has no length prefix");
@@ -166,12 +236,25 @@ int main() {
             mdbxc::TransactionMode::WRITABLE);
         table.insert_or_assign(original_key, malformed, malformed_txn);
         malformed_txn.commit();
-        bool malformed_threw = false;
-        try { (void)store.list(scope, id); }
-        catch(const std::runtime_error&) { malformed_threw = true; }
-        expect(malformed_threw, "oversized projection length was accepted");
+        expect(throws_message(
+                   [&] { (void)store.list(scope, id); },
+                   "projection payload string is truncated"),
+               "truncated projection length was accepted");
+
+        auto overflowing = *original_payload;
+        overflowing.replace(0, colon,
+                            std::to_string(std::numeric_limits<std::size_t>::max()) + "0");
+        auto overflowing_txn = context->connection()->transaction(
+            mdbxc::TransactionMode::WRITABLE);
+        table.insert_or_assign(original_key, overflowing, overflowing_txn);
+        overflowing_txn.commit();
+        expect(throws_message(
+                   [&] { (void)store.list(scope, id); },
+                   "projection payload string size overflows"),
+               "projection length arithmetic overflow was accepted");
     }
-    expect(std::filesystem::remove(path, error) || !std::filesystem::exists(path),
+    const auto removed = std::filesystem::remove(path, error);
+    expect(!error && (removed || !std::filesystem::exists(path)),
            "projection test database could not be removed");
     std::cout << "mdbx projection store tests passed\n";
     return 0;
