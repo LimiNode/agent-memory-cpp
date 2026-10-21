@@ -5,7 +5,10 @@ Date: 2026-10-20
 Status: `PROTOCOL_ONLY` — no experiment result and no production recommendation
 
 Branch: `research/lexical-alternatives`
-Base: `1e221eedf41860c65685dbd3b184922ae68b1d3a` (`LimiNode/main`, after PR #526)
+Original research baseline: `1e221eedf41860c65685dbd3b184922ae68b1d3a`
+(`LimiNode/main`, after PR #526, at protocol authoring time)
+Current PR base after restack: `4d6658eff445b71775d11d66aaf15d167ff9973f`
+(`LimiNode/main`, after PR #529)
 
 ## Research question
 
