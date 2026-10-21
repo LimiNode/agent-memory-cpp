@@ -54,6 +54,71 @@ The initial relational operators are `Scan`, `Project`, `Filter`, `Join`,
 operator boundaries, row/byte/time limits and the source revision/frontier
 used for each result.
 
+## Tabular source profile (TSV/CSV)
+
+Delimited text is a structured source, not merely a long text file to split
+into ordinary chunks. TSV and CSV ingestion is therefore a planned tabular
+profile of this roadmap. It is not implemented by the embedded core and does
+not change the M0 text-only importer contract.
+
+The profile keeps one canonical, revisioned table representation and derives
+search-oriented views from it:
+
+```text
+canonical TSV/CSV artifact + source revision
+        -> TabularRepresentation (dialect, schema, raw rows, row identity)
+        -> TableSemanticProjection (name, purpose, columns, units, examples)
+        -> structured index (keys, typed values, filters, ranges)
+        -> lexical projection (headers, field names, rare values, descriptions)
+        -> optional row/column projections when a row has substantive text
+```
+
+The table-level semantic projection is the default discovery route. A row is
+not converted into an independent embedding by default: for large numerical
+or measurement tables that creates unnecessary cost and weakens exact
+structured execution. Row-level or column-level semantic projections are an
+opt-in derived index for tables whose records contain meaningful natural
+language or when a table-level recall evaluation demonstrates a need.
+
+The minimum source contract is:
+
+- preserve the original UTF-8 bytes and source revision/digest;
+- record the delimiter/dialect, header policy, quoting and escaping rules,
+  newline convention, encoding decision and empty-value policy;
+- keep schema declarations (when supplied) alongside inferred types and the
+  original string value; inference is a proposal and must never silently turn
+  identifiers such as `001234` into `1234`;
+- assign a stable row key when the source provides a primary key, otherwise
+  use a revision-bound row identity rather than treating a physical line
+  number as a durable identity;
+- retain a locator for every row and cell: source revision, row key or ordinal,
+  column identity and, where available, byte span; and
+- expose bounded streaming reads, typed filters/ranges and exact row/cell
+  hydration without loading the complete file into memory.
+
+`TableSemanticProjection` is derived evidence. It may contain the table name,
+purpose, schema summary, units, representative values and a provenance link to
+the canonical table revision, but it is never an authority for numeric values.
+Answers requiring a value, filter, join or aggregate execute against the
+structured representation and return the exact row/cell citations. Embeddings
+remain rebuildable indexes and must not replace canonical values or
+provenance.
+
+Updates are revisioned. A schema or row-key change invalidates the affected
+structured and semantic projections; a content-only change invalidates the
+canonical row, the dependent structured indexes and only those semantic views
+whose input frontier intersects the changed content. Rebuilding an entire
+table index for every changed row is not a requirement of this profile.
+
+The first tabular release slice should establish deterministic TSV/CSV parsing,
+schema and locator receipts, table discovery, exact row/cell retrieval and
+targeted revision invalidation. SQL pushdown, AI operators, row embeddings and
+backend-specific optimisations remain later milestones. A small bake-off on
+representative text-heavy, mixed-type and large numerical tables should compare
+table-only, table-plus-schema and optional row projections using table Recall@K,
+row/cell citation accuracy, memory, update cost and retrieval p95 before a
+default beyond table-level discovery is adopted.
+
 ## Optional typed AI operators
 
 AI operators are derived, bounded computations over rows or candidate pairs;
@@ -148,7 +213,7 @@ policy changes independently of the semantic projection.
 
 | Milestone | Dependency | Minimum evidence | Acceptance | Risk |
 |---|---|---|---|---|
-| S0 structured source contract | canonical storage/read-frontier contracts | fake catalog, typed rows and provenance fixtures | no untyped or cross-frontier row reaches retrieval | schema drift |
+| S0 structured source contract | canonical storage/read-frontier contracts | fake catalog, typed rows, TSV/CSV dialect/schema/locator and provenance fixtures | no untyped or cross-frontier row reaches retrieval; exact row/cell citations survive revision changes | schema drift |
 | S1 SQL adapters | S0, parameterized read-only interface | SQLite fixture, PostgreSQL compatibility plan | pushdown preserves identity, limits and visibility | backend divergence |
 | S2 relational plan | S0/S1 | logical-to-physical explain replay | deterministic bounded plan and stable results | planner complexity |
 | S3 structured retrieval route | `RetrievalPlan`, context projection | mixed lexical/vector/structured fixture | provenance and `RetrievalCompletion` remain intact | result-shape drift |
