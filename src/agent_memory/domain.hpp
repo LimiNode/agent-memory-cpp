@@ -12,6 +12,7 @@
 #include "domain/Metadata.hpp"
 #include "domain/MetadataFilter.hpp"
 #include "domain/Resource.hpp"
+#include "domain/SearchProjection.hpp"
 #include "domain/SourceKind.hpp"
 
 #endif

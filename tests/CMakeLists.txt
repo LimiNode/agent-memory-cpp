@@ -96,6 +96,15 @@ target_link_libraries(agent_memory_knowledge_unit_test
 
 add_test(NAME agent_memory_knowledge_unit_test COMMAND agent_memory_knowledge_unit_test)
 
+add_executable(agent_memory_search_projection_test
+    domain/search_projection_test.cpp
+)
+target_link_libraries(agent_memory_search_projection_test
+    PRIVATE
+        agent_memory::agent_memory
+)
+add_test(NAME agent_memory_search_projection_test COMMAND agent_memory_search_projection_test)
+
 add_executable(agent_memory_resource_manifest_test
     domain/resource_manifest_test.cpp
 )
@@ -667,5 +676,18 @@ if(AGENT_MEMORY_ENABLE_MDBX)
     add_test(
         NAME agent_memory_mdbx_knowledge_unit_store_test
         COMMAND agent_memory_mdbx_knowledge_unit_store_test
+    )
+
+    add_executable(agent_memory_mdbx_projection_store_test
+        infrastructure/mdbx/mdbx_projection_store_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_projection_store_test
+        PRIVATE
+            agent_memory::agent_memory
+            mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_projection_store_test
+        COMMAND agent_memory_mdbx_projection_store_test
     )
 endif()

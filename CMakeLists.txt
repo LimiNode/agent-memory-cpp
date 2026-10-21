@@ -34,6 +34,7 @@ add_library(agent_memory STATIC
     src/agent_memory/domain/Metadata.cpp
     src/agent_memory/domain/MetadataFilter.cpp
     src/agent_memory/domain/Resource.cpp
+    src/agent_memory/domain/SearchProjection.cpp
     src/agent_memory/domain/SourceKind.cpp
     src/agent_memory/embedding/embedding_types.cpp
     src/agent_memory/embedding/enums.cpp
@@ -84,12 +85,14 @@ add_library(agent_memory STATIC
     src/agent_memory/retrieval/BruteForceTopKIndex.cpp
     src/agent_memory/retrieval/ExactLexicalRetriever.cpp
     src/agent_memory/retrieval/HybridRetrievalEngine.cpp
+    src/agent_memory/retrieval/OriginalProjection.cpp
     src/agent_memory/retrieval/IRetrievalEngine.cpp
     src/agent_memory/retrieval/IRetriever.cpp
     src/agent_memory/retrieval/Retrieval.cpp
     src/agent_memory/storage/IDocumentStorage.cpp
     src/agent_memory/storage/CanonicalContentStore.cpp
     src/agent_memory/storage/IKnowledgeUnitStore.cpp
+    src/agent_memory/storage/IProjectionStore.cpp
     src/agent_memory/storage/IResourceIndexRecordOwnerStorage.cpp
     src/agent_memory/storage/IResourceManifestStorage.cpp
 )
@@ -128,6 +131,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxStorageContext.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentRouter.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxProjectionStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxFederatedCanonicalReader.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceIndexRecordOwnerStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.cpp
