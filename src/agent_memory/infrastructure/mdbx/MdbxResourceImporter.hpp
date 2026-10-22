@@ -6,6 +6,7 @@
 /// \brief Recoverable lexical-first resource importer over shared MDBX storage.
 
 #include "MdbxDurableLexicalDocumentMemory.hpp"
+#include "MdbxProjectionStore.hpp"
 #include "MdbxResourceManifestStorage.hpp"
 
 #include <agent_memory/ingestion/ResourceImporter.hpp>
@@ -45,7 +46,11 @@ namespace agent_memory {
     /// \brief Durable publication profile for the M0 importer.
     enum class ResourceImportPublicationProfile : std::uint8_t {
         LexicalOnly,
-        LexicalWithRawChunks
+        LexicalWithRawChunks,
+        /// Raw chunks plus revision-aware Original projections. This is an
+        /// explicit schema/profile so existing raw-only manifests are never
+        /// silently rewritten with a different derived-record topology.
+        LexicalWithRawAndOriginalProjections
     };
 
     /// \brief Deterministic interruption points for importer recovery tests.

@@ -1,5 +1,6 @@
 #include "MdbxResourceImporter.hpp"
 #include "MdbxKnowledgeUnitStore.hpp"
+#include <agent_memory/retrieval/OriginalProjection.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 
@@ -373,13 +374,18 @@ std::string publication_schema_id(
     if(profile == ResourceImportPublicationProfile::LexicalOnly) {
         return "agent_memory.m0_resource_importer";
     }
+    if(profile == ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections) {
+        return "agent_memory.m0_resource_importer.raw_chunks_original@" +
+            sanitize_table_prefix(std::string{table_prefix});
+    }
     return "agent_memory.m0_resource_importer.raw_chunks@" +
         sanitize_table_prefix(std::string{table_prefix});
 }
 
 bool is_valid_publication_profile(ResourceImportPublicationProfile profile) {
     return profile == ResourceImportPublicationProfile::LexicalOnly ||
-        profile == ResourceImportPublicationProfile::LexicalWithRawChunks;
+        profile == ResourceImportPublicationProfile::LexicalWithRawChunks ||
+        profile == ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
 }
 
 void validate_resource(const ObservedResource& resource) {
@@ -457,7 +463,9 @@ std::string serialize_intent(const PendingImport& pending) {
         payload,
         pending.publication_profile == ResourceImportPublicationProfile::LexicalOnly
             ? "lexical_only"
-            : "lexical_with_raw_chunks"
+            : pending.publication_profile == ResourceImportPublicationProfile::LexicalWithRawChunks
+                ? "lexical_with_raw_chunks"
+                : "lexical_with_raw_and_original_projections"
     );
     append_string(payload, pending.owner_id);
     append_string(payload, std::to_string(pending.fencing_epoch));
@@ -509,6 +517,9 @@ PendingImport deserialize_intent(std::string_view payload) {
         } else if(profile == "lexical_with_raw_chunks") {
             pending.publication_profile =
                 ResourceImportPublicationProfile::LexicalWithRawChunks;
+        } else if(profile == "lexical_with_raw_and_original_projections") {
+            pending.publication_profile =
+                ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
         } else {
             throw std::runtime_error("resource import intent has an invalid publication profile");
         }
@@ -655,6 +666,14 @@ ResourceManifest make_manifest(
             "knowledge_unit:" + std::to_string(raw_units[index].value()),
             static_cast<std::uint32_t>(index)
         });
+        if(profile == ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections) {
+            manifest.records.push_back(DerivedRecordRef{
+                DerivedRecordKind::Custom,
+                ChunkId{},
+                "original_projection:" + std::to_string(raw_units[index].value()),
+                static_cast<std::uint32_t>(index)
+            });
+        }
     }
     manifest.schema = ResourceManifestSchema{
         publication_schema_id(profile, table_prefix),
@@ -759,7 +778,7 @@ public:
         if(m_lease_ms == 0) {
             throw std::invalid_argument("resource importer ownership lease must be positive");
         }
-        if(m_publication_profile == ResourceImportPublicationProfile::LexicalWithRawChunks) {
+        if(m_publication_profile != ResourceImportPublicationProfile::LexicalOnly) {
             if(m_max_raw_body_bytes == 0 || m_max_raw_chunks == 0 ||
                m_max_raw_chunks > (std::numeric_limits<std::uint32_t>::max)() ||
                m_raw_chunk_batch_size == 0 ||
@@ -777,6 +796,16 @@ public:
             m_knowledge_unit_store = std::make_shared<MdbxKnowledgeUnitStore>(
                 std::move(store_options)
             );
+            if(m_publication_profile ==
+               ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections) {
+                MdbxProjectionStoreOptions projection_options;
+                projection_options.table_prefix = options.table_prefix;
+                projection_options.max_dbs = options.max_dbs;
+                projection_options.context = m_context;
+                m_projection_store = std::make_shared<MdbxProjectionStore>(
+                    std::move(projection_options)
+                );
+            }
         }
         m_owner_id = make_owner_id();
         recover_pending();
@@ -879,7 +908,7 @@ private:
     }
 
     void validate_admission(const ObservedResource& resource) const {
-        if(m_publication_profile != ResourceImportPublicationProfile::LexicalWithRawChunks) {
+        if(m_publication_profile == ResourceImportPublicationProfile::LexicalOnly) {
             return;
         }
         if(resource.utf8_body.size() > m_max_raw_body_bytes) {
@@ -1027,6 +1056,20 @@ private:
                         );
                     }
                     raw_units.push_back(envelope.id);
+                    if(m_projection_store) {
+                        // Projections are durable staging rows. The manifest
+                        // below is the sole publication boundary, so an
+                        // interrupted run can leave rows that recovery
+                        // replays idempotently without making them visible.
+                        // Projection revision follows the persisted envelope
+                        // revision. Mutable envelope updates therefore create
+                        // a new immutable projection key instead of trying to
+                        // overwrite an older projection with a new freshness
+                        // token.
+                        m_projection_store->put(make_original_projection(
+                            envelope, envelope.revision
+                        ));
+                    }
                 }
                 assert_ownership(pending.resource.resource_id.value(), expected_token);
                 if(inject_faults) {
@@ -1418,6 +1461,7 @@ private:
     MdbxDurableLexicalDocumentMemory m_lexical;
     MdbxResourceManifestStorage m_manifests;
     std::shared_ptr<MdbxKnowledgeUnitStore> m_knowledge_unit_store;
+    std::shared_ptr<MdbxProjectionStore> m_projection_store;
     std::string m_intent_table_name;
     std::string m_token_table_name;
     mdbxc::KeyValueTable<std::string, std::string> m_intents;

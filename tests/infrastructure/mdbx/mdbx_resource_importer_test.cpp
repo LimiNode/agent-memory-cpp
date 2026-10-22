@@ -3,6 +3,7 @@
 #include <agent_memory/infrastructure/mdbx/MdbxDurableLexicalDocumentMemory.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxProjectionStore.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 
@@ -1148,6 +1149,152 @@ void run_lexical_catalog_guard_race_check() {
 
 } // namespace
 
+void run_manifest_aware_original_publication_check() {
+    using namespace agent_memory;
+    const auto path = test_path("manifest_original");
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    expect(!error && !std::filesystem::exists(path),
+           "manifest-aware projection fixture was not cleanly removed");
+    auto context = MdbxStorageContext::open(path.string());
+    const auto body = std::string(2048, 'o');
+    MdbxResourceImporterOptions interrupted_options;
+    interrupted_options.context = context;
+    interrupted_options.publication_profile =
+        ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
+    interrupted_options.max_raw_body_bytes = 4096;
+    interrupted_options.max_raw_chunks = 4;
+    use_test_clock(interrupted_options, 100);
+    bool interrupted = false;
+    interrupted_options.fault_injector = [](ResourceImporterFaultPoint point) {
+        if(point == ResourceImporterFaultPoint::AfterRawUnitPublication) {
+            throw std::runtime_error("interrupt after raw/projection batch");
+        }
+    };
+    {
+        MdbxResourceImporter importer{std::move(interrupted_options)};
+        try {
+            (void)importer.import(original(
+                "resource:manifest-original",
+                "https://example.test/manifest-original",
+                body
+            ));
+        } catch(const std::runtime_error&) {
+            interrupted = true;
+        }
+    }
+    expect(interrupted, "projection publication fixture did not interrupt");
+
+    KnowledgeUnitId first_staged_unit;
+    {
+    MdbxKnowledgeUnitStore raw_store(MdbxKnowledgeUnitStoreOptions{
+        {}, "agent_memory", false, kDefaultMdbxMaxDbs, context, {}
+    });
+    const auto staged_units = raw_store.scan_by_scope_and_kind(
+        ScopeId{"tenant-a"}, KnowledgeUnitKind::Chunk
+    );
+    expect(staged_units.size() == 2,
+           "interrupted projection fixture did not retain two staged raw units");
+    first_staged_unit = staged_units.front();
+    MdbxProjectionStore projection_store(MdbxProjectionStoreOptions{
+        {}, "agent_memory", false, kDefaultMdbxMaxDbs, context
+    });
+    for(const auto unit_id : staged_units) {
+        const auto staged_projection = projection_store.list(
+            ScopeId{"tenant-a"}, unit_id, ProjectionKind::Original
+        );
+        expect(staged_projection.size() == 1 && staged_projection.front().body ==
+                   std::string(1024, 'o'),
+               "interrupted import did not retain the staged Original projection");
+    }
+    MdbxResourceManifestStorage manifests(MdbxResourceManifestStorageOptions{
+        {}, "agent_memory", false, kDefaultMdbxMaxDbs, context
+    });
+    expect(!manifests.find_manifest(ResourceId{"resource:manifest-original"}),
+           "manifest became visible before Original projection publication completed");
+
+    MdbxResourceImporterOptions recovery_options;
+    recovery_options.context = context;
+    recovery_options.publication_profile =
+        ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
+    recovery_options.max_raw_body_bytes = 4096;
+    recovery_options.max_raw_chunks = 4;
+    use_test_clock(recovery_options, 1'000);
+    MdbxResourceImporter recovered{std::move(recovery_options)};
+    const auto manifest = recovered.find_manifest(ResourceId{"resource:manifest-original"});
+    expect(manifest && manifest->state == ResourceManifestState::Active,
+           "recovery did not publish an active manifest");
+    expect(manifest->records.size() == 6,
+           "manifest did not bind document, chunk, raw unit and Original projection");
+    auto mutable_patch = KnowledgeUnitMutablePatch{};
+    mutable_patch.display_text = "updated display text";
+    const auto updated = raw_store.update_mutable_fields(
+        first_staged_unit, std::move(mutable_patch)
+    );
+    expect(updated.revision == 2,
+           "mutable envelope update did not advance the unit revision");
+    const auto replayed = recovered.import(original(
+        "resource:manifest-original",
+        "https://example.test/manifest-original",
+        body
+    ));
+    expect(replayed.raw_units == staged_units,
+           "replay after a mutable update allocated new raw unit ids");
+    expect(projection_store.list(
+               ScopeId{"tenant-b"}, first_staged_unit, ProjectionKind::Original
+           ).empty(),
+           "Original projection leaked across scopes");
+    for(std::size_t index = 0; index < 2; ++index) {
+        const auto unit_id = replayed.raw_units[index];
+        const auto expected = std::string{"original_projection:"} +
+            std::to_string(unit_id.value());
+        const auto it = std::find_if(
+            manifest->records.begin(), manifest->records.end(),
+            [&](const DerivedRecordRef& record) {
+                return record.kind == DerivedRecordKind::Custom &&
+                    record.key == expected && record.ordinal == index;
+            }
+        );
+        expect(it != manifest->records.end(),
+               "manifest missed an Original projection binding");
+        const auto projections = projection_store.list(
+            ScopeId{"tenant-a"}, unit_id, ProjectionKind::Original
+        );
+        expect(projections.size() == (index == 0 ? 2U : 1U) &&
+                   projections.front().body == std::string(1024, 'o'),
+               "recovery did not preserve the Original projection identity");
+        if(index == 0) {
+            expect(projections.back().version.projection_revision == 2,
+                   "mutable envelope revision did not allocate a new projection revision");
+        }
+    }
+    const auto repeated = recovered.import(original(
+        "resource:manifest-original",
+        "https://example.test/manifest-original",
+        body
+    ));
+    expect(repeated.raw_units == staged_units,
+           "repeated Original import changed raw unit identity");
+    expect(projection_store.list(
+               ScopeId{"tenant-a"}, first_staged_unit, ProjectionKind::Original
+           ).size() == 2,
+           "repeated import duplicated the current Original projection");
+    }
+    context.reset();
+    {
+        auto reopened_context = MdbxStorageContext::open(path.string());
+        MdbxProjectionStore reopened_projection_store(MdbxProjectionStoreOptions{
+            {}, "agent_memory", false, kDefaultMdbxMaxDbs, reopened_context
+        });
+        expect(reopened_projection_store.list(
+                   ScopeId{"tenant-a"}, first_staged_unit, ProjectionKind::Original
+               ).size() == 2,
+               "Original projection did not survive reopen");
+    }
+    expect(std::filesystem::remove(path, error) || !std::filesystem::exists(path),
+           "manifest-aware projection database could not be removed");
+}
+
 int main(int argc, char** argv) {
     if(argc == 2 && std::string_view{argv[1]} == "--benchmark") {
         run_benchmark();
@@ -1187,6 +1334,7 @@ int main(int argc, char** argv) {
     run_offline_fencing_migration_checks();
     run_inner_guard_negative_checks();
     run_lexical_catalog_guard_race_check();
+    run_manifest_aware_original_publication_check();
     using namespace agent_memory;
     const auto path = test_path("contract");
     std::error_code error;
@@ -1581,6 +1729,21 @@ int main(int argc, char** argv) {
             ));
         } catch(const std::runtime_error&) { downgraded = true; }
         expect(downgraded, "wired resource silently downgraded to lexical-only");
+
+        MdbxResourceImporterOptions projection_options;
+        projection_options.context = context;
+        projection_options.publication_profile =
+            ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
+        use_test_clock(projection_options, 100);
+        MdbxResourceImporter projection_importer{std::move(projection_options)};
+        bool mixed_profile_rejected = false;
+        try {
+            (void)projection_importer.import(original(
+                "resource:profile", "https://example.test/profile", "profile-bound source"
+            ));
+        } catch(const std::runtime_error&) { mixed_profile_rejected = true; }
+        expect(mixed_profile_rejected,
+               "projection profile silently rewrote a raw-only manifest");
     }
     std::filesystem::remove(profile_path, error);
 
