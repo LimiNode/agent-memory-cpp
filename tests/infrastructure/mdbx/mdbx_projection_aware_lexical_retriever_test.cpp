@@ -62,11 +62,13 @@ int main() {
     std::shared_ptr<MdbxStorageContext> context;
     {
     context = MdbxStorageContext::open(path.string());
+    std::cerr << "stage: context opened\n";
     MdbxResourceImporterOptions importer_options;
     importer_options.context = context;
     importer_options.publication_profile =
         ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
     MdbxResourceImporter importer(std::move(importer_options));
+    std::cerr << "stage: importer opened\n";
 
     MdbxKnowledgeUnitStoreOptions unit_options;
     unit_options.context = context;
@@ -77,11 +79,13 @@ int main() {
     MdbxResourceManifestStorageOptions manifest_options;
     manifest_options.context = context;
     MdbxResourceManifestStorage manifests(std::move(manifest_options));
+    std::cerr << "stage: stores opened\n";
 
     const auto first = importer.import(resource(
         "resource-projection-aware",
         "durable projection alpha evidence"
     ));
+    std::cerr << "stage: first import\n";
     expect(!first.raw_units.empty(), "raw importer profile did not create a unit");
     auto retriever = make_retriever(units, projections, manifests, scope, tokenizer);
     RetrievalQuery query;
@@ -98,6 +102,7 @@ int main() {
         "projection alpha foreign scope",
         "tenant-b"
     ));
+    std::cerr << "stage: foreign import\n";
     RetrievalQuery foreign_query;
     foreign_query.text = "foreign";
     expect(retriever.retrieve(foreign_query).empty(), "MDBX retrieval leaked across scopes");
@@ -107,6 +112,7 @@ int main() {
         "resource-projection-aware",
         "replacement projection beta evidence"
     ));
+    std::cerr << "stage: replacement import\n";
     RetrievalQuery stale_query;
     stale_query.text = "durable";
     expect(retriever.retrieve(stale_query).empty(), "stale resource projection remained visible");
@@ -118,6 +124,7 @@ int main() {
     // Reopen all adapters and prove publication survives process boundaries.
     {
     context = MdbxStorageContext::open(path.string());
+    std::cerr << "stage: reopen context\n";
     MdbxKnowledgeUnitStoreOptions reopened_unit_options;
     reopened_unit_options.context = context;
     MdbxKnowledgeUnitStore reopened_units(std::move(reopened_unit_options));
@@ -127,6 +134,7 @@ int main() {
     MdbxResourceManifestStorageOptions reopened_manifest_options;
     reopened_manifest_options.context = context;
     MdbxResourceManifestStorage reopened_manifests(std::move(reopened_manifest_options));
+    std::cerr << "stage: reopen stores\n";
     auto reopened_retriever = make_retriever(
         reopened_units,
         reopened_projections,
@@ -154,6 +162,7 @@ int main() {
             "resource-projection-aware-interrupted",
             "invisible interrupted projection"
         ));
+        std::cerr << "stage: interrupted import unexpectedly completed\n";
     } catch(const std::runtime_error& error_value) {
         interrupted = std::string{error_value.what()} == "intentional interrupted publication";
     }
