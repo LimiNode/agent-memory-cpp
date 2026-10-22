@@ -70,16 +70,6 @@ int main() {
         return importer.import(std::move(observed));
     };
 
-    MdbxKnowledgeUnitStoreOptions unit_options;
-    unit_options.context = context;
-    MdbxKnowledgeUnitStore units(std::move(unit_options));
-    MdbxProjectionStoreOptions projection_options;
-    projection_options.context = context;
-    MdbxProjectionStore projections(std::move(projection_options));
-    MdbxResourceManifestStorageOptions manifest_options;
-    manifest_options.context = context;
-    MdbxResourceManifestStorage manifests(std::move(manifest_options));
-
     const auto first = import_resource(resource(
         "resource-projection-aware",
         "durable projection alpha evidence"
