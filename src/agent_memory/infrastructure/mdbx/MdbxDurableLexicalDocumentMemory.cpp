@@ -655,7 +655,9 @@ public:
 
 private:
     void reject_legacy_catalog() const {
-        const auto legacy_payload = m_catalog.find(std::string{kLegacyCatalogKey});
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+        const auto legacy_payload = m_catalog.find(std::string{kLegacyCatalogKey}, txn);
+        txn.commit();
         if(!legacy_payload) {
             return;
         }
@@ -667,7 +669,10 @@ private:
 
     [[nodiscard]] EntriesByScope load_entries() const {
         EntriesByScope entries;
-        const auto records = m_catalog.retrieve_all<std::map>();
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+        std::vector<std::pair<std::string, std::string>> records;
+        m_catalog.load(records, txn);
+        txn.commit();
         for(const auto& record : records) {
             if(!has_key_prefix(record.first, kEntryKeyPrefix)) {
                 continue;
@@ -686,7 +691,10 @@ private:
 
     [[nodiscard]] EntriesByResource load_scope_entries(const ScopeId& scope_id) const {
         EntriesByResource entries;
-        const auto records = m_catalog.retrieve_all<std::map>();
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+        std::vector<std::pair<std::string, std::string>> records;
+        m_catalog.load(records, txn);
+        txn.commit();
         for(const auto& record : records) {
             if(!has_key_prefix(record.first, kEntryKeyPrefix)) {
                 continue;
@@ -704,7 +712,9 @@ private:
     }
 
     [[nodiscard]] std::uint64_t load_scope_version(const ScopeId& scope_id) const {
-        const auto stored = m_catalog.find(scope_version_key(scope_id));
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+        const auto stored = m_catalog.find(scope_version_key(scope_id), txn);
+        txn.commit();
         return stored ? parse_u64(*stored, "durable lexical scope version") : 0;
     }
 
