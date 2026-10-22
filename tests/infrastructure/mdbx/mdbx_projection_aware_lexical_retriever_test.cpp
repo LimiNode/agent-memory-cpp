@@ -9,7 +9,6 @@
 
 #include <chrono>
 #include <filesystem>
-#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -87,9 +86,7 @@ int main() {
     RetrievalQuery query;
     query.text = "projection alpha";
     query.limit = 5;
-    std::cerr << "test: initial retrieve\n";
     const auto initial = retriever.retrieve(query);
-    std::cerr << "test: initial retrieved\n";
     expect(initial.size() == 1 &&
            initial.chunks.front().chunk.text == "durable projection alpha evidence",
            "MDBX publication was not retrievable");

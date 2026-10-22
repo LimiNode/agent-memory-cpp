@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <functional>
-#include <iostream>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -36,9 +35,7 @@ bool has_publication_binding(
         std::to_string(envelope.id.value());
     for(const auto& source : envelope.sources) {
         if(!source.resource_revision) continue;
-        std::cerr << "retriever: binding resolve " << source.resource_id.value() << "\n";
         const auto manifest = resolve_manifest(source.resource_id);
-        std::cerr << "retriever: binding resolved\n";
         if(!manifest || !is_active_resource_manifest(*manifest)) continue;
         if(manifest->schema.schema_id != expected_schema_id ||
            manifest->schema.schema_version != expected_schema_version) {
@@ -235,7 +232,6 @@ RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
             m_options.expected_manifest_schema_id,
             m_options.expected_manifest_schema_version
         );
-        std::cerr << "retriever: projection checked " << id.value() << "\n";
         if(!projection || projection->body.empty()) continue;
         if(projection->body.size() >
            m_options.max_indexed_projection_bytes - indexed_projection_bytes) {
@@ -265,9 +261,7 @@ RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
     for(const auto& hit : hits) {
         const auto envelope_it = envelopes.find(hit.chunk_id.value());
         if(envelope_it == envelopes.end()) continue;
-        std::cerr << "retriever: current find " << envelope_it->second.id.value() << "\n";
         const auto current = m_unit_store->find(envelope_it->second.id);
-        std::cerr << "retriever: current found\n";
         if(!current || current->revision != envelope_it->second.revision ||
            current->lifecycle_state != KnowledgeUnitLifecycleState::Active ||
            !has_publication_binding(
@@ -278,7 +272,6 @@ RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
             )) {
             continue;
         }
-        std::cerr << "retriever: current binding checked\n";
         result.chunks.push_back(make_result(*current, hit.score));
         if(result.chunks.size() >= query.limit) break;
     }
