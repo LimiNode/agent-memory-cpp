@@ -105,7 +105,11 @@ def validate_dataset(dataset: dict[str, Any]) -> None:
             raise ValueError("qrel references an unknown query")
         if doc_id not in known:
             raise ValueError("qrel references an unknown corpus item")
-        if not isinstance(judgment.get("grade"), int) or judgment["grade"] < 0:
+        if (
+            isinstance(judgment.get("grade"), bool)
+            or not isinstance(judgment.get("grade"), int)
+            or judgment["grade"] < 0
+        ):
             raise ValueError("qrel grade must be a non-negative integer")
         pair = (query_id, doc_id)
         if pair in qrel_pairs:
@@ -244,6 +248,7 @@ def qrels_coverage(query_runs: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "aggregation": "judged_queries_with_positive_qrels_only",
         "aggregated_query_count": modes["judged"],
+        "eligible_positive_judged_query_count": modes["judged"],
         "judged_zero_relevant_query_count": modes["judged_zero_relevant"],
         "no_answer_query_count": modes["no_answer"],
         "unjudged_query_count": modes["unjudged"],
@@ -299,11 +304,12 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
         })
 
     judged_runs = [row for row in query_runs if row["answer_mode"] == "judged"]
+    has_eligible_positive_judgments = bool(judged_runs)
     recall = {
         str(k): (
             sum(metric_at_k(row["hits"], qrels.get(row["query_id"], {}), k) for row in judged_runs)
             / len(judged_runs)
-            if k <= limit
+            if k <= limit and has_eligible_positive_judgments
             else None
         )
         for k in METRIC_KS
@@ -311,18 +317,26 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
     ndcg = (
         sum(ndcg_at_k(row["hits"], qrels.get(row["query_id"], {}), 10) for row in judged_runs)
         / len(judged_runs)
-        if limit >= 10
+        if limit >= 10 and has_eligible_positive_judgments
         else None
     )
     mrr = (
         sum(reciprocal_rank(row["hits"], qrels.get(row["query_id"], {})) for row in judged_runs)
         / len(judged_runs)
-        if limit >= 1
+        if limit >= 1 and has_eligible_positive_judgments
         else None
     )
     no_answer = [row for row in query_runs if row["answer_mode"] == "no_answer"]
     no_answer_accuracy = (
         sum(not row["hits"] for row in no_answer) / len(no_answer) if no_answer else None
+    )
+    judged_zero_relevant = [
+        row for row in query_runs if row["answer_mode"] == "judged_zero_relevant"
+    ]
+    zero_relevant_accuracy = (
+        sum(not row["hits"] for row in judged_zero_relevant) / len(judged_zero_relevant)
+        if judged_zero_relevant
+        else None
     )
     coverage = qrels_coverage(query_runs)
     candidate_depth_complete = limit >= max(METRIC_KS)
@@ -332,10 +346,19 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
             if candidate_depth_complete
             else "partial_qrels_and_truncated_candidate_depth"
         )
+        if not has_eligible_positive_judgments:
+            evaluation_status += "_without_eligible_positive_judgments"
     else:
-        evaluation_status = (
-            "complete" if candidate_depth_complete else "truncated_candidate_depth"
-        )
+        if has_eligible_positive_judgments:
+            evaluation_status = (
+                "complete" if candidate_depth_complete else "truncated_candidate_depth"
+            )
+        else:
+            evaluation_status = (
+                "no_eligible_positive_judgments"
+                if candidate_depth_complete
+                else "no_eligible_positive_judgments_and_truncated_candidate_depth"
+            )
     report = {
         "schema_version": 1,
         "runner": "lexical_protocol_bm25_python",
@@ -356,6 +379,7 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
             "ndcg_at_10": ndcg,
             "mrr": mrr,
             "no_answer_accuracy": no_answer_accuracy,
+            "zero_relevant_accuracy": zero_relevant_accuracy,
             "qrels_coverage": coverage,
             "evaluation_status": evaluation_status,
         },
@@ -409,6 +433,13 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
 
 def self_test(dataset_path: Path) -> None:
     dataset = read_json(dataset_path)
+
+    def run_temporary_dataset(candidate: dict[str, Any]) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            candidate_path = Path(temporary_directory) / "lexical-protocol-self-test.json"
+            candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+            return run(candidate_path, None, limit=50, repeats=1)
+
     report = run(dataset_path, None, limit=50, repeats=1)
     expected = dataset.get("expected_top_ids", {})
     actual = {row["query_id"]: [hit["doc_id"] for hit in row["hits"]] for row in report["queries"]}
@@ -444,12 +475,55 @@ def self_test(dataset_path: Path) -> None:
         *dataset["qrels"],
         {"query_id": "q_partial", "doc_id": "d1", "grade": 2},
     ]
-    with tempfile.TemporaryDirectory() as temporary_directory:
-        partial_path = Path(temporary_directory) / "partial-qrels.json"
-        partial_path.write_text(json.dumps(partial_dataset), encoding="utf-8")
-        partial_report = run(partial_path, None, limit=50, repeats=1)
+    partial_report = run_temporary_dataset(partial_dataset)
     if partial_report["quality"]["evaluation_status"] != "partial_qrels":
         raise AssertionError("incomplete qrels must prevent a complete quality status")
+    no_answer_only = {
+        "dataset_name": "no_answer_only",
+        "corpus": dataset["corpus"],
+        "queries": [{"id": "q_no_answer_only", "answer_mode": "no_answer", "text": "quantum bananas"}],
+        "qrels": [],
+    }
+    no_answer_report = run_temporary_dataset(no_answer_only)
+    if (
+        any(value is not None for value in no_answer_report["quality"]["recall_at"].values())
+        or no_answer_report["quality"]["ndcg_at_10"] is not None
+        or no_answer_report["quality"]["mrr"] is not None
+        or no_answer_report["quality"]["evaluation_status"]
+        != "no_eligible_positive_judgments"
+    ):
+        raise AssertionError("no-answer-only evaluation must report inapplicable positive metrics")
+    zero_relevant_only = {
+        "dataset_name": "judged_zero_relevant_only",
+        "corpus": dataset["corpus"],
+        "queries": [
+            {"id": "q_zero_false_positive", "answer_mode": "judged_zero_relevant", "text": "ExactLexicalIndex"},
+            {"id": "q_zero_empty", "answer_mode": "judged_zero_relevant", "text": "quantum bananas"},
+        ],
+        "qrels": [
+            {"query_id": "q_zero_false_positive", "doc_id": "d1", "grade": 0},
+            {"query_id": "q_zero_empty", "doc_id": "d1", "grade": 0},
+        ],
+    }
+    zero_relevant_report = run_temporary_dataset(zero_relevant_only)
+    if (
+        zero_relevant_report["quality"]["zero_relevant_accuracy"] != 0.5
+        or zero_relevant_report["quality"]["evaluation_status"]
+        != "no_eligible_positive_judgments"
+    ):
+        raise AssertionError("judged-zero-relevant false positives must lower negative accuracy")
+    incomplete_only = {
+        "dataset_name": "incomplete_qrels_only",
+        "corpus": dataset["corpus"],
+        "queries": [{"id": "q_incomplete_only", "answer_mode": "incomplete_qrels", "text": "ExactLexicalIndex"}],
+        "qrels": [{"query_id": "q_incomplete_only", "doc_id": "d1", "grade": 2}],
+    }
+    incomplete_report = run_temporary_dataset(incomplete_only)
+    if (
+        incomplete_report["quality"]["evaluation_status"]
+        != "partial_qrels_without_eligible_positive_judgments"
+    ):
+        raise AssertionError("incomplete-only evaluation must not be marked complete")
     truncated = run(dataset_path, None, limit=10, repeats=1)
     if truncated["quality"]["evaluation_status"] != "truncated_candidate_depth":
         raise AssertionError("sub-50 candidate depth must be marked truncated")
@@ -468,6 +542,7 @@ def self_test(dataset_path: Path) -> None:
         ("unknown qrel query", {"qrels": [{"query_id": "missing", "doc_id": "d1", "grade": 1}]}),
         ("unknown qrel document", {"qrels": [{"query_id": "q_exact_identifier", "doc_id": "missing", "grade": 1}]}),
         ("negative qrel grade", {"qrels": [{"query_id": "q_exact_identifier", "doc_id": "d1", "grade": -1}]}),
+        ("boolean qrel grade", {"qrels": [{"query_id": "q_exact_identifier", "doc_id": "d1", "grade": True}]}),
         ("duplicate qrel", {"qrels": [*dataset["qrels"], dataset["qrels"][0]]}),
         ("judged query without positive qrel", {"qrels": [{"query_id": "q_exact_identifier", "doc_id": "d1", "grade": 0}]}),
         ("unjudged query with qrel", {"qrels": [{"query_id": "q_exact_identifier", "doc_id": "d1", "grade": 1}], "queries": [

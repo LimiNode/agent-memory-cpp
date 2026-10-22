@@ -30,7 +30,11 @@ compressed postings, and production MDBX are intentionally out of scope.
 Every query must declare an `answer_mode`. `judged` requires at least one
 positive qrel and is the only mode included in aggregate Recall, nDCG, and MRR.
 `judged_zero_relevant` requires explicit zero-grade qrels and records a fully
-judged query with no relevant document. `no_answer`, `unjudged`, and `ignore`
+judged query with no relevant document; its `zero_relevant_accuracy` is the
+fraction returning no hits, so false-positive retrieval is visible. `no_answer`
+has its own `no_answer_accuracy`. When a receipt has no eligible `judged`
+queries, Recall, nDCG, and MRR are `null` and the quality status cannot be
+`complete`. `no_answer`, `unjudged`, and `ignore`
 must not carry qrels: they respectively test expected empty retrieval, identify
 absent judgments, and omit a query from this protocol. `incomplete_qrels`
 requires at least one judgment, is reported separately, and prevents the

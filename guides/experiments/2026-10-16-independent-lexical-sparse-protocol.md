@@ -151,7 +151,12 @@ must be reported as incomplete rather than folded into a quality average.
 The runner makes this boundary explicit per query. `judged` queries need one or
 more positive qrels and are the only inputs to aggregate Recall, nDCG, and MRR.
 `judged_zero_relevant` has one or more explicit zero-grade qrels and records a
-completed negative relevance judgment without treating it as a recall zero.
+completed negative relevance judgment without treating it as a recall zero; its
+`zero_relevant_accuracy` measures whether the scorer correctly returns no hits.
+`no_answer_accuracy` remains separate because it carries an expected-empty
+query semantics rather than an explicit zero-relevance judgment. When there are
+no `judged` queries, aggregate Recall, nDCG, and MRR are inapplicable (`null`),
+and the receipt is not a complete positive-relevance evaluation.
 `incomplete_qrels` has at least one judgment but is excluded from quality
 aggregates; its presence makes the receipt's quality status partial. `unjudged`
 has no qrels, `no_answer` has no qrels and is evaluated only by empty-result
