@@ -92,6 +92,7 @@ int main() {
            "MDBX publication was not retrievable");
 
     }
+    context.reset();
 
     // Reopen all adapters, publish a second scope and a newer revision, then
     // prove stale projections remain invisible.
@@ -141,6 +142,7 @@ int main() {
            "reopened MDBX publication was not retrievable");
 
     }
+    context.reset();
 
     // A fresh reopen verifies interrupted publication remains invisible.
     {
