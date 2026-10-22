@@ -674,7 +674,7 @@ namespace agent_memory {
             if(scope_id.empty() || !is_valid_knowledge_unit_kind(kind)) return {};
             const auto key = index_key(scope_id, kind);
             std::vector<KnowledgeUnitId> ids;
-            const auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+            auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
             const auto schema_version = index_schema_version(txn);
             bool has_legacy_entries = false;
             bool has_v2_entries = false;
@@ -690,6 +690,7 @@ namespace agent_memory {
                 }
             }
             validate_index_format(schema_version, has_legacy_entries, has_v2_entries);
+            txn.commit();
             return ids;
         }
 
