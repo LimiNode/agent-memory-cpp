@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -81,12 +82,14 @@ int main() {
         "resource-projection-aware",
         "durable projection alpha evidence"
     ));
+    std::cerr << "stage initial import\n";
     expect(!first.raw_units.empty(), "raw importer profile did not create a unit");
     auto retriever = make_retriever(units, projections, manifests, scope, tokenizer);
     RetrievalQuery query;
     query.text = "projection alpha";
     query.limit = 5;
     const auto initial = retriever.retrieve(query);
+    std::cerr << "stage initial retrieve\n";
     expect(initial.size() == 1 &&
            initial.chunks.front().chunk.text == "durable projection alpha evidence",
            "MDBX publication was not retrievable");
@@ -103,16 +106,19 @@ int main() {
     reopened_importer_options.publication_profile =
         ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
     MdbxResourceImporter reopened_importer(std::move(reopened_importer_options));
+    std::cerr << "stage reopen importer\n";
 
     (void)reopened_importer.import(resource(
         "resource-projection-aware-other-scope",
         "projection alpha foreign scope",
         "tenant-b"
     ));
+    std::cerr << "stage foreign import\n";
     (void)reopened_importer.import(resource(
         "resource-projection-aware",
         "replacement projection beta evidence"
     ));
+    std::cerr << "stage replacement import\n";
 
     MdbxKnowledgeUnitStoreOptions reopened_unit_options;
     reopened_unit_options.context = context;
@@ -140,6 +146,7 @@ int main() {
            "stale resource projection remained visible");
     expect(reopened_retriever.retrieve(replacement_query).size() == 1,
            "reopened MDBX publication was not retrievable");
+    std::cerr << "stage replacement retrieve\n";
 
     }
     context.reset();
@@ -175,6 +182,7 @@ int main() {
         }
     };
     bool interrupted = false;
+    std::cerr << "stage interrupted setup\n";
     try {
         MdbxResourceImporter interrupted_import(std::move(interrupted_options));
         (void)interrupted_import.import(resource(
@@ -189,6 +197,7 @@ int main() {
     interrupted_query.text = "invisible interrupted";
     expect(interrupted_retriever.retrieve(interrupted_query).empty(),
            "interrupted projection became visible without an active manifest");
+    std::cerr << "stage interrupted retrieve\n";
     }
 
     context.reset();
