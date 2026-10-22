@@ -93,7 +93,7 @@ int main() {
            "MDBX publication was not retrievable");
 
     // A second source in another scope must not leak into the first scope.
-    importer.import(resource(
+    (void)importer.import(resource(
         "resource-projection-aware-other-scope",
         "projection alpha foreign scope",
         "tenant-b"
@@ -103,7 +103,7 @@ int main() {
     expect(retriever.retrieve(foreign_query).empty(), "MDBX retrieval leaked across scopes");
 
     // A newer resource revision invalidates the old projection binding.
-    importer.import(resource(
+    (void)importer.import(resource(
         "resource-projection-aware",
         "replacement projection beta evidence"
     ));
@@ -116,6 +116,7 @@ int main() {
     }
 
     // Reopen all adapters and prove publication survives process boundaries.
+    {
     context = MdbxStorageContext::open(path.string());
     MdbxKnowledgeUnitStoreOptions reopened_unit_options;
     reopened_unit_options.context = context;
@@ -149,7 +150,7 @@ int main() {
     bool interrupted = false;
     try {
         MdbxResourceImporter interrupted_import(std::move(interrupted_options));
-        interrupted_import.import(resource(
+        (void)interrupted_import.import(resource(
             "resource-projection-aware-interrupted",
             "invisible interrupted projection"
         ));
@@ -161,9 +162,12 @@ int main() {
     interrupted_query.text = "invisible interrupted";
     expect(reopened_retriever.retrieve(interrupted_query).empty(),
            "interrupted projection became visible without an active manifest");
+    }
 
-    std::filesystem::remove(path, error);
-    expect(!error, "MDBX test database cleanup failed");
+    context.reset();
+    const bool removed = std::filesystem::remove(path, error);
+    expect(removed && !error && !std::filesystem::exists(path),
+           "MDBX test database cleanup failed");
     return 0;
 }
 
