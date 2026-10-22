@@ -56,6 +56,9 @@ int main() {
     expect(!error && !std::filesystem::exists(path), "MDBX test path was not clean");
 
     const ScopeId scope{"tenant-a"};
+    StandardTokenizer tokenizer;
+    RetrievalQuery replacement_query;
+    replacement_query.text = "replacement beta";
     std::shared_ptr<MdbxStorageContext> context;
     {
     context = MdbxStorageContext::open(path.string());
@@ -74,7 +77,6 @@ int main() {
     MdbxResourceManifestStorageOptions manifest_options;
     manifest_options.context = context;
     MdbxResourceManifestStorage manifests(std::move(manifest_options));
-    StandardTokenizer tokenizer;
 
     const auto first = importer.import(resource(
         "resource-projection-aware",
@@ -108,8 +110,6 @@ int main() {
     RetrievalQuery stale_query;
     stale_query.text = "durable";
     expect(retriever.retrieve(stale_query).empty(), "stale resource projection remained visible");
-    RetrievalQuery replacement_query;
-    replacement_query.text = "replacement beta";
     expect(retriever.retrieve(replacement_query).size() == 1,
            "new resource projection was not visible");
 
