@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -103,16 +104,19 @@ int main() {
     reopened_importer_options.publication_profile =
         ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
     MdbxResourceImporter reopened_importer(std::move(reopened_importer_options));
+    std::cerr << "stage reopen importer\n";
 
     (void)reopened_importer.import(resource(
         "resource-projection-aware-other-scope",
         "projection alpha foreign scope",
         "tenant-b"
     ));
+    std::cerr << "stage foreign import\n";
     (void)reopened_importer.import(resource(
         "resource-projection-aware",
         "replacement projection beta evidence"
     ));
+    std::cerr << "stage replacement import\n";
 
     MdbxKnowledgeUnitStoreOptions reopened_unit_options;
     reopened_unit_options.context = context;
@@ -140,6 +144,7 @@ int main() {
            "stale resource projection remained visible");
     expect(reopened_retriever.retrieve(replacement_query).size() == 1,
            "reopened MDBX publication was not retrievable");
+    std::cerr << "stage replacement retrieve\n";
 
     }
     context.reset();
