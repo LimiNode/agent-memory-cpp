@@ -82,7 +82,8 @@ language or when a table-level recall evaluation demonstrates a need.
 
 The minimum source contract is:
 
-- preserve the original UTF-8 bytes and source revision/digest;
+- preserve the original artifact bytes and source revision/digest, with any
+  normalized UTF-8 view recorded as a separate representation;
 - record the delimiter/dialect, header policy, quoting and escaping rules,
   newline convention, encoding decision and empty-value policy;
 - keep schema declarations (when supplied) alongside inferred types and the

@@ -752,6 +752,7 @@ struct TabularRepresentation {
 struct TableSemanticProjection {
     RepresentationId table_representation_id;
     SourceRevisionId source_revision_id;
+    KnowledgeUnitId search_unit_id;
     std::string title;
     std::string purpose;
     std::string schema_summary;
@@ -761,12 +762,16 @@ struct TableSemanticProjection {
 ```
 
 `TableSemanticProjection` is a logical derived representation, not a second
-identity or indexing system. When materialized for retrieval it uses the
-existing `SearchProjection` record and its `ProjectionVersionRef`: the table
-`RepresentationId` and `SourceRevisionId` are retained in the derivation
-fingerprint/provenance, while projection generation and model/index identity
-remain the existing projection fields. Multi-model, ANN and other derived
-indexes consume those ordinary projection records; they do not assign a new
+identity or indexing system. When materialized for retrieval, the adapter must
+bind it to a stable `KnowledgeUnitId` allocated through the existing unit-store
+contract and emit an ordinary `SearchProjection` for that unit. Its
+`ProjectionVersionRef` carries unit revision, projection revision, generation
+and derivation fingerprint; it does not pretend that a table
+`RepresentationId` is a `KnowledgeUnitId`. The table representation and source
+revision remain in the derivation provenance. Model, codec and index identity
+belong to a separate versioned index descriptor owned by the consuming index,
+not to an overloaded fingerprint. Multi-model and ANN indexes consume those
+ordinary projection records and their descriptors; they do not assign a new
 tabular identity scheme.
 
 The parser records delimiter, quoting/escaping, newline, encoding and empty
@@ -881,6 +886,7 @@ struct TableCellLocator {
 /// A row identity that remains addressable after a later table sort.
 struct TabularRowRef {
     std::string table_id;
+    RepresentationId representation_id;
     std::string row_key;
     std::uint64_t row_ordinal = 0;
     SourceRevisionId source_revision_id;
