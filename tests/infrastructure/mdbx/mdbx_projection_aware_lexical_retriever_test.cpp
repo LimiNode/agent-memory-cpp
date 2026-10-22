@@ -9,7 +9,6 @@
 
 #include <chrono>
 #include <filesystem>
-#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -66,9 +65,6 @@ int main() {
     importer_options.context = context;
     importer_options.publication_profile =
         ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
-    importer_options.fault_injector = [](ResourceImporterFaultPoint point) {
-        std::cerr << "fault point " << static_cast<int>(point) << "\n";
-    };
     MdbxResourceImporter importer(std::move(importer_options));
 
     MdbxKnowledgeUnitStoreOptions unit_options;

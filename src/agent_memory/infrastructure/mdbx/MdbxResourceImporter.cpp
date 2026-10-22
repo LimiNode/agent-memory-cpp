@@ -1285,8 +1285,13 @@ private:
     }
 
     void assert_ownership(const std::string& key, const std::string& payload) const {
+        std::optional<std::string> current;
         if(!m_diagnostics) {
-            const auto current = m_tokens.find(key);
+            auto txn = m_context->connection()->transaction(
+                mdbxc::TransactionMode::READ_ONLY
+            );
+            current = m_tokens.find(key, txn);
+            txn.commit();
             if(!current || *current != payload) {
                 throw std::runtime_error("resource import executor was fenced out");
             }
@@ -1294,7 +1299,11 @@ private:
         }
         const auto total_started = std::chrono::steady_clock::now();
         const auto lookup_started = std::chrono::steady_clock::now();
-        const auto current = m_tokens.find(key);
+        auto txn = m_context->connection()->transaction(
+            mdbxc::TransactionMode::READ_ONLY
+        );
+        current = m_tokens.find(key, txn);
+        txn.commit();
         const auto lookup_finished = std::chrono::steady_clock::now();
         const auto compare_started = lookup_finished;
         const bool matches = current && *current == payload;
