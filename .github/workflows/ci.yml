@@ -966,6 +966,43 @@ jobs:
           path: artifacts/lexical-parity-receipt.json
           if-no-files-found: warn
 
+  classical-bakeoff:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: Classical lexical bake-off
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run classical bake-off self-test
+        run: >
+          python tools/lexical-research/run_classical_bakeoff.py
+          tools/lexical-research/fixtures/classical_bakeoff_v1.json
+          --self-test
+
+      - name: Run classical bake-off receipt smoke
+        run: >
+          python tools/lexical-research/run_classical_bakeoff.py
+          tools/lexical-research/fixtures/classical_bakeoff_v1.json
+          --repeats 2 --output classical-bakeoff-receipt.json
+
+      - name: Upload classical bake-off receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: classical-bakeoff-receipt
+          path: classical-bakeoff-receipt.json
+          if-no-files-found: warn
+
   research-full:
     if: needs.changes.outputs.full == 'true'
     needs: changes
@@ -1022,6 +1059,7 @@ jobs:
       - thq-packed-codec-contract
       - ann-cascade
       - lexical-parity
+      - classical-bakeoff
       - research-full
     runs-on: ubuntu-latest
     steps:
@@ -1043,6 +1081,7 @@ jobs:
           THQ_RESULT: ${{ needs.thq-packed-codec-contract.result }}
           ANN_RESULT: ${{ needs.ann-cascade.result }}
           PARITY_RESULT: ${{ needs.lexical-parity.result }}
+          CLASSICAL_RESULT: ${{ needs.classical-bakeoff.result }}
           FULL_RESULT: ${{ needs.research-full.result }}
         shell: bash
         run: |
@@ -1074,6 +1113,7 @@ jobs:
           check_required "$RESEARCH_REQUIRED" "$THQ_RESULT" "THQ packed codec"
           check_required "$RESEARCH_REQUIRED" "$ANN_RESULT" "ANN cascade"
           check_required "$RESEARCH_REQUIRED" "$PARITY_RESULT" "C++ lexical parity"
+          check_required "$RESEARCH_REQUIRED" "$CLASSICAL_RESULT" "classical lexical bake-off"
           check_required "$FULL_REQUIRED" "$FULL_RESULT" "full research CTest"
 
           exit "$failed"

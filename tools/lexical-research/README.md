@@ -15,13 +15,18 @@ py -3 tools/lexical-research/run_classical_bakeoff.py `
   tools/lexical-research/fixtures/classical_bakeoff_v1.json --self-test
 ```
 
-The fixture keeps resource-level and chunk-level qrels separate and excludes
-`unjudged`/`incomplete_qrels` queries from quality aggregates. BM25F is
-contract-only here because production `SearchProjection` field projections are
-not implemented in this PR. Python tokenizer output and spans are diagnostic
-approximations, not C++ byte ranges. `sample_count` counts repeated
-observations, not independent queries; timing receipts describe the observed
-distribution only and make no p99 stability or statistical-significance claim.
+The fixture evaluates independent resource and chunk arms (with a separately
+labelled mixed-unit diagnostic arm), so `N`, `DF`, `avgdl`, and top-k are not
+shared across the two primary evaluations. Qrels must name a known level that
+matches the document unit; incomplete, unjudged, no-answer, and zero-relevant
+queries are validated and reported separately. BM25F is contract-only here
+because production `SearchProjection` field materialization is not implemented
+in this PR. Python tokenizer output and spans are diagnostic approximations,
+not C++ byte ranges. `sample_count` counts repeated observations, not
+independent queries; timing receipts describe the observed distribution only
+and make no p99 stability or statistical-significance claim.
+Index preparation is measured once per arm (`index_build_ms`); repeated query
+samples separately report preprocessing, scoring, ranking, and end-to-end time.
 
 Run the committed smoke fixture:
 

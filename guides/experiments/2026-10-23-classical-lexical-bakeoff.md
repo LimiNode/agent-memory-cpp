@@ -22,14 +22,19 @@ py -3 tools/lexical-research/run_classical_bakeoff.py \
 ```
 
 The fixture freezes RU/EN text, C++ identifiers, headings, short and long
-chunks, a negative query, and explicit `unjudged`/`incomplete_qrels` cases.
-Resource and chunk judgments are aggregated independently. Ties use ascending
-`doc_id`.
+chunks, a negative query, a zero-relevant query, and explicit
+`unjudged`/`incomplete_qrels` cases. Resource and chunk arms build separate
+indexes with separate `N`, `DF`, `avgdl`, and top-k; a mixed-unit pool remains
+only as a labelled diagnostic arm. Qrel levels are checked against the
+document unit. Ties use ascending `doc_id`.
 
 Formulas are explicit in the receipt: BM25 uses `k1=1.5`, `b=0.75`, and
 `log1p_okapi` IDF; BM25+ adds `delta=1` after length normalization; BM25L uses
 the normalized term frequency and `delta=1` in its lower-bounded term factor.
 The golden vectors are independently specified rather than copied from a run.
+They include a length-normalization competition in which BM25/BM25+ rank
+`a > b`, while BM25L ranks `b > a`; this proves the fixture can detect a
+scorer-ranking difference rather than merely execute three formulas.
 
 ## Storage compatibility audit
 
@@ -39,6 +44,8 @@ The golden vectors are independently specified rather than copied from a run.
 | Resource/chunk relevance slices | implemented | qrels metadata, no DB writes |
 | Projection-aware field scoring | contract-only | requires production `SearchProjection` |
 | BM25F | contract-only/deferred | no honest field projection path in this PR |
+| `SearchProjection` type and durable `Original` publication | contract-only | existing production contract, not implemented by this harness |
+| BM25F-ready field materialization and retrieval lifecycle | missing from this PR | deferred until projection indexing exists |
 | MDBX postings, DBI/schema, canonical bytes, `ChunkPayload`, `SegmentSet`, compression | missing from this PR | intentionally unchanged |
 
 ## Interpretation and limitations
