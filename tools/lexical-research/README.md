@@ -27,6 +27,17 @@ tokenizer, scorer, and lifecycle parity checks against the C++ baseline before
 using it for algorithmic claims. Model inference, WAND/BMW traversal,
 compressed postings, and production MDBX are intentionally out of scope.
 
+Every query must declare an `answer_mode`. `judged` requires at least one
+positive qrel and is the only mode included in aggregate Recall, nDCG, and MRR.
+`judged_zero_relevant` requires explicit zero-grade qrels and records a fully
+judged query with no relevant document. `no_answer`, `unjudged`, and `ignore`
+must not carry qrels: they respectively test expected empty retrieval, identify
+absent judgments, and omit a query from this protocol. `incomplete_qrels`
+requires at least one judgment, is reported separately, and prevents the
+receipt from claiming a complete quality evaluation. Duplicate `(query_id,
+doc_id)` qrels are rejected, including duplicate grades, so a fixture cannot
+silently choose between conflicting judgments.
+
 The `--limit` value is the candidate depth and defaults to 50 so that the
 reported `Recall@50` is not silently truncated. The receipt separates one-time
 index build from query preprocessing, scoring, and end-to-end query timing.

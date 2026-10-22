@@ -17,6 +17,7 @@ import re
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -79,20 +80,49 @@ def validate_dataset(dataset: dict[str, Any]) -> None:
         raise ValueError("every query needs a non-empty string id")
     if len(set(query_ids)) != len(query_ids):
         raise ValueError("query ids must be unique")
-    allowed_answer_modes = {"judged", "no_answer", "ignore"}
+    allowed_answer_modes = {
+        "judged",
+        "judged_zero_relevant",
+        "no_answer",
+        "unjudged",
+        "incomplete_qrels",
+        "ignore",
+    }
+    answer_modes: dict[str, str] = {}
     for query in dataset["queries"]:
-        answer_mode = query.get("answer_mode", "judged")
+        answer_mode = query.get("answer_mode")
         if answer_mode not in allowed_answer_modes:
             raise ValueError(f"unsupported query answer_mode: {answer_mode}")
+        answer_modes[query["id"]] = answer_mode
     known = set(corpus_ids)
     known_queries = set(query_ids)
+    qrel_grades: dict[str, list[int]] = {query_id: [] for query_id in query_ids}
+    qrel_pairs: set[tuple[str, str]] = set()
     for judgment in dataset["qrels"]:
-        if judgment.get("query_id") not in known_queries:
+        query_id = judgment.get("query_id")
+        doc_id = judgment.get("doc_id")
+        if query_id not in known_queries:
             raise ValueError("qrel references an unknown query")
-        if judgment.get("doc_id") not in known:
+        if doc_id not in known:
             raise ValueError("qrel references an unknown corpus item")
         if not isinstance(judgment.get("grade"), int) or judgment["grade"] < 0:
             raise ValueError("qrel grade must be a non-negative integer")
+        pair = (query_id, doc_id)
+        if pair in qrel_pairs:
+            raise ValueError("duplicate qrel for the same query and document")
+        qrel_pairs.add(pair)
+        qrel_grades[query_id].append(judgment["grade"])
+    for query_id, answer_mode in answer_modes.items():
+        grades = qrel_grades[query_id]
+        has_positive = any(grade > 0 for grade in grades)
+        if answer_mode == "judged" and not has_positive:
+            raise ValueError("judged query requires at least one positive qrel")
+        if answer_mode == "judged_zero_relevant" and (not grades or has_positive):
+            raise ValueError("judged_zero_relevant query requires only explicit zero-grade qrels")
+        if answer_mode == "incomplete_qrels" and not grades:
+            raise ValueError("incomplete_qrels query requires at least one explicit qrel")
+        if answer_mode in {"no_answer", "unjudged", "ignore"} and grades:
+            raise ValueError(f"{answer_mode} query must not carry qrels")
 
 
 def build_index(dataset: dict[str, Any]) -> dict[str, Any]:
@@ -199,6 +229,34 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[index]
 
 
+def qrels_coverage(query_runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Describe qrels completeness without folding partial data into quality."""
+    modes = {
+        "judged": 0,
+        "judged_zero_relevant": 0,
+        "no_answer": 0,
+        "unjudged": 0,
+        "incomplete_qrels": 0,
+        "ignore": 0,
+    }
+    for row in query_runs:
+        modes[row["answer_mode"]] += 1
+    return {
+        "aggregation": "judged_queries_with_positive_qrels_only",
+        "aggregated_query_count": modes["judged"],
+        "judged_zero_relevant_query_count": modes["judged_zero_relevant"],
+        "no_answer_query_count": modes["no_answer"],
+        "unjudged_query_count": modes["unjudged"],
+        "incomplete_qrels_query_count": modes["incomplete_qrels"],
+        "ignored_query_count": modes["ignore"],
+        "status": (
+            "complete"
+            if not modes["unjudged"] and not modes["incomplete_qrels"]
+            else "partial"
+        ),
+    }
+
+
 def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) -> dict[str, Any]:
     dataset = read_json(dataset_path)
     validate_dataset(dataset)
@@ -233,7 +291,7 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
         query_runs.append({
             "query_id": query["id"],
             "query_class": query.get("query_class", "unspecified"),
-            "answer_mode": query.get("answer_mode", "judged"),
+            "answer_mode": query["answer_mode"],
             "hits": hits,
             "latency_ms": end_to_end_ms,
             "query_preprocessing_ms": preprocessing_ms,
@@ -266,6 +324,18 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
     no_answer_accuracy = (
         sum(not row["hits"] for row in no_answer) / len(no_answer) if no_answer else None
     )
+    coverage = qrels_coverage(query_runs)
+    candidate_depth_complete = limit >= max(METRIC_KS)
+    if coverage["status"] == "partial":
+        evaluation_status = (
+            "partial_qrels"
+            if candidate_depth_complete
+            else "partial_qrels_and_truncated_candidate_depth"
+        )
+    else:
+        evaluation_status = (
+            "complete" if candidate_depth_complete else "truncated_candidate_depth"
+        )
     report = {
         "schema_version": 1,
         "runner": "lexical_protocol_bm25_python",
@@ -286,7 +356,8 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
             "ndcg_at_10": ndcg,
             "mrr": mrr,
             "no_answer_accuracy": no_answer_accuracy,
-            "evaluation_status": "complete" if limit >= 50 else "truncated_candidate_depth",
+            "qrels_coverage": coverage,
+            "evaluation_status": evaluation_status,
         },
         "timing": {
             "build_ms": build_ms,
@@ -337,8 +408,9 @@ def run(dataset_path: Path, output_path: Path | None, limit: int, repeats: int) 
 
 
 def self_test(dataset_path: Path) -> None:
+    dataset = read_json(dataset_path)
     report = run(dataset_path, None, limit=50, repeats=1)
-    expected = read_json(dataset_path).get("expected_top_ids", {})
+    expected = dataset.get("expected_top_ids", {})
     actual = {row["query_id"]: [hit["doc_id"] for hit in row["hits"]] for row in report["queries"]}
     for query_id, expected_ids in expected.items():
         if actual.get(query_id, [])[: len(expected_ids)] != expected_ids:
@@ -347,6 +419,37 @@ def self_test(dataset_path: Path) -> None:
         raise AssertionError("no-answer smoke query must remain empty")
     if report["quality"]["evaluation_status"] != "complete":
         raise AssertionError("default smoke depth must support Recall@50")
+    coverage = report["quality"]["qrels_coverage"]
+    if coverage["aggregated_query_count"] != 3 or coverage["status"] != "complete":
+        raise AssertionError("smoke quality aggregate must include only complete judged qrels")
+    partial_coverage = qrels_coverage([
+        {"answer_mode": "judged"},
+        {"answer_mode": "incomplete_qrels"},
+        {"answer_mode": "unjudged"},
+        {"answer_mode": "judged_zero_relevant"},
+    ])
+    if partial_coverage["aggregated_query_count"] != 1 or partial_coverage["status"] != "partial":
+        raise AssertionError("incomplete and unjudged qrels must stay out of quality aggregates")
+    partial_dataset = dict(dataset)
+    partial_dataset["queries"] = [
+        *dataset["queries"],
+        {
+            "id": "q_partial",
+            "query_class": "partial",
+            "answer_mode": "incomplete_qrels",
+            "text": "ExactLexicalIndex",
+        },
+    ]
+    partial_dataset["qrels"] = [
+        *dataset["qrels"],
+        {"query_id": "q_partial", "doc_id": "d1", "grade": 2},
+    ]
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        partial_path = Path(temporary_directory) / "partial-qrels.json"
+        partial_path.write_text(json.dumps(partial_dataset), encoding="utf-8")
+        partial_report = run(partial_path, None, limit=50, repeats=1)
+    if partial_report["quality"]["evaluation_status"] != "partial_qrels":
+        raise AssertionError("incomplete qrels must prevent a complete quality status")
     truncated = run(dataset_path, None, limit=10, repeats=1)
     if truncated["quality"]["evaluation_status"] != "truncated_candidate_depth":
         raise AssertionError("sub-50 candidate depth must be marked truncated")
@@ -361,11 +464,21 @@ def self_test(dataset_path: Path) -> None:
         raise AssertionError("measured status must remain scoped to the observed sample distribution")
     if timing["tail_stability_claim"] != "none":
         raise AssertionError("repeat-count thresholds must not claim stable tail latency")
-    dataset = read_json(dataset_path)
     invalid_cases = (
         ("unknown qrel query", {"qrels": [{"query_id": "missing", "doc_id": "d1", "grade": 1}]}),
         ("unknown qrel document", {"qrels": [{"query_id": "q_exact_identifier", "doc_id": "missing", "grade": 1}]}),
         ("negative qrel grade", {"qrels": [{"query_id": "q_exact_identifier", "doc_id": "d1", "grade": -1}]}),
+        ("duplicate qrel", {"qrels": [*dataset["qrels"], dataset["qrels"][0]]}),
+        ("judged query without positive qrel", {"qrels": [{"query_id": "q_exact_identifier", "doc_id": "d1", "grade": 0}]}),
+        ("unjudged query with qrel", {"qrels": [{"query_id": "q_exact_identifier", "doc_id": "d1", "grade": 1}], "queries": [
+            {"id": "q_exact_identifier", "query_class": "test", "answer_mode": "unjudged", "text": "ExactLexicalIndex"}
+        ]}),
+        ("ignore query with qrel", {"qrels": [{"query_id": "q_exact_identifier", "doc_id": "d1", "grade": 1}], "queries": [
+            {"id": "q_exact_identifier", "query_class": "test", "answer_mode": "ignore", "text": "ExactLexicalIndex"}
+        ]}),
+        ("incomplete qrels without judgment", {"queries": [
+            {"id": "q_exact_identifier", "query_class": "test", "answer_mode": "incomplete_qrels", "text": "ExactLexicalIndex"}
+        ], "qrels": []}),
     )
     for label, override in invalid_cases:
         candidate = dict(dataset)

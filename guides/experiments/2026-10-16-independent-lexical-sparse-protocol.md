@@ -148,6 +148,17 @@ The query set must contain labeled slices for:
 Each slice needs qrels. If a slice has no qrels, it is a diagnostic only and
 must be reported as incomplete rather than folded into a quality average.
 
+The runner makes this boundary explicit per query. `judged` queries need one or
+more positive qrels and are the only inputs to aggregate Recall, nDCG, and MRR.
+`judged_zero_relevant` has one or more explicit zero-grade qrels and records a
+completed negative relevance judgment without treating it as a recall zero.
+`incomplete_qrels` has at least one judgment but is excluded from quality
+aggregates; its presence makes the receipt's quality status partial. `unjudged`
+has no qrels, `no_answer` has no qrels and is evaluated only by empty-result
+accuracy, and `ignore` has no qrels and is omitted from evaluation. A repeated
+`(query_id, doc_id)` pair is invalid even when its grade agrees, preventing a
+fixture from silently accepting duplicate or conflicting relevance judgments.
+
 ### Metrics and timing boundaries
 
 Quality:
