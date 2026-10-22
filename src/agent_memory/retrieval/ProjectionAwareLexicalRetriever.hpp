@@ -13,12 +13,34 @@
 #include <agent_memory/storage/IResourceManifestStorage.hpp>
 
 #include <cstddef>
+#include <cstdint>
+#include <stdexcept>
+#include <string>
 
 namespace agent_memory {
 
     struct ProjectionAwareLexicalRetrieverOptions final {
         ProjectionKind projection_kind = ProjectionKind::Original;
         std::size_t max_candidates = 256;
+        /// Maximum number of units admitted into one in-memory query index.
+        std::size_t max_scanned_units = 4096;
+        /// Maximum UTF-8 bytes admitted into one in-memory query index.
+        std::size_t max_indexed_projection_bytes = 8U * 1024U * 1024U;
+        /// Exact M0 importer schema expected for active Original publication.
+        std::string expected_manifest_schema_id =
+            "agent_memory.m0_resource_importer.raw_chunks_original@agent_memory";
+        std::uint32_t expected_manifest_schema_version = 1;
+    };
+
+    /// Thrown when a bounded retrieval request exceeds its configured work
+    /// budget. A caller must retry with a larger budget or a persistent index;
+    /// a partial result is never returned as a complete top-K answer.
+    class ProjectionAwareLexicalRetrievalBudgetExceeded final
+        : public std::runtime_error {
+    public:
+        explicit ProjectionAwareLexicalRetrievalBudgetExceeded(
+            const std::string& message
+        ) : std::runtime_error(message) {}
     };
 
     /// \brief Retrieves only units whose projection is published and fresh.
