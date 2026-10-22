@@ -3,6 +3,26 @@
 This directory is an offline research harness. It is intentionally outside the
 C++ library target and has no third-party Python dependency.
 
+## Classical bake-off (PR4)
+
+Compare the frozen in-memory BM25, BM25+, and BM25L controls:
+
+```powershell
+py -3 tools/lexical-research/run_classical_bakeoff.py `
+  tools/lexical-research/fixtures/classical_bakeoff_v1.json `
+  --output classical-bakeoff.receipt.json --repeats 5
+py -3 tools/lexical-research/run_classical_bakeoff.py `
+  tools/lexical-research/fixtures/classical_bakeoff_v1.json --self-test
+```
+
+The fixture keeps resource-level and chunk-level qrels separate and excludes
+`unjudged`/`incomplete_qrels` queries from quality aggregates. BM25F is
+contract-only here because production `SearchProjection` field projections are
+not implemented in this PR. Python tokenizer output and spans are diagnostic
+approximations, not C++ byte ranges. `sample_count` counts repeated
+observations, not independent queries; timing receipts describe the observed
+distribution only and make no p99 stability or statistical-significance claim.
+
 Run the committed smoke fixture:
 
 ```powershell
