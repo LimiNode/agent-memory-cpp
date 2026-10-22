@@ -61,11 +61,14 @@ int main() {
     std::shared_ptr<MdbxStorageContext> context;
     {
     context = MdbxStorageContext::open(path.string());
-    MdbxResourceImporterOptions importer_options;
-    importer_options.context = context;
-    importer_options.publication_profile =
-        ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
-    MdbxResourceImporter importer(std::move(importer_options));
+    const auto import_resource = [&](ObservedResource observed) {
+        MdbxResourceImporterOptions importer_options;
+        importer_options.context = context;
+        importer_options.publication_profile =
+            ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
+        MdbxResourceImporter importer(std::move(importer_options));
+        return importer.import(std::move(observed));
+    };
 
     MdbxKnowledgeUnitStoreOptions unit_options;
     unit_options.context = context;
@@ -77,19 +80,19 @@ int main() {
     manifest_options.context = context;
     MdbxResourceManifestStorage manifests(std::move(manifest_options));
 
-    const auto first = importer.import(resource(
+    const auto first = import_resource(resource(
         "resource-projection-aware",
         "durable projection alpha evidence"
     ));
     expect(!first.raw_units.empty(), "raw importer profile did not create a unit");
     // Publish a second scope and a newer revision before the first reopen.
     // Retrieval is exercised against the reopened durable state below.
-    (void)importer.import(resource(
+    (void)import_resource(resource(
         "resource-projection-aware-other-scope",
         "projection alpha foreign scope",
         "tenant-b"
     ));
-    (void)importer.import(resource(
+    (void)import_resource(resource(
         "resource-projection-aware",
         "replacement projection beta evidence"
     ));
