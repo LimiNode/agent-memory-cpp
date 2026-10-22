@@ -7,8 +7,12 @@ Status: `PROTOCOL_ONLY` — no experiment result and no production recommendatio
 Branch: `research/lexical-alternatives`
 Original research baseline: `1e221eedf41860c65685dbd3b184922ae68b1d3a`
 (`LimiNode/main`, after PR #526, at protocol authoring time)
-Current PR base after restack: `4d6658eff445b71775d11d66aaf15d167ff9973f`
+Historical restack base: `4d6658eff445b71775d11d66aaf15d167ff9973f`
 (`LimiNode/main`, after PR #529)
+Corrective-review base: `59ddce072d305d3df1dcfb952a94fa4766eab153`
+(`LimiNode/main`, before the 2026-10-22 documentation update)
+Current PR base after the 2026-10-22 refresh: `f38a22d2e44f6787a882829c08e169baeb777fae`
+(`LimiNode/main`, tabular retrieval contracts)
 
 ## Research question
 
