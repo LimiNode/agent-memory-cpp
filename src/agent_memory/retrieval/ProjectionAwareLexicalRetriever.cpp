@@ -266,9 +266,7 @@ RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
            current->lifecycle_state != KnowledgeUnitLifecycleState::Active ||
            !has_publication_binding(
                 *current,
-                [&](const ResourceId& resource_id) {
-                    return m_manifest_store->find_manifest(resource_id);
-                },
+                resolve_manifest,
                 m_options.expected_manifest_schema_id,
                 m_options.expected_manifest_schema_version
             )) {
