@@ -91,32 +91,28 @@ int main() {
            initial.chunks.front().chunk.text == "durable projection alpha evidence",
            "MDBX publication was not retrievable");
 
-    // A second source in another scope must not leak into the first scope.
-    (void)importer.import(resource(
+    }
+
+    // Reopen all adapters, publish a second scope and a newer revision, then
+    // prove stale projections remain invisible.
+    {
+    context = MdbxStorageContext::open(path.string());
+    MdbxResourceImporterOptions reopened_importer_options;
+    reopened_importer_options.context = context;
+    reopened_importer_options.publication_profile =
+        ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
+    MdbxResourceImporter reopened_importer(std::move(reopened_importer_options));
+
+    (void)reopened_importer.import(resource(
         "resource-projection-aware-other-scope",
         "projection alpha foreign scope",
         "tenant-b"
     ));
-    RetrievalQuery foreign_query;
-    foreign_query.text = "foreign";
-    expect(retriever.retrieve(foreign_query).empty(), "MDBX retrieval leaked across scopes");
-
-    // A newer resource revision invalidates the old projection binding.
-    (void)importer.import(resource(
+    (void)reopened_importer.import(resource(
         "resource-projection-aware",
         "replacement projection beta evidence"
     ));
-    RetrievalQuery stale_query;
-    stale_query.text = "durable";
-    expect(retriever.retrieve(stale_query).empty(), "stale resource projection remained visible");
-    expect(retriever.retrieve(replacement_query).size() == 1,
-           "new resource projection was not visible");
 
-    }
-
-    // Reopen all adapters and prove publication survives process boundaries.
-    {
-    context = MdbxStorageContext::open(path.string());
     MdbxKnowledgeUnitStoreOptions reopened_unit_options;
     reopened_unit_options.context = context;
     MdbxKnowledgeUnitStore reopened_units(std::move(reopened_unit_options));
@@ -133,8 +129,38 @@ int main() {
         scope,
         tokenizer
     );
+    RetrievalQuery foreign_query;
+    foreign_query.text = "foreign";
+    expect(reopened_retriever.retrieve(foreign_query).empty(),
+           "MDBX retrieval leaked across scopes");
+    RetrievalQuery stale_query;
+    stale_query.text = "durable";
+    expect(reopened_retriever.retrieve(stale_query).empty(),
+           "stale resource projection remained visible");
     expect(reopened_retriever.retrieve(replacement_query).size() == 1,
            "reopened MDBX publication was not retrievable");
+
+    }
+
+    // A fresh reopen verifies interrupted publication remains invisible.
+    {
+    context = MdbxStorageContext::open(path.string());
+    MdbxKnowledgeUnitStoreOptions interrupted_unit_options;
+    interrupted_unit_options.context = context;
+    MdbxKnowledgeUnitStore interrupted_units(std::move(interrupted_unit_options));
+    MdbxProjectionStoreOptions interrupted_projection_options;
+    interrupted_projection_options.context = context;
+    MdbxProjectionStore interrupted_projections(std::move(interrupted_projection_options));
+    MdbxResourceManifestStorageOptions interrupted_manifest_options;
+    interrupted_manifest_options.context = context;
+    MdbxResourceManifestStorage interrupted_manifests(std::move(interrupted_manifest_options));
+    auto interrupted_retriever = make_retriever(
+        interrupted_units,
+        interrupted_projections,
+        interrupted_manifests,
+        scope,
+        tokenizer
+    );
 
     // An interrupted import leaves staging rows invisible until its manifest commits.
     MdbxResourceImporterOptions interrupted_options;
@@ -159,7 +185,7 @@ int main() {
     expect(interrupted, "fault fixture did not interrupt manifest publication");
     RetrievalQuery interrupted_query;
     interrupted_query.text = "invisible interrupted";
-    expect(reopened_retriever.retrieve(interrupted_query).empty(),
+    expect(interrupted_retriever.retrieve(interrupted_query).empty(),
            "interrupted projection became visible without an active manifest");
     }
 
