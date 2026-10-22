@@ -148,6 +148,22 @@ The query set must contain labeled slices for:
 Each slice needs qrels. If a slice has no qrels, it is a diagnostic only and
 must be reported as incomplete rather than folded into a quality average.
 
+The runner makes this boundary explicit per query. `judged` queries need one or
+more positive qrels and are the only inputs to aggregate Recall, nDCG, and MRR.
+`judged_zero_relevant` has one or more explicit zero-grade qrels and records a
+completed negative relevance judgment without treating it as a recall zero; its
+`zero_relevant_accuracy` measures whether the scorer correctly returns no hits.
+`no_answer_accuracy` remains separate because it carries an expected-empty
+query semantics rather than an explicit zero-relevance judgment. When there are
+no `judged` queries, aggregate Recall, nDCG, and MRR are inapplicable (`null`),
+and the receipt is not a complete positive-relevance evaluation.
+`incomplete_qrels` has at least one judgment but is excluded from quality
+aggregates; its presence makes the receipt's quality status partial. `unjudged`
+has no qrels, `no_answer` has no qrels and is evaluated only by empty-result
+accuracy, and `ignore` has no qrels and is omitted from evaluation. A repeated
+`(query_id, doc_id)` pair is invalid even when its grade agrees, preventing a
+fixture from silently accepting duplicate or conflicting relevance judgments.
+
 ### Metrics and timing boundaries
 
 Quality:
@@ -162,8 +178,13 @@ Cost:
 
 - query preprocessing and optional model inference;
 - candidate search, posting visits, scored documents, and pruning rate;
-- p50/p95/p99 query latency with one warmup and at least five measured repeats;
-  p95/p99 from a five-sample smoke run are directional/inconclusive only;
+- p50/p95/p99 query latency with one warmup and repeated query observations;
+  percentiles use every query-repeat sample. Fewer than 100 observations are
+  directional, 100--999 are descriptive, and at least 1000 are required for
+  the receipt's `measured` status. `sample_count` is the number of
+  query-repeat observations, not independent queries; `measured` describes
+  only that sample distribution and does not guarantee a statistically stable
+  p99;
 - index build, update/reindex, and delete visibility time;
 - logical posting bytes, physical bytes, decoded integers/positions, peak RSS,
   and model footprint;
@@ -275,3 +296,48 @@ rather than production integration.
   checkpoint;
 - append measured results to this research line rather than replacing this
   protocol note.
+
+## PR2 runner smoke (2026-10-20, refreshed after M0 publication)
+
+Context: `research/lexical-alternatives-runner`, originally rebased onto the
+historical M0 publication baseline `1e221eedf41860c65685dbd3b184922ae68b1d3a`.
+The current stacked branch is based on the restacked PR1 above. This is a
+harness check, not an algorithm comparison.
+
+Command:
+
+```text
+py -3 tools/lexical-research/run_lexical_protocol.py \
+  --dataset tools/lexical-research/fixtures/lexical_protocol_smoke.json \
+  --self-test
+```
+
+Expected result: the fixture exercises an exact identifier, a code-oriented
+multi-term query, a Russian query, and an explicit no-answer query. The smoke
+must preserve the expected top document for the first three and return no hits
+for the no-answer case.
+
+Actual result: `verified` at the runner commit recorded by the PR. The self-test passed with
+`Recall@1/5/10/50 = 1.0`, `nDCG@10 = 1.0`, `MRR = 1.0`, and no-answer accuracy
+`1.0`. The receipt now records a one-time index-build measurement separately
+from query preprocessing, scoring, and end-to-end timing. `--limit` is the
+candidate depth and defaults to `50`; a lower depth marks Recall@50 as
+truncated instead of presenting it as a complete measurement. A separate
+three-repeat receipt was written outside Git under
+`.artifacts/lexical-protocol-smoke.json`; its p50/p95/p99 values are local
+Python directional timings (the smoke has 15 raw query-repeat observations)
+and are not performance evidence. The receipt's `sample_count` is explicitly
+`query_count * repeat_count`; repeats of the same query are not independent
+queries. The `measured` label describes the observed sample distribution and
+does not assert p99 stability. The backward-compatible per-query `latency_ms`
+field remains the median of that query's repeats.
+
+Interpretation: PR2 now provides a small, hash-bound corpus/qrels input and a
+portable BM25 control for subsequent scorer plugins. It does not establish
+parity with the C++ `ExactLexicalIndex`; the runner README and PR3 gate require
+that comparison before any quality or latency claim.
+
+Limitations: the fixture is intentionally tiny, uses one frozen tokenizer
+profile, has no stale-posting or update replay, and contains no learned-sparse
+artifact. Model inference, compressed postings, WAND/BMW, and MDBX remain
+unmeasured.
