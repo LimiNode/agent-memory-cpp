@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <functional>
-#include <iostream>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -36,7 +35,6 @@ bool has_publication_binding(
         std::to_string(envelope.id.value());
     for(const auto& source : envelope.sources) {
         if(!source.resource_revision) continue;
-        std::cerr << "retriever: manifest " << source.resource_id.value() << "\n";
         const auto manifest = resolve_manifest(source.resource_id);
         if(!manifest || !is_active_resource_manifest(*manifest)) continue;
         if(manifest->schema.schema_id != expected_schema_id ||
@@ -206,7 +204,6 @@ RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
 
     ExactLexicalIndex index;
     std::unordered_map<std::string, KnowledgeUnitEnvelope> envelopes;
-    std::cerr << "retriever: scan\n";
     const auto ids = m_unit_store->scan_by_scope(m_scope_id);
     if(ids.size() > m_options.max_scanned_units) {
         throw ProjectionAwareLexicalRetrievalBudgetExceeded(
@@ -225,10 +222,8 @@ RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
         return loaded;
     };
     for(const auto& id : ids) {
-        std::cerr << "retriever: find " << id.value() << "\n";
         const auto envelope = m_unit_store->find(id);
         if(!envelope || envelope->scope_id.value() != m_scope_id.value()) continue;
-        std::cerr << "retriever: projection " << id.value() << "\n";
         const auto projection = find_active_projection(
             *envelope,
             m_options.projection_kind,
@@ -269,10 +264,8 @@ RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
         const auto current = m_unit_store->find(envelope_it->second.id);
         if(!current || current->revision != envelope_it->second.revision ||
            current->lifecycle_state != KnowledgeUnitLifecycleState::Active ||
-           !find_active_projection(
+           !has_publication_binding(
                 *current,
-                m_options.projection_kind,
-                *m_projection_store,
                 [&](const ResourceId& resource_id) {
                     return m_manifest_store->find_manifest(resource_id);
                 },
