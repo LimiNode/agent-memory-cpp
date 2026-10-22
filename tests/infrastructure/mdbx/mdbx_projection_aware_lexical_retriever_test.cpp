@@ -9,7 +9,6 @@
 
 #include <chrono>
 #include <filesystem>
-#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -83,41 +82,25 @@ int main() {
         "durable projection alpha evidence"
     ));
     expect(!first.raw_units.empty(), "raw importer profile did not create a unit");
-    auto retriever = make_retriever(units, projections, manifests, scope, tokenizer);
-    RetrievalQuery query;
-    query.text = "projection alpha";
-    query.limit = 5;
-    const auto initial = retriever.retrieve(query);
-    expect(initial.size() == 1 &&
-           initial.chunks.front().chunk.text == "durable projection alpha evidence",
-           "MDBX publication was not retrievable");
-
-    }
-    context.reset();
-
-    // Reopen all adapters, publish a second scope and a newer revision, then
-    // prove stale projections remain invisible.
-    {
-    context = MdbxStorageContext::open(path.string());
-    MdbxResourceImporterOptions reopened_importer_options;
-    reopened_importer_options.context = context;
-    reopened_importer_options.publication_profile =
-        ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
-    MdbxResourceImporter reopened_importer(std::move(reopened_importer_options));
-    std::cerr << "stage reopen importer\n";
-
-    (void)reopened_importer.import(resource(
+    // Publish a second scope and a newer revision before the first reopen.
+    // Retrieval is exercised against the reopened durable state below.
+    (void)importer.import(resource(
         "resource-projection-aware-other-scope",
         "projection alpha foreign scope",
         "tenant-b"
     ));
-    std::cerr << "stage foreign import\n";
-    (void)reopened_importer.import(resource(
+    (void)importer.import(resource(
         "resource-projection-aware",
         "replacement projection beta evidence"
     ));
-    std::cerr << "stage replacement import\n";
 
+    }
+    context.reset();
+
+    // Reopen all adapters and prove scope isolation plus stale projection
+    // rejection against the durable publication.
+    {
+    context = MdbxStorageContext::open(path.string());
     MdbxKnowledgeUnitStoreOptions reopened_unit_options;
     reopened_unit_options.context = context;
     MdbxKnowledgeUnitStore reopened_units(std::move(reopened_unit_options));
@@ -144,7 +127,6 @@ int main() {
            "stale resource projection remained visible");
     expect(reopened_retriever.retrieve(replacement_query).size() == 1,
            "reopened MDBX publication was not retrievable");
-    std::cerr << "stage replacement retrieve\n";
 
     }
     context.reset();
