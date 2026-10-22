@@ -22,7 +22,7 @@ py -3 tools/lexical-research/run_lexical_protocol.py `
 
 The runner currently implements only the protocol BM25 control. Its tokenizer
 and scorer are a portable fixture implementation, not evidence that the Python
-path is byte-for-byte equivalent to `ExactLexicalIndex`. PR3 must add separate
+path is byte-for-byte equivalent to `ExactLexicalIndex`. PR3 adds separate
 tokenizer, scorer, and lifecycle parity checks against the C++ baseline before
 using it for algorithmic claims. Model inference, WAND/BMW traversal,
 compressed postings, and production MDBX are intentionally out of scope.
@@ -53,3 +53,40 @@ the same queries are observations, not independent queries. `measured` names
 the observed sample distribution only; it does not claim that p99 is
 statistically stable. Python timings must not be compared directly with
 production C++ latency.
+
+## PR3 C++ parity
+
+Build the opt-in C++ exporter with `AGENT_MEMORY_BUILD_TESTS=ON`, then run the
+comparator from the repository root:
+
+```powershell
+py -3 tools/lexical-research/run_cpp_lexical_parity.py `
+  --cpp-exporter .build/tests/Release/agent_memory_lexical_parity_export.exe `
+  --golden tools/lexical-research/fixtures/cpp_tokenizer_golden.json
+```
+
+The receipt keeps four gates independent: `cpp_tokenizer_contract` compares
+text, `TokenKind`, byte range, and position with hand-authored golden data;
+`python_scorer_parity` consumes the actual C++-tokenized document and query
+streams, recomputes BM25 document statistics from those streams, and compares
+the resulting ordering and scores, including repeated terms, ties, near-ties,
+and explicit multi-field filters; `lifecycle_parity`
+checks scores and visibility after the in-memory update/erase fixture;
+`native_tokenizer_delta` records expected differences between the portable
+fixture tokenizer and the C++ tokenizer. Python `kind` values in that delta are
+`unknown` placeholders, and Python offsets/lengths come from a
+`casefold().find()` heuristic. They are diagnostic records, not a Python token
+kind contract or exact byte ranges; Unicode case folding may change string
+length.
+
+Every comparator run also executes three mutation controls. The positive
+control must pass, changing one hand-authored golden token must make
+`cpp_tokenizer_contract` fail, and changing one exported C++ BM25 score must
+make `python_scorer_parity` fail. Each mandatory gate failure must produce a
+non-zero comparator exit code. The `mutation_self_test` result is included in
+the receipt and is also registered as a separate CTest.
+
+A top-level `SEPARATE_GATES` status is intentionally not an unconditional
+`PARITY_PASS`. The exporter is a research fixture and does not establish MDBX
+publication lifecycle authority; existing importer/manifest tests remain the
+lifecycle evidence.
