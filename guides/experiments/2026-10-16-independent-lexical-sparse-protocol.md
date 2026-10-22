@@ -55,8 +55,8 @@ downloads or redistributes weights.
 | --- | --- | --- | --- | --- |
 | Okapi BM25 | scoring baseline | [Robertson et al., TREC-3](https://doi.org/10.1145/290941.291009); project `ExactLexicalIndex` | algorithm/publication; project code owns the baseline | mandatory oracle arm |
 | BM25F | scoring / fields | [Pérez-Iglesias et al.](https://arxiv.org/abs/0911.5046); project lexical roadmap | algorithm/publication; no new dependency | evaluate when `SearchProjection` is available |
-| BM25+ | scoring / long-document correction | [Lv & Zhai, 2011](https://doi.org/10.1145/1963405.1963503) | algorithm/publication | classical bake-off |
-| BM25L | scoring / length normalization | [Lv & Zhai, 2011](https://doi.org/10.1145/1963405.1963503) | algorithm/publication | classical bake-off |
+| BM25+ | scoring / long-document correction | [Lv & Zhai, *Lower-bounding term frequency normalization* (CIKM 2011)](https://doi.org/10.1145/2063576.2063584) | algorithm/publication | classical bake-off |
+| BM25L | scoring / length normalization | [Lv & Zhai, *When documents are very long, BM25 fails!* (SIGIR 2011)](https://doi.org/10.1145/2009916.2010070) | algorithm/publication | classical bake-off |
 | TF-IDF / pivoted normalization | scoring / normalization | [Salton & Buckley, 1988](https://doi.org/10.1016/0306-4573(88)90021-0); [Singhal et al., 1996](https://doi.org/10.1145/243199.243206) | algorithm/publication | cheap control, not a production default |
 | Query Likelihood + Dirichlet | scoring / language model | [Zhai & Lafferty, 2001](https://doi.org/10.1145/383952.384019); Lucene `LMDirichletSimilarity` | Lucene implementation Apache-2.0; formula is independently implementable | classical bake-off |
 | DFR PL2 / DPH | scoring / divergence from randomness | [Amati & van Rijsbergen, 2002](https://doi.org/10.1145/505168.505173); [Terrier source](https://github.com/terrier-org/terrier-core) | Terrier repository reports `NOASSERTION`; do not copy code until its terms are verified | literature screen, then implement formula locally if justified |
