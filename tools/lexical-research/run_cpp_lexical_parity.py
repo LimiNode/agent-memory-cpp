@@ -249,7 +249,7 @@ def receipt_exit_code(receipt: dict[str, Any]) -> int:
         receipt.get(gate_name, {}).get("status") == expected_status
         for gate_name, expected_status in CORE_GATE_EXPECTATIONS.items()
     )
-    mutation_passed = receipt.get("mutation_self_test", {}).get("status", "PASS") == "PASS"
+    mutation_passed = receipt.get("mutation_self_test", {}).get("status") == "PASS"
     return 0 if core_passed and mutation_passed else 1
 
 
@@ -280,9 +280,15 @@ def mutation_self_test(
     score_query["results"][0]["score"] += 1.0
     scorer_failure = build_receipt(mutated_export, golden)
 
+    successful_receipt = copy.deepcopy(positive_receipt)
+    successful_receipt["mutation_self_test"] = {"status": "PASS"}
     checks = {
         "positive_control": {
             "expected_exit_code": 0,
+            "observed_exit_code": receipt_exit_code(successful_receipt),
+        },
+        "missing_mutation_gate": {
+            "expected_exit_code": 1,
             "observed_exit_code": receipt_exit_code(positive_receipt),
         },
         "golden_token_mutation": {
