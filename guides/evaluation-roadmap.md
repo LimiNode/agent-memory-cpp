@@ -695,3 +695,12 @@ A theorem about a mathematical surrogate does not establish summary quality or
 answer quality. A benchmark that replays an implementation's own output is
 reproducibility evidence only; correctness still requires an independent oracle,
 invariant or held-out check.
+
+
+## Context-Pack Positional Robustness Gate
+
+Context packing should be tested for sensitivity to position and fill. The gate is research-only and does not claim a universal context-window threshold. It is motivated by evidence that model use of retrieved material can vary with placement, while the magnitude depends on model, tokenizer, task and workload.
+
+A comparison holds corpus, retrieval route, candidate set, source revisions, hydration, citations, total token budget and answer policy fixed. Only ordering, placement and fill are changed. Required arms include relevant material at the beginning, middle and end; deterministic permutations; sparse and near-budget packs; and a no-op baseline. The fixture records actual tokenizer counts, language and modality slices, and whether truncation or omission occurred.
+
+Protected probes use exact identifiers, numbers, commands, versions, exceptions and ordered actions. Reports include evidence opening, verified task closure, provenance coverage, false closure, unknown/escalated outcomes, and latency/token cost. A position effect cannot justify changing lifecycle, authority, provenance, retention or source identity. Any placement policy remains host/context-builder policy until an independent held-out evaluation shows a stable benefit.
