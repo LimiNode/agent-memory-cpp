@@ -255,6 +255,7 @@ std::vector<SearchProjection> MdbxProjectionStore::list(
         },
         txn
     );
+    txn.commit();
     return result;
 }
 

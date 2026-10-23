@@ -509,8 +509,12 @@ namespace agent_memory {
         [[nodiscard]] std::optional<ResourceManifest> find_manifest(
             const ResourceId& resource_id
         ) const {
-            const auto payload = m_manifests.find(resource_id.value());
+            auto txn = m_context->connection()->transaction(
+                mdbxc::TransactionMode::READ_ONLY
+            );
+            const auto payload = m_manifests.find(resource_id.value(), txn);
             if(!payload) {
+                txn.commit();
                 return std::nullopt;
             }
             auto manifest = deserialize_manifest(*payload);
@@ -519,6 +523,7 @@ namespace agent_memory {
                     "Resource manifest key does not match payload resource id"
                 );
             }
+            txn.commit();
             return manifest;
         }
 
