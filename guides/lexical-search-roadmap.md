@@ -33,6 +33,11 @@ The baseline should be small, embeddable, and dependency-free. Larger search
 engines and Unicode libraries can be studied or added later as optional
 adapters.
 
+The proposed durable storage boundary and publication contract are documented
+in [`persistent-lexical-index-foundation.md`](persistent-lexical-index-foundation.md).
+That proposal is intentionally separate from this algorithm roadmap and does
+not by itself reserve a production DBI or select a posting codec.
+
 ## Core Rules
 
 - Keep source and chunk text as canonical UTF-8.
