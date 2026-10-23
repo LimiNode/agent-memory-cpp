@@ -111,23 +111,6 @@ int main() {
     expect(!error && !std::filesystem::exists(interrupted_path),
            "interrupted MDBX test path was not clean");
     context = MdbxStorageContext::open(interrupted_path);
-    MdbxKnowledgeUnitStoreOptions interrupted_unit_options;
-    interrupted_unit_options.context = context;
-    MdbxKnowledgeUnitStore interrupted_units(std::move(interrupted_unit_options));
-    MdbxProjectionStoreOptions interrupted_projection_options;
-    interrupted_projection_options.context = context;
-    MdbxProjectionStore interrupted_projections(std::move(interrupted_projection_options));
-    MdbxResourceManifestStorageOptions interrupted_manifest_options;
-    interrupted_manifest_options.context = context;
-    MdbxResourceManifestStorage interrupted_manifests(std::move(interrupted_manifest_options));
-    auto interrupted_retriever = make_retriever(
-        interrupted_units,
-        interrupted_projections,
-        interrupted_manifests,
-        scope,
-        tokenizer
-    );
-
     // An interrupted import leaves staging rows invisible until its manifest commits.
     MdbxResourceImporterOptions interrupted_options;
     interrupted_options.context = context;
@@ -149,6 +132,22 @@ int main() {
         interrupted = std::string{error_value.what()} == "intentional interrupted publication";
     }
     expect(interrupted, "fault fixture did not interrupt manifest publication");
+    MdbxKnowledgeUnitStoreOptions interrupted_unit_options;
+    interrupted_unit_options.context = context;
+    MdbxKnowledgeUnitStore interrupted_units(std::move(interrupted_unit_options));
+    MdbxProjectionStoreOptions interrupted_projection_options;
+    interrupted_projection_options.context = context;
+    MdbxProjectionStore interrupted_projections(std::move(interrupted_projection_options));
+    MdbxResourceManifestStorageOptions interrupted_manifest_options;
+    interrupted_manifest_options.context = context;
+    MdbxResourceManifestStorage interrupted_manifests(std::move(interrupted_manifest_options));
+    auto interrupted_retriever = make_retriever(
+        interrupted_units,
+        interrupted_projections,
+        interrupted_manifests,
+        scope,
+        tokenizer
+    );
     RetrievalQuery interrupted_query;
     interrupted_query.text = "invisible interrupted";
     expect(interrupted_retriever.retrieve(interrupted_query).empty(),
