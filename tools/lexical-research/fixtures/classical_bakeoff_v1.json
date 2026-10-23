@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "dataset_name": "classical_lexical_bakeoff_v1",
+  "tokenizer": "code_aware_fixture_v1",
+  "corpus": [
+    {"id": "resource_ru", "document_unit": "resource", "resource_id": "r_ru", "text": "Индекс памяти хранит ресурс и поколение для повторной индексации."},
+    {"id": "resource_en", "document_unit": "resource", "resource_id": "r_en", "text": "ExactLexicalIndex uses BM25 scoring for C++ identifiers and headings."},
+    {"id": "chunk_short", "document_unit": "chunk", "resource_id": "r_en", "text": "BM25 scoring."},
+    {"id": "chunk_long", "document_unit": "chunk", "resource_id": "r_en", "text": "BM25 scoring is used for exact lexical retrieval. BM25 scoring preserves identifiers, headings, and short passages in a deterministic index."},
+    {"id": "heading", "document_unit": "chunk", "resource_id": "r_en", "text": "## StandardTokenizer and C++ identifiers"},
+    {"id": "negative", "document_unit": "chunk", "resource_id": "r_none", "text": "vector embeddings and semantic context only"}
+  ],
+  "queries": [
+    {"id": "q_ru", "query_class": "ru", "answer_mode": "judged", "text": "ресурс"},
+    {"id": "q_identifier", "query_class": "cpp_identifier", "answer_mode": "judged", "text": "StandardTokenizer C++ identifiers"},
+    {"id": "q_long", "query_class": "long_document", "answer_mode": "judged", "text": "deterministic index"},
+    {"id": "q_short", "query_class": "short_passage", "answer_mode": "judged", "text": "BM25"},
+    {"id": "q_heading", "query_class": "heading", "answer_mode": "judged", "text": "StandardTokenizer"},
+    {"id": "q_negative", "query_class": "negative", "answer_mode": "no_answer", "text": "quantum bananas"},
+    {"id": "q_zero", "query_class": "zero_relevant", "answer_mode": "judged_zero_relevant", "text": "BM25"},
+    {"id": "q_unjudged", "query_class": "unjudged", "answer_mode": "unjudged", "text": "unmeasured term"},
+    {"id": "q_partial", "query_class": "partial", "answer_mode": "incomplete_qrels", "text": "BM25"}
+  ],
+  "qrels": [
+    {"query_id": "q_ru", "doc_id": "resource_ru", "grade": 2, "relevance_level": "resource"},
+    {"query_id": "q_identifier", "doc_id": "heading", "grade": 2, "relevance_level": "chunk"},
+    {"query_id": "q_long", "doc_id": "chunk_long", "grade": 2, "relevance_level": "chunk"},
+    {"query_id": "q_short", "doc_id": "chunk_short", "grade": 2, "relevance_level": "chunk"},
+    {"query_id": "q_heading", "doc_id": "heading", "grade": 2, "relevance_level": "chunk"},
+    {"query_id": "q_partial", "doc_id": "chunk_short", "grade": 2, "relevance_level": "chunk"},
+    {"query_id": "q_zero", "doc_id": "negative", "grade": 0, "relevance_level": "chunk"}
+  ],
+  "expected_top_ids": {
+    "resource": {
+      "bm25": {"q_ru": ["resource_ru"], "q_negative": []},
+      "bm25_plus": {"q_ru": ["resource_ru"], "q_negative": []},
+      "bm25l": {"q_ru": ["resource_ru"], "q_negative": []}
+    },
+    "chunk": {
+      "bm25": {"q_identifier": ["heading"], "q_long": ["chunk_long"], "q_short": ["chunk_short"], "q_heading": ["heading"], "q_negative": [], "q_zero": ["chunk_short"]},
+      "bm25_plus": {"q_identifier": ["heading"], "q_long": ["chunk_long"], "q_short": ["chunk_short"], "q_heading": ["heading"], "q_negative": [], "q_zero": ["chunk_short"]},
+      "bm25l": {"q_identifier": ["heading"], "q_long": ["chunk_long"], "q_short": ["chunk_short"], "q_heading": ["heading"], "q_negative": [], "q_zero": ["chunk_short"]}
+    }
+  },
+  "golden_vectors": [
+    {"name": "bm25_single_term", "algorithm": "bm25", "query": "alpha", "corpus": [{"id": "a", "text": "alpha"}, {"id": "b", "text": "beta"}], "expected_ids": ["a"], "top_score": 0.6931471805599453},
+    {"name": "bm25_plus_single_term", "algorithm": "bm25_plus", "query": "alpha", "corpus": [{"id": "a", "text": "alpha"}, {"id": "b", "text": "beta"}], "expected_ids": ["a"], "top_score": 1.3862943611198906},
+    {"name": "bm25l_single_term", "algorithm": "bm25l", "query": "alpha", "corpus": [{"id": "a", "text": "alpha"}, {"id": "b", "text": "beta"}], "expected_ids": ["a"], "top_score": 0.9902102579427791},
+    {"name": "bm25_plus_length_competition", "algorithm": "bm25_plus", "query": "alpha", "corpus": [{"id": "short", "text": "alpha"}, {"id": "long", "text": "alpha beta beta beta beta beta beta"}], "expected_ids": ["short", "long"], "top_score": 0.45752390667162207},
+    {"name": "bm25l_length_normalization_flip", "algorithm": "bm25l", "query": "alpha beta", "corpus": [{"id": "a", "text": "alpha alpha beta beta beta x x x x x x x x x x x x"}, {"id": "b", "text": "alpha alpha beta beta beta beta beta beta beta beta x x x x x x x x x x x x x x x x x x x x"}], "expected_ids": ["b", "a"], "top_score": 0.6721904338134451, "algorithm_rankings": {"bm25": ["a", "b"], "bm25_plus": ["a", "b"], "bm25l": ["b", "a"]}}
+  ]
+}

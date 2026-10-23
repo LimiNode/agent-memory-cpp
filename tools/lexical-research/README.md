@@ -3,6 +3,37 @@
 This directory is an offline research harness. It is intentionally outside the
 C++ library target and has no third-party Python dependency.
 
+## Classical bake-off (PR4)
+
+Compare the frozen in-memory BM25, BM25+, and BM25L controls:
+
+```powershell
+py -3 tools/lexical-research/run_classical_bakeoff.py `
+  tools/lexical-research/fixtures/classical_bakeoff_v1.json `
+  --output classical-bakeoff.receipt.json --repeats 5
+py -3 tools/lexical-research/run_classical_bakeoff.py `
+  tools/lexical-research/fixtures/classical_bakeoff_v1.json --self-test
+```
+
+The fixture evaluates independent resource and chunk arms (with a separately
+labelled mixed-unit diagnostic arm), so `N`, `DF`, `avgdl`, and top-k are not
+shared across the two primary evaluations. Qrels must name a known level that
+matches the document unit; incomplete, unjudged, no-answer, and zero-relevant
+queries are validated and reported separately. BM25F is contract-only here
+because production `SearchProjection` field materialization is not implemented
+in this PR. Python tokenizer output and spans are diagnostic approximations,
+not C++ byte ranges. `sample_count` counts repeated observations, not
+independent queries; timing receipts describe the observed distribution only
+and make no p99 stability or statistical-significance claim.
+Index preparation is measured once per arm (`index_build_ms`); repeated query
+samples separately report preprocessing, scoring, ranking, and end-to-end time.
+
+The harness follows the storage boundary `Canonical Storage ↔ SearchProjection
+↔ IndexStore ↔ Retrieval`: scoring algorithms consume versioned derived
+statistics/postings and never redefine canonical bytes, revisions, or source
+identity. A future persistent reader must bind results to an exact published
+projection/tokenizer/statistics snapshot.
+
 Run the committed smoke fixture:
 
 ```powershell
