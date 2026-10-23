@@ -17,7 +17,7 @@
     {"id": "q_short", "query_class": "short_passage", "answer_mode": "judged", "text": "BM25"},
     {"id": "q_heading", "query_class": "heading", "answer_mode": "judged", "text": "StandardTokenizer"},
     {"id": "q_negative", "query_class": "negative", "answer_mode": "no_answer", "text": "quantum bananas"},
-    {"id": "q_zero", "query_class": "zero_relevant", "answer_mode": "judged_zero_relevant", "text": "quantum bananas"},
+    {"id": "q_zero", "query_class": "zero_relevant", "answer_mode": "judged_zero_relevant", "text": "BM25"},
     {"id": "q_unjudged", "query_class": "unjudged", "answer_mode": "unjudged", "text": "unmeasured term"},
     {"id": "q_partial", "query_class": "partial", "answer_mode": "incomplete_qrels", "text": "BM25"}
   ],
@@ -37,9 +37,9 @@
       "bm25l": {"q_ru": ["resource_ru"], "q_negative": []}
     },
     "chunk": {
-      "bm25": {"q_identifier": ["heading"], "q_long": ["chunk_long"], "q_short": ["chunk_short"], "q_heading": ["heading"], "q_negative": [], "q_zero": []},
-      "bm25_plus": {"q_identifier": ["heading"], "q_long": ["chunk_long"], "q_short": ["chunk_short"], "q_heading": ["heading"], "q_negative": [], "q_zero": []},
-      "bm25l": {"q_identifier": ["heading"], "q_long": ["chunk_long"], "q_short": ["chunk_short"], "q_heading": ["heading"], "q_negative": [], "q_zero": []}
+      "bm25": {"q_identifier": ["heading"], "q_long": ["chunk_long"], "q_short": ["chunk_short"], "q_heading": ["heading"], "q_negative": [], "q_zero": ["chunk_short"]},
+      "bm25_plus": {"q_identifier": ["heading"], "q_long": ["chunk_long"], "q_short": ["chunk_short"], "q_heading": ["heading"], "q_negative": [], "q_zero": ["chunk_short"]},
+      "bm25l": {"q_identifier": ["heading"], "q_long": ["chunk_long"], "q_short": ["chunk_short"], "q_heading": ["heading"], "q_negative": [], "q_zero": ["chunk_short"]}
     }
   },
   "golden_vectors": [

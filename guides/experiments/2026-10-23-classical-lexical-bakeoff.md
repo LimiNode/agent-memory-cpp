@@ -36,6 +36,21 @@ They include a length-normalization competition in which BM25/BM25+ rank
 `a > b`, while BM25L ranks `b > a`; this proves the fixture can detect a
 scorer-ranking difference rather than merely execute three formulas.
 
+## Architecture boundary
+
+The bake-off follows the repository rule:
+
+`Canonical Storage ↔ SearchProjection ↔ IndexStore ↔ Retrieval`
+
+Canonical content, revisions, blocks, and source identity are authoritative
+knowledge data. Search projections and lexical statistics/postings are
+versioned derived structures. BM25, BM25+, BM25L, BM25F, WAND, ANN, and future
+sparse algorithms may share compatible TF/DF/position inputs, but none may
+rewrite canonical bytes or make a scoring formula part of the canonical model.
+An index publication must identify the projection/tokenizer/statistics epoch;
+readers either use an exact published snapshot or return an explicit partial /
+unavailable outcome while a derived index catches up.
+
 ## Storage compatibility audit
 
 | Area | Status | Boundary |

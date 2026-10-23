@@ -28,6 +28,12 @@ and make no p99 stability or statistical-significance claim.
 Index preparation is measured once per arm (`index_build_ms`); repeated query
 samples separately report preprocessing, scoring, ranking, and end-to-end time.
 
+The harness follows the storage boundary `Canonical Storage ↔ SearchProjection
+↔ IndexStore ↔ Retrieval`: scoring algorithms consume versioned derived
+statistics/postings and never redefine canonical bytes, revisions, or source
+identity. A future persistent reader must bind results to an exact published
+projection/tokenizer/statistics snapshot.
+
 Run the committed smoke fixture:
 
 ```powershell

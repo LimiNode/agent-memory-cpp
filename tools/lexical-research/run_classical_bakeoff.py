@@ -178,7 +178,7 @@ def metrics(hits: list[dict[str, Any]], relevant: dict[str, int], k: int) -> tup
     return recall, actual / ideal if ideal else 0.0, rr
 
 
-def evaluate_arm(data: dict[str, Any], documents: list[dict[str, Any]], algorithm: str, limit: int, repeats: int) -> dict[str, Any]:
+def evaluate_arm(data: dict[str, Any], documents: list[dict[str, Any]], arm: str, algorithm: str, limit: int, repeats: int) -> dict[str, Any]:
     build_started = time.perf_counter()
     index = build_index(documents)
     build_ms = (time.perf_counter() - build_started) * 1000.0
@@ -204,7 +204,8 @@ def evaluate_arm(data: dict[str, Any], documents: list[dict[str, Any]], algorith
                      "query_preprocessing_ms": statistics.median(query_prep), "scoring_ms": statistics.median(scoring),
                      "ranking_ms": statistics.median(ranking)})
     quality: dict[str, Any] = {}
-    for level in LEVELS:
+    quality_levels = list(LEVELS) if arm == "mixed_unit_pool" else [arm]
+    for level in quality_levels:
         qrels = qrel_map(data, level)
         eligible = [row for row in rows if row["answer_mode"] == "judged" and row["query_id"] in qrels
                     and any(value > 0 for value in qrels[row["query_id"]].values())]
@@ -220,19 +221,30 @@ def evaluate_arm(data: dict[str, Any], documents: list[dict[str, Any]], algorith
                           "ndcg_at_10": sum(v[1] for v in values) / len(values) if values else None,
                           "mrr": sum(v[2] for v in values) / len(values) if values else None, "by_query_class": by_class}
     no_answer = [row for row in rows if row["answer_mode"] == "no_answer"]
-    zero = [row for row in rows if row["answer_mode"] == "judged_zero_relevant"]
+    zero = [row for row in rows if row["answer_mode"] == "judged_zero_relevant" and row["query_id"] in qrel_map(data, arm) if arm in LEVELS]
+    if arm == "mixed_unit_pool":
+        zero = [row for row in rows if row["answer_mode"] == "judged_zero_relevant"]
     quality["no_answer_accuracy"] = sum(not row["hits"] for row in no_answer) / len(no_answer) if no_answer else None
     quality["zero_relevant_accuracy"] = sum(not row["hits"] for row in zero) / len(zero) if zero else None
-    incomplete = sum(row["answer_mode"] == "incomplete_qrels" for row in rows)
+    arm_qrels = qrel_map(data, arm) if arm in LEVELS else {row["query_id"]: {} for row in rows}
+    incomplete = sum(row["answer_mode"] == "incomplete_qrels" and row["query_id"] in arm_qrels for row in rows)
     unjudged = sum(row["answer_mode"] == "unjudged" for row in rows)
     quality["qrels_coverage"] = {"aggregation": "judged_queries_with_positive_qrels_only",
-                                  "aggregated_query_count": len([r for r in rows if r["answer_mode"] == "judged"]),
-                                  "eligible_positive_judged_query_count": len([r for r in rows if r["answer_mode"] == "judged"]),
+                                  "aggregated_query_count": len(eligible),
+                                  "eligible_positive_judged_query_count": len(eligible),
                                   "judged_zero_relevant_query_count": len(zero), "no_answer_query_count": len(no_answer),
                                   "incomplete_qrels_query_count": incomplete, "unjudged_query_count": unjudged,
                                   "ignored_query_count": sum(row["answer_mode"] == "ignore" for row in rows),
                                   "status": "partial" if incomplete or unjudged else "complete"}
-    quality["evaluation_status"] = "partial_qrels" if incomplete or unjudged else ("complete" if limit >= 10 else "truncated_candidate_depth")
+    if not eligible:
+        quality["evaluation_status"] = "no_eligible_positive_judgments"
+    elif incomplete or unjudged:
+        quality["evaluation_status"] = "partial_qrels"
+    else:
+        quality["evaluation_status"] = "complete"
+    if limit < 10:
+        quality["evaluation_status"] += "_and_truncated_candidate_depth"
+    quality["not_applicable_levels"] = [level for level in LEVELS if level not in quality_levels]
     timing = {"query_preprocessing_ms": {"p50": percentile(prep_samples, .5), "p95": percentile(prep_samples, .95), "p99": percentile(prep_samples, .99)},
               "scoring_ms": {"p50": percentile(scoring_samples, .5), "p95": percentile(scoring_samples, .95), "p99": percentile(scoring_samples, .99)},
               "ranking_ms": {"p50": percentile(ranking_samples, .5), "p95": percentile(ranking_samples, .95), "p99": percentile(ranking_samples, .99)},
@@ -250,7 +262,7 @@ def run(data: dict[str, Any], source: Path, limit: int, repeats: int) -> dict[st
     verify_golden_vectors(data)
     arms = {level: [doc for doc in data["corpus"] if doc["document_unit"] == level] for level in LEVELS}
     arms["mixed_unit_pool"] = list(data["corpus"])
-    reports = {algorithm: {arm: evaluate_arm(data, documents, algorithm, limit, repeats) for arm, documents in arms.items()} for algorithm in ALGORITHMS}
+    reports = {algorithm: {arm: evaluate_arm(data, documents, arm, algorithm, limit, repeats) for arm, documents in arms.items()} for algorithm in ALGORITHMS}
     return {"schema_version": 2, "runner": "classical_lexical_bakeoff_python", "status": "SMOKE_ONLY",
             "dataset_name": data["dataset_name"], "dataset_sha256": sha256_file(source), "runner_revision": git_revision(),
             "python": platform.python_version(), "platform": platform.platform(), "tokenizer": "code_aware_fixture_v1",
@@ -291,6 +303,16 @@ def golden_vector_outcomes(data: dict[str, Any]) -> list[dict[str, Any]]:
 def self_test(path: Path) -> None:
     data = read_json(path)
     report = run(data, path, 10, 1)
+    chunk_quality = report["algorithms"]["bm25"]["chunk"]["quality"]
+    resource_quality = report["algorithms"]["bm25"]["resource"]["quality"]
+    if "resource" in chunk_quality or "chunk" in resource_quality:
+        raise AssertionError("primary arms must not report the other unit's quality metrics")
+    if chunk_quality["qrels_coverage"]["aggregated_query_count"] != 4:
+        raise AssertionError("chunk arm must aggregate only chunk-level judged qrels")
+    if resource_quality["qrels_coverage"]["aggregated_query_count"] != 1:
+        raise AssertionError("resource arm must aggregate only resource-level judged qrels")
+    if chunk_quality["zero_relevant_accuracy"] != 0.0 or resource_quality["zero_relevant_accuracy"] is not None:
+        raise AssertionError("zero-relevant accuracy must be arm-specific and expose the false positive")
     expected = data["expected_top_ids"]
     for algorithm in ALGORITHMS:
         for arm in ("resource", "chunk"):
