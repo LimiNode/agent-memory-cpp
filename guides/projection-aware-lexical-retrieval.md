@@ -20,7 +20,8 @@ reported as a complete top-K result. Within the budgets, at most
 `max_candidates` scored hits are retained, and each survivor is re-read from
 the canonical knowledge-unit store and revalidated against the publication
 frontier before hydration. Manifest rows are cached by `ResourceId` during the
-indexing phase, then read directly again for final validation. Revision changes,
+indexing phase, then reused for final validation within the same retrieval
+snapshot. Revision changes,
 erased units, unpublished manifests, and stale projections are fail-closed
 misses.
 
