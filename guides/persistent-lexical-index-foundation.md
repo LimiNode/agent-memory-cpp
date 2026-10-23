@@ -157,9 +157,10 @@ Publication is short, fenced, and idempotent:
    lexical rows.
 3. Remove the old active contribution from token and collection statistics,
    apply the replacement contribution, and write the new per-unit rows.
-4. Publish the replacement active snapshot and manifest binding in the same
-   transaction. A reader must see either the previous complete view or the new
-   complete view, never a mixture.
+4. Advance the collection-wide `publication_sequence` and publish the
+   replacement active snapshot and manifest binding in the same transaction.
+   A reader must see either the previous complete view or the new complete
+   view, never a mixture.
 5. Record superseded physical rows for delayed reclaim. Reclaim is idempotent,
    generation-aware, and must not be required for query correctness.
 
