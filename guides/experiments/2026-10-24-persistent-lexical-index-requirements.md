@@ -46,6 +46,7 @@ Every derived row and every cache/block header must be attributable to:
 ```text
 scope_id
 projection_kind
+projection_schema_id / projection_schema_version
 tokenizer_fingerprint / normalization_fingerprint
 statistics_epoch
 statistics_generation
@@ -59,6 +60,13 @@ second conflicting copy of those fields. `statistics_epoch` is never reused
 for a different index incarnation; generation advances within one epoch for
 incremental updates.
 
+The immutable epoch descriptor carries schema, tokenizer, normalization, epoch,
+and supported layout fields. The active pointer carries descriptor identity,
+current generation, and layout. Posting and unit-stat rows additionally carry
+unit_id, ProjectionVersionRef, resource_id, and resource_generation; collection
+statistics and token dictionaries are collection-level rows and must not invent
+per-unit fields.
+
 ## Shared data contract for scorers
 
 BM25, BM25+, and BM25L must be able to consume the same published base data:
@@ -67,12 +75,26 @@ BM25, BM25+, and BM25L must be able to consume the same published base data:
 - term-to-posting entries with unit ID, field ID, TF and optional positions;
 - per-unit field/token lengths;
 - DF, collection frequency, unit count, total token count, and average lengths;
-- explicit scorer parameters and tie policy.
+- explicit scorer parameters (including BM25+/BM25L delta), IDF convention,
+  score tolerance, and tie policy.
 
 BM25F additionally requires per-field statistics and field weights. Phrase and
 proximity require positions/locators. WAND/Block-Max WAND require scorer- and
 snapshot-bound upper bounds; BM25 bounds must not be reused silently for BM25L
 or a different statistics generation.
+
+## Epoch, generation, and read-transaction semantics
+
+statistics_epoch is the immutable identity of one index incarnation. A
+tokenizer, normalization, schema, full rebuild, incompatible layout migration,
+or restore over potentially stale rows allocates a new epoch.
+statistics_generation is a logical collection-wide publication counter within
+that epoch; a targeted add/remove/replace advances it without copying the whole
+collection. A physical MDBX MVCC/read transaction is a storage snapshot and is
+not itself an epoch or generation. Immutable posting blocks also record the
+generation they were built from. A same-epoch block can be used as an unscored
+base only when a complete add/remove/replace overlay reconstructs active
+membership; otherwise the route is Partial or Unavailable.
 
 ## Publication and update requirements
 
@@ -96,7 +118,8 @@ is intentionally small and independent of the production implementation. It
 covers:
 
 - exhaustive BM25/BM25+/BM25L ranking over shared TF/DF inputs;
-- resource-level versus chunk-level statistics;
+- independent resource-level and chunk-level statistics, with a mixed arm kept
+  only as a diagnostic;
 - deterministic ties and reopen-stable scores;
 - update replacement, erase/tombstone, stale epoch, and incomplete overlay;
 - projection-version and resource-generation mismatches;
@@ -107,7 +130,7 @@ accepted:
 
 | Gate | Required result |
 | --- | --- |
-| exact top-K and score parity | equal to exhaustive oracle for each scorer |
+| exact top-K and score parity | equal to exhaustive oracle for each scorer within the fixture tolerance |
 | active snapshot binding | no cross-epoch/generation statistics mixing |
 | update/erase | no stale or resurrected candidates |
 | incomplete overlay | explicit `Partial`/`Unavailable`, never a complete result |

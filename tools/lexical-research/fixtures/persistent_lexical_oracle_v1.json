@@ -4,57 +4,158 @@
   "identity": {
     "scope_id": "scope:default",
     "projection_kind": "Original",
+    "projection_schema_id": "search_projection",
+    "projection_schema_version": 1,
     "tokenizer_fingerprint": "code_aware_fixture_v1",
     "normalization_fingerprint": "unicode_casefold_v1",
     "statistics_epoch": "epoch:E1",
     "statistics_generation": 11,
     "posting_layout_version": 1
   },
-  "tie_policy": "score descending, unit_id ascending",
-  "shared_scorer_inputs": {
-    "k1": 1.5,
-    "b": 0.75,
-    "idf": "log1p_okapi",
-    "documents": [
-      {"unit_id": "u_short", "document_unit": "chunk", "resource_id": "r1", "resource_generation": 4, "projection_version": "p1", "length": 1, "terms": {"alpha": 1}},
-      {"unit_id": "u_long", "document_unit": "chunk", "resource_id": "r1", "resource_generation": 4, "projection_version": "p1", "length": 7, "terms": {"alpha": 1, "beta": 6}},
-      {"unit_id": "u_resource", "document_unit": "resource", "resource_id": "r2", "resource_generation": 2, "projection_version": "p3", "length": 3, "terms": {"alpha": 2}}
-    ],
-    "collection": {"unit_count": 3, "total_token_count": 11, "average_length": 3.6666666666666665},
-    "document_frequency": {"alpha": 3, "beta": 1}
+  "index_descriptor": {
+    "projection_schema_id": "search_projection",
+    "projection_schema_version": 1,
+    "tokenizer_fingerprint": "code_aware_fixture_v1",
+    "normalization_fingerprint": "unicode_casefold_v1",
+    "statistics_epoch": "epoch:E1",
+    "supported_posting_layout_versions": [1]
   },
-  "ranking_cases": [
+  "tie_policy": "score descending, unit_id ascending",
+  "scorer_parameters": {
+    "bm25": {"idf": "log1p_okapi", "k1": 1.5, "b": 0.75},
+    "bm25_plus": {"idf": "log1p_okapi", "k1": 1.5, "b": 0.75, "delta": 1.0},
+    "bm25l": {"idf": "log1p_okapi", "k1": 1.5, "b": 0.75, "delta": 1.0}
+  },
+  "scorer_arms": [
     {
-      "name": "alpha_length_competition",
-      "query_terms": ["alpha"],
-      "expected": {
-        "bm25": ["u_resource", "u_short", "u_long"],
-        "bm25_plus": ["u_resource", "u_short", "u_long"],
-        "bm25l": ["u_resource", "u_short", "u_long"]
-      }
+      "name": "chunk_level",
+      "document_unit": "chunk",
+      "documents": [
+        {"unit_id": "c_short", "document_unit": "chunk", "resource_id": "r1", "resource_generation": 4, "projection_version": "p1", "length": 2, "terms": {"alpha": 1, "beta": 1}},
+        {"unit_id": "c_long", "document_unit": "chunk", "resource_id": "r1", "resource_generation": 4, "projection_version": "p1", "length": 6, "terms": {"alpha": 1, "beta": 5}},
+        {"unit_id": "c_tie_a", "document_unit": "chunk", "resource_id": "r2", "resource_generation": 2, "projection_version": "p2", "length": 4, "terms": {"gamma": 1, "noise": 3}},
+        {"unit_id": "c_tie_b", "document_unit": "chunk", "resource_id": "r3", "resource_generation": 1, "projection_version": "p4", "length": 4, "terms": {"gamma": 1, "noise": 3}}
+      ],
+      "collection": {"unit_count": 4, "total_token_count": 16, "average_length": 4.0},
+      "document_frequency": {"alpha": 2, "beta": 2, "gamma": 2, "noise": 2},
+      "ranking_cases": [
+        {
+          "name": "chunk_alpha",
+          "query_terms": ["alpha"],
+          "top_k": 2,
+          "expected": {
+            "bm25": [{"unit_id": "c_short", "score": 0.894383}, {"unit_id": "c_long", "score": 0.565834}],
+            "bm25_plus": [{"unit_id": "c_short", "score": 1.587531}, {"unit_id": "c_long", "score": 1.258982}],
+            "bm25l": [{"unit_id": "c_short", "score": 1.098892}, {"unit_id": "c_long", "score": 0.927450}]
+          }
+        },
+        {
+          "name": "chunk_repeated_alpha",
+          "query_terms": ["alpha", "alpha"],
+          "top_k": 2,
+          "expected": {
+            "bm25": [{"unit_id": "c_short", "score": 1.788767}, {"unit_id": "c_long", "score": 1.131669}],
+            "bm25_plus": [{"unit_id": "c_short", "score": 3.175061}, {"unit_id": "c_long", "score": 2.517963}],
+            "bm25l": [{"unit_id": "c_short", "score": 2.197784}, {"unit_id": "c_long", "score": 1.854901}]
+          }
+        },
+        {
+          "name": "chunk_gamma_tie",
+          "query_terms": ["gamma"],
+          "top_k": 2,
+          "expected": {
+            "bm25": [{"unit_id": "c_tie_a", "score": 0.693147}, {"unit_id": "c_tie_b", "score": 0.693147}],
+            "bm25_plus": [{"unit_id": "c_tie_a", "score": 1.386294}, {"unit_id": "c_tie_b", "score": 1.386294}],
+            "bm25l": [{"unit_id": "c_tie_a", "score": 0.990210}, {"unit_id": "c_tie_b", "score": 0.990210}]
+          }
+        }
+      ]
     },
     {
-      "name": "tie_break_after_equal_score",
+      "name": "resource_level",
+      "document_unit": "resource",
       "documents": [
-        {"unit_id": "a", "length": 2, "terms": {"alpha": 1}},
-        {"unit_id": "b", "length": 2, "terms": {"alpha": 1}}
+        {"unit_id": "r_main", "document_unit": "resource", "resource_id": "r1", "resource_generation": 4, "projection_version": "p1", "length": 3, "terms": {"alpha": 2, "beta": 1}},
+        {"unit_id": "r_archive", "document_unit": "resource", "resource_id": "r2", "resource_generation": 2, "projection_version": "p2", "length": 5, "terms": {"alpha": 1, "beta": 4}},
+        {"unit_id": "r_tie_a", "document_unit": "resource", "resource_id": "r3", "resource_generation": 1, "projection_version": "p4", "length": 4, "terms": {"gamma": 1, "noise": 3}},
+        {"unit_id": "r_tie_b", "document_unit": "resource", "resource_id": "r4", "resource_generation": 1, "projection_version": "p5", "length": 4, "terms": {"gamma": 1, "noise": 3}}
       ],
-      "collection": {"unit_count": 2, "total_token_count": 4, "average_length": 2.0},
-      "document_frequency": {"alpha": 2},
+      "collection": {"unit_count": 4, "total_token_count": 16, "average_length": 4.0},
+      "document_frequency": {"alpha": 2, "beta": 2, "gamma": 2, "noise": 2},
+      "ranking_cases": [
+        {
+          "name": "resource_alpha",
+          "query_terms": ["alpha"],
+          "top_k": 2,
+          "expected": {
+            "bm25": [{"unit_id": "r_main", "score": 1.076733}, {"unit_id": "r_archive", "score": 0.623054}],
+            "bm25_plus": [{"unit_id": "r_main", "score": 1.769881}, {"unit_id": "r_archive", "score": 1.316201}],
+            "bm25l": [{"unit_id": "r_main", "score": 1.208978}, {"unit_id": "r_archive", "score": 0.955124}]
+          }
+        },
+        {
+          "name": "resource_gamma_tie",
+          "query_terms": ["gamma"],
+          "top_k": 2,
+          "expected": {
+            "bm25": [{"unit_id": "r_tie_a", "score": 0.693147}, {"unit_id": "r_tie_b", "score": 0.693147}],
+            "bm25_plus": [{"unit_id": "r_tie_a", "score": 1.386294}, {"unit_id": "r_tie_b", "score": 1.386294}],
+            "bm25l": [{"unit_id": "r_tie_a", "score": 0.990210}, {"unit_id": "r_tie_b", "score": 0.990210}]
+          }
+        }
+      ]
+    },
+    {
+      "name": "mixed_diagnostic",
+      "document_unit": "mixed",
+      "diagnostic_only": true,
+      "documents": [
+        {"unit_id": "u_short", "document_unit": "mixed", "resource_id": "r1", "resource_generation": 4, "projection_version": "p1", "length": 1, "terms": {"alpha": 1}},
+        {"unit_id": "u_long", "document_unit": "mixed", "resource_id": "r1", "resource_generation": 4, "projection_version": "p1", "length": 7, "terms": {"alpha": 1, "beta": 6}},
+        {"unit_id": "u_resource", "document_unit": "mixed", "resource_id": "r2", "resource_generation": 2, "projection_version": "p3", "length": 3, "terms": {"alpha": 2, "beta": 1}}
+      ],
+      "collection": {"unit_count": 3, "total_token_count": 11, "average_length": 3.6666666666666665},
+      "document_frequency": {"alpha": 3, "beta": 2},
+      "ranking_cases": [
+        {
+          "name": "mixed_alpha_diagnostic",
+          "query_terms": ["alpha"],
+          "top_k": 3,
+          "expected": {
+            "bm25": [{"unit_id": "u_resource", "score": 0.202599}, {"unit_id": "u_short", "score": 0.198493}, {"unit_id": "u_long", "score": 0.094764}],
+            "bm25_plus": [{"unit_id": "u_resource", "score": 0.336131}, {"unit_id": "u_short", "score": 0.332024}, {"unit_id": "u_long", "score": 0.228296}],
+            "bm25l": [{"unit_id": "u_resource", "score": 0.229849}, {"unit_id": "u_short", "score": 0.227287}, {"unit_id": "u_long", "score": 0.172016}]
+          }
+        }
+      ]
+    }
+  ],
+  "reopen_cases": [
+    {
+      "name": "reopen_stable_chunk_alpha",
+      "arm": "chunk_level",
       "query_terms": ["alpha"],
-      "expected": {"bm25": ["a", "b"], "bm25_plus": ["a", "b"], "bm25l": ["a", "b"]}
+      "top_k": 2,
+      "expected": {
+        "bm25": [{"unit_id": "c_short", "score": 0.894383}, {"unit_id": "c_long", "score": 0.565834}],
+        "bm25_plus": [{"unit_id": "c_short", "score": 1.587531}, {"unit_id": "c_long", "score": 1.258982}],
+        "bm25l": [{"unit_id": "c_short", "score": 1.098892}, {"unit_id": "c_long", "score": 0.927450}]
+      }
     }
   ],
   "snapshot_cases": [
-    {"name": "same_epoch_complete_overlay", "base_generation": 10, "target_generation": 11, "adds": ["u_new"], "removes": ["u_long"], "replacements": [], "expected_outcome": "exact"},
-    {"name": "same_epoch_incomplete_overlay", "base_generation": 10, "target_generation": 11, "adds": ["u_new"], "removes": [], "replacements": [], "missing_delta": "remove:u_long", "expected_outcome": "unavailable"},
-    {"name": "epoch_mismatch", "base_epoch": "epoch:E0", "target_epoch": "epoch:E1", "expected_outcome": "unavailable"},
-    {"name": "projection_version_mismatch", "posting_projection_version": "p2", "active_projection_version": "p3", "expected_outcome": "filtered"},
-    {"name": "resource_generation_mismatch", "posting_resource_generation": 1, "active_resource_generation": 2, "expected_outcome": "filtered"}
+    {"name": "same_epoch_complete_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["c_short", "c_long"], "adds": ["c_new"], "removes": ["c_long"], "replacements": [], "target_members": ["c_short", "c_new"], "expected_candidate_decision": "accepted", "expected_route_completion": "Exact"},
+    {"name": "same_epoch_replacement_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["r_main", "r_archive"], "adds": [], "removes": [], "replacements": ["r_main"], "target_members": ["r_main", "r_archive"], "expected_candidate_decision": "accepted", "expected_route_completion": "Exact"},
+    {"name": "same_epoch_incomplete_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["c_short", "c_long"], "adds": ["c_new"], "removes": [], "replacements": [], "missing_delta": "remove:c_long", "expected_candidate_decision": "accepted", "expected_route_completion": "Unavailable"},
+    {"name": "erase_tombstone", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["c_short", "c_long"], "adds": [], "removes": ["c_long"], "replacements": [], "target_members": ["c_short"], "expected_candidate_decision": "accepted", "expected_route_completion": "Exact"},
+    {"name": "epoch_mismatch", "base_epoch": "epoch:E0", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "expected_candidate_decision": "accepted", "expected_route_completion": "Unavailable"},
+    {"name": "projection_version_mismatch", "posting_projection_version": "p2", "active_projection_version": "p3", "expected_candidate_decision": "filtered", "expected_route_completion": "Exact"},
+    {"name": "resource_generation_mismatch", "posting_resource_generation": 1, "active_resource_generation": 2, "expected_candidate_decision": "filtered", "expected_route_completion": "Exact"}
   ],
   "acceleration_cases": [
-    {"name": "matching_bm25_block_bounds", "scorer": "bm25", "statistics_generation": 11, "expected_outcome": "exact"},
-    {"name": "bm25_bounds_used_for_bm25l", "scorer": "bm25l", "statistics_generation": 11, "bound_scorer": "bm25", "expected_outcome": "disable_pruning"},
-    {"name": "generation_bound_mismatch", "scorer": "bm25", "statistics_generation": 10, "active_generation": 11, "expected_outcome": "disable_pruning"}
+    {"name": "matching_bm25_block_bound", "arm": "chunk_level", "scorer": "bm25", "bound_scorer": "bm25", "query_terms": ["alpha"], "document_ids": ["c_short", "c_long"], "upper_bound": 0.9, "statistics_epoch": "epoch:E1", "active_epoch": "epoch:E1", "statistics_generation": 11, "active_generation": 11, "expected_pruning": "enabled"},
+    {"name": "bm25_bound_for_bm25l", "arm": "chunk_level", "scorer": "bm25l", "bound_scorer": "bm25", "query_terms": ["alpha"], "document_ids": ["c_short", "c_long"], "upper_bound": 0.9, "statistics_epoch": "epoch:E1", "active_epoch": "epoch:E1", "statistics_generation": 11, "active_generation": 11, "expected_pruning": "disable_pruning"},
+    {"name": "generation_bound_mismatch", "arm": "chunk_level", "scorer": "bm25", "bound_scorer": "bm25", "query_terms": ["alpha"], "document_ids": ["c_short", "c_long"], "upper_bound": 0.9, "statistics_epoch": "epoch:E1", "active_epoch": "epoch:E1", "statistics_generation": 10, "active_generation": 11, "expected_pruning": "disable_pruning"},
+    {"name": "epoch_bound_mismatch", "arm": "chunk_level", "scorer": "bm25", "bound_scorer": "bm25", "query_terms": ["alpha"], "document_ids": ["c_short", "c_long"], "upper_bound": 0.9, "statistics_epoch": "epoch:E0", "active_epoch": "epoch:E1", "statistics_generation": 11, "active_generation": 11, "expected_pruning": "disable_pruning"}
   ]
 }
