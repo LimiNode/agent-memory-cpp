@@ -258,6 +258,9 @@ RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
     }
     const auto hits = index.search(lexical_query);
     result.chunks.reserve(std::min(query.limit, hits.size()));
+    const ManifestResolver reload_manifest = [&](const ResourceId& resource_id) {
+        return m_manifest_store->find_manifest(resource_id);
+    };
     for(const auto& hit : hits) {
         const auto envelope_it = envelopes.find(hit.chunk_id.value());
         if(envelope_it == envelopes.end()) continue;
@@ -266,7 +269,7 @@ RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
            current->lifecycle_state != KnowledgeUnitLifecycleState::Active ||
            !has_publication_binding(
                 *current,
-                resolve_manifest,
+                reload_manifest,
                 m_options.expected_manifest_schema_id,
                 m_options.expected_manifest_schema_version
             )) {

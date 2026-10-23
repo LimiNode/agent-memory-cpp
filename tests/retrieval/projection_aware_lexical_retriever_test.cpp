@@ -2,6 +2,7 @@
 #include <agent_memory/retrieval/OriginalProjection.hpp>
 #include <agent_memory/lexical/StandardTokenizer.hpp>
 
+#include <functional>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -15,6 +16,8 @@ using namespace agent_memory;
 
 class Units final : public IKnowledgeUnitStore {
 public:
+    using FindHook = std::function<void(const KnowledgeUnitId&, std::size_t)>;
+
     void upsert(KnowledgeUnitEnvelope value) override { m_values[value.id.value()] = std::move(value); }
     bool erase(const KnowledgeUnitId& id) override { return m_values.erase(id.value()) != 0; }
     std::vector<KnowledgeUnitId> scan_by_scope_and_kind(const ScopeId& scope, KnowledgeUnitKind kind) const override {
@@ -29,13 +32,18 @@ public:
     }
     KnowledgeUnitEnvelope create_or_get_unit(KnowledgeUnitCreateRequest) override { throw std::logic_error("unused"); }
     std::optional<KnowledgeUnitEnvelope> find(const KnowledgeUnitId& id) const override {
+        const auto call_number = ++m_find_calls[id.value()];
+        if(m_find_hook) m_find_hook(id, call_number);
         const auto it = m_values.find(id.value());
         return it == m_values.end() ? std::nullopt : std::optional<KnowledgeUnitEnvelope>{it->second};
     }
     std::optional<KnowledgeUnitId> find_by_content_key(const KnowledgeUnitKey&) const override { return std::nullopt; }
     KnowledgeUnitEnvelope update_mutable_fields(const KnowledgeUnitId&, KnowledgeUnitMutablePatch) override { throw std::logic_error("unused"); }
+    void set_find_hook(FindHook hook) { m_find_hook = std::move(hook); }
 private:
     std::map<std::uint64_t, KnowledgeUnitEnvelope> m_values;
+    mutable std::map<std::uint64_t, std::size_t> m_find_calls;
+    FindHook m_find_hook;
 };
 
 class Projections final : public IProjectionStore {
@@ -171,5 +179,107 @@ int main() {
     try { (void)bounded.retrieve(query); }
     catch(const ProjectionAwareLexicalRetrievalBudgetExceeded&) { budget_threw = true; }
     if(!budget_threw) return fail("unit scan budget must fail closed explicitly");
+
+    {
+        const ResourceId race_resource{"resource-race"};
+        Units race_units;
+        Projections race_projections;
+        Manifests race_manifests;
+        const auto race_envelope = envelope(
+            20,
+            "alpha race evidence",
+            scope,
+            race_resource
+        );
+        race_units.upsert(race_envelope);
+        race_projections.put(make_original_projection(
+            race_envelope,
+            race_envelope.revision
+        ));
+        race_manifests.upsert_manifest(manifest(race_resource, 20));
+        race_units.set_find_hook([&](const KnowledgeUnitId& id, std::size_t call_number) {
+            if(id.value() != race_envelope.id.value() || call_number != 2) return;
+            auto replacement = *race_manifests.find_manifest(race_resource);
+            replacement.state = ResourceManifestState::ErasePending;
+            race_manifests.upsert_manifest(std::move(replacement));
+        });
+
+        ProjectionAwareLexicalRetriever race_retriever(
+            race_units,
+            race_projections,
+            race_manifests,
+            scope,
+            tokenizer
+        );
+        if(!race_retriever.retrieve(query).empty()) {
+            return fail("manifest replacement before hydration must reject the hit");
+        }
+    }
+
+    {
+        const ResourceId byte_budget_resource{"resource-byte-budget"};
+        Units byte_budget_units;
+        Projections byte_budget_projections;
+        Manifests byte_budget_manifests;
+        const auto budget_first = envelope(
+            30,
+            "alpha first candidate",
+            scope,
+            byte_budget_resource
+        );
+        const auto budget_second = envelope(
+            31,
+            "alpha second candidate",
+            scope,
+            byte_budget_resource
+        );
+        byte_budget_units.upsert(budget_first);
+        byte_budget_units.upsert(budget_second);
+        byte_budget_projections.put(make_original_projection(
+            budget_first,
+            budget_first.revision
+        ));
+        byte_budget_projections.put(make_original_projection(
+            budget_second,
+            budget_second.revision
+        ));
+        auto byte_budget_manifest = manifest(byte_budget_resource, 30);
+        byte_budget_manifest.records.push_back(DerivedRecordRef{
+            DerivedRecordKind::Custom,
+            {},
+            "knowledge_unit:31",
+            1
+        });
+        byte_budget_manifest.records.push_back(DerivedRecordRef{
+            DerivedRecordKind::Custom,
+            {},
+            "original_projection:31",
+            1
+        });
+        byte_budget_manifests.upsert_manifest(std::move(byte_budget_manifest));
+
+        ProjectionAwareLexicalRetrieverOptions byte_budget_options;
+        byte_budget_options.max_indexed_projection_bytes =
+            budget_first.primary_text.size() + budget_second.primary_text.size() - 1;
+        ProjectionAwareLexicalRetriever byte_budget_retriever(
+            byte_budget_units,
+            byte_budget_projections,
+            byte_budget_manifests,
+            scope,
+            tokenizer,
+            byte_budget_options
+        );
+        bool byte_budget_threw = false;
+        bool returned_partial_result = false;
+        try {
+            const auto partial = byte_budget_retriever.retrieve(query);
+            returned_partial_result = !partial.empty();
+        } catch(const ProjectionAwareLexicalRetrievalBudgetExceeded&) {
+            byte_budget_threw = true;
+        }
+        if(!byte_budget_threw || returned_partial_result) {
+            return fail("projection byte budget must throw without partial top-K");
+        }
+    }
     return 0;
 }

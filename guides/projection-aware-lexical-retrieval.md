@@ -19,11 +19,25 @@ throws `ProjectionAwareLexicalRetrievalBudgetExceeded`; a partial scan is not
 reported as a complete top-K result. Within the budgets, at most
 `max_candidates` scored hits are retained, and each survivor is re-read from
 the canonical knowledge-unit store and revalidated against the publication
-frontier before hydration. Manifest rows are cached by `ResourceId` during the
-indexing phase, then reused for final validation within the same retrieval
-snapshot. Revision changes,
+frontier before hydration. Manifest rows are cached by `ResourceId` only during
+the indexing phase. Final validation reloads each survivor's manifest from the
+authoritative `IResourceManifestStorage`, so a manifest replaced or marked
+`ErasePending` after candidate construction is rejected. Revision changes,
 erased units, unpublished manifests, and stale projections are fail-closed
 misses.
+
+The unit, projection, and manifest stores do not currently expose one shared,
+pinned read snapshot. The authoritative manifest reload narrows the stale-read
+window, but a publication can still change after that reload, so this adapter
+does not claim a linearizable retrieval request.
+
+## Read-frontier follow-up
+
+A future persistent retrieval path needs a shared read-frontier contract that
+pins compatible unit, projection, manifest, and index snapshots for the whole
+candidate-validation and hydration operation. That architectural requirement
+is separate from this bounded adapter; this slice does not add a snapshot
+coordinator, persistent index, or new storage transaction API.
 
 This first slice accepts text queries without metadata filters and hydrates the
 canonical envelope `primary_text`. Its `RetrievedChunk` uses the legacy
