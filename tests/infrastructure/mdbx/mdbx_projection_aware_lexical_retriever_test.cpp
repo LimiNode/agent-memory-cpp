@@ -128,8 +128,12 @@ int main() {
             "resource-projection-aware-interrupted",
             "invisible interrupted projection"
         ));
-    } catch(const std::runtime_error& error_value) {
-        interrupted = std::string{error_value.what()} == "intentional interrupted publication";
+    } catch(const std::exception& error_value) {
+        if(std::string{error_value.what()} == "intentional interrupted publication") {
+            interrupted = true;
+        } else {
+            throw;
+        }
     }
     expect(interrupted, "fault fixture did not interrupt manifest publication");
     MdbxKnowledgeUnitStoreOptions interrupted_unit_options;
