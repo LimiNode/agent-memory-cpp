@@ -46,6 +46,6 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | Evaluation / benchmarks | `evaluation-roadmap.md` | Docs/tests only | unified runner | exact-oracle harness |
 | Source trust / provenance | `source-trust-roadmap.md`, `artifact-provenance-roadmap.md` | Contract only | propagation in all payloads | lineage fixture |
 | Diagnostics / explainability | `retrieval-explainability-roadmap.md` | Roadmap only | stable explain payload | lexical explain MVP |
-
+| Session extraction / derived memory projection | memory-lifecycle-governance-roadmap.md AM-24 | Contract only | source-frontier receipts, idempotent extraction and derived summary/fact fixtures remain unimplemented | add session extraction projection fixture |\n| Cross-kind Context Composition | knowledge-base-roadmap.md | Contract only | shared-frontier multi-lane retrieval and deterministic fusion fixture remain unimplemented | run flat, single-lane and composed context comparison |\n| Context-Pack positional robustness | evaluation-roadmap.md | Docs/tests only | position/order/fill fixture with exact protected probes remains unimplemented | run held-out positional robustness gate |\n
 The table is deliberately conservative. A green unit test for a contract does
 not promote an unimplemented backend to `Implemented`.
