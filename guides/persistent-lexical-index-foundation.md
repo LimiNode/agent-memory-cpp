@@ -138,7 +138,7 @@ segments, but it must preserve the same meaning:
 | Token statistics | token, document frequency, collection frequency | IDF and term-frequency accounting |
 | Collection statistics | epoch, generation, unit count, total token count | `avgdl` and scorer denominator |
 | Index descriptor | immutable epoch descriptor, schema and tokenizer/normalization fingerprints, layout compatibility | Reconstructs and validates one index incarnation |
-| Active snapshot | `(scope, projection) -> descriptor/epoch, generation, layout` | Mutable pointer to one compatible aggregate view |
+| Active snapshot | `(scope, projection) -> epoch, generation, layout` | Mutable pointer to one compatible aggregate view; DBI key supplies scope/projection |
 
 The first implementation may omit positions, but it must reserve a versioned
 way to add them later. Aggregate statistics must describe the same active unit
@@ -205,7 +205,7 @@ ReadFrontier = {
     lexical_active_snapshot,
     immutable_index_descriptor,
     pinned_read_transaction,
-    per-resource manifest/revision bindings observed in that transaction
+    per-resource manifest/revision observations observed in that transaction
 }
 ```
 
@@ -219,7 +219,8 @@ must provide an equivalent durable publication sequence or return an explicit
 non-linearizable/unavailable outcome; it must not pretend that independent
 reads form one snapshot.
 
-The candidate reader obtains the active lexical snapshot and its descriptor
+The candidate reader obtains the active lexical snapshot (whose scope and
+projection come from the authoritative DBI key) and its descriptor
 inside that frontier, then reads postings, unit statistics, manifests,
 projections, and canonical envelopes against the same frontier. A mismatched
 epoch, generation, projection version, resource generation, lifecycle state,
@@ -250,8 +251,13 @@ unavailable token partitions:
   `Exact` empty or partial top-K. No scorer, conservative bound, or disabled
   pruning setting can turn incomplete membership into an exact result.
 
-This completion status is part of the reader result and retrieval trace. It is
-not inferred later from the number of returned hits.
+The C++ `LexicalUnitRevisionObservation` is structural evidence collected by
+the adapter; its validation does not itself read a `KnowledgeUnitEnvelope` or
+manifest. The adapter must set both active-binding flags only after comparing
+unit scope/revision, projection version, resource generation, and manifest
+bindings in the same pinned transaction. This completion status is part of the
+reader result and retrieval trace. It is not inferred later from the number of
+returned hits.
 
 ## Erase, update, and rebuild
 

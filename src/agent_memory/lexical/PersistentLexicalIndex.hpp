@@ -74,7 +74,9 @@ namespace agent_memory {
 
     /// \brief Mutable pointer to one complete aggregate view of an immutable descriptor.
     struct LexicalActiveSnapshot final {
-        LexicalIndexDescriptorRef descriptor_ref;
+        /// The DBI key supplies scope and projection; the value carries only
+        /// the epoch, generation, and layout payload.
+        LexicalStatisticsEpoch statistics_epoch;
         std::uint64_t statistics_generation = 0;
         std::uint32_t posting_layout_version = 0;
     };
@@ -109,13 +111,22 @@ namespace agent_memory {
         PinnedSnapshot
     };
 
-    /// \brief Candidate-level revision evidence observed inside a read frontier.
-    struct LexicalUnitRevisionBinding final {
+    /// \brief Structural observation collected from one candidate frontier.
+    ///
+    /// This is not an authoritative freshness validator. The storage adapter
+    /// must populate the scope, unit revision, manifest binding flags, and
+    /// resource revision from the same pinned transaction before an exact
+    /// route can use the observation.
+    struct LexicalUnitRevisionObservation final {
+        ScopeId scope_id;
         KnowledgeUnitId unit_id;
+        std::uint64_t unit_revision = 0;
         ResourceId resource_id;
         std::uint64_t resource_generation = 0;
         ProjectionVersionRef projection_version;
         ResourceManifestState manifest_state = ResourceManifestState::Active;
+        bool has_active_unit_binding = false;
+        bool has_active_projection_binding = false;
     };
 
     /// \brief Metadata captured by one persistent lexical read session.
@@ -129,7 +140,7 @@ namespace agent_memory {
         LexicalActiveSnapshot active_snapshot;
         LexicalIndexDescriptor index_descriptor;
         LexicalReadConsistency consistency = LexicalReadConsistency::NonLinearizable;
-        std::vector<LexicalUnitRevisionBinding> observed_unit_bindings;
+        std::vector<LexicalUnitRevisionObservation> observed_unit_revisions;
     };
 
     [[nodiscard]] bool operator==(
@@ -171,23 +182,26 @@ namespace agent_memory {
         const LexicalIndexReaderProfile& reader_profile
     ) noexcept;
 
-    [[nodiscard]] bool is_valid_lexical_unit_revision_binding(
-        const LexicalUnitRevisionBinding& binding
+    [[nodiscard]] bool is_valid_lexical_unit_revision_observation(
+        const LexicalUnitRevisionObservation& observation
     ) noexcept;
 
     /// \brief Returns whether the frontier is internally coherent.
     /// \note A valid non-linearizable frontier is not sufficient for an Exact route.
+    /// \throws std::bad_alloc if duplicate-check bookkeeping cannot be allocated.
     [[nodiscard]] bool is_valid_lexical_read_frontier(
         const LexicalReadFrontier& frontier
-    ) noexcept;
+    );
 
-    /// \brief Returns whether the frontier may support an Exact lexical route.
+    /// \brief Returns structural eligibility for an Exact lexical route.
     ///
-    /// Posting-partition completeness remains a separate query-time condition.
+    /// This does not prove that a live MDBX read transaction is pinned. The
+    /// adapter owns that proof; posting-partition completeness remains a
+    /// separate query-time condition.
     [[nodiscard]] bool supports_exact_lexical_read(
         const LexicalReadFrontier& frontier,
         const LexicalIndexReaderProfile& reader_profile
-    ) noexcept;
+    );
 
 } // namespace agent_memory
 

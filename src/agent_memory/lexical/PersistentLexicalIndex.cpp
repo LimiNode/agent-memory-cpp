@@ -1,6 +1,7 @@
 #include "PersistentLexicalIndex.hpp"
 
 #include <algorithm>
+#include <unordered_set>
 
 namespace agent_memory {
 namespace {
@@ -83,9 +84,7 @@ bool is_valid_lexical_index_descriptor(
 bool is_valid_lexical_active_snapshot(
     const LexicalActiveSnapshot& snapshot
 ) noexcept {
-    return !snapshot.descriptor_ref.scope_id.empty()
-        && is_valid_projection_kind(snapshot.descriptor_ref.projection_kind)
-        && !snapshot.descriptor_ref.statistics_epoch.empty()
+    return !snapshot.statistics_epoch.empty()
         && snapshot.statistics_generation != 0
         && snapshot.posting_layout_version != 0;
 }
@@ -114,7 +113,7 @@ LexicalIndexAdmission check_lexical_index_admission(
     if(!is_valid_lexical_active_snapshot(snapshot)) {
         return LexicalIndexAdmission::InvalidActiveSnapshot;
     }
-    if(descriptor.ref != snapshot.descriptor_ref) {
+    if(descriptor.ref.statistics_epoch != snapshot.statistics_epoch) {
         return LexicalIndexAdmission::DescriptorIdentityMismatch;
     }
     if(descriptor.projection_schema_id != reader_profile.projection_schema_id
@@ -139,19 +138,23 @@ LexicalIndexAdmission check_lexical_index_admission(
     return LexicalIndexAdmission::Compatible;
 }
 
-bool is_valid_lexical_unit_revision_binding(
-    const LexicalUnitRevisionBinding& binding
+bool is_valid_lexical_unit_revision_observation(
+    const LexicalUnitRevisionObservation& observation
 ) noexcept {
-    return !binding.unit_id.empty()
-        && !binding.resource_id.empty()
-        && binding.resource_generation != 0
-        && is_valid_projection_version(binding.projection_version)
-        && binding.manifest_state == ResourceManifestState::Active;
+    return !observation.scope_id.empty()
+        && !observation.unit_id.empty()
+        && observation.unit_revision != 0
+        && !observation.resource_id.empty()
+        && observation.resource_generation != 0
+        && is_valid_projection_version(observation.projection_version)
+        && observation.manifest_state == ResourceManifestState::Active
+        && observation.has_active_unit_binding
+        && observation.has_active_projection_binding;
 }
 
 bool is_valid_lexical_read_frontier(
     const LexicalReadFrontier& frontier
-) noexcept {
+) {
     switch(frontier.consistency) {
         case LexicalReadConsistency::NonLinearizable:
         case LexicalReadConsistency::PinnedSnapshot:
@@ -163,7 +166,8 @@ bool is_valid_lexical_read_frontier(
     if(frontier.publication_sequence.empty()
         || !is_valid_lexical_index_descriptor(frontier.index_descriptor)
         || !is_valid_lexical_active_snapshot(frontier.active_snapshot)
-        || frontier.index_descriptor.ref != frontier.active_snapshot.descriptor_ref
+        || frontier.index_descriptor.ref.statistics_epoch
+            != frontier.active_snapshot.statistics_epoch
         || !supports_layout(
             frontier.index_descriptor.supported_posting_layout_versions,
             frontier.active_snapshot.posting_layout_version
@@ -171,15 +175,13 @@ bool is_valid_lexical_read_frontier(
         return false;
     }
 
-    for(std::size_t index = 0; index < frontier.observed_unit_bindings.size(); ++index) {
-        const auto& binding = frontier.observed_unit_bindings[index];
-        if(!is_valid_lexical_unit_revision_binding(binding)) {
+    std::unordered_set<std::uint64_t> observed_unit_ids;
+    observed_unit_ids.reserve(frontier.observed_unit_revisions.size());
+    for(const auto& observation : frontier.observed_unit_revisions) {
+        if(!is_valid_lexical_unit_revision_observation(observation)
+            || observation.scope_id != frontier.index_descriptor.ref.scope_id
+            || !observed_unit_ids.insert(observation.unit_id.value()).second) {
             return false;
-        }
-        for(std::size_t previous = 0; previous < index; ++previous) {
-            if(frontier.observed_unit_bindings[previous].unit_id == binding.unit_id) {
-                return false;
-            }
         }
     }
     return true;
@@ -188,7 +190,7 @@ bool is_valid_lexical_read_frontier(
 bool supports_exact_lexical_read(
     const LexicalReadFrontier& frontier,
     const LexicalIndexReaderProfile& reader_profile
-) noexcept {
+) {
     return is_valid_lexical_read_frontier(frontier)
         && frontier.consistency == LexicalReadConsistency::PinnedSnapshot
         && check_lexical_index_admission(

@@ -34,11 +34,7 @@ namespace {
 
     agent_memory::LexicalActiveSnapshot make_snapshot() {
         return agent_memory::LexicalActiveSnapshot{
-            {
-                agent_memory::ScopeId{"scope:alpha"},
-                agent_memory::ProjectionKind::Original,
-                make_epoch(1)
-            },
+            make_epoch(1),
             7,
             1
         };
@@ -54,13 +50,17 @@ namespace {
         };
     }
 
-    agent_memory::LexicalUnitRevisionBinding make_binding() {
-        return agent_memory::LexicalUnitRevisionBinding{
+    agent_memory::LexicalUnitRevisionObservation make_binding() {
+        return agent_memory::LexicalUnitRevisionObservation{
+            agent_memory::ScopeId{"scope:alpha"},
             agent_memory::KnowledgeUnitId{11},
+            4,
             agent_memory::ResourceId{"resource:alpha"},
             3,
             agent_memory::ProjectionVersionRef{4, 5, 6, "original-v1"},
-            agent_memory::ResourceManifestState::Active
+            agent_memory::ResourceManifestState::Active,
+            true,
+            true
         };
     }
 
@@ -106,7 +106,7 @@ namespace {
         }
 
         auto wrong_epoch = snapshot;
-        wrong_epoch.descriptor_ref.statistics_epoch = make_epoch(2);
+        wrong_epoch.statistics_epoch = make_epoch(2);
         if(agent_memory::check_lexical_index_admission(descriptor, wrong_epoch, profile)
             != agent_memory::LexicalIndexAdmission::DescriptorIdentityMismatch) {
             return fail("active snapshot with another epoch must fail closed");
@@ -168,14 +168,20 @@ namespace {
         }
 
         frontier = make_frontier(agent_memory::LexicalReadConsistency::PinnedSnapshot);
-        frontier.observed_unit_bindings.front().manifest_state =
+        frontier.observed_unit_revisions.front().scope_id = agent_memory::ScopeId{"scope:other"};
+        if(agent_memory::is_valid_lexical_read_frontier(frontier)) {
+            return fail("frontier must reject observation from another scope");
+        }
+
+        frontier = make_frontier(agent_memory::LexicalReadConsistency::PinnedSnapshot);
+        frontier.observed_unit_revisions.front().manifest_state =
             agent_memory::ResourceManifestState::ErasePending;
         if(agent_memory::is_valid_lexical_read_frontier(frontier)) {
             return fail("frontier must reject a unit from a non-active manifest");
         }
 
         frontier = make_frontier(agent_memory::LexicalReadConsistency::PinnedSnapshot);
-        frontier.observed_unit_bindings.push_back(make_binding());
+        frontier.observed_unit_revisions.push_back(make_binding());
         if(agent_memory::is_valid_lexical_read_frontier(frontier)) {
             return fail("frontier must reject duplicate unit revision evidence");
         }
