@@ -99,6 +99,16 @@ allocates a new epoch. `statistics_generation` advances within that epoch for
 an active replacement. `posting_layout_version` describes decoding, not
 canonical identity.
 
+The epoch is not self-describing. Every epoch must have one immutable durable
+`IndexDescriptor` containing the projection schema, tokenizer and normalization
+fingerprints, statistics epoch, supported posting-layout versions, and other
+scorer-independent decoding metadata. The active snapshot is a mutable
+reference to that descriptor plus its current statistics generation. Opening a
+snapshot resolves and validates the descriptor before reading any dictionary,
+posting, statistics, or segment row. A missing descriptor or a
+fingerprint/layout mismatch is an explicit compatibility failure, never a
+reason to score rows because their epoch key happens to exist.
+
 Per-unit rows additionally carry:
 
 ```text
@@ -126,7 +136,8 @@ segments, but it must preserve the same meaning:
 | Unit statistics | unit, projection version, resource generation, token count and per-field lengths | Length normalization and freshness checks |
 | Token statistics | token, document frequency, collection frequency | IDF and term-frequency accounting |
 | Collection statistics | epoch, generation, unit count, total token count | `avgdl` and scorer denominator |
-| Active snapshot | `(scope, projection) -> epoch, generation, layout` | Single readable pointer to a compatible aggregate view |
+| Index descriptor | immutable epoch descriptor, schema and tokenizer/normalization fingerprints, layout compatibility | Reconstructs and validates one index incarnation |
+| Active snapshot | `(scope, projection) -> descriptor/epoch, generation, layout` | Mutable pointer to one compatible aggregate view |
 
 The first implementation may omit positions, but it must reserve a versioned
 way to add them later. Aggregate statistics must describe the same active unit
@@ -157,6 +168,25 @@ no partial aggregate is readable. Recovery may replay a pending operation only
 after rechecking the expected generation, projection versions, epoch, and
 fencing token. A replay that cannot prove those predicates fails closed.
 
+The current importer does not yet own this combined transaction: it currently
+publishes durable lexical data, raw-unit batches, staged projections, and the
+guarded manifest through separate operations. The first persistent IndexStore
+implementation must therefore extend the publication boundary rather than add
+another `upsert_manifest()` call after index writes. For the MDBX slice, a
+coordinator using the shared `MdbxStorageContext` must own one writable
+transaction covering canonical/unit rows, projection rows, lexical rows,
+statistics, the active snapshot, and the manifest binding. Existing fencing
+tokens and expected-manifest checks are admission predicates inside that
+transaction, not post-commit checks.
+
+Backends without a shared transaction may use a durable two-phase intent, but
+their visibility contract is weaker: the old complete manifest/frontier remains
+active until the derived index is ready, or the reader returns
+`Partial`/`Unavailable` when a newer manifest is visible without complete index
+membership. Such a backend must not claim atomic publication or silently return
+an incomplete exact result. Recovery and retry must clear or replay the intent
+idempotently before advancing the active frontier.
+
 The contract is compatible with the existing importer guarantees: raw units,
 `Original` projections, body/revision bindings, and the manifest remain the
 publication boundary. The lexical index cannot make an unpublished staging row
@@ -169,30 +199,67 @@ Strict retrieval requires a future shared read-frontier object with at least:
 ```text
 ReadFrontier = {
     scope_id,
-    resource_manifest_generation,
-    lexical_index_identity,
-    compatible unit/projection read snapshot
+    publication_sequence,
+    lexical_active_snapshot,
+    immutable_index_descriptor,
+    pinned_read_transaction,
+    per-resource manifest/revision bindings observed in that transaction
 }
 ```
 
-The candidate reader obtains the active lexical snapshot first, then reads
-postings, unit statistics, manifests, projections, and canonical envelopes
-against that compatible frontier. A mismatched epoch, generation, projection
-version, resource generation, lifecycle state, or manifest binding is a stale
-miss, not a best-effort result.
+`publication_sequence` is a collection-wide frontier identifier, not the
+generation of one arbitrary resource. Per-resource `resource_generation` and
+manifest bindings remain row-level evidence inside the frontier; they cannot be
+collapsed into one resource generation. For the first MDBX adapter, the
+preferred mechanism is one pinned read-only transaction over every required
+DBI in the same storage environment. An adapter spanning multiple environments
+must provide an equivalent durable publication sequence or return an explicit
+non-linearizable/unavailable outcome; it must not pretend that independent
+reads form one snapshot.
+
+The candidate reader obtains the active lexical snapshot and its descriptor
+inside that frontier, then reads postings, unit statistics, manifests,
+projections, and canonical envelopes against the same frontier. A mismatched
+epoch, generation, projection version, resource generation, lifecycle state,
+or manifest binding is a stale miss, not a best-effort result.
 
 Until storage adapters expose this shared frontier, an adapter may perform
 authoritative rereads as PR #533 does, but it must document that the request is
 not linearizable. A collection of independent `find()` calls is not a pinned
 snapshot.
 
+## Route completion and incomplete membership
+
+The lexical route must distinguish a stale candidate from an incomplete active
+posting partition. The existing roadmap contract uses
+`LexicalRouteCompletion::{Exact, Partial, Unavailable}` and explicit covered and
+unavailable token partitions:
+
+- `Exact` is allowed only when every requested token partition was reconstructed
+  against one active snapshot and scored with complete active membership.
+- A stale posting or stale unit may be rejected as an individual candidate when
+  the requested partition is otherwise complete.
+- Missing postings, an absent active snapshot, an epoch/layout mismatch, or an
+  overlay that cannot reconstruct every added/removed/replaced posting makes
+  that token partition unavailable. The route returns `Partial` only when the
+  unavailable partitions are explicitly reported and policy permits partial
+  fusion; it returns `Unavailable` when no safe partition remains.
+- An incomplete partition must never be silently omitted and returned as an
+  `Exact` empty or partial top-K. No scorer, conservative bound, or disabled
+  pruning setting can turn incomplete membership into an exact result.
+
+This completion status is part of the reader result and retrieval trace. It is
+not inferred later from the number of returned hits.
+
 ## Erase, update, and rebuild
 
 - Updating one resource replaces only its active lexical contribution and
   manifest bindings; unrelated resources remain addressable.
-- Erasing a unit removes one logical active contribution. Lookup may be
-  O(N) in the first flat implementation; mass reclaim and compressed-block
-  rewrite are separate bounded jobs.
+- Erasing a unit removes one logical active contribution. Lookup may be O(N) in
+  the first flat implementation; this allowance applies to erase or reindex
+  bookkeeping, not to query traversal. Query execution remains posting-driven
+  and bounded by token partitions/candidate limits. Mass reclaim and
+  compressed-block rewrite are separate bounded jobs.
 - A full rebuild writes a new epoch namespace, validates parity, and atomically
   advances the active pointer. Old epoch rows are unreachable before delayed
   reclaim.
@@ -209,8 +276,11 @@ The first implementation PR must provide focused tests for:
 | Identity | Same unit ID with a new projection revision creates a replacement row, not a second active contribution |
 | Scope isolation | Identical tokens in two scopes cannot cross-query |
 | Freshness | Stale unit revision, projection version, resource generation, and manifest are rejected |
+| Descriptor admission | Active snapshot resolves one immutable descriptor; incompatible schema, tokenizer, normalization, or layout is rejected before scoring |
+| Read frontier | Unit, projection, manifest, lexical snapshot, and descriptor are read from one pinned frontier or the route is explicitly non-linearizable/unavailable |
 | Statistics | TF/DF, collection frequency, unit count, token count, and `avgdl` agree with the active set |
 | Publication | Commit/reopen sees one complete snapshot; aborted publication leaves the prior snapshot intact |
+| Publication lag | A manifest/index mismatch is reported as `Partial`/`Unavailable`, never as an exact incomplete result |
 | Replay | Retry after crash or takeover is idempotent and does not duplicate IDs or statistics |
 | Rebuild | New epoch is isolated from old dictionary, postings, stats, caches, and blocks |
 | Erase | Active contribution disappears; delayed physical reclaim cannot expose it again |
