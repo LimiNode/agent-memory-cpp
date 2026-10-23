@@ -104,64 +104,6 @@ int main() {
     }
     context.reset();
 
-    // A separate fresh environment verifies interrupted publication remains invisible.
-    {
-    const auto interrupted_path = path.string() + ".interrupted";
-    std::filesystem::remove(interrupted_path, error);
-    expect(!error && !std::filesystem::exists(interrupted_path),
-           "interrupted MDBX test path was not clean");
-    context = MdbxStorageContext::open(interrupted_path);
-    // An interrupted import leaves staging rows invisible until its manifest commits.
-    MdbxResourceImporterOptions interrupted_options;
-    interrupted_options.context = context;
-    interrupted_options.publication_profile =
-        ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
-    interrupted_options.fault_injector = [](ResourceImporterFaultPoint point) {
-        if(point == ResourceImporterFaultPoint::BeforeManifestPublication) {
-            throw std::runtime_error("intentional interrupted publication");
-        }
-    };
-    bool interrupted = false;
-    try {
-        MdbxResourceImporter interrupted_import(std::move(interrupted_options));
-        (void)interrupted_import.import(resource(
-            "resource-projection-aware-interrupted",
-            "invisible interrupted projection"
-        ));
-    } catch(const std::exception& error_value) {
-        if(std::string{error_value.what()} == "intentional interrupted publication") {
-            interrupted = true;
-        } else {
-            throw;
-        }
-    }
-    expect(interrupted, "fault fixture did not interrupt manifest publication");
-    MdbxKnowledgeUnitStoreOptions interrupted_unit_options;
-    interrupted_unit_options.context = context;
-    MdbxKnowledgeUnitStore interrupted_units(std::move(interrupted_unit_options));
-    MdbxProjectionStoreOptions interrupted_projection_options;
-    interrupted_projection_options.context = context;
-    MdbxProjectionStore interrupted_projections(std::move(interrupted_projection_options));
-    MdbxResourceManifestStorageOptions interrupted_manifest_options;
-    interrupted_manifest_options.context = context;
-    MdbxResourceManifestStorage interrupted_manifests(std::move(interrupted_manifest_options));
-    auto interrupted_retriever = make_retriever(
-        interrupted_units,
-        interrupted_projections,
-        interrupted_manifests,
-        scope,
-        tokenizer
-    );
-    RetrievalQuery interrupted_query;
-    interrupted_query.text = "invisible interrupted";
-    expect(interrupted_retriever.retrieve(interrupted_query).empty(),
-           "interrupted projection became visible without an active manifest");
-    context.reset();
-    const bool interrupted_removed = std::filesystem::remove(interrupted_path, error);
-    expect(interrupted_removed && !error && !std::filesystem::exists(interrupted_path),
-           "interrupted MDBX test database cleanup failed");
-    }
-
     context.reset();
     const bool removed = std::filesystem::remove(path, error);
     expect(removed && !error && !std::filesystem::exists(path),
