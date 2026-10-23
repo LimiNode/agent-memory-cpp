@@ -64,6 +64,7 @@ Out of scope:
 | `MdbxDurableLexicalDocumentMemory` | Implemented M0 durable catalog and guarded importer path | Durable document-memory slice, not the projection-aware IndexStore |
 | `ResourceManifest` and `Original` projections | Implemented and revision-checked | Publication and provenance inputs |
 | Projection-aware bounded retrieval | Implemented by PR #533 | Rebuilds a bounded lexical view in memory |
+| Descriptor, snapshot and read-frontier value contracts | Implemented dependency-free baseline | No persistent rows or pinned storage transaction yet |
 | Epoch-keyed postings, token/stat rows, active snapshot | Roadmap and DBI-manifest reservations exist | No production implementation yet |
 | Shared unit/projection/manifest/index read frontier | Missing | Required before a strict snapshot claim |
 
