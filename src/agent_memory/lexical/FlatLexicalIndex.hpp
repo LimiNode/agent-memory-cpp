@@ -41,6 +41,7 @@ namespace agent_memory {
     enum class FlatLexicalUpsertFailurePoint : std::uint8_t {
         None,
         AfterTokenPreparation,
+        AfterDictionaryApplication,
         AfterPostingApplication
     };
 

@@ -194,6 +194,14 @@ namespace {
         } catch(const std::runtime_error&) {
         }
 
+        auto fingerprint_conflict = first;
+        fingerprint_conflict.projection_version.derivation_fingerprint = "zzz";
+        try {
+            index.upsert(std::move(fingerprint_conflict), expected_for(first));
+            return fail("fingerprint change without numeric advancement must be rejected");
+        } catch(const std::runtime_error&) {
+        }
+
         auto stale_generation = make_input(1, 8, {"stale-generation"});
         stale_generation.resource_generation = 2;
         try {
@@ -234,6 +242,29 @@ namespace {
         }
 
         index.set_failure_injection_for_testing(
+            agent_memory::FlatLexicalUpsertFailurePoint::AfterDictionaryApplication
+        );
+        try {
+            index.upsert(
+                make_input(1, 8, {"dictionary-a", "dictionary-b"}),
+                expected_for(original)
+            );
+            return fail("dictionary application failure must be injected");
+        } catch(const std::runtime_error&) {
+        }
+        const auto dictionary_old_id = index.find_token_id("old");
+        if(index.find_token_id("dictionary-a")
+            || index.active_snapshot().statistics_generation != generation
+            || !index.find_unit_stats(agent_memory::KnowledgeUnitId{1})
+            || !dictionary_old_id
+            || !index.find_token_stats(*dictionary_old_id)
+            || index.find_token_stats(*dictionary_old_id)->document_frequency != 1
+            || index.postings(*dictionary_old_id).size() != 1
+            || index.collection_stats().total_token_count != 2) {
+            return fail("failed dictionary application must restore the old state");
+        }
+
+        index.set_failure_injection_for_testing(
             agent_memory::FlatLexicalUpsertFailurePoint::AfterPostingApplication
         );
         try {
@@ -255,6 +286,13 @@ namespace {
             || index.find_token_id("new-a")
             || index.collection_stats().total_token_count != 2) {
             return fail("failed posting application must roll back the complete state");
+        }
+
+        const auto next = make_input(2, 9, {"new-a"});
+        index.upsert(next);
+        const auto next_id = index.find_token_id("new-a");
+        if(!next_id || next_id->value() != 3) {
+            return fail("rollback must restore the next token id without reuse");
         }
         return 0;
     }

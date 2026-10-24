@@ -212,6 +212,9 @@ sequence is an idempotent replay, while an identical identity with different
 content, a stale identity, or an unguarded replacement fails closed. This
 in-memory admission rule is a logical conformance guard, not a substitute for
 the durable fencing token required by the MDBX publication adapter.
+The derivation fingerprint is opaque identity data; it is never ordered as a
+version. A fingerprint change without an explicit numeric revision or
+generation transition is rejected.
 
 All tokenization, dictionary allocation, and posting construction are staged
 before the active state is changed. A failed commit restores the previous unit,
