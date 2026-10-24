@@ -115,6 +115,15 @@ write. The implementation is an O(N)
 read-modify-write prototype; it must not be described as an incremental or
 scalable persistent backend until segmented storage replaces the value rewrite.
 
+The dependency-free baseline also exposes a bounded posting partition helper.
+For one token it emits deterministic, unit-id-ordered segments with contiguous
+local segment ids and binds every segment to the active statistics epoch,
+generation, and posting layout. This is a preparation/conformance surface only:
+it copies logical postings in memory, has no durable segment rows, no codec, and
+does not change the flat MDBX payload or its migration policy. A durable adapter
+must validate the same complete membership and generation binding before
+publishing segment rows.
+
 ## Index identity
 
 Every persisted lexical index is identified by the complete tuple below. A
@@ -382,7 +391,10 @@ or budget-exceeded outcomes—not only wall-clock time.
 5. Add repeated benchmark runs for build, update, query CPU, bytes read/written,
    stale rejection, and reclaim. Preserve a small deterministic fixture in the
    repository; keep large reports in experiment artifacts.
-6. Only after the flat implementation is correct, evaluate positions,
+6. Use the dependency-free bounded partition helper as the parity fixture for a
+   durable segment-row adapter; prove reopen, generation mismatch, incomplete
+   membership, and atomic publication before introducing a codec.
+7. Only after the flat implementation is correct, evaluate positions,
    compressed posting blocks, BM25F, and WAND/BMW as separate changes.
 
 ## Explicit decisions deferred
