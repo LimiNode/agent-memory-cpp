@@ -3,7 +3,7 @@
 	url = https://github.com/erthink/libmdbx.git
 [submodule "external/mdbx-containers"]
 	path = external/mdbx-containers
-	url = https://github.com/NewYaroslav/mdbx-containers.git
+	url = https://github.com/LimiNode/mdbx-containers.git
 [submodule "external/hnswlib"]
 	path = external/hnswlib
 	url = https://github.com/nmslib/hnswlib.git
