@@ -1,5 +1,7 @@
 #include <agent_memory/infrastructure/mdbx/MdbxPersistentLexicalIndex.hpp>
 
+#include <mdbx_containers/KeyValueTable.hpp>
+
 #if AGENT_MEMORY_HAS_MDBX
 
 #include <filesystem>
@@ -63,6 +65,19 @@ MdbxPersistentLexicalIndexOptions options(
     result.context = context;
     result.descriptor = descriptor(scope, seed);
     return result;
+}
+
+std::string legacy_key(const ScopeId& scope) {
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string encoded;
+    for(const auto character : scope.value()) {
+        const auto byte = static_cast<unsigned char>(character);
+        encoded.push_back(digits[byte >> 4U]);
+        encoded.push_back(digits[byte & 0x0fU]);
+    }
+    return "flat-v1" + std::string(1, '\x1f') + encoded
+        + std::string(1, '\x1f')
+        + std::to_string(static_cast<std::uint16_t>(ProjectionKind::Original));
 }
 
 } // namespace
@@ -233,6 +248,90 @@ int main() {
             }
             require(rejected, "bounded active-unit admission accepted an oversized state");
         }
+
+        const auto bounded_path = std::filesystem::temp_directory_path()
+            / "agent_memory_mdbx_persistent_lexical_index_bounded_test.mdbx";
+        std::filesystem::remove(bounded_path, error);
+        {
+            auto context = MdbxStorageContext::open(bounded_path.string());
+            auto bounded = options(bounded_path, context, scope_a, 7);
+            bounded.max_total_tokens = 1;
+            bounded.max_dictionary_entries = 3;
+            MdbxPersistentLexicalIndex limited{std::move(bounded)};
+            limited.upsert(unit(scope_a, 1, 1, "bounded-a", {"a"}));
+            require(limited.erase(KnowledgeUnitId{1}),
+                "bounded sequence failed to erase A");
+            limited.upsert(unit(scope_a, 2, 1, "bounded-b", {"b"}));
+            require(limited.erase(KnowledgeUnitId{2}),
+                "bounded sequence failed to erase B");
+            limited.upsert(unit(scope_a, 3, 1, "bounded-c", {"c"}));
+            limited.set_failure_injection_for_testing(
+                MdbxPersistentLexicalIndexFaultPoint::BeforeCommit);
+            bool interrupted = false;
+            try {
+                limited.upsert(unit(scope_a, 3, 2, "bounded-c", {"c2"}),
+                    FlatLexicalExpectedState{
+                        KnowledgeUnitId{3}, 1, 1,
+                        ProjectionVersionRef{1, 1, 1, "derivation-v1"}
+                    });
+            } catch(const std::runtime_error&) {
+                interrupted = true;
+            }
+            require(interrupted, "bounded sequence fault injection did not fire");
+        }
+        {
+            auto context = MdbxStorageContext::open(bounded_path.string());
+            auto bounded = options(bounded_path, context, scope_a, 7);
+            bounded.max_total_tokens = 1;
+            bounded.max_dictionary_entries = 3;
+            MdbxPersistentLexicalIndex reopened{std::move(bounded)};
+            {
+                const auto snapshot = reopened.read_snapshot();
+                require(snapshot.index.collection_stats().unit_count == 1
+                        && snapshot.index.find_token_id("c")
+                        && !snapshot.index.find_token_id("c2"),
+                    "bounded state was not readable after aborted replacement");
+            }
+            bool dictionary_rejected = false;
+            try {
+                reopened.upsert(unit(scope_a, 4, 1, "bounded-d", {"d"}));
+            } catch(const std::runtime_error&) {
+                dictionary_rejected = true;
+            }
+            require(dictionary_rejected,
+                "historical dictionary admission exceeded its configured limit");
+        }
+        std::filesystem::remove(bounded_path, error);
+        require(!error, "bounded test database cleanup failed");
+
+        const auto legacy_path = std::filesystem::temp_directory_path()
+            / "agent_memory_mdbx_persistent_lexical_index_legacy_test.mdbx";
+        std::filesystem::remove(legacy_path, error);
+        {
+            auto legacy_context = MdbxStorageContext::open(legacy_path.string());
+            {
+                mdbxc::KeyValueTable<std::string, std::string> legacy_table(
+                    legacy_context->connection(), "agent_memory_lexical_posting_segments");
+                auto txn = legacy_context->connection()->transaction(
+                    mdbxc::TransactionMode::WRITABLE);
+                legacy_table.insert_or_assign(legacy_key(scope_a), "legacy-v1-payload", txn);
+                txn.commit();
+            }
+            legacy_context.reset();
+            bool legacy_rejected = false;
+            try {
+                auto check_context = MdbxStorageContext::open(legacy_path.string());
+                MdbxPersistentLexicalIndex rejected{
+                    options(legacy_path, check_context, scope_a, 7)};
+                static_cast<void>(rejected);
+            } catch(const std::runtime_error&) {
+                legacy_rejected = true;
+            }
+            require(legacy_rejected,
+                "legacy flat-v1 key was silently ignored instead of requiring rebuild");
+        }
+        std::filesystem::remove(legacy_path, error);
+        require(!error, "legacy test database cleanup failed");
 
         std::filesystem::remove(path, error);
         require(!error, "test database cleanup failed");

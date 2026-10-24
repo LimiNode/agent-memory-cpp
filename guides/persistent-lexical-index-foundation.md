@@ -100,14 +100,18 @@ or manifests, it reports `NonLinearizable` and cannot claim an `Exact` route
 until a later coordinator pins those DBIs in the same transaction. Payload
 version `v2` is admission-checked and fail-closed; unknown payloads, descriptor
 mismatches, and incompatible layouts are not interpreted as legacy rows. There
-is no rolling migration path in this slice: changing the payload codec or
+An existing `flat-v1` key for the same scope/projection is detected explicitly
+and opening the adapter fails with a quiesced-rebuild requirement. There is no
+rolling migration path in this slice: changing the payload codec or
 physical row meaning requires a quiesced rebuild into a new epoch and layout
 version.
 
 The flat baseline is deliberately bounded. Configurable admissions cap the
-serialized payload bytes, active unit count, total token occurrences, and one
-normalized-token byte length. Limits are checked before rebuilding the flat
-oracle and again before the MDBX write. The implementation is an O(N)
+serialized payload bytes, active unit count, active token occurrences,
+historical dictionary entries, and one normalized-token byte length. Limits
+are checked before rebuilding the flat oracle, before decoding untrusted
+collection counts, and again against the complete post-state before the MDBX
+write. The implementation is an O(N)
 read-modify-write prototype; it must not be described as an incremental or
 scalable persistent backend until segmented storage replaces the value rewrite.
 

@@ -40,7 +40,9 @@ class PayloadReader final {
 public:
     explicit PayloadReader(std::string_view payload) : m_payload(payload) {}
 
-    [[nodiscard]] std::string read_string() {
+    [[nodiscard]] std::string read_string(
+        const std::size_t max_size = std::numeric_limits<std::size_t>::max()
+    ) {
         if(m_position >= m_payload.size()) {
             throw std::runtime_error("persistent lexical payload ended before a field");
         }
@@ -63,12 +65,16 @@ public:
             throw std::runtime_error("persistent lexical payload is missing a delimiter");
         }
         ++m_position;
-        if(size > m_payload.size() - m_position) {
+        if(size > max_size || size > m_payload.size() - m_position) {
             throw std::runtime_error("persistent lexical payload field exceeds value");
         }
         std::string result{m_payload.data() + m_position, size};
         m_position += size;
         return result;
+    }
+
+    [[nodiscard]] std::size_t remaining() const noexcept {
+        return m_payload.size() - m_position;
     }
 
     [[nodiscard]] std::uint64_t read_u64() {
@@ -144,6 +150,21 @@ std::string state_key(const LexicalIndexDescriptor& descriptor) {
         + std::to_string(static_cast<std::uint16_t>(descriptor.ref.projection_kind));
 }
 
+std::string legacy_state_key(const LexicalIndexDescriptor& descriptor) {
+    return "flat-v1" + std::string(1, kKeySeparator)
+        + hex_component(descriptor.ref.scope_id.value())
+        + std::string(1, kKeySeparator)
+        + std::to_string(static_cast<std::uint16_t>(descriptor.ref.projection_kind));
+}
+
+struct PayloadDecodeLimits final {
+    std::size_t max_active_units = 100'000U;
+    std::size_t max_total_tokens = 4'000'000U;
+    std::size_t max_dictionary_entries = 4'000'000U;
+    std::size_t max_token_bytes = 4'096U;
+    std::size_t max_layout_versions = 256U;
+};
+
 void append_epoch(std::string& payload, const LexicalStatisticsEpoch& epoch) {
     const auto& bytes = epoch.bytes();
     payload.append(reinterpret_cast<const char*>(bytes.data()), bytes.size());
@@ -176,7 +197,10 @@ void append_descriptor(std::string& payload, const LexicalIndexDescriptor& descr
     }
 }
 
-LexicalIndexDescriptor read_descriptor(PayloadReader& reader) {
+LexicalIndexDescriptor read_descriptor(
+    PayloadReader& reader,
+    const PayloadDecodeLimits& limits
+) {
     LexicalIndexDescriptor descriptor;
     descriptor.ref.scope_id = ScopeId{reader.read_string()};
     descriptor.ref.projection_kind = static_cast<ProjectionKind>(reader.read_u32());
@@ -186,6 +210,9 @@ LexicalIndexDescriptor read_descriptor(PayloadReader& reader) {
     descriptor.tokenizer_fingerprint = reader.read_string();
     descriptor.normalization_fingerprint = reader.read_string();
     const auto count = reader.read_u32();
+    if(count > limits.max_layout_versions || count > reader.remaining() / 3U) {
+        throw std::runtime_error("persistent lexical descriptor layout count exceeds limits");
+    }
     descriptor.supported_posting_layout_versions.reserve(count);
     for(std::uint32_t index = 0; index < count; ++index) {
         descriptor.supported_posting_layout_versions.push_back(reader.read_u32());
@@ -210,7 +237,11 @@ void append_unit(std::string& payload, const FlatLexicalUnitInput& input) {
     }
 }
 
-FlatLexicalUnitInput read_unit(PayloadReader& reader) {
+FlatLexicalUnitInput read_unit(
+    PayloadReader& reader,
+    const PayloadDecodeLimits& limits,
+    std::size_t& total_tokens
+) {
     FlatLexicalUnitInput input;
     input.scope_id = ScopeId{reader.read_string()};
     input.unit_id = KnowledgeUnitId{reader.read_u64()};
@@ -223,10 +254,15 @@ FlatLexicalUnitInput read_unit(PayloadReader& reader) {
     input.projection_version.derivation_generation = reader.read_u64();
     input.projection_version.derivation_fingerprint = reader.read_string();
     const auto token_count = reader.read_u32();
+    if(token_count > limits.max_total_tokens - total_tokens
+        || token_count > reader.remaining() / 3U) {
+        throw std::runtime_error("persistent lexical unit token count exceeds limits");
+    }
     input.normalized_tokens.reserve(token_count);
     for(std::uint32_t index = 0; index < token_count; ++index) {
-        input.normalized_tokens.push_back(reader.read_string());
+        input.normalized_tokens.push_back(reader.read_string(limits.max_token_bytes));
     }
+    total_tokens += token_count;
     return input;
 }
 
@@ -263,33 +299,39 @@ std::string serialize_state(const StoredState& state) {
     return payload;
 }
 
-StoredState deserialize_state(std::string_view payload) {
+StoredState deserialize_state(
+    std::string_view payload,
+    const PayloadDecodeLimits& limits
+) {
     PayloadReader reader{payload};
     if(reader.read_string() != kPayloadVersion) {
         throw std::runtime_error("unsupported persistent lexical payload version");
     }
     StoredState state;
-    state.descriptor = read_descriptor(reader);
+    state.descriptor = read_descriptor(reader, limits);
     state.snapshot.statistics_epoch = read_epoch(reader);
     state.snapshot.statistics_generation = reader.read_u64();
     state.snapshot.posting_layout_version = reader.read_u32();
     state.publication_sequence = LexicalPublicationSequence{reader.read_u64()};
     const auto dictionary_count = reader.read_u32();
+    if(dictionary_count > limits.max_dictionary_entries
+        || dictionary_count > reader.remaining() / 6U) {
+        throw std::runtime_error("persistent lexical dictionary count exceeds limits");
+    }
     state.token_dictionary.reserve(dictionary_count);
-    for(std::uint32_t index = 0; index < dictionary_count; ++index) {
-        const auto text = reader.read_string();
-        try {
-            state.token_dictionary.emplace_back(text, TokenId{reader.read_u64()});
-        } catch(const std::exception& error) {
-            throw std::runtime_error("dictionary entry " + std::to_string(index)
-                + " text=" + text + ": " + error.what());
-        }
+    for(std::uint32_t remaining = dictionary_count; remaining != 0; --remaining) {
+        const auto text = reader.read_string(limits.max_token_bytes);
+        state.token_dictionary.emplace_back(text, TokenId{reader.read_u64()});
     }
     state.next_token_id = TokenId{reader.read_u64()};
     const auto unit_count = reader.read_u32();
+    if(unit_count > limits.max_active_units || unit_count > reader.remaining() / 3U) {
+        throw std::runtime_error("persistent lexical unit count exceeds limits");
+    }
     state.units.reserve(unit_count);
+    std::size_t total_tokens = 0;
     for(std::uint32_t index = 0; index < unit_count; ++index) {
-        state.units.push_back(read_unit(reader));
+        state.units.push_back(read_unit(reader, limits, total_tokens));
     }
     reader.require_end();
     if(!is_valid_lexical_index_descriptor(state.descriptor)
@@ -403,9 +445,11 @@ public:
                                       options.max_dbs)),
           table(context->connection(), table_name(options.table_prefix)),
           key(state_key(descriptor)),
+          legacy_key(legacy_state_key(descriptor)),
           max_payload_bytes(options.max_payload_bytes),
           max_active_units(options.max_active_units),
           max_total_tokens(options.max_total_tokens),
+          max_dictionary_entries(options.max_dictionary_entries),
           max_token_bytes(options.max_token_bytes) {
         if(!is_valid_lexical_index_descriptor(descriptor)) {
             throw std::invalid_argument("invalid persistent lexical index descriptor");
@@ -416,9 +460,12 @@ public:
             if(stored->size() > max_payload_bytes) {
                 throw std::runtime_error("persistent lexical payload exceeds configured limit");
             }
-            const auto state = deserialize_state(*stored);
+            const auto state = deserialize_state(*stored, decode_limits());
             validate_descriptor_match(descriptor, state.descriptor);
             validate_state_limits(state);
+        } else if(table.find(legacy_key, txn)) {
+            throw std::runtime_error(
+                "legacy flat-v1 lexical state requires quiesced rebuild");
         }
     }
 
@@ -431,7 +478,7 @@ public:
         if(stored->size() > max_payload_bytes) {
             throw std::runtime_error("persistent lexical payload exceeds configured limit");
         }
-        auto state = deserialize_state(*stored);
+        auto state = deserialize_state(*stored, decode_limits());
         validate_descriptor_match(descriptor, state.descriptor);
         validate_state_limits(state);
         return state;
@@ -439,7 +486,7 @@ public:
 
     void validate_state_limits(const StoredState& state) const {
         if(state.units.size() > max_active_units
-            || state.token_dictionary.size() > max_total_tokens) {
+            || state.token_dictionary.size() > max_dictionary_entries) {
             throw std::runtime_error("persistent lexical state exceeds configured limits");
         }
         std::size_t total_tokens = 0;
@@ -461,6 +508,16 @@ public:
         }
     }
 
+    [[nodiscard]] PayloadDecodeLimits decode_limits() const noexcept {
+        return PayloadDecodeLimits{
+            max_active_units,
+            max_total_tokens,
+            max_dictionary_entries,
+            max_token_bytes,
+            256U
+        };
+    }
+
     void validate_input_limits(const FlatLexicalUnitInput& input,
                                const StoredState& state) const {
         if(input.normalized_tokens.size() > max_total_tokens) {
@@ -470,6 +527,19 @@ public:
             if(token.size() > max_token_bytes) {
                 throw std::runtime_error("persistent lexical token exceeds configured limit");
             }
+        }
+        std::map<std::string, bool> prospective_dictionary_entries;
+        for(const auto& token : input.normalized_tokens) {
+            if(state.token_dictionary.end() == std::find_if(
+                state.token_dictionary.begin(), state.token_dictionary.end(),
+                [&token](const auto& entry) { return entry.first == token; })) {
+                prospective_dictionary_entries.emplace(token, true);
+            }
+        }
+        if(state.token_dictionary.size() > max_dictionary_entries
+            || prospective_dictionary_entries.size()
+                > max_dictionary_entries - state.token_dictionary.size()) {
+            throw std::runtime_error("persistent lexical dictionary limit exceeded");
         }
         const auto existing = std::find_if(state.units.begin(), state.units.end(),
             [&input](const FlatLexicalUnitInput& unit) {
@@ -499,9 +569,11 @@ public:
     std::shared_ptr<MdbxStorageContext> context;
     mdbxc::KeyValueTable<std::string, std::string> table;
     std::string key;
+    std::string legacy_key;
     std::size_t max_payload_bytes;
     std::size_t max_active_units;
     std::size_t max_total_tokens;
+    std::size_t max_dictionary_entries;
     std::size_t max_token_bytes;
     MdbxPersistentLexicalIndexFaultPoint failure =
         MdbxPersistentLexicalIndexFaultPoint::None;
@@ -578,6 +650,7 @@ void MdbxPersistentLexicalIndex::upsert(
     state.snapshot.statistics_epoch = descriptor().ref.statistics_epoch;
     state.token_dictionary = index.token_dictionary_for_storage();
     state.next_token_id = index.next_token_id_for_storage();
+    m_impl->validate_state_limits(state);
     const auto payload = serialize_state(state);
     if(payload.size() > m_impl->max_payload_bytes) {
         throw std::runtime_error("persistent lexical payload exceeds configured limit");
@@ -613,6 +686,7 @@ bool MdbxPersistentLexicalIndex::erase(const KnowledgeUnitId& unit_id) {
         state.publication_sequence.value() + 1U};
     state.token_dictionary = index.token_dictionary_for_storage();
     state.next_token_id = index.next_token_id_for_storage();
+    m_impl->validate_state_limits(state);
     const auto payload = serialize_state(state);
     if(payload.size() > m_impl->max_payload_bytes) {
         throw std::runtime_error("persistent lexical payload exceeds configured limit");
@@ -640,6 +714,7 @@ void MdbxPersistentLexicalIndex::clear() {
     ++state.snapshot.statistics_generation;
     state.publication_sequence = LexicalPublicationSequence{
         state.publication_sequence.value() + 1U};
+    m_impl->validate_state_limits(state);
     const auto payload = serialize_state(state);
     if(payload.size() > m_impl->max_payload_bytes) {
         throw std::runtime_error("persistent lexical payload exceeds configured limit");

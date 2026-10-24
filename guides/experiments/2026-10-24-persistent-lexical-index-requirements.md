@@ -146,8 +146,10 @@ accepted:
 The first MDBX adapter uses an intentionally bounded read-modify-write value
 (`agent_memory.mdbx_flat_lexical.v2`) rather than incremental posting rows.
 The default admissions are 8 MiB serialized payload, 100,000 active units,
-4,000,000 total token occurrences, and 4 KiB per normalized token. Admissions
-run before the flat index rebuild and are rechecked before `insert_or_assign`.
+4,000,000 active token occurrences, 4,000,000 historical dictionary entries,
+and 4 KiB per normalized token. Admissions run before the flat index rebuild,
+before decoding untrusted collection counts, and are rechecked against the
+complete post-state before `insert_or_assign`.
 The focused MDBX fixture exercises rejection at the active-unit boundary and
 reopen after erase/clear. This is an O(N) prototype: each accepted update
 reconstructs and rewrites the complete scope value, so no scalability or

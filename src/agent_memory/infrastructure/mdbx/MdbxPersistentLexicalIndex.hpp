@@ -40,6 +40,8 @@ struct MdbxPersistentLexicalIndexOptions final {
     std::size_t max_active_units = 100'000U;
     /// Maximum total token occurrences across active units.
     std::size_t max_total_tokens = 4'000'000U;
+    /// Maximum historical normalized-token dictionary entries.
+    std::size_t max_dictionary_entries = 4'000'000U;
     /// Maximum UTF-8 bytes in one normalized token.
     std::size_t max_token_bytes = 4'096U;
     std::shared_ptr<MdbxStorageContext> context;
