@@ -699,8 +699,16 @@ invariant or held-out check.
 
 ## Context-Pack Positional Robustness Gate
 
-Context packing should be tested for sensitivity to position and fill. The gate is research-only and does not claim a universal context-window threshold. It is motivated by evidence that model use of retrieved material can vary with placement, while the magnitude depends on model, tokenizer, task and workload.
+Context packing should be tested for sensitivity to placement and fill. This gate is research-only and does not claim a universal context-window threshold. The magnitude of any position effect depends on model, tokenizer, task and workload.
 
-A comparison holds corpus, retrieval route, candidate set, source revisions, hydration, citations, total token budget and answer policy fixed. Only ordering, placement and fill are changed. Required arms include relevant material at the beginning, middle and end; deterministic permutations; sparse and near-budget packs; and a no-op baseline. The fixture records actual tokenizer counts, language and modality slices, and whether truncation or omission occurred.
+### Position-only experiment
 
-Protected probes use exact identifiers, numbers, commands, versions, exceptions and ordered actions. Reports include evidence opening, verified task closure, provenance coverage, false closure, unknown/escalated outcomes, and latency/token cost. A position effect cannot justify changing lifecycle, authority, provenance, retention or source identity. Any placement policy remains host/context-builder policy until an independent held-out evaluation shows a stable benefit.
+The position-only arm fixes the actual included evidence blocks before packing. Every run uses the same block identities, revisions, bytes, citations, completeness and source hydration. It changes only the declared order or placement of those blocks, including beginning, middle, end and deterministic permutations. No run may omit, truncate, replace or retrieve a different block. Candidate discovery, retrieval ranking, selection policy, tokenizer, source frontier, total token budget and answer policy are fixed. This arm measures position effect only; it does not measure retrieval, selection or omission gain.
+
+### Fill and truncation experiment
+
+A separate arm varies pack fill or budget pressure and records which blocks are omitted or truncated. It uses the same candidate corpus, retrieval route and evidence rules, but reports omission effect separately from position effect. Sparse, near-budget and over-budget fixtures must identify the actual included set, token counts, truncation points and omitted evidence. Results from this arm must not be presented as evidence for a position-only policy.
+
+The production ContextBuilder remains permutation-stable under its existing contract when candidates, policy revision, tokenizer, source revisions and budget are unchanged. This research gate does not silently change that production rule. Any host/context-builder policy change requires an independent held-out comparison against the current deterministic baseline.
+
+Protected probes use exact identifiers, numbers, commands, versions, exceptions and ordered actions. Acceptance requires no unacceptable regression on protected probes, valid provenance and evidence opening, verified task closure, and an independently held-out result that supports a stable gain at declared comparable cost. Unknown or mixed results remain unknown or escalated. No universal numerical threshold is assumed.
