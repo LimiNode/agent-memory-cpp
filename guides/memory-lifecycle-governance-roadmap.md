@@ -1207,7 +1207,28 @@ during worker replay. They prove that staged partial projections never become
 retrieval-visible and that every visible unit has the required
 `ProjectionVisibilityReceipt`.
 
-## 15. Deferred To ADELIA / Runtime
+## 15. AM-24: Session Extraction And Derived Memory Projection
+
+A session may produce derived memory projections after the canonical source has been committed. This is a bounded, replayable projection contract, not an implicit rewrite of the source or a training pipeline.
+
+The source dialogue or event episode is committed first. An extraction receipt then binds the source/read frontier, selected revisions, extractor/model and configuration versions, policy version, output digest, and completion status. Summary projections and fact/procedure candidates are separate derived outputs; a summary does not silently become a fact, procedure, or independent evidence.
+
+Extraction idempotency is keyed by the scope, source frontier, selected source revisions, extractor/model identity and version, configuration digest, and policy version. These values are either included directly in the idempotency key or canonically covered by the configuration identity; a digest that omits a relevant version is invalid. A retry with the same key may reuse the existing receipt or publish an equivalent projection, but must not duplicate provenance or advance lifecycle state merely because a model was called again. Changing any relevant source, extractor/model, configuration, or policy identity requires a new projection identity and cannot silently reuse an incompatible result. Unknown, partial, or failed extraction preserves the source and records the incomplete outcome. Model-produced importance, confidence, salience, or memory worthiness are advisory inputs to policy, not authority and not evidence status.
+
+A projection may be refreshed when its source revision, extractor version, or policy changes. The old projection remains addressable until the applicable publication/lifecycle policy retires it. Corrections, conflicts, rare constraints, independent corroboration, audit records, and mandatory retention records are never discarded by a novelty or importance gate.
+
+Session extraction does not automatically alter agent behaviour, procedure activation, model weights, training eligibility, external sharing permission, or action authority. Any such transition belongs to its existing owner and must carry its own policy receipt.
+
+### AM-24 acceptance cases
+
+- Commit a session, extract a summary and fact candidates, replay the same receipt, and verify one source lineage with no duplicate derived authority.
+- Fail or interrupt extraction after the source commit; verify the source remains retrievable and the projection is marked incomplete/unknown.
+- Correct a source fact after extraction; verify the correction creates the declared history and does not silently overwrite the prior projection.
+- Attempt to use model importance to remove a protected correction, conflict, exception, or audit record; verify the policy rejects that removal.
+
+AM-24 is a contract-only extension. It does not add a storage type or require an LLM dependency.
+
+## 16. Deferred To ADELIA / Runtime
 
 The following proposals are valuable, but they are not core
 `agent-memory-cpp` roadmap items:
@@ -1228,7 +1249,7 @@ The following proposals are valuable, but they are not core
 
 They can consume the memory core through regular read/write/policy interfaces.
 
-## 16. Roadmap Placement
+## 17. Roadmap Placement
 
 Suggested maturity placement:
 
