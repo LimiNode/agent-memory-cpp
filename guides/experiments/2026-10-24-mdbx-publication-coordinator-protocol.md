@@ -1,7 +1,8 @@
 # MDBX shared publication coordinator protocol
 
-**Date:** 2026-10-24  
-**Status:** proposed design and conformance protocol  
+**Date:** 2026-10-24
+
+**Status:** proposed design and conformance protocol
 **Scope:** documentation only; no production coordinator or new public API is
 introduced by this document.
 
