@@ -1100,6 +1100,25 @@ locally verified fact. This makes questions such as "why was this citation not
 shown?" auditable without putting provider SDKs or prompt execution into the
 core library.
 
+
+### 8.3.2. Cross-kind Context Composition
+
+Context construction may retrieve several memory kinds from one logical corpus. The lanes remain explicit so a procedure or policy is not silently treated as an episode, a summary as canonical evidence, or a relation projection as an independent source.
+
+| Lane | Typical contents | Required handling |
+|---|---|---|
+| Procedural and policy | Procedure, playbook, constraint, capability guidance | preserve lifecycle/status, authority and current applicability |
+| Episodic and session | ConversationEpisode, event, decision, observation | bind selected revision, time basis and source frontier |
+| Semantic and domain | Fact, Note, entity, domain summary | retain derivation and contradiction links |
+| Relations and navigation | Relation, DomainMap, graph or route projection | use as bounded routing/index hints; hydrate supporting sources |
+| Opened evidence | canonical source material selected after access checks | verify scope, revision, provenance and lifecycle before materialization |
+
+Each lane may use its own retrieval method, but all lanes share the access and filter frontier, read frontier, scope, total candidate and decoded-byte budgets, and final ContextPack budget. Fusion is deterministic for a declared policy and records which lane contributed each block. Empty or unavailable lanes are explicit; no lane is injected merely because it exists.
+
+Parallel retrieval is an execution strategy for one logical memory space. It does not require three physical databases, create a second authority system, or change lifecycle and provenance semantics. Derived summaries, sketches, maps and relation indexes remain projections. They can guide discovery, but only opened canonical material can provide the evidence required by the applicable task.
+
+The composition gate must compare a flat baseline, single-lane routes and the composed route under the same frontiers and resource envelope. Fixtures cover conflicts between lanes, stale projections, missing source hydration, a procedure that is persisted but not executable, and a correction that must survive semantic summarization.
+
 ### 8.4. IContextCompressor Hook (M2+)
 
 Reference: RECOMP (arXiv:2310.04408), LLMLingua (arXiv:2310.05736).
@@ -1481,23 +1500,6 @@ Reporting:
 - Hybrid result versus `max(BM25, exact-dense)`, with the profile-specific
   non-regression tolerance and any separately approved lift hypothesis.
 
-### 8.3.1. Cross-kind Context Composition
-
-Context construction may retrieve several memory kinds from one logical corpus. The lanes remain explicit so a procedure or policy is not silently treated as an episode, a summary as canonical evidence, or a relation projection as an independent source.
-
-| Lane | Typical contents | Required handling |
-|---|---|---|
-| Procedural and policy | Procedure, playbook, constraint, capability guidance | preserve lifecycle/status, authority and current applicability |
-| Episodic and session | ConversationEpisode, event, decision, observation | bind selected revision, time basis and source frontier |
-| Semantic and domain | Fact, Note, entity, domain summary | retain derivation and contradiction links |
-| Relations and navigation | Relation, DomainMap, graph or route projection | use as bounded routing/index hints; hydrate supporting sources |
-| Opened evidence | canonical source material selected after access checks | verify scope, revision, provenance and lifecycle before materialization |
-
-Each lane may use its own retrieval method, but all lanes share the access and filter frontier, read frontier, scope, total candidate and decoded-byte budgets, and final ContextPack budget. Fusion is deterministic for a declared policy and records which lane contributed each block. Empty or unavailable lanes are explicit; no lane is injected merely because it exists.
-
-Parallel retrieval is an execution strategy for one logical memory space. It does not require three physical databases, create a second authority system, or change lifecycle and provenance semantics. Derived summaries, sketches, maps and relation indexes remain projections. They can guide discovery, but only opened canonical material can provide the evidence required by the applicable task.
-
-The composition gate must compare a flat baseline, single-lane routes and the composed route under the same frontiers and resource envelope. Fixtures cover conflicts between lanes, stale projections, missing source hydration, a procedure that is persisted but not executable, and a correction that must survive semantic summarization.
 
 ## 10. Cross-Module Risks
 
