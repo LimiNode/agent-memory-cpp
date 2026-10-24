@@ -89,6 +89,33 @@ bool is_valid_flat_lexical_unit_input(
     return true;
 }
 
+bool is_valid_flat_lexical_posting_segment(
+    const FlatLexicalPostingSegment& segment
+) noexcept {
+    if(segment.statistics_epoch.empty()
+        || segment.statistics_generation == 0
+        || segment.posting_layout_version == 0
+        || segment.token_id.empty()
+        || segment.postings.empty()) {
+        return false;
+    }
+
+    std::uint64_t previous_unit_id = 0;
+    for(const auto& posting : segment.postings) {
+        if(posting.token_id != segment.token_id
+            || posting.unit_id.empty()
+            || posting.resource_id.empty()
+            || posting.resource_generation == 0
+            || posting.term_frequency == 0
+            || !is_valid_projection_version(posting.projection_version)
+            || posting.unit_id.value() <= previous_unit_id) {
+            return false;
+        }
+        previous_unit_id = posting.unit_id.value();
+    }
+    return true;
+}
+
 FlatLexicalIndex::FlatLexicalIndex(
     LexicalIndexDescriptor descriptor,
     const std::uint32_t posting_layout_version
@@ -668,6 +695,57 @@ std::vector<FlatLexicalPosting> FlatLexicalIndex::postings(
     result.reserve(found->second.size());
     for(const auto& entry : found->second) {
         result.push_back(entry.second);
+    }
+    return result;
+}
+
+std::vector<FlatLexicalPostingSegment> FlatLexicalIndex::posting_segments(
+    const TokenId& token_id,
+    const std::size_t max_postings_per_segment
+) const {
+    if(max_postings_per_segment == 0) {
+        throw std::invalid_argument(
+            "flat lexical posting segment limit must be positive"
+        );
+    }
+
+    const auto posting_bucket = m_postings.find(token_id);
+    if(posting_bucket == m_postings.end()) {
+        return {};
+    }
+
+    const auto posting_count = posting_bucket->second.size();
+    const auto segment_count = posting_count / max_postings_per_segment
+        + (posting_count % max_postings_per_segment == 0 ? 0U : 1U);
+    if(segment_count > std::numeric_limits<std::uint32_t>::max()) {
+        throw std::overflow_error(
+            "flat lexical posting segment id space is exhausted"
+        );
+    }
+
+    std::vector<FlatLexicalPostingSegment> result;
+    result.reserve(segment_count);
+    auto posting = posting_bucket->second.begin();
+    std::uint32_t segment_id = 0;
+    while(posting != posting_bucket->second.end()) {
+        FlatLexicalPostingSegment segment;
+        segment.statistics_epoch = m_active_snapshot.statistics_epoch;
+        segment.statistics_generation = m_active_snapshot.statistics_generation;
+        segment.posting_layout_version = m_active_snapshot.posting_layout_version;
+        segment.token_id = token_id;
+        segment.segment_id = segment_id++;
+        segment.postings.reserve(std::min(
+            max_postings_per_segment,
+            posting_count
+        ));
+
+        for(std::size_t count = 0;
+            count < max_postings_per_segment
+                && posting != posting_bucket->second.end();
+            ++count, ++posting) {
+            segment.postings.push_back(posting->second);
+        }
+        result.push_back(std::move(segment));
     }
     return result;
 }

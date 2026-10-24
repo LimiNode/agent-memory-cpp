@@ -56,6 +56,22 @@ namespace agent_memory {
         std::uint32_t term_frequency = 0;
     };
 
+    /// \brief One deterministic, bounded partition of a token posting list.
+    ///
+    /// Segments are a dependency-free preparation contract for the durable
+    /// posting-row layout.  They are immutable observations of one active
+    /// statistics generation; the segment id is local to the token and starts
+    /// at zero for the first ordered partition.  This type does not imply
+    /// durable publication or a compressed wire format.
+    struct FlatLexicalPostingSegment final {
+        LexicalStatisticsEpoch statistics_epoch;
+        std::uint64_t statistics_generation = 0;
+        std::uint32_t posting_layout_version = 0;
+        TokenId token_id;
+        std::uint32_t segment_id = 0;
+        std::vector<FlatLexicalPosting> postings;
+    };
+
     /// \brief Statistics for one active indexed unit.
     struct FlatLexicalUnitStats final {
         KnowledgeUnitId unit_id;
@@ -160,6 +176,16 @@ namespace agent_memory {
             const TokenId& token_id
         ) const;
 
+        /// \brief Partitions one ordered posting list into bounded segments.
+        ///
+        /// The returned partitions preserve posting order and collectively
+        /// contain exactly the current active posting list.  A zero limit is
+        /// rejected; an unknown token returns an empty vector.
+        [[nodiscard]] std::vector<FlatLexicalPostingSegment> posting_segments(
+            const TokenId& token_id,
+            std::size_t max_postings_per_segment
+        ) const;
+
         [[nodiscard]] FlatLexicalCollectionStats collection_stats() const noexcept;
 
     private:
@@ -187,6 +213,10 @@ namespace agent_memory {
 
     [[nodiscard]] bool is_valid_flat_lexical_unit_input(
         const FlatLexicalUnitInput& input
+    ) noexcept;
+
+    [[nodiscard]] bool is_valid_flat_lexical_posting_segment(
+        const FlatLexicalPostingSegment& segment
     ) noexcept;
 
 } // namespace agent_memory
