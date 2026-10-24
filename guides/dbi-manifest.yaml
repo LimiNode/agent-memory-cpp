@@ -564,7 +564,14 @@ profile_deltas:
     names: [lexical_posting_segments]
     capability: LexicalIndex
     milestone: M2
-    note: Immutable compressed lexical posting blocks with conservative skip and score-bound metadata; replaces neither canonical unit rows nor exhaustive BM25F baseline.
+    note: >-
+      Reserved lexical capability. The current adapter stores a versioned
+      flat-v2 value keyed by scope/projection as a bounded baseline; it is not
+      segment-row data and must not be decoded as [ScopeId, ProjectionKind,
+      LexicalStatisticsEpoch, FieldId, TokenId, SegmentId] rows. Future
+      immutable compressed posting blocks require a new payload/layout version
+      and quiesced rebuild; this DBI replaces neither canonical unit rows nor
+      the exhaustive BM25F baseline.
     dbi_entries:
       - name: lexical_posting_segments
         owner: lexical

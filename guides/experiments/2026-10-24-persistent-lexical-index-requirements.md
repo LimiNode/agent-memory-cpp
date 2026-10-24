@@ -141,6 +141,18 @@ accepted:
 | acceleration | WAND/BMW is exact under matching bounds, otherwise disabled |
 | storage boundary | no canonical bytes or semantic IDs rewritten for indexing |
 
+## Bounded flat-v2 storage receipt
+
+The first MDBX adapter uses an intentionally bounded read-modify-write value
+(`agent_memory.mdbx_flat_lexical.v2`) rather than incremental posting rows.
+The default admissions are 8 MiB serialized payload, 100,000 active units,
+4,000,000 total token occurrences, and 4 KiB per normalized token. Admissions
+run before the flat index rebuild and are rechecked before `insert_or_assign`.
+The focused MDBX fixture exercises rejection at the active-unit boundary and
+reopen after erase/clear. This is an O(N) prototype: each accepted update
+reconstructs and rewrites the complete scope value, so no scalability or
+write-amplification claim is made until the future segment-row layout exists.
+
 ## Non-goals and follow-up
 
 This PR does not choose BM25+ or BM25L for production, implement BM25F,

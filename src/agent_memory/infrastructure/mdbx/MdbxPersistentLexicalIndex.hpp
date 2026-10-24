@@ -11,6 +11,7 @@
 
 #include <agent_memory/lexical/FlatLexicalIndex.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -23,7 +24,8 @@ namespace agent_memory {
 /// \brief Deterministic interruption point used by MDBX rollback tests.
 enum class MdbxPersistentLexicalIndexFaultPoint : std::uint8_t {
     None,
-    BeforeCommit
+    BeforeCommit,
+    AfterWriteBeforeCommit
 };
 
 /// \brief Options for one scope/projection lexical index.
@@ -32,6 +34,14 @@ struct MdbxPersistentLexicalIndexOptions final {
     std::string table_prefix = "agent_memory";
     bool relative_to_exe = false;
     std::int64_t max_dbs = kDefaultMdbxMaxDbs;
+    /// Maximum serialized flat-v2 value accepted by this bounded baseline.
+    std::size_t max_payload_bytes = 8U * 1024U * 1024U;
+    /// Maximum number of active unit inputs in one persisted value.
+    std::size_t max_active_units = 100'000U;
+    /// Maximum total token occurrences across active units.
+    std::size_t max_total_tokens = 4'000'000U;
+    /// Maximum UTF-8 bytes in one normalized token.
+    std::size_t max_token_bytes = 4'096U;
     std::shared_ptr<MdbxStorageContext> context;
     LexicalIndexDescriptor descriptor;
 };

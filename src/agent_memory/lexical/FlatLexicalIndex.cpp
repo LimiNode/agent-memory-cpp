@@ -162,6 +162,47 @@ void FlatLexicalIndex::restore_active_snapshot_for_storage(
     m_active_snapshot = snapshot;
 }
 
+void FlatLexicalIndex::restore_token_dictionary_for_storage(
+    std::vector<std::pair<std::string, TokenId>> entries,
+    const TokenId next_token_id
+) {
+    if(!m_token_by_text.empty() || !m_text_by_token.empty()
+        || next_token_id.empty()) {
+        throw std::invalid_argument("invalid durable lexical token dictionary restore");
+    }
+
+    std::uint64_t maximum = 0;
+    for(const auto& entry : entries) {
+        if(entry.first.empty() || entry.second.empty()
+            || m_token_by_text.find(entry.first) != m_token_by_text.end()
+            || m_text_by_token.find(entry.second) != m_text_by_token.end()
+            || entry.second.value() >= next_token_id.value()) {
+            throw std::invalid_argument("invalid durable lexical token dictionary entry");
+        }
+        maximum = std::max(maximum, entry.second.value());
+        m_token_by_text.emplace(entry.first, entry.second);
+        m_text_by_token.emplace(entry.second, entry.first);
+    }
+    if(maximum >= next_token_id.value()) {
+        throw std::invalid_argument("durable lexical token allocator frontier is behind dictionary");
+    }
+    m_next_token_id = next_token_id.value();
+}
+
+std::vector<std::pair<std::string, TokenId>>
+FlatLexicalIndex::token_dictionary_for_storage() const {
+    std::vector<std::pair<std::string, TokenId>> result;
+    result.reserve(m_token_by_text.size());
+    for(const auto& entry : m_token_by_text) {
+        result.emplace_back(entry.first, entry.second);
+    }
+    return result;
+}
+
+TokenId FlatLexicalIndex::next_token_id_for_storage() const noexcept {
+    return TokenId{m_next_token_id};
+}
+
 void FlatLexicalIndex::remove_unit(const KnowledgeUnitId& unit_id) {
     const auto unit = m_units.find(unit_id);
     if(unit == m_units.end()) {

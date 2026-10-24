@@ -78,8 +78,17 @@ semantics, and migration policy before changing the manifest.
 The first adapter slice uses the already reserved `lexical_posting_segments`
 DBI with a single versioned key/value payload per `(scope, projection)`. The
 payload stores descriptor identity, active epoch/generation, publication
-sequence, and revision-bound unit inputs; the dependency-free
+sequence, the complete historical token dictionary/high-water allocator, and
+revision-bound unit inputs; the dependency-free
 `FlatLexicalIndex` reconstructs postings and aggregate statistics on reopen.
+The physical key is explicitly a `flat-v2` baseline representation, not a
+segment-row encoding of the manifest's future
+`(ScopeId, ProjectionKind, LexicalStatisticsEpoch, FieldId, TokenId,
+SegmentId)` key. Segment readers must reject this value rather than decode it
+as immutable posting rows. This representation has a deliberate migration
+boundary: changing its codec or moving to segment rows requires a quiesced
+rebuild into a new payload/layout version and epoch; no rolling migration is
+claimed.
 This is an intentionally bounded durable baseline: it proves atomic
 publication, rollback, replay, scope isolation, descriptor admission, and one
 read transaction for a coherent frontier, but it does not claim compressed
@@ -89,11 +98,18 @@ must not reinterpret this payload in place. Its read frontier is deliberately
 lexical-only: because this adapter does not own canonical units, projections,
 or manifests, it reports `NonLinearizable` and cannot claim an `Exact` route
 until a later coordinator pins those DBIs in the same transaction. Payload
-version `v1` is admission-checked and fail-closed; unknown payloads, descriptor
+version `v2` is admission-checked and fail-closed; unknown payloads, descriptor
 mismatches, and incompatible layouts are not interpreted as legacy rows. There
 is no rolling migration path in this slice: changing the payload codec or
 physical row meaning requires a quiesced rebuild into a new epoch and layout
 version.
+
+The flat baseline is deliberately bounded. Configurable admissions cap the
+serialized payload bytes, active unit count, total token occurrences, and one
+normalized-token byte length. Limits are checked before rebuilding the flat
+oracle and again before the MDBX write. The implementation is an O(N)
+read-modify-write prototype; it must not be described as an incremental or
+scalable persistent backend until segmented storage replaces the value rewrite.
 
 ## Index identity
 

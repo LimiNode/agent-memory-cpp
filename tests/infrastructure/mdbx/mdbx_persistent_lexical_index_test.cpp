@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <array>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -118,6 +119,20 @@ int main() {
                 interrupted = true;
             }
             require(interrupted, "fault injection did not interrupt publication");
+
+            first.set_failure_injection_for_testing(
+                MdbxPersistentLexicalIndexFaultPoint::AfterWriteBeforeCommit);
+            interrupted = false;
+            try {
+                first.upsert(unit(scope_a, 1, 2, "resource-a", {"replacement"}),
+                    FlatLexicalExpectedState{
+                        KnowledgeUnitId{1}, 1, 1,
+                        ProjectionVersionRef{1, 1, 1, "derivation-v1"}
+                    });
+            } catch(const std::runtime_error&) {
+                interrupted = true;
+            }
+            require(interrupted, "post-write fault injection did not interrupt publication");
         }
 
         {
@@ -130,6 +145,17 @@ int main() {
                 const auto old = snapshot.index.find_unit_stats(KnowledgeUnitId{1});
                 require(old && old->unit_revision == 1,
                     "aborted publication replaced the old revision");
+                require(snapshot.frontier.active_snapshot.statistics_generation == 3
+                        && snapshot.frontier.publication_sequence.value() == 3
+                        && snapshot.frontier.active_snapshot.statistics_epoch
+                            == descriptor(scope_a, 7).ref.statistics_epoch,
+                    "aborted publication changed durable snapshot metadata");
+                const auto shared = snapshot.index.find_token_id("shared");
+                const auto shared_stats = shared
+                    ? snapshot.index.find_token_stats(*shared) : std::nullopt;
+                require(shared_stats && shared_stats->document_frequency == 2
+                        && shared_stats->collection_frequency == 3,
+                    "aborted publication changed durable token statistics");
             }
 
             bool stale_rejected = false;
@@ -163,6 +189,49 @@ int main() {
                 "second scope was not isolated");
             require(reopened.read_snapshot().index.collection_stats().unit_count == 1,
                 "scope A was affected by scope B");
+        }
+
+        {
+            auto context = MdbxStorageContext::open(path.string());
+            MdbxPersistentLexicalIndex reopened{options(path, context, scope_a, 7)};
+            const auto alpha_id = reopened.read_snapshot().index.find_token_id("alpha");
+            const auto shared_id = reopened.read_snapshot().index.find_token_id("shared");
+            require(alpha_id && shared_id && alpha_id->value() == 1
+                    && shared_id->value() == 2,
+                "durable token dictionary was not restored before replay");
+            require(reopened.erase(KnowledgeUnitId{1}),
+                "unique-token unit was not erased before allocator test");
+            reopened.upsert(unit(scope_a, 3, 1, "resource-d", {"gamma"}));
+            const auto gamma_id = reopened.read_snapshot().index.find_token_id("gamma");
+            require(gamma_id && gamma_id->value() > shared_id->value(),
+                "token allocator reused an id after erase");
+            reopened.clear();
+        }
+
+        {
+            auto context = MdbxStorageContext::open(path.string());
+            MdbxPersistentLexicalIndex reopened{options(path, context, scope_a, 7)};
+            const auto before = reopened.read_snapshot().index.find_token_id("gamma");
+            require(before && reopened.read_snapshot().index.collection_stats().unit_count == 0,
+                "clear did not preserve the historical dictionary after reopen");
+            reopened.upsert(unit(scope_a, 4, 1, "resource-e", {"delta"}));
+            const auto delta = reopened.read_snapshot().index.find_token_id("delta");
+            require(delta && delta->value() > before->value(),
+                "token allocator regressed after clear and reopen");
+        }
+
+        {
+            auto context = MdbxStorageContext::open(path.string());
+            auto bounded = options(path, context, scope_a, 7);
+            bounded.max_active_units = 1;
+            MdbxPersistentLexicalIndex limited{std::move(bounded)};
+            bool rejected = false;
+            try {
+                limited.upsert(unit(scope_a, 5, 1, "resource-f", {"epsilon"}));
+            } catch(const std::runtime_error&) {
+                rejected = true;
+            }
+            require(rejected, "bounded active-unit admission accepted an oversized state");
         }
 
         std::filesystem::remove(path, error);

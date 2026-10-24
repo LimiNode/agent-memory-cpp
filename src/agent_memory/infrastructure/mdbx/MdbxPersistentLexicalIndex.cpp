@@ -18,7 +18,7 @@ namespace agent_memory {
 namespace {
 
 constexpr std::string_view kPayloadVersion =
-    "agent_memory.mdbx_flat_lexical.v1";
+    "agent_memory.mdbx_flat_lexical.v2";
 constexpr std::string_view kTableSuffix = "lexical_posting_segments";
 constexpr char kKeySeparator = '\x1f';
 
@@ -138,7 +138,7 @@ std::string hex_component(std::string_view value) {
 }
 
 std::string state_key(const LexicalIndexDescriptor& descriptor) {
-    return "flat-v1" + std::string(1, kKeySeparator)
+    return "flat-v2" + std::string(1, kKeySeparator)
         + hex_component(descriptor.ref.scope_id.value())
         + std::string(1, kKeySeparator)
         + std::to_string(static_cast<std::uint16_t>(descriptor.ref.projection_kind));
@@ -234,6 +234,8 @@ struct StoredState final {
     LexicalIndexDescriptor descriptor;
     LexicalActiveSnapshot snapshot;
     LexicalPublicationSequence publication_sequence;
+    std::vector<std::pair<std::string, TokenId>> token_dictionary;
+    TokenId next_token_id{1};
     std::vector<FlatLexicalUnitInput> units;
 };
 
@@ -248,6 +250,12 @@ std::string serialize_state(const StoredState& state) {
     append_u64(payload, state.snapshot.statistics_generation);
     append_u32(payload, state.snapshot.posting_layout_version);
     append_u64(payload, state.publication_sequence.value());
+    append_u32(payload, static_cast<std::uint32_t>(state.token_dictionary.size()));
+    for(const auto& entry : state.token_dictionary) {
+        append_string(payload, entry.first);
+        append_u64(payload, entry.second.value());
+    }
+    append_u64(payload, state.next_token_id.value());
     append_u32(payload, static_cast<std::uint32_t>(state.units.size()));
     for(const auto& unit : state.units) {
         append_unit(payload, unit);
@@ -266,6 +274,18 @@ StoredState deserialize_state(std::string_view payload) {
     state.snapshot.statistics_generation = reader.read_u64();
     state.snapshot.posting_layout_version = reader.read_u32();
     state.publication_sequence = LexicalPublicationSequence{reader.read_u64()};
+    const auto dictionary_count = reader.read_u32();
+    state.token_dictionary.reserve(dictionary_count);
+    for(std::uint32_t index = 0; index < dictionary_count; ++index) {
+        const auto text = reader.read_string();
+        try {
+            state.token_dictionary.emplace_back(text, TokenId{reader.read_u64()});
+        } catch(const std::exception& error) {
+            throw std::runtime_error("dictionary entry " + std::to_string(index)
+                + " text=" + text + ": " + error.what());
+        }
+    }
+    state.next_token_id = TokenId{reader.read_u64()};
     const auto unit_count = reader.read_u32();
     state.units.reserve(unit_count);
     for(std::uint32_t index = 0; index < unit_count; ++index) {
@@ -275,8 +295,31 @@ StoredState deserialize_state(std::string_view payload) {
     if(!is_valid_lexical_index_descriptor(state.descriptor)
         || !is_valid_lexical_active_snapshot(state.snapshot)
         || state.publication_sequence.empty()
+        || state.next_token_id.empty()
         || state.snapshot.statistics_epoch != state.descriptor.ref.statistics_epoch) {
         throw std::runtime_error("persistent lexical payload failed admission");
+    }
+    std::map<std::string, TokenId> texts;
+    std::map<TokenId, std::string> ids;
+    for(const auto& entry : state.token_dictionary) {
+        if(entry.first.empty() || entry.second.empty()
+            || entry.second.value() >= state.next_token_id.value()
+            || !texts.emplace(entry.first, entry.second).second
+            || !ids.emplace(entry.second, entry.first).second) {
+            throw std::runtime_error("persistent lexical token dictionary failed admission");
+        }
+    }
+    for(const auto& unit : state.units) {
+        if(!is_valid_flat_lexical_unit_input(unit)
+            || unit.scope_id != state.descriptor.ref.scope_id
+            || unit.projection_kind != state.descriptor.ref.projection_kind) {
+            throw std::runtime_error("persistent lexical unit failed admission");
+        }
+        for(const auto& token : unit.normalized_tokens) {
+            if(texts.find(token) == texts.end()) {
+                throw std::runtime_error("persistent lexical active token is absent from dictionary");
+            }
+        }
     }
     return state;
 }
@@ -294,6 +337,7 @@ StoredState empty_state(const LexicalIndexDescriptor& descriptor) {
     state.snapshot.statistics_generation = 1;
     state.snapshot.posting_layout_version = descriptor.supported_posting_layout_versions.front();
     state.publication_sequence = LexicalPublicationSequence{1};
+    state.next_token_id = TokenId{1};
     return state;
 }
 
@@ -313,10 +357,16 @@ void validate_descriptor_match(
 
 FlatLexicalIndex rebuild_index(const StoredState& state) {
     FlatLexicalIndex index{state.descriptor, state.snapshot.posting_layout_version};
+    index.restore_token_dictionary_for_storage(
+        state.token_dictionary, state.next_token_id);
     for(const auto& unit : state.units) {
         index.upsert(unit);
     }
     index.restore_active_snapshot_for_storage(state.snapshot);
+    if(index.next_token_id_for_storage() != state.next_token_id
+        || index.token_dictionary_for_storage() != state.token_dictionary) {
+        throw std::runtime_error("persistent lexical token dictionary failed replay validation");
+    }
     return index;
 }
 
@@ -352,15 +402,23 @@ public:
                                       options.relative_to_exe,
                                       options.max_dbs)),
           table(context->connection(), table_name(options.table_prefix)),
-          key(state_key(descriptor)) {
+          key(state_key(descriptor)),
+          max_payload_bytes(options.max_payload_bytes),
+          max_active_units(options.max_active_units),
+          max_total_tokens(options.max_total_tokens),
+          max_token_bytes(options.max_token_bytes) {
         if(!is_valid_lexical_index_descriptor(descriptor)) {
             throw std::invalid_argument("invalid persistent lexical index descriptor");
         }
         auto txn = context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
         const auto stored = table.find(key, txn);
         if(stored) {
+            if(stored->size() > max_payload_bytes) {
+                throw std::runtime_error("persistent lexical payload exceeds configured limit");
+            }
             const auto state = deserialize_state(*stored);
             validate_descriptor_match(descriptor, state.descriptor);
+            validate_state_limits(state);
         }
     }
 
@@ -370,15 +428,81 @@ public:
         if(!stored) {
             return empty_state(descriptor);
         }
+        if(stored->size() > max_payload_bytes) {
+            throw std::runtime_error("persistent lexical payload exceeds configured limit");
+        }
         auto state = deserialize_state(*stored);
         validate_descriptor_match(descriptor, state.descriptor);
+        validate_state_limits(state);
         return state;
+    }
+
+    void validate_state_limits(const StoredState& state) const {
+        if(state.units.size() > max_active_units
+            || state.token_dictionary.size() > max_total_tokens) {
+            throw std::runtime_error("persistent lexical state exceeds configured limits");
+        }
+        std::size_t total_tokens = 0;
+        for(const auto& unit : state.units) {
+            if(unit.normalized_tokens.size() > max_total_tokens - total_tokens) {
+                throw std::runtime_error("persistent lexical token count exceeds configured limit");
+            }
+            total_tokens += unit.normalized_tokens.size();
+            for(const auto& token : unit.normalized_tokens) {
+                if(token.size() > max_token_bytes) {
+                    throw std::runtime_error("persistent lexical token exceeds configured limit");
+                }
+            }
+        }
+        for(const auto& token : state.token_dictionary) {
+            if(token.first.size() > max_token_bytes || token.second.empty()) {
+                throw std::runtime_error("persistent lexical dictionary exceeds configured limits");
+            }
+        }
+    }
+
+    void validate_input_limits(const FlatLexicalUnitInput& input,
+                               const StoredState& state) const {
+        if(input.normalized_tokens.size() > max_total_tokens) {
+            throw std::runtime_error("persistent lexical input exceeds token limit");
+        }
+        for(const auto& token : input.normalized_tokens) {
+            if(token.size() > max_token_bytes) {
+                throw std::runtime_error("persistent lexical token exceeds configured limit");
+            }
+        }
+        const auto existing = std::find_if(state.units.begin(), state.units.end(),
+            [&input](const FlatLexicalUnitInput& unit) {
+                return unit.unit_id == input.unit_id;
+            });
+        const auto unit_count = state.units.size()
+            + (existing == state.units.end() ? 1U : 0U);
+        if(unit_count > max_active_units) {
+            throw std::runtime_error("persistent lexical active unit limit exceeded");
+        }
+        std::size_t total_tokens = 0;
+        for(const auto& unit : state.units) {
+            if(existing != state.units.end() && unit.unit_id == input.unit_id) {
+                continue;
+            }
+            if(unit.normalized_tokens.size() > max_total_tokens - total_tokens) {
+                throw std::runtime_error("persistent lexical token count exceeds configured limit");
+            }
+            total_tokens += unit.normalized_tokens.size();
+        }
+        if(input.normalized_tokens.size() > max_total_tokens - total_tokens) {
+            throw std::runtime_error("persistent lexical token count exceeds configured limit");
+        }
     }
 
     LexicalIndexDescriptor descriptor;
     std::shared_ptr<MdbxStorageContext> context;
     mdbxc::KeyValueTable<std::string, std::string> table;
     std::string key;
+    std::size_t max_payload_bytes;
+    std::size_t max_active_units;
+    std::size_t max_total_tokens;
+    std::size_t max_token_bytes;
     MdbxPersistentLexicalIndexFaultPoint failure =
         MdbxPersistentLexicalIndexFaultPoint::None;
 };
@@ -409,6 +533,7 @@ void MdbxPersistentLexicalIndex::upsert(
 ) {
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
     auto state = m_impl->read_state(txn);
+    m_impl->validate_input_limits(input, state);
     auto index = rebuild_index(state);
     const auto before_generation = state.snapshot.statistics_generation;
     const auto before_publication = state.publication_sequence.value();
@@ -451,11 +576,21 @@ void MdbxPersistentLexicalIndex::upsert(
     state.snapshot.statistics_generation = before_generation + 1U;
     state.publication_sequence = LexicalPublicationSequence{before_publication + 1U};
     state.snapshot.statistics_epoch = descriptor().ref.statistics_epoch;
+    state.token_dictionary = index.token_dictionary_for_storage();
+    state.next_token_id = index.next_token_id_for_storage();
+    const auto payload = serialize_state(state);
+    if(payload.size() > m_impl->max_payload_bytes) {
+        throw std::runtime_error("persistent lexical payload exceeds configured limit");
+    }
     if(m_impl->failure == MdbxPersistentLexicalIndexFaultPoint::BeforeCommit) {
         m_impl->failure = MdbxPersistentLexicalIndexFaultPoint::None;
         throw std::runtime_error("injected persistent lexical interruption");
     }
-    m_impl->table.insert_or_assign(m_impl->key, serialize_state(state), txn);
+    m_impl->table.insert_or_assign(m_impl->key, payload, txn);
+    if(m_impl->failure == MdbxPersistentLexicalIndexFaultPoint::AfterWriteBeforeCommit) {
+        m_impl->failure = MdbxPersistentLexicalIndexFaultPoint::None;
+        throw std::runtime_error("injected persistent lexical interruption after write");
+    }
     txn.commit();
 }
 
@@ -476,7 +611,17 @@ bool MdbxPersistentLexicalIndex::erase(const KnowledgeUnitId& unit_id) {
     ++state.snapshot.statistics_generation;
     state.publication_sequence = LexicalPublicationSequence{
         state.publication_sequence.value() + 1U};
-    m_impl->table.insert_or_assign(m_impl->key, serialize_state(state), txn);
+    state.token_dictionary = index.token_dictionary_for_storage();
+    state.next_token_id = index.next_token_id_for_storage();
+    const auto payload = serialize_state(state);
+    if(payload.size() > m_impl->max_payload_bytes) {
+        throw std::runtime_error("persistent lexical payload exceeds configured limit");
+    }
+    m_impl->table.insert_or_assign(m_impl->key, payload, txn);
+    if(m_impl->failure == MdbxPersistentLexicalIndexFaultPoint::AfterWriteBeforeCommit) {
+        m_impl->failure = MdbxPersistentLexicalIndexFaultPoint::None;
+        throw std::runtime_error("injected persistent lexical interruption after write");
+    }
     txn.commit();
     return true;
 }
@@ -495,7 +640,15 @@ void MdbxPersistentLexicalIndex::clear() {
     ++state.snapshot.statistics_generation;
     state.publication_sequence = LexicalPublicationSequence{
         state.publication_sequence.value() + 1U};
-    m_impl->table.insert_or_assign(m_impl->key, serialize_state(state), txn);
+    const auto payload = serialize_state(state);
+    if(payload.size() > m_impl->max_payload_bytes) {
+        throw std::runtime_error("persistent lexical payload exceeds configured limit");
+    }
+    m_impl->table.insert_or_assign(m_impl->key, payload, txn);
+    if(m_impl->failure == MdbxPersistentLexicalIndexFaultPoint::AfterWriteBeforeCommit) {
+        m_impl->failure = MdbxPersistentLexicalIndexFaultPoint::None;
+        throw std::runtime_error("injected persistent lexical interruption after write");
+    }
     txn.commit();
 }
 
