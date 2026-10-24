@@ -297,6 +297,77 @@ namespace {
         return 0;
     }
 
+    int test_shared_token_statistics_rollback() {
+        agent_memory::FlatLexicalIndex index{make_descriptor()};
+        const auto unit_a = make_input(1, 7, {"shared", "old"});
+        const auto unit_b = make_input(2, 7, {"shared"});
+        index.upsert(unit_a);
+        index.upsert(unit_b);
+        const auto generation = index.active_snapshot().statistics_generation;
+        const auto shared_id = index.find_token_id("shared");
+        if(!shared_id
+            || !index.find_token_stats(*shared_id)
+            || index.find_token_stats(*shared_id)->document_frequency != 2
+            || index.find_token_stats(*shared_id)->collection_frequency != 2
+            || index.postings(*shared_id).size() != 2) {
+            return fail("shared-token fixture must start with DF/CF two");
+        }
+
+        const auto failure_points = {
+            agent_memory::FlatLexicalUpsertFailurePoint::AfterDictionaryApplication,
+            agent_memory::FlatLexicalUpsertFailurePoint::AfterPostingApplication
+        };
+        for(const auto point : failure_points) {
+            index.set_failure_injection_for_testing(point);
+            try {
+                index.upsert(
+                    make_input(1, 8, {"new", "replacement"}),
+                    expected_for(unit_a)
+                );
+                return fail("shared-token replacement failure must be injected");
+            } catch(const std::runtime_error&) {
+            }
+
+            const auto restored_shared = index.find_token_stats(*shared_id);
+            const auto restored_a = index.find_unit_stats(agent_memory::KnowledgeUnitId{1});
+            const auto restored_b = index.find_unit_stats(agent_memory::KnowledgeUnitId{2});
+            if(!restored_shared
+                || restored_shared->document_frequency != 2
+                || restored_shared->collection_frequency != 2
+                || index.postings(*shared_id).size() != 2
+                || !restored_a || restored_a->unit_revision != 7
+                || !restored_b || restored_b->unit_revision != 7
+                || index.collection_stats().unit_count != 2
+                || index.collection_stats().total_token_count != 3
+                || index.active_snapshot().statistics_generation != generation
+                || index.find_token_id("new")) {
+                return fail("shared-token rollback must restore all old state");
+            }
+        }
+
+        index.upsert(
+            make_input(1, 8, {"new", "replacement"}),
+            expected_for(unit_a)
+        );
+        const auto final_shared = index.find_token_stats(*shared_id);
+        const auto new_id = index.find_token_id("new");
+        const auto new_stats = new_id
+            ? index.find_token_stats(*new_id)
+            : std::nullopt;
+        if(!final_shared
+            || final_shared->document_frequency != 1
+            || final_shared->collection_frequency != 1
+            || index.postings(*shared_id).size() != 1
+            || !new_id
+            || !new_stats
+            || new_stats->document_frequency != 1
+            || index.collection_stats().unit_count != 2
+            || index.collection_stats().total_token_count != 3) {
+            return fail("successful replacement must update shared-token statistics");
+        }
+        return 0;
+    }
+
     int test_original_projection_only() {
         auto descriptor = make_descriptor();
         descriptor.ref.projection_kind = agent_memory::ProjectionKind::Summary;
@@ -318,6 +389,7 @@ int main() {
     failures += test_erase_clear_and_validation();
     failures += test_revision_admission_and_idempotency();
     failures += test_failure_injection_preserves_state();
+    failures += test_shared_token_statistics_rollback();
     failures += test_original_projection_only();
     return failures == 0 ? 0 : 1;
 }

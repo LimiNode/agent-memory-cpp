@@ -501,6 +501,11 @@ void FlatLexicalIndex::upsert(
         for(auto& old : old_stats) {
             if(old.extracted) {
                 m_token_stats.insert(std::move(old.node));
+            } else if(old.present) {
+                const auto stats = m_token_stats.find(old.token_id);
+                if(stats != m_token_stats.end()) {
+                    stats->second = old.value;
+                }
             }
         }
         if(old_state) {
