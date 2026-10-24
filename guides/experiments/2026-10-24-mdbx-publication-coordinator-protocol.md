@@ -56,6 +56,11 @@ transactions.
    thread that begins the coordinator transaction must execute all row writes
    and the commit/abort. Prepared data may cross threads; a live transaction
    handle may not.
+8. **Coordinated profiles exclude bypass writers.** Once a scope is admitted
+   to the coordinated profile, every writer for that scope must present the
+   profile marker and coordinator admission evidence. A legacy or independent
+   store API must fail closed rather than advance canonical, projection,
+   lexical, or manifest state behind the coordinator's frontier.
 
 ## Current implementation audit
 
@@ -70,11 +75,32 @@ transaction spanning them:
 | `MdbxProjectionStore` | `put()` starts its own transaction | Needs staged rows plus coordinator-owned apply |
 | `MdbxResourceManifestStorage` | Guarded upsert checks expected manifest/token in its own transaction | Preconditions must be reused inside coordinator transaction |
 | `MdbxDurableLexicalDocumentMemory` | Guarded lexical upsert has its own transaction | Must become a participant or remain an explicitly weaker profile |
+| `MdbxPersistentLexicalIndex` (#540) | `flat-v2` bounded monolithic payload, historical dictionary/high-water, and its own lexical-only transaction; its read frontier is not canonical/manifest-pinned | Must remain an explicitly weaker lexical-only profile until it gains a coordinator participant boundary; it is not segmented posting storage |
 | `MdbxCanonicalContentStore` | Guarded canonical operation is atomic across its own DBIs | Must participate in the same future transaction for atomic publication |
 
 The existing intent and fencing token remain valuable recovery/ownership
 mechanisms. They are not evidence that the current sequence is a single
 transaction.
+
+### Coordinated-profile admission and legacy writers
+
+The coordinator's atomic frontier is meaningful only after a durable,
+scope-bound admission transition. Activation is quiesced: existing writers
+finish or are stopped, the profile/schema marker is committed, and recovery
+verifies that every participating writer understands the marker. After
+activation, a writer that does not understand the coordinated profile, uses a
+different `MdbxStorageContext`, or calls a transaction-owning legacy operation
+for the admitted scope must be rejected before it mutates any row. A shared
+filesystem path or fencing token alone is not sufficient admission evidence.
+
+The legacy operations remain usable for scopes that have not entered the
+coordinated profile, and they may be retained as explicitly weaker profiles.
+They must not be silently mixed with coordinated writes. If the marker is
+missing, unknown, incompatible, or downgraded while a coordinated writer may
+still exist, recovery fails closed. A reader that observes a coordinated scope
+without a valid active frontier reports `Unavailable` (or the explicitly
+weaker `NonLinearizable` contract where policy allows it), never a fabricated
+`Exact` result.
 
 ## Target publication protocol
 
@@ -84,6 +110,9 @@ Before opening a write transaction, the caller prepares a deterministic
 `PublicationPlan` for one resource and scope. The plan records:
 
 - an idempotency/publication identity and target `publication_sequence`;
+- the expected current scope-wide `publication_sequence` observed during
+  preparation; the target is not authoritative until it is allocated in the
+  write transaction;
 - expected canonical revision and expected `ProjectionVersionRef` values;
 - expected `resource_generation` and target generation;
 - the ownership/fencing token and its schema/digest;
@@ -105,10 +134,13 @@ The future coordinator executes the following on one thread:
    `MdbxStorageContext`.
 2. Re-read the fencing token and ownership intent; reject missing, expired,
    mismatched, or superseded ownership.
-3. Re-read canonical revision, current resource generation, projection
-   versions, active descriptor/snapshot, and manifest revision/bindings.
-4. Validate all expected predicates. A conflict aborts without changing the
-   active frontier.
+3. Re-read the current scope-wide publication sequence, canonical revision,
+   resource generation, projection versions, active descriptor/snapshot, and
+   manifest revision/bindings.
+4. Require the stored sequence to equal the plan's expected current sequence.
+   A mismatch is a stale plan and aborts without changing the active frontier.
+   Otherwise allocate `new_sequence = current_sequence + 1` in this same
+   transaction; two plans cannot publish the same sequence.
 5. Apply canonical and knowledge-unit rows, then `Original` projection rows.
    These rows become visible only if the transaction commits.
 6. Apply staged lexical dictionary, posting, unit-statistics, token-statistics,
@@ -118,9 +150,8 @@ The future coordinator executes the following on one thread:
 7. Write or validate the immutable index descriptor and active lexical
    snapshot. The snapshot must reference one compatible epoch, generation,
    schema, tokenizer, normalization, and posting layout.
-8. Write the manifest binding and publication record, including the new
-   `publication_sequence`. The active snapshot and manifest must point at the
-   same target frontier.
+8. Write the manifest binding and publication record with `new_sequence`. The
+   active snapshot and manifest must point at the same target frontier.
 9. Commit once. Only after a successful commit may the caller acknowledge the
    publication or release the fencing intent.
 
@@ -222,7 +253,26 @@ declare the result `NonLinearizable` (or return `Unavailable` when no safe
 result can be formed). It must not describe a sequence of independent
 `find()` calls as a shared snapshot.
 
-### Completion outcomes
+### Independent completion and consistency axes
+
+Route completeness and read consistency are independent dimensions. The
+dependency-free contract already models the latter as
+`LexicalReadConsistency::{PinnedSnapshot, NonLinearizable}`; it must not be
+folded into `LexicalRouteCompletion`.
+
+```text
+LexicalRouteCompletion: Exact | Partial | Unavailable
+LexicalReadConsistency: PinnedSnapshot | NonLinearizable
+```
+
+The strict retrieval policy permits `Exact` only for the pair
+`(Exact, PinnedSnapshot)`. A `(Partial, PinnedSnapshot)` result may be useful
+when explicitly covered partitions are complete and policy permits partial
+fusion. A `NonLinearizable` result is an explicitly weaker contract and must
+remain marked as such even if the observed candidate set happens to be
+complete; it is never silently upgraded to strict `Exact`.
+
+### Route completion outcomes
 
 - **`Exact`**: every requested token partition is complete for one active
   snapshot; dictionary/posting/statistics rows, descriptor, canonical/unit,
@@ -234,9 +284,6 @@ result can be formed). It must not describe a sequence of independent
   frontier and the missing partitions.
 - **`Unavailable`**: no safe partition can support the requested route, or the
   snapshot/descriptor/frontier is absent or incompatible.
-- **`NonLinearizable`**: a result may be returned only under an explicitly
-  weaker API contract where reads crossed independent transactions. This status
-  is distinct from `Exact` and must be visible to callers and traces.
 
 `Exact` is forbidden for a zero-hit result when membership itself is
 incomplete. A complete partition with no matching postings may legitimately
@@ -251,7 +298,9 @@ did not advance.
 | Fault or scenario | Required assertion |
 | --- | --- |
 | Wrong fencing token / takeover race | Write fails closed; no canonical, lexical, or manifest mutation becomes active |
+| Coordinated profile versus legacy writer | After quiesced activation, the legacy writer is rejected before mutation; an unmarked or incompatible profile cannot advance the active frontier |
 | Expected revision or generation changed | Conflict is rejected; old frontier remains readable |
+| Scope-wide sequence race | Two plans prepared from one sequence cannot both commit; one observes the CAS conflict and the winner allocates exactly `current + 1` |
 | Manifest schema/revision/binding mismatch | No publication; mismatch is diagnosable |
 | Missing projection or incomplete token partition | `Partial`/`Unavailable`, never `Exact` |
 | Staged rows without snapshot promotion | Readers ignore rows; active sequence is unchanged |
@@ -262,7 +311,8 @@ did not advance.
 | Shared-token DF/CF replacement | Old statistics are restored or replaced atomically; no mixed generation |
 | Erase/update | Active contribution changes exactly once; unrelated resources remain visible |
 | Worker-thread transaction misuse | Test or API guard rejects cross-thread handle use |
-| Read transaction closes early | Result is marked `NonLinearizable` or failed, never silently upgraded to `Exact` |
+| Read transaction closes early | Consistency is `NonLinearizable` or the request fails; completion is not silently upgraded to strict `Exact` |
+| Completion/consistency combination | Strict `Exact` is emitted only for `(LexicalRouteCompletion::Exact, LexicalReadConsistency::PinnedSnapshot)` |
 | Reopen with orphan intent/staging | Recovery validates token and identity; stale or corrupt state fails closed |
 | Scope isolation | Same token in two scopes cannot cross-query |
 | Oracle parity | IDs, scores, tie order, stale filtering, and empty/budget outcomes match the dependency-free oracle |
@@ -291,6 +341,10 @@ publication.
 - One coordinator-owned commit covering canonical/unit, `Original`, lexical,
   statistics, snapshot, and manifest rows.
 - A durable scope-wide publication sequence and active-frontier record.
+- A scope-bound coordinated-profile marker, quiesced activation, and legacy
+  writer rejection path.
+- An in-transaction sequence allocator/CAS that prevents two stale plans from
+  publishing the same frontier value.
 - A pinned read-frontier API spanning all required DBIs.
 - Atomic staging promotion, replay records, and crash fault injection for the
   combined boundary.
@@ -304,6 +358,8 @@ transaction participant boundary rather than expose a generic transaction type
 in the public storage contracts. The design should provide:
 
 - a coordinator-owned write scope created from `MdbxStorageContext`;
+- a scope/profile admission check that rejects legacy writers after coordinated
+  activation;
 - participant methods that apply prepared canonical, unit, projection,
   lexical/statistics, snapshot, and manifest deltas to that scope;
 - one coordinator commit/abort and a commit receipt containing publication
