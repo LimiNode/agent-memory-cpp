@@ -65,6 +65,7 @@ Out of scope:
 | `ResourceManifest` and `Original` projections | Implemented and revision-checked | Publication and provenance inputs |
 | Projection-aware bounded retrieval | Implemented by PR #533 | Rebuilds a bounded lexical view in memory |
 | Descriptor, snapshot and read-frontier value contracts | Implemented dependency-free baseline | No persistent rows or pinned storage transaction yet |
+| Flat lexical postings/statistics baseline | Implemented dependency-free logical backend | No MDBX durability or publication transaction yet |
 | Epoch-keyed postings, token/stat rows, active snapshot | Roadmap and DBI-manifest reservations exist | No production implementation yet |
 | Shared unit/projection/manifest/index read frontier | Missing | Required before a strict snapshot claim |
 
@@ -193,6 +194,14 @@ The contract is compatible with the existing importer guarantees: raw units,
 `Original` projections, body/revision bindings, and the manifest remain the
 publication boundary. The lexical index cannot make an unpublished staging row
 visible.
+
+The dependency-free `FlatLexicalIndex` is the first logical baseline for these
+row families. It validates projection/revision identity and maintains flat
+postings, token statistics, collection statistics, and the active generation in
+one process. It is intentionally not a durable adapter: it has no MDBX rows,
+reopen protocol, crash recovery, or publication transaction. Those guarantees
+belong to the subsequent storage slice and must be tested against the same
+logical state and oracle.
 
 ## Read frontier
 

@@ -8,6 +8,7 @@
 #include "domain.hpp"
 
 #include "lexical/ExactLexicalIndex.hpp"
+#include "lexical/FlatLexicalIndex.hpp"
 #include "lexical/IChunkEnricher.hpp"
 #include "lexical/ILexicalIndex.hpp"
 #include "lexical/IQueryAnalyzer.hpp"
