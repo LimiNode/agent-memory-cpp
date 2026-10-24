@@ -368,6 +368,58 @@ namespace {
         return 0;
     }
 
+    int test_posting_segments_are_bounded_and_generation_bound() {
+        agent_memory::FlatLexicalIndex index{make_descriptor()};
+        index.upsert(make_input(1, 7, {"shared", "shared"}));
+        index.upsert(make_input(2, 7, {"shared"}));
+        index.upsert(make_input(3, 7, {"shared"}));
+        index.upsert(make_input(4, 7, {"shared"}));
+        const auto token_id = index.find_token_id("shared");
+        if(!token_id) {
+            return fail("segment fixture must allocate the shared token");
+        }
+
+        const auto segments = index.posting_segments(*token_id, 2);
+        if(segments.size() != 2
+            || segments[0].segment_id != 0
+            || segments[1].segment_id != 1
+            || segments[0].postings.size() != 2
+            || segments[1].postings.size() != 2) {
+            return fail("posting segments must use deterministic bounded partitions");
+        }
+
+        std::size_t posting_count = 0;
+        for(const auto& segment : segments) {
+            if(!agent_memory::is_valid_flat_lexical_posting_segment(segment)
+                || segment.statistics_epoch != index.active_snapshot().statistics_epoch
+                || segment.statistics_generation
+                    != index.active_snapshot().statistics_generation
+                || segment.posting_layout_version
+                    != index.active_snapshot().posting_layout_version) {
+                return fail("posting segments must bind to the active generation");
+            }
+            posting_count += segment.postings.size();
+        }
+        if(posting_count != index.postings(*token_id).size()
+            || segments[0].postings[0].unit_id
+                != agent_memory::KnowledgeUnitId{1}
+            || segments[1].postings[0].unit_id
+                != agent_memory::KnowledgeUnitId{3}) {
+            return fail("posting segments must preserve complete ordered membership");
+        }
+
+        if(!index.posting_segments(agent_memory::TokenId{999}, 2).empty()) {
+            return fail("unknown token segments must be empty");
+        }
+
+        try {
+            static_cast<void>(index.posting_segments(*token_id, 0));
+            return fail("zero posting segment limit must be rejected");
+        } catch(const std::invalid_argument&) {
+        }
+        return 0;
+    }
+
     int test_original_projection_only() {
         auto descriptor = make_descriptor();
         descriptor.ref.projection_kind = agent_memory::ProjectionKind::Summary;
@@ -390,6 +442,7 @@ int main() {
     failures += test_revision_admission_and_idempotency();
     failures += test_failure_injection_preserves_state();
     failures += test_shared_token_statistics_rollback();
+    failures += test_posting_segments_are_bounded_and_generation_bound();
     failures += test_original_projection_only();
     return failures == 0 ? 0 : 1;
 }
