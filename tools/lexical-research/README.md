@@ -54,6 +54,33 @@ the observed sample distribution only; it does not claim that p99 is
 statistically stable. Python timings must not be compared directly with
 production C++ latency.
 
+## Persistent lexical IndexStore oracle
+
+The requirements handoff is recorded in
+`guides/experiments/2026-10-24-persistent-lexical-index-requirements.md`.
+Validate its implementation-independent fixture with:
+
+```powershell
+py -3 tools/lexical-research/validate_persistent_lexical_oracle.py `
+  tools/lexical-research/fixtures/persistent_lexical_oracle_v1.json --self-test
+```
+
+The oracle separates canonical storage from derived search data:
+`Canonical Storage -> SearchProjection -> Persistent Lexical IndexStore ->
+Retrieval -> Canonical Hydration`. It records scorer-shared TF/DF inputs,
+snapshot identity, stale-generation overlays, and fail-closed outcomes. It
+does not implement an MDBX IndexStore or select a production scorer.
+
+The validator independently recomputes BM25, BM25+, and BM25L scores from
+explicit scorer parameters, including delta and tolerance, and checks score,
+ranking, deterministic tie, collection-statistics, and reopen parity for
+independent resource and chunk arms. The mixed arm is diagnostic only. It also
+excludes zero-score non-matches, derives lifecycle completion from versioned
+overlay membership and posting freshness,
+round-trips the published snapshot identity, and checks numeric block upper
+bounds. Its self-test must fail for a changed score, lifecycle result, freshness
+field, reopen identity, bound, or required case ID.
+
 ## PR3 C++ parity
 
 Build the opt-in C++ exporter with `AGENT_MEMORY_BUILD_TESTS=ON`, then run the
