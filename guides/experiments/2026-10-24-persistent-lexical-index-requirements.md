@@ -27,10 +27,10 @@ all candidates and statistics to one published snapshot, or return an explicit
 | `SearchProjection`, `ProjectionVersionRef`, durable `Original` projection | implemented/production | source for derived indexing |
 | In-memory `ExactLexicalIndex` BM25 control | implemented/production | correctness control, not persistent IndexStore |
 | Projection-aware retrieval and publication checks | implemented/production | must remain revision-bound |
-| Persistent term dictionary and postings | contract-only | next storage implementation |
-| Persistent TF/DF/document statistics | contract-only | same snapshot as postings |
+| Persistent term dictionary and postings | bounded MDBX payload baseline | segmented/posting-row layout remains follow-up |
+| Persistent TF/DF/document statistics | reconstructed from durable inputs | same snapshot as postings; physical aggregates remain follow-up |
 | Descriptor, active snapshot and read-frontier value contracts | implemented/production baseline | persistent publication, fencing and recovery still contract-only |
-| Atomic epoch/generation publication and recovery | contract-only | next storage implementation |
+| Atomic epoch/generation publication and recovery | bounded MDBX adapter covered | coordinator-wide canonical/index transaction remains follow-up |
 | BM25F field materialization | contract-only | requires per-field stats from projections |
 | WAND/BMW bounds, posting compression, positional blocks | missing/deferred | separate execution/compression PRs |
 
@@ -144,7 +144,8 @@ accepted:
 ## Non-goals and follow-up
 
 This PR does not choose BM25+ or BM25L for production, implement BM25F,
-introduce MDBX DBIs, or benchmark codecs. Those require independent PRs after
-the IndexStore contract is accepted. The next implementation PR should map
-these requirements onto the existing roadmap types and add a persistent
-IndexStore with exact oracle parity before adding WAND or compression.
+introduce a new MDBX DBI, or benchmark codecs. The bounded adapter consumes the
+manifest-reserved `lexical_posting_segments` table and is a durable logical
+baseline, not the final segmented serving layout. Follow-up work must add the
+shared canonical/projection publication coordinator and exact scorer parity
+before adding WAND or compression.

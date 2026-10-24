@@ -66,7 +66,7 @@ Out of scope:
 | Projection-aware bounded retrieval | Implemented by PR #533 | Rebuilds a bounded lexical view in memory |
 | Descriptor, snapshot and read-frontier value contracts | Implemented dependency-free baseline | No persistent rows or pinned storage transaction yet |
 | Flat lexical postings/statistics baseline | Implemented dependency-free logical backend | No MDBX durability or publication transaction yet |
-| Epoch-keyed postings, token/stat rows, active snapshot | Roadmap and DBI-manifest reservations exist | No production implementation yet |
+| Epoch-keyed postings, token/stat rows, active snapshot | Roadmap and DBI-manifest reservations exist | The bounded MDBX adapter persists a versioned flat logical payload; segmented/compressed rows remain deferred |
 | Shared unit/projection/manifest/index read frontier | Missing | Required before a strict snapshot claim |
 
 The DBI manifest contains roadmap entries for lexical tables and the reserved
@@ -74,6 +74,26 @@ The DBI manifest contains roadmap entries for lexical tables and the reserved
 planning records, not permission to open new tables in this PR. An
 implementation PR must validate the selected profile, DBI budget, wire-sync
 semantics, and migration policy before changing the manifest.
+
+The first adapter slice uses the already reserved `lexical_posting_segments`
+DBI with a single versioned key/value payload per `(scope, projection)`. The
+payload stores descriptor identity, active epoch/generation, publication
+sequence, and revision-bound unit inputs; the dependency-free
+`FlatLexicalIndex` reconstructs postings and aggregate statistics on reopen.
+This is an intentionally bounded durable baseline: it proves atomic
+publication, rollback, replay, scope isolation, descriptor admission, and one
+read transaction for a coherent frontier, but it does not claim compressed
+segments, scorer execution, canonical hydration, or the final row-per-posting
+layout. A future segmented layout must allocate a new posting layout/epoch and
+must not reinterpret this payload in place. Its read frontier is deliberately
+lexical-only: because this adapter does not own canonical units, projections,
+or manifests, it reports `NonLinearizable` and cannot claim an `Exact` route
+until a later coordinator pins those DBIs in the same transaction. Payload
+version `v1` is admission-checked and fail-closed; unknown payloads, descriptor
+mismatches, and incompatible layouts are not interpreted as legacy rows. There
+is no rolling migration path in this slice: changing the payload codec or
+physical row meaning requires a quiesced rebuild into a new epoch and layout
+version.
 
 ## Index identity
 

@@ -1,5 +1,6 @@
 #include "FlatLexicalIndex.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -144,6 +145,21 @@ const LexicalActiveSnapshot& FlatLexicalIndex::active_snapshot() const noexcept 
 
 std::size_t FlatLexicalIndex::size() const noexcept {
     return m_units.size();
+}
+
+void FlatLexicalIndex::restore_active_snapshot_for_storage(
+    LexicalActiveSnapshot snapshot
+) {
+    if(!is_valid_lexical_active_snapshot(snapshot)
+        || snapshot.statistics_epoch != m_descriptor.ref.statistics_epoch
+        || std::find(
+            m_descriptor.supported_posting_layout_versions.begin(),
+            m_descriptor.supported_posting_layout_versions.end(),
+            snapshot.posting_layout_version
+        ) == m_descriptor.supported_posting_layout_versions.end()) {
+        throw std::invalid_argument("incompatible durable lexical snapshot");
+    }
+    m_active_snapshot = snapshot;
 }
 
 void FlatLexicalIndex::remove_unit(const KnowledgeUnitId& unit_id) {
