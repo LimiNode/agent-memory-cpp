@@ -44,6 +44,8 @@ struct MdbxPersistentLexicalIndexOptions final {
     std::size_t max_dictionary_entries = 4'000'000U;
     /// Maximum UTF-8 bytes in one normalized token.
     std::size_t max_token_bytes = 4'096U;
+    /// Maximum supported descriptor layout-version entries for this adapter.
+    std::size_t max_layout_versions = 256U;
     std::shared_ptr<MdbxStorageContext> context;
     LexicalIndexDescriptor descriptor;
 };

@@ -450,10 +450,12 @@ public:
           max_active_units(options.max_active_units),
           max_total_tokens(options.max_total_tokens),
           max_dictionary_entries(options.max_dictionary_entries),
-          max_token_bytes(options.max_token_bytes) {
+          max_token_bytes(options.max_token_bytes),
+          max_layout_versions(options.max_layout_versions) {
         if(!is_valid_lexical_index_descriptor(descriptor)) {
             throw std::invalid_argument("invalid persistent lexical index descriptor");
         }
+        validate_descriptor_limits(descriptor);
         auto txn = context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
         const auto stored = table.find(key, txn);
         if(stored) {
@@ -485,6 +487,7 @@ public:
     }
 
     void validate_state_limits(const StoredState& state) const {
+        validate_descriptor_limits(state.descriptor);
         if(state.units.size() > max_active_units
             || state.token_dictionary.size() > max_dictionary_entries) {
             throw std::runtime_error("persistent lexical state exceeds configured limits");
@@ -508,13 +511,20 @@ public:
         }
     }
 
+    void validate_descriptor_limits(const LexicalIndexDescriptor& value) const {
+        if(value.supported_posting_layout_versions.size() > max_layout_versions) {
+            throw std::invalid_argument(
+                "persistent lexical descriptor layout count exceeds configured limit");
+        }
+    }
+
     [[nodiscard]] PayloadDecodeLimits decode_limits() const noexcept {
         return PayloadDecodeLimits{
             max_active_units,
             max_total_tokens,
             max_dictionary_entries,
             max_token_bytes,
-            256U
+            max_layout_versions
         };
     }
 
@@ -575,6 +585,7 @@ public:
     std::size_t max_total_tokens;
     std::size_t max_dictionary_entries;
     std::size_t max_token_bytes;
+    std::size_t max_layout_versions;
     MdbxPersistentLexicalIndexFaultPoint failure =
         MdbxPersistentLexicalIndexFaultPoint::None;
 };

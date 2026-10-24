@@ -29,6 +29,21 @@ LexicalIndexDescriptor descriptor(const ScopeId& scope, std::uint8_t seed) {
     };
 }
 
+LexicalIndexDescriptor descriptor_with_layouts(
+    const ScopeId& scope,
+    std::uint8_t seed,
+    std::size_t count
+) {
+    auto result = descriptor(scope, seed);
+    result.supported_posting_layout_versions.clear();
+    result.supported_posting_layout_versions.reserve(count);
+    for(std::size_t index = 0; index < count; ++index) {
+        result.supported_posting_layout_versions.push_back(
+            static_cast<std::uint32_t>(index + 1U));
+    }
+    return result;
+}
+
 FlatLexicalUnitInput unit(
     const ScopeId& scope,
     std::uint64_t id,
@@ -269,7 +284,7 @@ int main() {
                 MdbxPersistentLexicalIndexFaultPoint::BeforeCommit);
             bool interrupted = false;
             try {
-                limited.upsert(unit(scope_a, 3, 2, "bounded-c", {"c2"}),
+                limited.upsert(unit(scope_a, 3, 2, "bounded-c", {"b"}),
                     FlatLexicalExpectedState{
                         KnowledgeUnitId{3}, 1, 1,
                         ProjectionVersionRef{1, 1, 1, "derivation-v1"}
@@ -287,10 +302,11 @@ int main() {
             MdbxPersistentLexicalIndex reopened{std::move(bounded)};
             {
                 const auto snapshot = reopened.read_snapshot();
+                const auto restored_unit = snapshot.index.find_unit_stats(KnowledgeUnitId{3});
                 require(snapshot.index.collection_stats().unit_count == 1
                         && snapshot.index.find_token_id("c")
-                        && !snapshot.index.find_token_id("c2"),
-                    "bounded state was not readable after aborted replacement");
+                        && restored_unit && restored_unit->unit_revision == 1,
+                "bounded state was not readable after aborted replacement");
             }
             bool dictionary_rejected = false;
             try {
@@ -303,6 +319,45 @@ int main() {
         }
         std::filesystem::remove(bounded_path, error);
         require(!error, "bounded test database cleanup failed");
+
+        const auto layout_path = std::filesystem::temp_directory_path()
+            / "agent_memory_mdbx_persistent_lexical_index_layout_test.mdbx";
+        std::filesystem::remove(layout_path, error);
+        {
+            auto context = MdbxStorageContext::open(layout_path.string());
+            auto layout_options = options(layout_path, context, scope_a, 7);
+            layout_options.descriptor = descriptor_with_layouts(scope_a, 7, 256);
+            MdbxPersistentLexicalIndex accepted{std::move(layout_options)};
+            accepted.upsert(unit(scope_a, 1, 1, "layout-resource", {"layout"}));
+        }
+        {
+            auto context = MdbxStorageContext::open(layout_path.string());
+            auto layout_options = options(layout_path, context, scope_a, 7);
+            layout_options.descriptor = descriptor_with_layouts(scope_a, 7, 256);
+            MdbxPersistentLexicalIndex reopened{std::move(layout_options)};
+            require(reopened.read_snapshot().index.collection_stats().unit_count == 1,
+                "256-entry descriptor layout did not survive reopen");
+        }
+        std::filesystem::remove(layout_path, error);
+        require(!error, "layout test database cleanup failed");
+        const auto layout_reject_path = std::filesystem::temp_directory_path()
+            / "agent_memory_mdbx_persistent_lexical_index_layout_reject.mdbx";
+        std::filesystem::remove(layout_reject_path, error);
+        {
+            auto context = MdbxStorageContext::open(layout_reject_path.string());
+            auto layout_options = options(layout_reject_path, context, scope_a, 7);
+            layout_options.descriptor = descriptor_with_layouts(scope_a, 7, 257);
+            bool rejected = false;
+            try {
+                MdbxPersistentLexicalIndex invalid{std::move(layout_options)};
+                static_cast<void>(invalid);
+            } catch(const std::invalid_argument&) {
+                rejected = true;
+            }
+            require(rejected, "257-entry descriptor layout was accepted by the adapter");
+        }
+        std::filesystem::remove(layout_reject_path, error);
+        require(!error, "layout reject test database cleanup failed");
 
         const auto legacy_path = std::filesystem::temp_directory_path()
             / "agent_memory_mdbx_persistent_lexical_index_legacy_test.mdbx";
