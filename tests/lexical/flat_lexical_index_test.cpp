@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -65,6 +66,25 @@ namespace {
             input.unit_revision,
             input.projection_version
         };
+    }
+
+    bool same_flat_posting(
+        const agent_memory::FlatLexicalPosting& lhs,
+        const agent_memory::FlatLexicalPosting& rhs
+    ) {
+        return lhs.token_id == rhs.token_id
+            && lhs.unit_id == rhs.unit_id
+            && lhs.resource_id == rhs.resource_id
+            && lhs.resource_generation == rhs.resource_generation
+            && lhs.projection_version.unit_revision_at_build
+                == rhs.projection_version.unit_revision_at_build
+            && lhs.projection_version.projection_revision
+                == rhs.projection_version.projection_revision
+            && lhs.projection_version.derivation_generation
+                == rhs.projection_version.derivation_generation
+            && lhs.projection_version.derivation_fingerprint
+                == rhs.projection_version.derivation_fingerprint
+            && lhs.term_frequency == rhs.term_frequency;
     }
 
     int test_upsert_populates_flat_rows_and_stats() {
@@ -370,25 +390,36 @@ namespace {
 
     int test_posting_segments_are_bounded_and_generation_bound() {
         agent_memory::FlatLexicalIndex index{make_descriptor()};
-        index.upsert(make_input(1, 7, {"shared", "shared"}));
-        index.upsert(make_input(2, 7, {"shared"}));
-        index.upsert(make_input(3, 7, {"shared"}));
-        index.upsert(make_input(4, 7, {"shared"}));
+        const auto unit_one = make_input(1, 7, {"shared", "shared"});
+        const auto unit_two = make_input(2, 7, {"shared"});
+        const auto unit_three = make_input(3, 7, {"shared"});
+        const auto unit_four = make_input(4, 7, {"shared"});
+        const auto unit_five = make_input(5, 7, {"shared"});
+        index.upsert(unit_one);
+        index.upsert(unit_two);
+        index.upsert(unit_three);
+        index.upsert(unit_four);
+        index.upsert(unit_five);
         const auto token_id = index.find_token_id("shared");
         if(!token_id) {
             return fail("segment fixture must allocate the shared token");
         }
 
         const auto segments = index.posting_segments(*token_id, 2);
-        if(segments.size() != 2
+        if(segments.size() != 3
             || segments[0].segment_id != 0
             || segments[1].segment_id != 1
+            || segments[2].segment_id != 2
             || segments[0].postings.size() != 2
-            || segments[1].postings.size() != 2) {
+            || segments[1].postings.size() != 2
+            || segments[2].postings.size() != 1) {
             return fail("posting segments must use deterministic bounded partitions");
         }
 
+        const auto original_postings = index.postings(*token_id);
         std::size_t posting_count = 0;
+        std::uint64_t previous_unit_id = 0;
+        std::vector<agent_memory::FlatLexicalPosting> reconstructed;
         for(const auto& segment : segments) {
             if(!agent_memory::is_valid_flat_lexical_posting_segment(segment)
                 || segment.statistics_epoch != index.active_snapshot().statistics_epoch
@@ -399,13 +430,45 @@ namespace {
                 return fail("posting segments must bind to the active generation");
             }
             posting_count += segment.postings.size();
+            for(const auto& posting : segment.postings) {
+                if(posting.unit_id.value() <= previous_unit_id) {
+                    return fail("posting segments must preserve global unit ordering");
+                }
+                previous_unit_id = posting.unit_id.value();
+                reconstructed.push_back(posting);
+            }
         }
-        if(posting_count != index.postings(*token_id).size()
+        if(posting_count != original_postings.size()
+            || reconstructed.size() != original_postings.size()
             || segments[0].postings[0].unit_id
                 != agent_memory::KnowledgeUnitId{1}
             || segments[1].postings[0].unit_id
-                != agent_memory::KnowledgeUnitId{3}) {
+                != agent_memory::KnowledgeUnitId{3}
+            || segments[2].postings[0].unit_id
+                != agent_memory::KnowledgeUnitId{5}) {
             return fail("posting segments must preserve complete ordered membership");
+        }
+        for(std::size_t index_position = 0;
+            index_position < original_postings.size();
+            ++index_position) {
+            const auto& expected = original_postings[index_position];
+            const auto& actual = reconstructed[index_position];
+            if(!same_flat_posting(actual, expected)) {
+                return fail("segment reconstruction must preserve every posting field");
+            }
+        }
+
+        const auto singleton_segments = index.posting_segments(*token_id, 1);
+        if(singleton_segments.size() != original_postings.size()
+            || singleton_segments.front().postings.size() != 1
+            || singleton_segments.back().postings.size() != 1) {
+            return fail("unit posting segment limit must produce singleton segments");
+        }
+        const auto oversized_segment = index.posting_segments(*token_id, 99);
+        if(oversized_segment.size() != 1
+            || oversized_segment.front().segment_id != 0
+            || oversized_segment.front().postings.size() != original_postings.size()) {
+            return fail("oversized posting segment limit must preserve one complete segment");
         }
 
         if(!index.posting_segments(agent_memory::TokenId{999}, 2).empty()) {
@@ -416,6 +479,88 @@ namespace {
             static_cast<void>(index.posting_segments(*token_id, 0));
             return fail("zero posting segment limit must be rejected");
         } catch(const std::invalid_argument&) {
+        }
+
+        auto invalid = segments.front();
+        invalid.postings.front().token_id = agent_memory::TokenId{};
+        if(agent_memory::is_valid_flat_lexical_posting_segment(invalid)) {
+            return fail("segment validator must reject a mismatched token id");
+        }
+        invalid = segments.front();
+        invalid.postings[1].unit_id = invalid.postings.front().unit_id;
+        if(agent_memory::is_valid_flat_lexical_posting_segment(invalid)) {
+            return fail("segment validator must reject duplicate unit ids");
+        }
+        invalid = segments.front();
+        invalid.postings.front().term_frequency = 0;
+        if(agent_memory::is_valid_flat_lexical_posting_segment(invalid)) {
+            return fail("segment validator must reject zero term frequency");
+        }
+        invalid = segments.front();
+        invalid.postings.front().resource_id = agent_memory::ResourceId{};
+        if(agent_memory::is_valid_flat_lexical_posting_segment(invalid)) {
+            return fail("segment validator must reject empty resource identity");
+        }
+        invalid = segments.front();
+        invalid.postings.front().projection_version = {};
+        if(agent_memory::is_valid_flat_lexical_posting_segment(invalid)) {
+            return fail("segment validator must reject invalid projection version");
+        }
+
+        const auto initial_generation = index.active_snapshot().statistics_generation;
+        index.upsert(
+            make_input(3, 8, {"replacement"}),
+            expected_for(unit_three)
+        );
+        const auto replacement_token = index.find_token_id("shared");
+        if(!replacement_token
+            || index.active_snapshot().statistics_generation <= initial_generation) {
+            return fail("revision replacement must advance the statistics generation");
+        }
+        const auto after_replacement = index.posting_segments(*replacement_token, 2);
+        if(after_replacement.size() != 2
+            || after_replacement[0].postings[0].unit_id
+                != agent_memory::KnowledgeUnitId{1}
+            || after_replacement[1].postings[0].unit_id
+                != agent_memory::KnowledgeUnitId{4}) {
+            return fail("replacement must rebuild complete active posting membership");
+        }
+        const auto repeated_after_replacement =
+            index.posting_segments(*replacement_token, 2);
+        if(repeated_after_replacement.size() != after_replacement.size()
+            || repeated_after_replacement[0].postings.size()
+                != after_replacement[0].postings.size()
+            || repeated_after_replacement[1].postings.size()
+                != after_replacement[1].postings.size()) {
+            return fail("repeated segmentation must be deterministic for one snapshot");
+        }
+        for(std::size_t segment_index = 0;
+            segment_index < after_replacement.size();
+            ++segment_index) {
+            for(std::size_t posting_index = 0;
+                posting_index < after_replacement[segment_index].postings.size();
+                ++posting_index) {
+                if(!same_flat_posting(
+                    repeated_after_replacement[segment_index].postings[posting_index],
+                    after_replacement[segment_index].postings[posting_index]
+                )) {
+                    return fail("repeated segmentation must preserve every posting field");
+                }
+            }
+        }
+
+        const auto generation_before_erase = index.active_snapshot().statistics_generation;
+        if(!index.erase(agent_memory::KnowledgeUnitId{5})) {
+            return fail("erase fixture must remove one active posting");
+        }
+        const auto after_erase = index.posting_segments(*replacement_token, 2);
+        if(index.active_snapshot().statistics_generation <= generation_before_erase
+            || after_erase.size() != 2
+            || after_erase[0].postings.size() != 2
+            || after_erase[1].postings.size() != 1
+            || after_erase[1].postings.front().unit_id
+                != agent_memory::KnowledgeUnitId{4}) {
+            return fail("erase must update generation and segment membership");
         }
         return 0;
     }
