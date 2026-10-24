@@ -23,7 +23,8 @@ REQUIRED_RANKING_CASES = {
 }
 REQUIRED_SNAPSHOT_CASES = {
     "same_epoch_complete_overlay", "same_epoch_replacement_overlay",
-    "same_epoch_incomplete_overlay", "erase_tombstone", "epoch_mismatch",
+    "same_epoch_incomplete_overlay", "same_epoch_partial_overlay",
+    "erase_tombstone", "epoch_mismatch",
     "projection_version_mismatch", "resource_generation_mismatch",
 }
 REQUIRED_ACCELERATION_CASES = {
@@ -33,9 +34,6 @@ REQUIRED_ACCELERATION_CASES = {
 ROUTE_COMPLETIONS = {"Exact", "Partial", "Unavailable"}
 CANDIDATE_DECISIONS = {"accepted", "filtered"}
 PRUNING_DECISIONS = {"enabled", "disable_pruning"}
-TOLERANCE = 1e-6
-
-
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -43,8 +41,8 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def close(actual: float, expected: float) -> bool:
-    return math.isclose(actual, expected, rel_tol=TOLERANCE, abs_tol=TOLERANCE)
+def close(actual: float, expected: float, tolerance: float) -> bool:
+    return math.isclose(actual, expected, rel_tol=tolerance, abs_tol=tolerance)
 
 
 def scorer_score(
@@ -71,7 +69,7 @@ def scorer_score(
     return idf * factor
 
 
-def arm_stats(arm: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, int]]:
+def arm_stats(arm: dict[str, Any], tolerance: float) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, int]]:
     documents = arm.get("documents")
     if not isinstance(documents, list) or not documents:
         raise ValueError(f"{arm.get('name')} must contain documents")
@@ -101,7 +99,7 @@ def arm_stats(arm: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]
         "average_length": total / len(documents),
     }
     collection = arm.get("collection")
-    if not isinstance(collection, dict) or collection.get("unit_count") != expected_collection["unit_count"] or collection.get("total_token_count") != total or not close(float(collection.get("average_length", 0)), expected_collection["average_length"]):
+    if not isinstance(collection, dict) or collection.get("unit_count") != expected_collection["unit_count"] or collection.get("total_token_count") != total or not close(float(collection.get("average_length", 0)), expected_collection["average_length"], tolerance):
         raise ValueError("collection statistics do not match documents")
     expected_df = {term: sum(term in row["terms"] for row in documents) for term in terms_seen}
     if arm.get("document_frequency") != expected_df:
@@ -110,9 +108,9 @@ def arm_stats(arm: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]
 
 
 def score_documents(
-    arm: dict[str, Any], query_terms: list[str], scorer: str, parameters: dict[str, Any]
+    arm: dict[str, Any], query_terms: list[str], scorer: str, parameters: dict[str, Any], tolerance: float
 ) -> list[tuple[str, float]]:
-    documents, collection, document_frequency = arm_stats(arm)
+    documents, collection, document_frequency = arm_stats(arm, tolerance)
     if not query_terms or any(not isinstance(term, str) or not term for term in query_terms):
         raise ValueError("query_terms must contain non-empty strings")
     scores: list[tuple[str, float]] = []
@@ -132,7 +130,7 @@ def score_documents(
 
 
 def validate_expected_ranking(
-    case: dict[str, Any], arm: dict[str, Any], parameters: dict[str, Any]
+    case: dict[str, Any], arm: dict[str, Any], parameters: dict[str, Any], tolerance: float
 ) -> None:
     expected = case.get("expected")
     if not isinstance(expected, dict) or set(expected) != set(SCORERS):
@@ -141,7 +139,7 @@ def validate_expected_ranking(
     if not isinstance(top_k, int) or top_k <= 0:
         raise ValueError("ranking top_k must be positive")
     for scorer in SCORERS:
-        actual = score_documents(arm, case["query_terms"], scorer, parameters)[:top_k]
+        actual = score_documents(arm, case["query_terms"], scorer, parameters, tolerance)[:top_k]
         rows = expected[scorer]
         if not isinstance(rows, list) or len(rows) != len(actual):
             raise ValueError(f"{case.get('name')} has wrong {scorer} result length")
@@ -149,7 +147,7 @@ def validate_expected_ranking(
         if len(expected_ids) != len(set(expected_ids)) or expected_ids != [unit_id for unit_id, _ in actual]:
             raise ValueError(f"{case.get('name')} has wrong {scorer} ranking")
         for row, (_, score) in zip(rows, actual):
-            if not isinstance(row.get("score"), (int, float)) or not close(score, float(row["score"])):
+            if not isinstance(row.get("score"), (int, float)) or not close(score, float(row["score"]), tolerance):
                 raise ValueError(f"{case.get('name')} has wrong {scorer} score")
 
 
@@ -170,6 +168,9 @@ def validate_identity(data: dict[str, Any]) -> None:
 
 
 def validate_scorers(data: dict[str, Any]) -> None:
+    tolerance = data.get("score_tolerance")
+    if not isinstance(tolerance, (int, float)) or not math.isfinite(tolerance) or tolerance <= 0:
+        raise ValueError("score_tolerance must be a positive finite number")
     parameters = data.get("scorer_parameters")
     if not isinstance(parameters, dict) or set(parameters) != set(SCORERS):
         raise ValueError("all scorer parameters are required")
@@ -191,11 +192,11 @@ def validate_scorers(data: dict[str, Any]) -> None:
         expected_unit = {"chunk_level": "chunk", "resource_level": "resource", "mixed_diagnostic": "mixed"}[name]
         if arm.get("document_unit") != expected_unit:
             raise ValueError("scorer arm has the wrong document unit")
-        arm_stats(arm)
+        arm_stats(arm, tolerance)
         if name == "mixed_diagnostic" and not arm.get("diagnostic_only"):
             raise ValueError("mixed arm must be diagnostic_only")
         for case in arm.get("ranking_cases", []):
-            validate_expected_ranking(case, arm, parameters)
+            validate_expected_ranking(case, arm, parameters, tolerance)
     ranking_cases = [case for arm in arms for case in arm.get("ranking_cases", [])]
     ranking_names = [case.get("name") for case in ranking_cases]
     if len(ranking_names) != len(set(ranking_names)) or not REQUIRED_RANKING_CASES.issubset(ranking_names):
@@ -205,12 +206,25 @@ def validate_scorers(data: dict[str, Any]) -> None:
         arm = arms_by_name.get(case.get("arm"))
         if arm is None:
             raise ValueError("reopen case references unknown arm")
-        validate_expected_ranking(case, arm, parameters)
+        validate_expected_ranking(case, arm, parameters, tolerance)
         for scorer in SCORERS:
-            first = score_documents(arm, case["query_terms"], scorer, parameters)
-            second = score_documents(arm, case["query_terms"], scorer, parameters)
+            first = score_documents(arm, case["query_terms"], scorer, parameters, tolerance)
+            second = score_documents(arm, case["query_terms"], scorer, parameters, tolerance)
             if first != second:
                 raise ValueError("reopen scores are not deterministic")
+        snapshot = case.get("snapshot")
+        if not isinstance(snapshot, dict):
+            raise ValueError("reopen case must contain a snapshot round-trip")
+        reopened = json.loads(json.dumps(snapshot, sort_keys=True))
+        if reopened != snapshot:
+            raise ValueError("snapshot round-trip changed identity")
+        for field in (
+            "projection_schema_id", "projection_schema_version",
+            "tokenizer_fingerprint", "normalization_fingerprint",
+            "statistics_epoch", "statistics_generation", "posting_layout_version",
+        ):
+            if reopened.get(field) != data["identity"][field]:
+                raise ValueError("reopen snapshot does not match active identity")
 
 
 def validate_lifecycle(data: dict[str, Any]) -> None:
@@ -224,9 +238,23 @@ def validate_lifecycle(data: dict[str, Any]) -> None:
         candidate = case.get("expected_candidate_decision", "accepted")
         if route not in ROUTE_COMPLETIONS or candidate not in CANDIDATE_DECISIONS:
             raise ValueError("invalid lifecycle decision")
-        if case["name"] in {"projection_version_mismatch", "resource_generation_mismatch"}:
-            if candidate != "filtered" or route != "Exact":
-                raise ValueError("freshness mismatch must filter a candidate without changing complete route")
+        freshness_fields = {
+            "posting_projection_version", "active_projection_version",
+            "posting_resource_generation", "active_resource_generation",
+        }
+        if freshness_fields.intersection(case):
+            required = {
+                "posting_projection_version", "active_projection_version",
+                "posting_resource_generation", "active_resource_generation",
+            }
+            if not required.issubset(case):
+                raise ValueError("freshness case must provide both projection and resource identities")
+            derived_candidate = "filtered" if (
+                case["posting_projection_version"] != case["active_projection_version"]
+                or case["posting_resource_generation"] != case["active_resource_generation"]
+            ) else "accepted"
+            if candidate != derived_candidate or route != "Exact":
+                raise ValueError("freshness decision does not match posting identity")
             continue
         base_epoch = case.get("base_epoch", identity["statistics_epoch"])
         target_epoch = case.get("target_epoch", identity["statistics_epoch"])
@@ -241,7 +269,12 @@ def validate_lifecycle(data: dict[str, Any]) -> None:
                     raise ValueError(f"lifecycle outcome mismatch for {case['name']}")
                 continue
             if case.get("missing_delta"):
-                derived_route = "Unavailable"
+                covered = case.get("covered_partitions", [])
+                unavailable = case.get("unavailable_partitions", [])
+                if covered and unavailable and set(covered).isdisjoint(unavailable):
+                    derived_route = "Partial"
+                else:
+                    derived_route = "Unavailable"
             else:
                 base = set(case.get("base_members", []))
                 adds = set(case.get("adds", []))
@@ -284,7 +317,7 @@ def validate_acceleration(data: dict[str, Any]) -> None:
         arm = arms.get(case.get("arm"))
         if arm is None:
             raise ValueError("bound case references unknown arm")
-        actual = score_documents(arm, case["query_terms"], scorer, parameters)
+        actual = score_documents(arm, case["query_terms"], scorer, parameters, data["score_tolerance"])
         selected_ids = set(case.get("document_ids", []))
         arm_ids = {unit_id for unit_id, _ in actual}
         if not selected_ids or len(case.get("document_ids", [])) != len(selected_ids) or not selected_ids.issubset(arm_ids):
@@ -293,7 +326,7 @@ def validate_acceleration(data: dict[str, Any]) -> None:
         if not selected:
             raise ValueError("bound case has no selected documents")
         maximum = max(score for _, score in selected)
-        if not isinstance(case.get("upper_bound"), (int, float)) or float(case["upper_bound"]) + TOLERANCE < maximum:
+        if not isinstance(case.get("upper_bound"), (int, float)) or float(case["upper_bound"]) + data["score_tolerance"] < maximum:
             raise ValueError(f"upper bound is not conservative for {case.get('name')}")
 
 
@@ -314,11 +347,18 @@ def self_test(path: Path) -> None:
     bad["scorer_arms"][0]["ranking_cases"][0]["expected"]["bm25"][0]["score"] += 0.1
     mutations.append(("score mutation", bad))
     bad = copy.deepcopy(data)
-    bad["snapshot_cases"][2]["expected_route_completion"] = "Exact"
+    next(case for case in bad["snapshot_cases"] if case["name"] == "same_epoch_incomplete_overlay")["expected_route_completion"] = "Exact"
     mutations.append(("lifecycle mutation", bad))
     bad = copy.deepcopy(data)
     bad["acceleration_cases"][0]["upper_bound"] = 0.1
     mutations.append(("bound mutation", bad))
+    bad = copy.deepcopy(data)
+    freshness_case = next(case for case in bad["snapshot_cases"] if case["name"] == "projection_version_mismatch")
+    freshness_case["posting_projection_version"] = freshness_case["active_projection_version"]
+    mutations.append(("freshness mutation", bad))
+    bad = copy.deepcopy(data)
+    bad["reopen_cases"][0]["snapshot"]["statistics_epoch"] = "epoch:E0"
+    mutations.append(("reopen identity mutation", bad))
     bad = copy.deepcopy(data)
     bad["scorer_arms"][0]["ranking_cases"][0]["name"] = "broken_case"
     mutations.append(("coverage mutation", bad))

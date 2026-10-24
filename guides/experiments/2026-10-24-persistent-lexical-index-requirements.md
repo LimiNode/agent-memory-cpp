@@ -1,7 +1,7 @@
 # Persistent lexical IndexStore requirements and oracle handoff
 
 Date: 2026-10-24
-Base: `liminode/main` at `c1dfb7a3` (includes projection-aware retrieval PR #533)
+Base: liminode/main at be25540f (includes the persistent lexical identity contracts)
 
 This is a requirements/evidence handoff, not a production storage change. It
 does not define a competing MDBX schema and does not alter canonical content,
@@ -29,7 +29,8 @@ all candidates and statistics to one published snapshot, or return an explicit
 | Projection-aware retrieval and publication checks | implemented/production | must remain revision-bound |
 | Persistent term dictionary and postings | contract-only | next storage implementation |
 | Persistent TF/DF/document statistics | contract-only | same snapshot as postings |
-| Active snapshot, epoch/generation publication and recovery | contract-only | atomic publication/fencing required |
+| Descriptor, active snapshot and read-frontier value contracts | implemented/production baseline | persistent publication, fencing and recovery still contract-only |
+| Atomic epoch/generation publication and recovery | contract-only | next storage implementation |
 | BM25F field materialization | contract-only | requires per-field stats from projections |
 | WAND/BMW bounds, posting compression, positional blocks | missing/deferred | separate execution/compression PRs |
 
@@ -120,7 +121,7 @@ covers:
 - exhaustive BM25/BM25+/BM25L ranking over shared TF/DF inputs;
 - independent resource-level and chunk-level statistics, with a mixed arm kept
   only as a diagnostic;
-- deterministic ties and reopen-stable scores;
+- deterministic ties and snapshot round-trip/reopen-stable scores;
 - update replacement, erase/tombstone, stale epoch, and incomplete overlay;
 - projection-version and resource-generation mismatches;
 - scorer-bound versus incompatible block-max metadata.
@@ -134,7 +135,7 @@ accepted:
 | active snapshot binding | no cross-epoch/generation statistics mixing |
 | update/erase | no stale or resurrected candidates |
 | incomplete overlay | explicit `Partial`/`Unavailable`, never a complete result |
-| reopen/recovery | same published snapshot gives same scores/ties |
+| reopen/recovery | round-tripped published snapshot preserves identity and scores/ties |
 | acceleration | WAND/BMW is exact under matching bounds, otherwise disabled |
 | storage boundary | no canonical bytes or semantic IDs rewritten for indexing |
 

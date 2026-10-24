@@ -21,6 +21,7 @@
     "supported_posting_layout_versions": [1]
   },
   "tie_policy": "score descending, unit_id ascending",
+  "score_tolerance": 0.000001,
   "scorer_parameters": {
     "bm25": {"idf": "log1p_okapi", "k1": 1.5, "b": 0.75},
     "bm25_plus": {"idf": "log1p_okapi", "k1": 1.5, "b": 0.75, "delta": 1.0},
@@ -136,6 +137,15 @@
       "arm": "chunk_level",
       "query_terms": ["alpha"],
       "top_k": 2,
+      "snapshot": {
+        "projection_schema_id": "search_projection",
+        "projection_schema_version": 1,
+        "tokenizer_fingerprint": "code_aware_fixture_v1",
+        "normalization_fingerprint": "unicode_casefold_v1",
+        "statistics_epoch": "epoch:E1",
+        "statistics_generation": 11,
+        "posting_layout_version": 1
+      },
       "expected": {
         "bm25": [{"unit_id": "c_short", "score": 0.894383}, {"unit_id": "c_long", "score": 0.565834}],
         "bm25_plus": [{"unit_id": "c_short", "score": 1.587531}, {"unit_id": "c_long", "score": 1.258982}],
@@ -147,10 +157,11 @@
     {"name": "same_epoch_complete_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["c_short", "c_long"], "adds": ["c_new"], "removes": ["c_long"], "replacements": [], "target_members": ["c_short", "c_new"], "expected_candidate_decision": "accepted", "expected_route_completion": "Exact"},
     {"name": "same_epoch_replacement_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["r_main", "r_archive"], "adds": [], "removes": [], "replacements": ["r_main"], "target_members": ["r_main", "r_archive"], "expected_candidate_decision": "accepted", "expected_route_completion": "Exact"},
     {"name": "same_epoch_incomplete_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["c_short", "c_long"], "adds": ["c_new"], "removes": [], "replacements": [], "missing_delta": "remove:c_long", "expected_candidate_decision": "accepted", "expected_route_completion": "Unavailable"},
+    {"name": "same_epoch_partial_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["c_short", "c_long"], "adds": ["c_new"], "removes": [], "replacements": [], "missing_delta": "remove:c_long", "covered_partitions": ["alpha"], "unavailable_partitions": ["beta"], "expected_candidate_decision": "accepted", "expected_route_completion": "Partial"},
     {"name": "erase_tombstone", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["c_short", "c_long"], "adds": [], "removes": ["c_long"], "replacements": [], "target_members": ["c_short"], "expected_candidate_decision": "accepted", "expected_route_completion": "Exact"},
     {"name": "epoch_mismatch", "base_epoch": "epoch:E0", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "expected_candidate_decision": "accepted", "expected_route_completion": "Unavailable"},
-    {"name": "projection_version_mismatch", "posting_projection_version": "p2", "active_projection_version": "p3", "expected_candidate_decision": "filtered", "expected_route_completion": "Exact"},
-    {"name": "resource_generation_mismatch", "posting_resource_generation": 1, "active_resource_generation": 2, "expected_candidate_decision": "filtered", "expected_route_completion": "Exact"}
+    {"name": "projection_version_mismatch", "posting_projection_version": "p2", "active_projection_version": "p3", "posting_resource_generation": 2, "active_resource_generation": 2, "expected_candidate_decision": "filtered", "expected_route_completion": "Exact"},
+    {"name": "resource_generation_mismatch", "posting_projection_version": "p3", "active_projection_version": "p3", "posting_resource_generation": 1, "active_resource_generation": 2, "expected_candidate_decision": "filtered", "expected_route_completion": "Exact"}
   ],
   "acceleration_cases": [
     {"name": "matching_bm25_block_bound", "arm": "chunk_level", "scorer": "bm25", "bound_scorer": "bm25", "query_terms": ["alpha"], "document_ids": ["c_short", "c_long"], "upper_bound": 0.9, "statistics_epoch": "epoch:E1", "active_epoch": "epoch:E1", "statistics_generation": 11, "active_generation": 11, "expected_pruning": "enabled"},
