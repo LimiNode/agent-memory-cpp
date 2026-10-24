@@ -66,7 +66,7 @@ Out of scope:
 | Projection-aware bounded retrieval | Implemented by PR #533 | Rebuilds a bounded lexical view in memory |
 | Descriptor, snapshot and read-frontier value contracts | Implemented dependency-free baseline | No persistent rows or pinned storage transaction yet |
 | Flat lexical postings/statistics baseline | Implemented dependency-free logical backend | No MDBX durability or publication transaction yet |
-| Epoch-keyed postings, token/stat rows, active snapshot | Roadmap and DBI-manifest reservations exist | No production implementation yet |
+| Epoch-keyed postings, token/stat rows, active snapshot | Roadmap and DBI-manifest reservations exist | The bounded MDBX adapter persists a versioned flat logical payload; segmented/compressed rows remain deferred |
 | Shared unit/projection/manifest/index read frontier | Missing | Required before a strict snapshot claim |
 
 The DBI manifest contains roadmap entries for lexical tables and the reserved
@@ -74,6 +74,46 @@ The DBI manifest contains roadmap entries for lexical tables and the reserved
 planning records, not permission to open new tables in this PR. An
 implementation PR must validate the selected profile, DBI budget, wire-sync
 semantics, and migration policy before changing the manifest.
+
+The first adapter slice uses the already reserved `lexical_posting_segments`
+DBI with a single versioned key/value payload per `(scope, projection)`. The
+payload stores descriptor identity, active epoch/generation, publication
+sequence, the complete historical token dictionary/high-water allocator, and
+revision-bound unit inputs; the dependency-free
+`FlatLexicalIndex` reconstructs postings and aggregate statistics on reopen.
+The physical key is explicitly a `flat-v2` baseline representation, not a
+segment-row encoding of the manifest's future
+`(ScopeId, ProjectionKind, LexicalStatisticsEpoch, FieldId, TokenId,
+SegmentId)` key. Segment readers must reject this value rather than decode it
+as immutable posting rows. This representation has a deliberate migration
+boundary: changing its codec or moving to segment rows requires a quiesced
+rebuild into a new payload/layout version and epoch; no rolling migration is
+claimed.
+This is an intentionally bounded durable baseline: it proves atomic
+publication, rollback, replay, scope isolation, descriptor admission, and one
+read transaction for a coherent frontier, but it does not claim compressed
+segments, scorer execution, canonical hydration, or the final row-per-posting
+layout. A future segmented layout must allocate a new posting layout/epoch and
+must not reinterpret this payload in place. Its read frontier is deliberately
+lexical-only: because this adapter does not own canonical units, projections,
+or manifests, it reports `NonLinearizable` and cannot claim an `Exact` route
+until a later coordinator pins those DBIs in the same transaction. Payload
+version `v2` is admission-checked and fail-closed; unknown payloads, descriptor
+mismatches, and incompatible layouts are not interpreted as legacy rows. There
+An existing `flat-v1` key for the same scope/projection is detected explicitly
+and opening the adapter fails with a quiesced-rebuild requirement. There is no
+rolling migration path in this slice: changing the payload codec or
+physical row meaning requires a quiesced rebuild into a new epoch and layout
+version.
+
+The flat baseline is deliberately bounded. Configurable admissions cap the
+serialized payload bytes, active unit count, active token occurrences,
+historical dictionary entries, and one normalized-token byte length. Limits
+are checked before rebuilding the flat oracle, before decoding untrusted
+collection counts, and again against the complete post-state before the MDBX
+write. The implementation is an O(N)
+read-modify-write prototype; it must not be described as an incremental or
+scalable persistent backend until segmented storage replaces the value rewrite.
 
 ## Index identity
 

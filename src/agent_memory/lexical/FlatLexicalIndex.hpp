@@ -13,6 +13,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace agent_memory {
@@ -95,6 +96,31 @@ namespace agent_memory {
         [[nodiscard]] const LexicalIndexDescriptor& descriptor() const noexcept;
         [[nodiscard]] const LexicalActiveSnapshot& active_snapshot() const noexcept;
         [[nodiscard]] std::size_t size() const noexcept;
+
+        /// \brief Restores durable snapshot metadata after logical rows are reloaded.
+        ///
+        /// This is used by storage adapters after replaying the persisted unit
+        /// inputs. It never changes postings or statistics and rejects an epoch
+        /// or layout that is incompatible with this index descriptor.
+        void restore_active_snapshot_for_storage(
+            LexicalActiveSnapshot snapshot
+        );
+
+        /// \brief Restores the durable token dictionary and allocator frontier.
+        ///
+        /// Storage adapters call this on a fresh index before replaying active
+        /// units. Historical dictionary entries are retained even when no
+        /// active posting currently references them, so token ids remain
+        /// monotonic and are never reused after erase or clear.
+        void restore_token_dictionary_for_storage(
+            std::vector<std::pair<std::string, TokenId>> entries,
+            TokenId next_token_id
+        );
+
+        [[nodiscard]] std::vector<std::pair<std::string, TokenId>>
+        token_dictionary_for_storage() const;
+
+        [[nodiscard]] TokenId next_token_id_for_storage() const noexcept;
 
         /// \brief Inserts or replaces one active unit contribution.
         /// \throws std::invalid_argument when the input is not normalized or
