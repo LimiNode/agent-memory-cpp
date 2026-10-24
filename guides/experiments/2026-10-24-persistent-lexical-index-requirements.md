@@ -121,8 +121,10 @@ covers:
 - exhaustive BM25/BM25+/BM25L ranking over shared TF/DF inputs;
 - independent resource-level and chunk-level statistics, with a mixed arm kept
   only as a diagnostic;
+- positive-match filtering, sparse top-K, and no-match queries;
 - deterministic ties and snapshot round-trip/reopen-stable scores;
-- update replacement, erase/tombstone, stale epoch, and incomplete overlay;
+- versioned update replacement, erase/tombstone, stale epoch, and incomplete
+  overlay operations;
 - projection-version and resource-generation mismatches;
 - scorer-bound versus incompatible block-max metadata.
 

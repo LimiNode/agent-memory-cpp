@@ -19,6 +19,7 @@ SCORERS = ("bm25", "bm25_plus", "bm25l")
 REQUIRED_ARMS = {"chunk_level", "resource_level", "mixed_diagnostic"}
 REQUIRED_RANKING_CASES = {
     "chunk_alpha", "chunk_repeated_alpha", "chunk_gamma_tie",
+    "chunk_alpha_sparse_topk", "chunk_no_match",
     "resource_alpha", "resource_gamma_tie", "mixed_alpha_diagnostic",
 }
 REQUIRED_SNAPSHOT_CASES = {
@@ -124,7 +125,8 @@ def score_documents(
             df = document_frequency[term]
             idf = math.log1p((n - df + 0.5) / (df + 0.5))
             score += scorer_score(scorer, tf, row["length"], collection["average_length"], idf, parameters)
-        scores.append((row["unit_id"], score))
+        if score > 0.0:
+            scores.append((row["unit_id"], score))
     scores.sort(key=lambda item: (-item[1], item[0]))
     return scores
 
@@ -227,6 +229,57 @@ def validate_scorers(data: dict[str, Any]) -> None:
                 raise ValueError("reopen snapshot does not match active identity")
 
 
+def state_map(rows: Any) -> dict[str, tuple[Any, ...]]:
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("versioned membership state must be a non-empty list")
+    result: dict[str, tuple[Any, ...]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("membership state rows must be objects")
+        unit_id = row.get("unit_id")
+        if not isinstance(unit_id, str) or not unit_id:
+            raise ValueError("membership state requires unit_id")
+        identity = (
+            row.get("projection_version"),
+            row.get("resource_generation"),
+        )
+        if not identity[0] or not isinstance(identity[1], int):
+            raise ValueError("membership state requires version and generation")
+        if unit_id in result:
+            raise ValueError("membership state contains duplicate unit IDs")
+        result[unit_id] = identity
+    return result
+
+
+def required_operations(base_state: Any, target_state: Any) -> dict[str, set[str]]:
+    base = state_map(base_state)
+    target = state_map(target_state)
+    return {
+        "adds": set(target) - set(base),
+        "removes": set(base) - set(target),
+        "replacements": {
+            unit_id for unit_id in set(base) & set(target)
+            if base[unit_id] != target[unit_id]
+        },
+    }
+
+
+def provided_operations(case: dict[str, Any]) -> dict[str, set[str]]:
+    result = {
+        name: set(case.get(name, []))
+        for name in ("adds", "removes", "replacements")
+    }
+    if any(len(case.get(name, [])) != len(result[name]) for name in result):
+        raise ValueError("overlay operations must not contain duplicate unit IDs")
+    if result["adds"] & result["removes"]:
+        raise ValueError("a unit cannot be added and removed in one overlay")
+    return result
+
+
+def operations_complete(actual: dict[str, set[str]], required: dict[str, set[str]]) -> bool:
+    return actual == required
+
+
 def validate_lifecycle(data: dict[str, Any]) -> None:
     identity = data["identity"]
     cases = data.get("snapshot_cases")
@@ -268,26 +321,48 @@ def validate_lifecycle(data: dict[str, Any]) -> None:
                 if route != derived_route:
                     raise ValueError(f"lifecycle outcome mismatch for {case['name']}")
                 continue
-            if case.get("missing_delta"):
-                covered = case.get("covered_partitions", [])
-                unavailable = case.get("unavailable_partitions", [])
-                if covered and unavailable and set(covered).isdisjoint(unavailable):
-                    derived_route = "Partial"
+            required = required_operations(case.get("base_state"), case.get("target_state"))
+            provided = provided_operations(case)
+            complete = operations_complete(provided, required)
+            if complete:
+                derived_route = "Exact"
+            else:
+                partition_operations = case.get("partition_operations", {})
+                covered = set(case.get("covered_partitions", []))
+                unavailable = set(case.get("unavailable_partitions", []))
+                if covered & unavailable:
+                    raise ValueError("covered and unavailable partitions must be disjoint")
+                if partition_operations:
+                    if set(partition_operations) != covered | unavailable:
+                        raise ValueError("partition operation coverage is incomplete")
+                    partition_complete: dict[str, bool] = {}
+                    for partition, details in partition_operations.items():
+                        if not isinstance(details, dict):
+                            raise ValueError("partition operation details must be objects")
+                        partition_required = required_operations(
+                            details.get("base_state"), details.get("target_state")
+                        )
+                        partition_provided = {
+                            name: set(details.get("provided_" + name, []))
+                            for name in ("adds", "removes", "replacements")
+                        }
+                        if any(
+                            len(details.get("provided_" + name, [])) != len(partition_provided[name])
+                            for name in partition_provided
+                        ):
+                            raise ValueError("partition operations must not contain duplicates")
+                        if partition_provided["adds"] & partition_provided["removes"]:
+                            raise ValueError("partition adds and removes overlap")
+                        partition_complete[partition] = operations_complete(
+                            partition_provided, partition_required
+                        )
+                    if any(partition not in covered or not partition_complete[partition] for partition in covered):
+                        raise ValueError("covered partition is not complete")
+                    if any(partition not in unavailable or partition_complete[partition] for partition in unavailable):
+                        raise ValueError("unavailable partition is complete")
+                    derived_route = "Partial" if covered and unavailable else "Unavailable"
                 else:
                     derived_route = "Unavailable"
-            else:
-                base = set(case.get("base_members", []))
-                adds = set(case.get("adds", []))
-                removes = set(case.get("removes", []))
-                replacements = set(case.get("replacements", []))
-                if not adds.isdisjoint(removes) or not removes.issubset(base) or not replacements.issubset(base):
-                    raise ValueError("invalid overlay membership")
-                derived_members = (base - removes) | adds
-                if not replacements.issubset(derived_members):
-                    raise ValueError("replacement must remain active")
-                if set(case.get("target_members", [])) != derived_members:
-                    raise ValueError("overlay target membership is incorrect")
-                derived_route = "Exact"
         if route != derived_route:
             raise ValueError(f"lifecycle outcome mismatch for {case['name']}")
 
@@ -347,8 +422,16 @@ def self_test(path: Path) -> None:
     bad["scorer_arms"][0]["ranking_cases"][0]["expected"]["bm25"][0]["score"] += 0.1
     mutations.append(("score mutation", bad))
     bad = copy.deepcopy(data)
+    no_match = next(case for case in bad["scorer_arms"][0]["ranking_cases"] if case["name"] == "chunk_no_match")
+    no_match["expected"]["bm25"].append({"unit_id": "c_tie_a", "score": 0.0})
+    mutations.append(("zero-score candidate mutation", bad))
+    bad = copy.deepcopy(data)
     next(case for case in bad["snapshot_cases"] if case["name"] == "same_epoch_incomplete_overlay")["expected_route_completion"] = "Exact"
     mutations.append(("lifecycle mutation", bad))
+    bad = copy.deepcopy(data)
+    complete_case = next(case for case in bad["snapshot_cases"] if case["name"] == "same_epoch_complete_overlay")
+    complete_case["target_state"].append({"unit_id": "c_ghost", "projection_version": "p9", "resource_generation": 1})
+    mutations.append(("versioned membership mutation", bad))
     bad = copy.deepcopy(data)
     bad["acceleration_cases"][0]["upper_bound"] = 0.1
     mutations.append(("bound mutation", bad))

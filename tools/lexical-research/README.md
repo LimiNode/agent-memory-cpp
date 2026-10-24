@@ -75,7 +75,8 @@ The validator independently recomputes BM25, BM25+, and BM25L scores from
 explicit scorer parameters, including delta and tolerance, and checks score,
 ranking, deterministic tie, collection-statistics, and reopen parity for
 independent resource and chunk arms. The mixed arm is diagnostic only. It also
-derives lifecycle completion from overlay membership and posting freshness,
+excludes zero-score non-matches, derives lifecycle completion from versioned
+overlay membership and posting freshness,
 round-trips the published snapshot identity, and checks numeric block upper
 bounds. Its self-test must fail for a changed score, lifecycle result, freshness
 field, reopen identity, bound, or required case ID.

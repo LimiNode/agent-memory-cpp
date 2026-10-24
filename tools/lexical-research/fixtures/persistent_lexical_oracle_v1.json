@@ -51,6 +51,26 @@
           }
         },
         {
+          "name": "chunk_alpha_sparse_topk",
+          "query_terms": ["alpha"],
+          "top_k": 4,
+          "expected": {
+            "bm25": [{"unit_id": "c_short", "score": 0.894383}, {"unit_id": "c_long", "score": 0.565834}],
+            "bm25_plus": [{"unit_id": "c_short", "score": 1.587531}, {"unit_id": "c_long", "score": 1.258982}],
+            "bm25l": [{"unit_id": "c_short", "score": 1.098892}, {"unit_id": "c_long", "score": 0.927450}]
+          }
+        },
+        {
+          "name": "chunk_no_match",
+          "query_terms": ["absent_term"],
+          "top_k": 3,
+          "expected": {
+            "bm25": [],
+            "bm25_plus": [],
+            "bm25l": []
+          }
+        },
+        {
           "name": "chunk_repeated_alpha",
           "query_terms": ["alpha", "alpha"],
           "top_k": 2,
@@ -78,10 +98,10 @@
       "documents": [
         {"unit_id": "r_main", "document_unit": "resource", "resource_id": "r1", "resource_generation": 4, "projection_version": "p1", "length": 3, "terms": {"alpha": 2, "beta": 1}},
         {"unit_id": "r_archive", "document_unit": "resource", "resource_id": "r2", "resource_generation": 2, "projection_version": "p2", "length": 5, "terms": {"alpha": 1, "beta": 4}},
-        {"unit_id": "r_tie_a", "document_unit": "resource", "resource_id": "r3", "resource_generation": 1, "projection_version": "p4", "length": 4, "terms": {"gamma": 1, "noise": 3}},
-        {"unit_id": "r_tie_b", "document_unit": "resource", "resource_id": "r4", "resource_generation": 1, "projection_version": "p5", "length": 4, "terms": {"gamma": 1, "noise": 3}}
+        {"unit_id": "r_tie_a", "document_unit": "resource", "resource_id": "r3", "resource_generation": 1, "projection_version": "p4", "length": 5, "terms": {"gamma": 1, "noise": 4}},
+        {"unit_id": "r_tie_b", "document_unit": "resource", "resource_id": "r4", "resource_generation": 1, "projection_version": "p5", "length": 5, "terms": {"gamma": 1, "noise": 4}}
       ],
-      "collection": {"unit_count": 4, "total_token_count": 16, "average_length": 4.0},
+      "collection": {"unit_count": 4, "total_token_count": 18, "average_length": 4.5},
       "document_frequency": {"alpha": 2, "beta": 2, "gamma": 2, "noise": 2},
       "ranking_cases": [
         {
@@ -89,9 +109,9 @@
           "query_terms": ["alpha"],
           "top_k": 2,
           "expected": {
-            "bm25": [{"unit_id": "r_main", "score": 1.076733}, {"unit_id": "r_archive", "score": 0.623054}],
-            "bm25_plus": [{"unit_id": "r_main", "score": 1.769881}, {"unit_id": "r_archive", "score": 1.316201}],
-            "bm25l": [{"unit_id": "r_main", "score": 1.208978}, {"unit_id": "r_archive", "score": 0.955124}]
+            "bm25": [{"unit_id": "r_main", "score": 1.109035}, {"unit_id": "r_archive", "score": 0.660140}],
+            "bm25_plus": [{"unit_id": "r_main", "score": 1.802183}, {"unit_id": "r_archive", "score": 1.353287}],
+            "bm25l": [{"unit_id": "r_main", "score": 1.229777}, {"unit_id": "r_archive", "score": 0.973521}]
           }
         },
         {
@@ -99,9 +119,9 @@
           "query_terms": ["gamma"],
           "top_k": 2,
           "expected": {
-            "bm25": [{"unit_id": "r_tie_a", "score": 0.693147}, {"unit_id": "r_tie_b", "score": 0.693147}],
-            "bm25_plus": [{"unit_id": "r_tie_a", "score": 1.386294}, {"unit_id": "r_tie_b", "score": 1.386294}],
-            "bm25l": [{"unit_id": "r_tie_a", "score": 0.990210}, {"unit_id": "r_tie_b", "score": 0.990210}]
+            "bm25": [{"unit_id": "r_tie_a", "score": 0.660140}, {"unit_id": "r_tie_b", "score": 0.660140}],
+            "bm25_plus": [{"unit_id": "r_tie_a", "score": 1.353287}, {"unit_id": "r_tie_b", "score": 1.353287}],
+            "bm25l": [{"unit_id": "r_tie_a", "score": 0.973521}, {"unit_id": "r_tie_b", "score": 0.973521}]
           }
         }
       ]
@@ -154,11 +174,11 @@
     }
   ],
   "snapshot_cases": [
-    {"name": "same_epoch_complete_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["c_short", "c_long"], "adds": ["c_new"], "removes": ["c_long"], "replacements": [], "target_members": ["c_short", "c_new"], "expected_candidate_decision": "accepted", "expected_route_completion": "Exact"},
-    {"name": "same_epoch_replacement_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["r_main", "r_archive"], "adds": [], "removes": [], "replacements": ["r_main"], "target_members": ["r_main", "r_archive"], "expected_candidate_decision": "accepted", "expected_route_completion": "Exact"},
-    {"name": "same_epoch_incomplete_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["c_short", "c_long"], "adds": ["c_new"], "removes": [], "replacements": [], "missing_delta": "remove:c_long", "expected_candidate_decision": "accepted", "expected_route_completion": "Unavailable"},
-    {"name": "same_epoch_partial_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["c_short", "c_long"], "adds": ["c_new"], "removes": [], "replacements": [], "missing_delta": "remove:c_long", "covered_partitions": ["alpha"], "unavailable_partitions": ["beta"], "expected_candidate_decision": "accepted", "expected_route_completion": "Partial"},
-    {"name": "erase_tombstone", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_members": ["c_short", "c_long"], "adds": [], "removes": ["c_long"], "replacements": [], "target_members": ["c_short"], "expected_candidate_decision": "accepted", "expected_route_completion": "Exact"},
+    {"name": "same_epoch_complete_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_state": [{"unit_id": "c_short", "projection_version": "p1", "resource_generation": 4}, {"unit_id": "c_long", "projection_version": "p1", "resource_generation": 4}], "target_state": [{"unit_id": "c_short", "projection_version": "p1", "resource_generation": 4}, {"unit_id": "c_new", "projection_version": "p6", "resource_generation": 1}], "adds": ["c_new"], "removes": ["c_long"], "replacements": [], "expected_candidate_decision": "accepted", "expected_route_completion": "Exact"},
+    {"name": "same_epoch_replacement_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_state": [{"unit_id": "r_main", "projection_version": "p1", "resource_generation": 4}, {"unit_id": "r_archive", "projection_version": "p2", "resource_generation": 2}], "target_state": [{"unit_id": "r_main", "projection_version": "p6", "resource_generation": 5}, {"unit_id": "r_archive", "projection_version": "p2", "resource_generation": 2}], "adds": [], "removes": [], "replacements": ["r_main"], "expected_candidate_decision": "accepted", "expected_route_completion": "Exact"},
+    {"name": "same_epoch_incomplete_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_state": [{"unit_id": "c_short", "projection_version": "p1", "resource_generation": 4}, {"unit_id": "c_long", "projection_version": "p1", "resource_generation": 4}], "target_state": [{"unit_id": "c_short", "projection_version": "p1", "resource_generation": 4}, {"unit_id": "c_new", "projection_version": "p6", "resource_generation": 1}], "adds": ["c_new"], "removes": [], "replacements": [], "expected_candidate_decision": "accepted", "expected_route_completion": "Unavailable"},
+    {"name": "same_epoch_partial_overlay", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_state": [{"unit_id": "c_short", "projection_version": "p1", "resource_generation": 4}, {"unit_id": "c_long", "projection_version": "p1", "resource_generation": 4}], "target_state": [{"unit_id": "c_short", "projection_version": "p1", "resource_generation": 4}, {"unit_id": "c_new", "projection_version": "p6", "resource_generation": 1}], "adds": ["c_new"], "removes": [], "replacements": [], "covered_partitions": ["alpha"], "unavailable_partitions": ["beta"], "partition_operations": {"alpha": {"base_state": [{"unit_id": "c_short", "projection_version": "p1", "resource_generation": 4}, {"unit_id": "c_long", "projection_version": "p1", "resource_generation": 4}], "target_state": [{"unit_id": "c_short", "projection_version": "p1", "resource_generation": 4}, {"unit_id": "c_new", "projection_version": "p6", "resource_generation": 1}], "provided_adds": ["c_new"], "provided_removes": ["c_long"], "provided_replacements": []}, "beta": {"base_state": [{"unit_id": "c_short", "projection_version": "p1", "resource_generation": 4}, {"unit_id": "c_long", "projection_version": "p1", "resource_generation": 4}], "target_state": [{"unit_id": "c_short", "projection_version": "p1", "resource_generation": 4}, {"unit_id": "c_new", "projection_version": "p6", "resource_generation": 1}], "provided_adds": ["c_new"], "provided_removes": [], "provided_replacements": []}}, "expected_candidate_decision": "accepted", "expected_route_completion": "Partial"},
+    {"name": "erase_tombstone", "base_epoch": "epoch:E1", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "base_state": [{"unit_id": "c_short", "projection_version": "p1", "resource_generation": 4}, {"unit_id": "c_long", "projection_version": "p1", "resource_generation": 4}], "target_state": [{"unit_id": "c_short", "projection_version": "p1", "resource_generation": 4}], "adds": [], "removes": ["c_long"], "replacements": [], "expected_candidate_decision": "accepted", "expected_route_completion": "Exact"},
     {"name": "epoch_mismatch", "base_epoch": "epoch:E0", "target_epoch": "epoch:E1", "base_generation": 10, "target_generation": 11, "expected_candidate_decision": "accepted", "expected_route_completion": "Unavailable"},
     {"name": "projection_version_mismatch", "posting_projection_version": "p2", "active_projection_version": "p3", "posting_resource_generation": 2, "active_resource_generation": 2, "expected_candidate_decision": "filtered", "expected_route_completion": "Exact"},
     {"name": "resource_generation_mismatch", "posting_projection_version": "p3", "active_projection_version": "p3", "posting_resource_generation": 1, "active_resource_generation": 2, "expected_candidate_decision": "filtered", "expected_route_completion": "Exact"}
