@@ -1,5 +1,6 @@
 #include <agent_memory/lexical/FlatLexicalIndex.hpp>
 
+#include <array>
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
@@ -55,6 +56,17 @@ namespace {
         };
     }
 
+    agent_memory::FlatLexicalExpectedState expected_for(
+        const agent_memory::FlatLexicalUnitInput& input
+    ) {
+        return agent_memory::FlatLexicalExpectedState{
+            input.unit_id,
+            input.resource_generation,
+            input.unit_revision,
+            input.projection_version
+        };
+    }
+
     int test_upsert_populates_flat_rows_and_stats() {
         agent_memory::FlatLexicalIndex index{make_descriptor()};
         index.upsert(make_input(1, 7, {"agent", "memory", "agent"}));
@@ -98,9 +110,10 @@ namespace {
 
     int test_replace_updates_active_contribution_without_reusing_tokens() {
         agent_memory::FlatLexicalIndex index{make_descriptor()};
-        index.upsert(make_input(1, 7, {"old", "old"}));
+        const auto old = make_input(1, 7, {"old", "old"});
+        index.upsert(old);
         const auto old_id = index.find_token_id("old");
-        index.upsert(make_input(1, 8, {"new"}));
+        index.upsert(make_input(1, 8, {"new"}), expected_for(old));
 
         if(!old_id
             || index.find_token_stats(*old_id)
@@ -155,6 +168,109 @@ namespace {
         return 0;
     }
 
+    int test_revision_admission_and_idempotency() {
+        agent_memory::FlatLexicalIndex index{make_descriptor()};
+        const auto first = make_input(1, 7, {"stable"});
+        index.upsert(first);
+        const auto generation = index.active_snapshot().statistics_generation;
+        index.upsert(first);
+        if(index.active_snapshot().statistics_generation != generation
+            || index.collection_stats().total_token_count != 1) {
+            return fail("identical revision replay must be an idempotent no-op");
+        }
+
+        auto conflict = first;
+        conflict.normalized_tokens = {"different"};
+        try {
+            index.upsert(std::move(conflict));
+            return fail("same revision with different content must be rejected");
+        } catch(const std::runtime_error&) {
+        }
+
+        auto stale = make_input(1, 6, {"stale"});
+        try {
+            index.upsert(std::move(stale));
+            return fail("stale revision must be rejected");
+        } catch(const std::runtime_error&) {
+        }
+
+        auto stale_generation = make_input(1, 8, {"stale-generation"});
+        stale_generation.resource_generation = 2;
+        try {
+            index.upsert(stale_generation, expected_for(first));
+            return fail("resource generation regression must be rejected");
+        } catch(const std::runtime_error&) {
+        }
+
+        auto newer = make_input(1, 8, {"newer"});
+        try {
+            index.upsert(newer);
+            return fail("replacement without an expected current state must be rejected");
+        } catch(const std::runtime_error&) {
+        }
+        index.upsert(newer, expected_for(first));
+        return 0;
+    }
+
+    int test_failure_injection_preserves_state() {
+        agent_memory::FlatLexicalIndex index{make_descriptor()};
+        const auto original = make_input(1, 7, {"old", "term"});
+        index.upsert(original);
+        const auto generation = index.active_snapshot().statistics_generation;
+
+        index.set_failure_injection_for_testing(
+            agent_memory::FlatLexicalUpsertFailurePoint::AfterTokenPreparation
+        );
+        try {
+            index.upsert(make_input(1, 8, {"prepared"}), expected_for(original));
+            return fail("token preparation failure must be injected");
+        } catch(const std::runtime_error&) {
+        }
+        auto old_stats = index.find_unit_stats(agent_memory::KnowledgeUnitId{1});
+        if(!old_stats || old_stats->unit_revision != 7
+            || index.active_snapshot().statistics_generation != generation
+            || !index.find_token_id("old")) {
+            return fail("failed preparation must leave the old state unchanged");
+        }
+
+        index.set_failure_injection_for_testing(
+            agent_memory::FlatLexicalUpsertFailurePoint::AfterPostingApplication
+        );
+        try {
+            index.upsert(
+                make_input(1, 8, {"new-a", "new-b"}),
+                expected_for(original)
+            );
+            return fail("posting application failure must be injected");
+        } catch(const std::runtime_error&) {
+        }
+        old_stats = index.find_unit_stats(agent_memory::KnowledgeUnitId{1});
+        const auto old_id = index.find_token_id("old");
+        if(!old_stats || old_stats->unit_revision != 7
+            || index.active_snapshot().statistics_generation != generation
+            || !old_id
+            || !index.find_token_stats(*old_id)
+            || index.find_token_stats(*old_id)->document_frequency != 1
+            || index.postings(*old_id).size() != 1
+            || index.find_token_id("new-a")
+            || index.collection_stats().total_token_count != 2) {
+            return fail("failed posting application must roll back the complete state");
+        }
+        return 0;
+    }
+
+    int test_original_projection_only() {
+        auto descriptor = make_descriptor();
+        descriptor.ref.projection_kind = agent_memory::ProjectionKind::Summary;
+        try {
+            agent_memory::FlatLexicalIndex index{std::move(descriptor)};
+            static_cast<void>(index);
+            return fail("flat lexical backend must reject unsupported projections");
+        } catch(const std::invalid_argument&) {
+        }
+        return 0;
+    }
+
 } // namespace
 
 int main() {
@@ -162,5 +278,8 @@ int main() {
     failures += test_upsert_populates_flat_rows_and_stats();
     failures += test_replace_updates_active_contribution_without_reusing_tokens();
     failures += test_erase_clear_and_validation();
+    failures += test_revision_admission_and_idempotency();
+    failures += test_failure_injection_preserves_state();
+    failures += test_original_projection_only();
     return failures == 0 ? 0 : 1;
 }

@@ -4,6 +4,68 @@
 #include <stdexcept>
 #include <utility>
 
+namespace {
+
+bool same_projection_version(
+    const agent_memory::ProjectionVersionRef& lhs,
+    const agent_memory::ProjectionVersionRef& rhs
+) noexcept {
+    return lhs.unit_revision_at_build == rhs.unit_revision_at_build
+        && lhs.projection_revision == rhs.projection_revision
+        && lhs.derivation_generation == rhs.derivation_generation
+        && lhs.derivation_fingerprint == rhs.derivation_fingerprint;
+}
+
+bool same_identity(
+    const agent_memory::FlatLexicalUnitStats& lhs,
+    const agent_memory::FlatLexicalUnitInput& rhs
+) noexcept {
+    return lhs.resource_generation == rhs.resource_generation
+        && lhs.unit_revision == rhs.unit_revision
+        && same_projection_version(lhs.projection_version, rhs.projection_version);
+}
+
+bool is_newer_identity(
+    const agent_memory::FlatLexicalUnitStats& lhs,
+    const agent_memory::FlatLexicalUnitInput& rhs
+) noexcept {
+    if(rhs.unit_revision < lhs.unit_revision
+        || rhs.resource_generation < lhs.resource_generation
+        || rhs.projection_version.projection_revision
+            < lhs.projection_version.projection_revision
+        || rhs.projection_version.derivation_generation
+            < lhs.projection_version.derivation_generation
+        || (rhs.projection_version.projection_revision
+                == lhs.projection_version.projection_revision
+            && rhs.projection_version.derivation_generation
+                == lhs.projection_version.derivation_generation
+            && rhs.projection_version.derivation_fingerprint
+                < lhs.projection_version.derivation_fingerprint)) {
+        return false;
+    }
+
+    return rhs.unit_revision > lhs.unit_revision
+        || rhs.resource_generation > lhs.resource_generation
+        || rhs.projection_version.projection_revision
+            > lhs.projection_version.projection_revision
+        || rhs.projection_version.derivation_generation
+            > lhs.projection_version.derivation_generation
+        || rhs.projection_version.derivation_fingerprint
+            > lhs.projection_version.derivation_fingerprint;
+}
+
+bool matches_expected(
+    const agent_memory::FlatLexicalUnitStats& actual,
+    const agent_memory::FlatLexicalExpectedState& expected
+) noexcept {
+    return actual.unit_id == expected.unit_id
+        && actual.resource_generation == expected.resource_generation
+        && actual.unit_revision == expected.unit_revision
+        && same_projection_version(actual.projection_version, expected.projection_version);
+}
+
+} // namespace
+
 namespace agent_memory {
 
 bool is_valid_flat_lexical_unit_input(
@@ -36,6 +98,11 @@ FlatLexicalIndex::FlatLexicalIndex(
 ) : m_descriptor(std::move(descriptor)) {
     if(!is_valid_lexical_index_descriptor(m_descriptor)) {
         throw std::invalid_argument("invalid lexical index descriptor");
+    }
+    if(m_descriptor.ref.projection_kind != ProjectionKind::Original) {
+        throw std::invalid_argument(
+            "flat lexical index supports only the Original projection"
+        );
     }
 
     if(posting_layout_version == 0) {
@@ -83,22 +150,6 @@ std::size_t FlatLexicalIndex::size() const noexcept {
     return m_units.size();
 }
 
-TokenId FlatLexicalIndex::get_or_create_token(const std::string& normalized_token) {
-    const auto found = m_token_by_text.find(normalized_token);
-    if(found != m_token_by_text.end()) {
-        return found->second;
-    }
-
-    if(m_next_token_id == std::numeric_limits<std::uint64_t>::max()) {
-        throw std::overflow_error("lexical token id space exhausted");
-    }
-
-    const TokenId token_id{m_next_token_id++};
-    m_token_by_text.emplace(normalized_token, token_id);
-    m_text_by_token.emplace(token_id, normalized_token);
-    return token_id;
-}
-
 void FlatLexicalIndex::remove_unit(const KnowledgeUnitId& unit_id) {
     const auto unit = m_units.find(unit_id);
     if(unit == m_units.end()) {
@@ -130,19 +181,79 @@ void FlatLexicalIndex::remove_unit(const KnowledgeUnitId& unit_id) {
     m_units.erase(unit);
 }
 
-void FlatLexicalIndex::upsert(FlatLexicalUnitInput input) {
+void FlatLexicalIndex::upsert(
+    FlatLexicalUnitInput input,
+    const std::optional<FlatLexicalExpectedState> expected_current
+) {
     if(!is_valid_flat_lexical_unit_input(input)
         || input.scope_id != m_descriptor.ref.scope_id
         || input.projection_kind != m_descriptor.ref.projection_kind) {
         throw std::invalid_argument("invalid flat lexical unit input");
     }
 
-    std::map<TokenId, std::uint32_t> term_frequencies;
-    for(const auto& token : input.normalized_tokens) {
-        ++term_frequencies[get_or_create_token(token)];
+    const auto existing = m_units.find(input.unit_id);
+    if(expected_current.has_value() && expected_current->unit_id != input.unit_id) {
+        throw std::invalid_argument("expected lexical unit identity mismatch");
+    }
+    if(existing != m_units.end()) {
+        if(expected_current.has_value()
+            && !matches_expected(existing->second.stats, *expected_current)) {
+            throw std::runtime_error("flat lexical replacement lost its expected current state");
+        }
+
+        if(same_identity(existing->second.stats, input)) {
+            if(existing->second.normalized_tokens == input.normalized_tokens
+                && existing->second.stats.resource_id == input.resource_id) {
+                return;
+            }
+            throw std::runtime_error("conflicting flat lexical content for the same revision");
+        }
+        if(!is_newer_identity(existing->second.stats, input)) {
+            throw std::runtime_error("stale flat lexical unit revision");
+        }
+        if(!expected_current.has_value()) {
+            throw std::runtime_error(
+                "flat lexical replacement requires an expected current state"
+            );
+        }
+    } else if(expected_current.has_value()) {
+        throw std::runtime_error("expected flat lexical unit is not present");
     }
 
-    remove_unit(input.unit_id);
+    if(m_active_snapshot.statistics_generation == std::numeric_limits<std::uint64_t>::max()) {
+        throw std::overflow_error("lexical statistics generation exhausted");
+    }
+
+    // Prepare every allocation before touching the active state. New token ids
+    // are only prospective until the commit below succeeds.
+    std::map<std::string, std::uint32_t> frequencies_by_text;
+    for(const auto& token : input.normalized_tokens) {
+        ++frequencies_by_text[token];
+    }
+
+    std::map<std::string, TokenId> token_ids_by_text;
+    std::map<std::string, TokenId> new_token_ids;
+    std::map<TokenId, std::string> new_text_by_token;
+    auto next_token_id = m_next_token_id;
+    for(const auto& item : frequencies_by_text) {
+        const auto found = m_token_by_text.find(item.first);
+        if(found != m_token_by_text.end()) {
+            token_ids_by_text.emplace(item.first, found->second);
+            continue;
+        }
+        if(next_token_id == std::numeric_limits<std::uint64_t>::max()) {
+            throw std::overflow_error("lexical token id space exhausted");
+        }
+        const TokenId token_id{next_token_id++};
+        token_ids_by_text.emplace(item.first, token_id);
+        new_token_ids.emplace(item.first, token_id);
+        new_text_by_token.emplace(token_id, item.first);
+    }
+
+    std::map<TokenId, std::uint32_t> term_frequencies;
+    for(const auto& item : frequencies_by_text) {
+        term_frequencies.emplace(token_ids_by_text.at(item.first), item.second);
+    }
 
     UnitState state{
         FlatLexicalUnitStats{
@@ -154,43 +265,216 @@ void FlatLexicalIndex::upsert(FlatLexicalUnitInput input) {
             static_cast<std::uint32_t>(input.normalized_tokens.size()),
             static_cast<std::uint32_t>(term_frequencies.size())
         },
-        term_frequencies
+        term_frequencies,
+        input.normalized_tokens
     };
 
-    m_collection_stats.unit_count++;
-    m_collection_stats.total_token_count += state.stats.token_count;
-    for(const auto& term : term_frequencies) {
-        m_postings[term.first][input.unit_id] = FlatLexicalPosting{
-            term.first,
-            input.unit_id,
-            input.resource_id,
-            input.resource_generation,
-            input.projection_version,
-            term.second
-        };
-        auto& stats = m_token_stats[term.first];
-        stats.token_id = term.first;
-        ++stats.document_frequency;
-        stats.collection_frequency += term.second;
+    std::optional<UnitState> old_state;
+    if(existing != m_units.end()) {
+        old_state = existing->second;
     }
-    m_units[input.unit_id] = std::move(state);
-    ++m_active_snapshot.statistics_generation;
+
+    std::map<TokenId, std::map<KnowledgeUnitId, FlatLexicalPosting>> staged_postings;
+    for(const auto& term : term_frequencies) {
+        staged_postings[term.first].emplace(
+            input.unit_id,
+            FlatLexicalPosting{
+                term.first,
+                input.unit_id,
+                input.resource_id,
+                input.resource_generation,
+                input.projection_version,
+                term.second
+            }
+        );
+    }
+
+    std::map<TokenId, FlatLexicalTokenStats> staged_token_stats;
+    for(const auto& term : term_frequencies) {
+        const auto current_stats = m_token_stats.find(term.first);
+        const auto old_term = !old_state.has_value()
+            ? false
+            : old_state->term_frequencies.find(term.first)
+                != old_state->term_frequencies.end();
+        const auto will_be_removed = old_term
+            && current_stats != m_token_stats.end()
+            && current_stats->second.document_frequency == 1;
+        if(current_stats == m_token_stats.end() || will_be_removed) {
+            staged_token_stats.emplace(
+                term.first,
+                FlatLexicalTokenStats{term.first, 1, term.second}
+            );
+        }
+    }
+    std::map<KnowledgeUnitId, UnitState> staged_unit;
+    staged_unit.emplace(input.unit_id, state);
+
+    if(m_failure_injection == FlatLexicalUpsertFailurePoint::AfterTokenPreparation) {
+        m_failure_injection = FlatLexicalUpsertFailurePoint::None;
+        throw std::runtime_error("injected failure after token preparation");
+    }
+
+    const auto old_collection = m_collection_stats;
+    const auto old_generation = m_active_snapshot.statistics_generation;
+    const auto old_next_token_id = m_next_token_id;
+    // Commit with a small journal. All inserts use pre-built node handles, so
+    // the only allocations are in the staging phase above.
+    std::vector<std::string> inserted_dictionary_keys;
+    inserted_dictionary_keys.reserve(new_token_ids.size());
+    std::vector<TokenId> inserted_posting_tokens;
+    inserted_posting_tokens.reserve(staged_postings.size());
+    std::vector<TokenId> inserted_stat_tokens;
+    inserted_stat_tokens.reserve(staged_token_stats.size());
+    try {
+        if(existing != m_units.end()) {
+            remove_unit(input.unit_id);
+        }
+
+        for(auto it = new_token_ids.begin(); it != new_token_ids.end();) {
+            const auto key = it->first;
+            auto node = new_token_ids.extract(it++);
+            m_token_by_text.insert(std::move(node));
+            inserted_dictionary_keys.push_back(key);
+        }
+        for(auto it = new_text_by_token.begin(); it != new_text_by_token.end();) {
+            auto node = new_text_by_token.extract(it++);
+            m_text_by_token.insert(std::move(node));
+        }
+
+        std::size_t applied_postings = 0;
+        for(auto it = staged_postings.begin(); it != staged_postings.end();) {
+            const auto token_id = it->first;
+            auto staged_bucket = staged_postings.extract(it++);
+            auto bucket = m_postings.find(token_id);
+            if(bucket == m_postings.end()) {
+                m_postings.insert(std::move(staged_bucket));
+            } else {
+                auto posting = staged_bucket.mapped().extract(input.unit_id);
+                bucket->second.insert(std::move(posting));
+            }
+            inserted_posting_tokens.push_back(token_id);
+            ++applied_postings;
+            if(applied_postings == 1
+                && m_failure_injection == FlatLexicalUpsertFailurePoint::AfterPostingApplication) {
+                m_failure_injection = FlatLexicalUpsertFailurePoint::None;
+                throw std::runtime_error("injected failure after posting application");
+            }
+        }
+
+        for(const auto& term : term_frequencies) {
+            auto stats = m_token_stats.find(term.first);
+            if(stats == m_token_stats.end()) {
+                auto node = staged_token_stats.extract(term.first);
+                m_token_stats.insert(std::move(node));
+                inserted_stat_tokens.push_back(term.first);
+            } else {
+                ++stats->second.document_frequency;
+                stats->second.collection_frequency += term.second;
+            }
+        }
+
+        m_collection_stats.unit_count = old_collection.unit_count
+            + (old_state ? 0U : 1U);
+        m_collection_stats.total_token_count = old_collection.total_token_count
+            - (old_state ? old_state->stats.token_count : 0U)
+            + state.stats.token_count;
+        auto unit_node = staged_unit.extract(input.unit_id);
+        m_units.insert(std::move(unit_node));
+        m_next_token_id = next_token_id;
+        ++m_active_snapshot.statistics_generation;
+    } catch(...) {
+        // Restore the logical state using the ordinary, deterministic erase
+        // path. The staging phase has already completed, and this path is used
+        // only for injected/exceptional commits; it never publishes a partial
+        // active state to callers.
+        for(const auto token_id : inserted_posting_tokens) {
+            auto bucket = m_postings.find(token_id);
+            if(bucket != m_postings.end()) {
+                bucket->second.erase(input.unit_id);
+                if(bucket->second.empty()) {
+                    m_postings.erase(bucket);
+                }
+            }
+        }
+        for(const auto token_id : inserted_stat_tokens) {
+            m_token_stats.erase(token_id);
+        }
+        for(const auto& term : term_frequencies) {
+            const auto stats = m_token_stats.find(term.first);
+            if(stats != m_token_stats.end()
+                && old_state
+                && old_state->term_frequencies.find(term.first) != old_state->term_frequencies.end()) {
+                --stats->second.document_frequency;
+                stats->second.collection_frequency -= term.second;
+            }
+        }
+        m_units.erase(input.unit_id);
+        for(const auto& key : inserted_dictionary_keys) {
+            const auto id = m_token_by_text.find(key);
+            if(id != m_token_by_text.end()) {
+                m_text_by_token.erase(id->second);
+                m_token_by_text.erase(id);
+            }
+        }
+        m_next_token_id = old_next_token_id;
+        m_active_snapshot.statistics_generation = old_generation;
+        if(old_state) {
+            // Rebuild the old contribution from the pre-upsert snapshot. This
+            // is bounded by one unit and is only reached on failure.
+            FlatLexicalUnitInput restore{
+                m_descriptor.ref.scope_id,
+                input.unit_id,
+                m_descriptor.ref.projection_kind,
+                old_state->stats.resource_id,
+                old_state->stats.resource_generation,
+                old_state->stats.unit_revision,
+                old_state->stats.projection_version,
+                old_state->normalized_tokens
+            };
+            upsert(std::move(restore), std::nullopt);
+            --m_active_snapshot.statistics_generation;
+        }
+        m_collection_stats = old_collection;
+        throw;
+    }
+}
+
+void FlatLexicalIndex::set_failure_injection_for_testing(
+    const FlatLexicalUpsertFailurePoint point
+) noexcept {
+    m_failure_injection = point;
 }
 
 bool FlatLexicalIndex::erase(const KnowledgeUnitId& unit_id) {
     if(m_units.find(unit_id) == m_units.end()) {
         return false;
     }
+    if(m_active_snapshot.statistics_generation == std::numeric_limits<std::uint64_t>::max()) {
+        throw std::overflow_error("lexical statistics generation exhausted");
+    }
     remove_unit(unit_id);
-    ++m_active_snapshot.statistics_generation;
+    advance_generation();
     return true;
 }
 
 void FlatLexicalIndex::clear() {
+    if(m_units.empty()) {
+        return;
+    }
+    if(m_active_snapshot.statistics_generation == std::numeric_limits<std::uint64_t>::max()) {
+        throw std::overflow_error("lexical statistics generation exhausted");
+    }
     m_units.clear();
     m_postings.clear();
     m_token_stats.clear();
     m_collection_stats = {};
+    advance_generation();
+}
+
+void FlatLexicalIndex::advance_generation() {
+    if(m_active_snapshot.statistics_generation == std::numeric_limits<std::uint64_t>::max()) {
+        throw std::overflow_error("lexical statistics generation exhausted");
+    }
     ++m_active_snapshot.statistics_generation;
 }
 

@@ -203,6 +203,22 @@ reopen protocol, crash recovery, or publication transaction. Those guarantees
 belong to the subsequent storage slice and must be tested against the same
 logical state and oracle.
 
+The flat baseline is deliberately body-only and accepts `ProjectionKind::Original`
+only. It does not claim field-aware or BM25F semantics; unsupported projection
+kinds are rejected at construction. Replacing an active unit is guarded by the
+complete expected current identity (`unit_revision`, `resource_generation`, and
+`ProjectionVersionRef`). An identical identity and identical normalized token
+sequence is an idempotent replay, while an identical identity with different
+content, a stale identity, or an unguarded replacement fails closed. This
+in-memory admission rule is a logical conformance guard, not a substitute for
+the durable fencing token required by the MDBX publication adapter.
+
+All tokenization, dictionary allocation, and posting construction are staged
+before the active state is changed. A failed commit restores the previous unit,
+statistics, postings, and generation; deterministic failure hooks in the
+conformance test exercise both the preparation and partial-posting paths. The
+hook is test-only and does not change the future durable transaction contract.
+
 ## Read frontier
 
 Strict retrieval requires a future shared read-frontier object with at least:

@@ -29,6 +29,21 @@ namespace agent_memory {
         std::vector<std::string> normalized_tokens;
     };
 
+    /// \brief Expected active identity used to guard a replacement.
+    struct FlatLexicalExpectedState final {
+        KnowledgeUnitId unit_id;
+        std::uint64_t resource_generation = 0;
+        std::uint64_t unit_revision = 0;
+        ProjectionVersionRef projection_version;
+    };
+
+    /// \brief Deterministic failure points used by conformance tests.
+    enum class FlatLexicalUpsertFailurePoint : std::uint8_t {
+        None,
+        AfterTokenPreparation,
+        AfterPostingApplication
+    };
+
     /// \brief One active token occurrence aggregate for a unit.
     struct FlatLexicalPosting final {
         TokenId token_id;
@@ -83,7 +98,18 @@ namespace agent_memory {
         /// \brief Inserts or replaces one active unit contribution.
         /// \throws std::invalid_argument when the input is not normalized or
         /// does not match this index descriptor.
-        void upsert(FlatLexicalUnitInput input);
+        /// \throws std::runtime_error when revision admission fails.
+        /// \throws std::overflow_error when the token or generation space is exhausted.
+        void upsert(
+            FlatLexicalUnitInput input,
+            std::optional<FlatLexicalExpectedState> expected_current = std::nullopt
+        );
+
+        /// \brief Arms one deterministic failure for exception-safety tests.
+        /// \note This hook is dependency-free and has no effect unless armed.
+        void set_failure_injection_for_testing(
+            FlatLexicalUpsertFailurePoint point
+        ) noexcept;
 
         /// \brief Removes one active unit contribution idempotently.
         [[nodiscard]] bool erase(const KnowledgeUnitId& unit_id);
@@ -113,10 +139,11 @@ namespace agent_memory {
         struct UnitState final {
             FlatLexicalUnitStats stats;
             std::map<TokenId, std::uint32_t> term_frequencies;
+            std::vector<std::string> normalized_tokens;
         };
 
-        [[nodiscard]] TokenId get_or_create_token(const std::string& normalized_token);
         void remove_unit(const KnowledgeUnitId& unit_id);
+        void advance_generation();
 
         LexicalIndexDescriptor m_descriptor;
         LexicalActiveSnapshot m_active_snapshot;
@@ -127,6 +154,8 @@ namespace agent_memory {
         std::map<TokenId, std::map<KnowledgeUnitId, FlatLexicalPosting>> m_postings;
         std::map<TokenId, FlatLexicalTokenStats> m_token_stats;
         FlatLexicalCollectionStats m_collection_stats;
+        FlatLexicalUpsertFailurePoint m_failure_injection =
+            FlatLexicalUpsertFailurePoint::None;
     };
 
     [[nodiscard]] bool is_valid_flat_lexical_unit_input(
