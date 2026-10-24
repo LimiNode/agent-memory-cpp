@@ -65,6 +65,7 @@ Out of scope:
 | `ResourceManifest` and `Original` projections | Implemented and revision-checked | Publication and provenance inputs |
 | Projection-aware bounded retrieval | Implemented by PR #533 | Rebuilds a bounded lexical view in memory |
 | Descriptor, snapshot and read-frontier value contracts | Implemented dependency-free baseline | No persistent rows or pinned storage transaction yet |
+| Flat lexical postings/statistics baseline | Implemented dependency-free logical backend | No MDBX durability or publication transaction yet |
 | Epoch-keyed postings, token/stat rows, active snapshot | Roadmap and DBI-manifest reservations exist | No production implementation yet |
 | Shared unit/projection/manifest/index read frontier | Missing | Required before a strict snapshot claim |
 
@@ -193,6 +194,33 @@ The contract is compatible with the existing importer guarantees: raw units,
 `Original` projections, body/revision bindings, and the manifest remain the
 publication boundary. The lexical index cannot make an unpublished staging row
 visible.
+
+The dependency-free `FlatLexicalIndex` is the first logical baseline for these
+row families. It validates projection/revision identity and maintains flat
+postings, token statistics, collection statistics, and the active generation in
+one process. It is intentionally not a durable adapter: it has no MDBX rows,
+reopen protocol, crash recovery, or publication transaction. Those guarantees
+belong to the subsequent storage slice and must be tested against the same
+logical state and oracle.
+
+The flat baseline is deliberately body-only and accepts `ProjectionKind::Original`
+only. It does not claim field-aware or BM25F semantics; unsupported projection
+kinds are rejected at construction. Replacing an active unit is guarded by the
+complete expected current identity (`unit_revision`, `resource_generation`, and
+`ProjectionVersionRef`). An identical identity and identical normalized token
+sequence is an idempotent replay, while an identical identity with different
+content, a stale identity, or an unguarded replacement fails closed. This
+in-memory admission rule is a logical conformance guard, not a substitute for
+the durable fencing token required by the MDBX publication adapter.
+The derivation fingerprint is opaque identity data; it is never ordered as a
+version. A fingerprint change without an explicit numeric revision or
+generation transition is rejected.
+
+All tokenization, dictionary allocation, and posting construction are staged
+before the active state is changed. A failed commit restores the previous unit,
+statistics, postings, and generation; deterministic failure hooks in the
+conformance test exercise both the preparation and partial-posting paths. The
+hook is test-only and does not change the future durable transaction contract.
 
 ## Read frontier
 
