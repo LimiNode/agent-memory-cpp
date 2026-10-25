@@ -264,6 +264,31 @@ FlatLexicalPostingPartitionRead reconstruct_flat_lexical_posting_partition(
         };
     }
 
+    // Layout version 1 uses deterministic contiguous packing: every segment
+    // except the last is full, and the last contains the remaining postings
+    // (one through the configured limit). Membership and aggregate counts
+    // alone are not sufficient to establish that a segment set was produced
+    // by the trusted writer; accepting arbitrary bounded repartitioning would
+    // make the physical layout ambiguous.
+    for(std::size_t segment_index = 0;
+        segment_index < segments.size();
+        ++segment_index) {
+        const auto expected_segment_size =
+            segment_index + 1 < segments.size()
+                ? expectation.max_postings_per_segment
+                : (expectation.expected_posting_count
+                        % expectation.max_postings_per_segment == 0
+                    ? expectation.max_postings_per_segment
+                    : expectation.expected_posting_count
+                        % expectation.max_postings_per_segment);
+        if(segments[segment_index].postings.size() != expected_segment_size) {
+            return {
+                FlatLexicalPostingPartitionReadStatus::SegmentLayoutMismatch,
+                {}
+            };
+        }
+    }
+
     FlatLexicalPostingPartitionRead result{
         FlatLexicalPostingPartitionReadStatus::Complete,
         {}

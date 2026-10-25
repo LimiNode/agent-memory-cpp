@@ -681,6 +681,44 @@ namespace {
             return fail("out-of-order segment id must not be admitted");
         }
 
+        auto noncanonical_layout = segments;
+        noncanonical_layout[0].postings = {
+            segments[0].postings[0]
+        };
+        noncanonical_layout[1].postings = {
+            segments[0].postings[1],
+            segments[1].postings[0]
+        };
+        noncanonical_layout[2].postings = {
+            segments[1].postings[1],
+            segments[2].postings[0]
+        };
+        if(!assert_status(
+            noncanonical_layout,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::SegmentLayoutMismatch
+        )) {
+            return fail("noncanonical segment packing must not be admitted");
+        }
+
+        auto over_limit = segments;
+        over_limit[0].postings = {
+            segments[0].postings[0],
+            segments[0].postings[1],
+            segments[1].postings[0]
+        };
+        over_limit[1].postings = {
+            segments[1].postings[1]
+        };
+        over_limit[2].postings = segments[2].postings;
+        if(!assert_status(
+            over_limit,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::SegmentLimitExceeded
+        )) {
+            return fail("segment limit overflow must be rejected explicitly");
+        }
+
         auto wrong_epoch = segments;
         wrong_epoch[0].statistics_epoch = agent_memory::LexicalStatisticsEpoch{};
         if(!assert_status(
@@ -716,6 +754,25 @@ namespace {
             agent_memory::FlatLexicalPostingPartitionReadStatus::MetadataMismatch
         )) {
             return fail("wrong token id must not be admitted");
+        }
+
+        auto invalid_term_frequency = segments;
+        invalid_term_frequency[0].postings[0].term_frequency = 0;
+        if(!assert_status(
+            invalid_term_frequency,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::InvalidSegment
+        )) {
+            return fail("zero term frequency must reject the segment");
+        }
+        auto invalid_resource = segments;
+        invalid_resource[0].postings[0].resource_id = agent_memory::ResourceId{};
+        if(!assert_status(
+            invalid_resource,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::InvalidSegment
+        )) {
+            return fail("empty resource id must reject the segment");
         }
 
         auto duplicate_unit = segments;
@@ -757,6 +814,25 @@ namespace {
             agent_memory::FlatLexicalPostingPartitionReadStatus::InvalidExpectation
         )) {
             return fail("inconsistent expected posting count must be rejected");
+        }
+        auto wrong_expected_segment_count = expectation;
+        ++wrong_expected_segment_count.expected_segment_count;
+        if(!assert_status(
+            segments,
+            wrong_expected_segment_count,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::InvalidExpectation
+        )) {
+            return fail("inconsistent expected segment count must be rejected");
+        }
+        auto invalid_expected_posting = expectation;
+        invalid_expected_posting.expected_postings[0].resource_id =
+            agent_memory::ResourceId{};
+        if(!assert_status(
+            segments,
+            invalid_expected_posting,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::InvalidExpectation
+        )) {
+            return fail("invalid expected posting identity must be rejected");
         }
         auto zero_limit = expectation;
         zero_limit.max_postings_per_segment = 0;

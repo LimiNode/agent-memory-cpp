@@ -101,6 +101,7 @@ namespace agent_memory {
         MetadataMismatch,
         InvalidSegment,
         SegmentLimitExceeded,
+        SegmentLayoutMismatch,
         PostingCountMismatch,
         PostingOrderMismatch,
         MembershipMismatch
