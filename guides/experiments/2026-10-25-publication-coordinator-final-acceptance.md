@@ -1,8 +1,8 @@
 # Publication coordinator final acceptance
 
-**Date:** 2026-10-25  
-**PR:** #554  
-**Head:** `60d5ae7e2faacce1f75daa6cb88dc0537569fcec`  
+**Date:** 2026-10-25
+**PR:** #554
+**Head:** see the exact-head CI run for the current commit
 **Status:** Draft; no merge performed
 
 ## Acceptance probe
