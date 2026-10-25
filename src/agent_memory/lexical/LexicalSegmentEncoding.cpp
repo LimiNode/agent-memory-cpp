@@ -198,7 +198,9 @@ bool valid_limits(const LexicalSegmentEncodingLimits& limits) noexcept {
         && limits.max_postings_per_segment != 0
         && limits.max_row_bytes != 0
         && limits.max_total_postings != 0
-        && limits.max_token_bytes != 0;
+        && limits.max_token_bytes != 0
+        && limits.max_decoded_value_bytes != 0
+        && limits.max_decoded_postings != 0;
 }
 
 bool valid_key(
