@@ -587,16 +587,7 @@ public:
                     if(!parse_segment_suffix(marker, key_token, key_segment)
                         || decoded.row.key.token_id != key_token
                         || decoded.row.key.segment_id != key_segment) {
-                        throw std::runtime_error(
-                            "segmented lexical physical key mismatch: " + marker
-                            + " decoded-generation="
-                            + std::to_string(decoded.row.key.statistics_generation)
-                            + " expected-generation="
-                            + std::to_string(state.snapshot.statistics_generation)
-                            + " decoded-token="
-                            + std::to_string(decoded.row.key.token_id.value())
-                            + " expected-token="
-                            + std::to_string(key_token.value()));
+                        throw std::runtime_error("segmented lexical physical key mismatch");
                     }
                     state.segments.push_back(decoded.row);
                     state.segment_addresses.emplace_back(key_token, key_segment);
