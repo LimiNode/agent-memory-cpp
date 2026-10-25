@@ -355,6 +355,28 @@ void test_faults_and_corruption(
         restore.commit();
     }
 
+    auto limited_options = segmented_options(path, context, scope);
+    limited_options.encoding_limits.max_namespace_rows = 1;
+    bool limited_rejected = false;
+    try {
+        MdbxSegmentedLexicalIndex limited{limited_options};
+        static_cast<void>(limited.read_snapshot());
+    } catch(const std::runtime_error&) {
+        limited_rejected = true;
+    }
+    require(limited_rejected, "segmented namespace row resource limit was ignored");
+
+    limited_options.encoding_limits.max_namespace_rows = 8'000'000U;
+    limited_options.encoding_limits.max_decoded_postings = 1;
+    limited_rejected = false;
+    try {
+        MdbxSegmentedLexicalIndex limited{limited_options};
+        static_cast<void>(limited.read_snapshot());
+    } catch(const std::runtime_error&) {
+        limited_rejected = true;
+    }
+    require(limited_rejected, "segmented aggregate posting budget was ignored");
+
     auto corrupt_txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
     bool changed_corruption = table.for_each_range(from, to,
         [&table, &corrupt_txn](const std::string& key, const std::string& value) {
