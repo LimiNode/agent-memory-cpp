@@ -374,6 +374,10 @@ MdbxPublicationCoordinator& MdbxPublicationCoordinator::operator=(
     MdbxPublicationCoordinator&&
 ) noexcept = default;
 
+const MdbxStorageContext& MdbxPublicationCoordinator::context() const noexcept {
+    return *m_impl->context;
+}
+
 PublicationAdmissionResult MdbxPublicationCoordinator::admit_profile(
     PublicationProfileIdentity profile,
     PublicationFencingIdentity fencing

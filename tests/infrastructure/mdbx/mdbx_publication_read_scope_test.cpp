@@ -619,6 +619,33 @@ int main() {
         auto foreign_context = MdbxStorageContext::open(
             foreign_database.string(), false, 48
         );
+        MdbxPublicationCoordinatorOptions foreign_coordinator_options;
+        foreign_coordinator_options.context = foreign_context;
+        foreign_coordinator_options.scope_id = scope;
+        MdbxPublicationCoordinator foreign_coordinator{
+            std::move(foreign_coordinator_options)
+        };
+        if(foreign_coordinator.admit_profile(profile, fencing).code
+                != PublicationAdmissionCode::Admitted
+            || foreign_coordinator.publish_metadata_only(
+                    metadata_plan(scope, profile, fencing)
+                ).code != PublicationOutcomeCode::Committed) {
+            return fail("foreign coordinator metadata fixture failed");
+        }
+        try {
+            MdbxFrontierReadParticipant mismatched_frontier{
+                complete_context, foreign_coordinator
+            };
+            return fail("cross-context frontier participant must be rejected");
+        } catch(const std::invalid_argument& error) {
+            if(std::string_view{error.what()}.find(
+                    "frontier participant is bound to a different storage context"
+                ) == std::string_view::npos) {
+                return fail("cross-context frontier rejection reported the wrong reason");
+            }
+        } catch(const std::exception&) {
+            return fail("cross-context frontier rejection must report invalid context binding");
+        }
         MdbxCanonicalContentStoreOptions foreign_canonical_options;
         foreign_canonical_options.context = foreign_context;
         MdbxCanonicalContentStore foreign_canonical{
@@ -669,8 +696,12 @@ int main() {
             mismatched_scope.finish();
             rejected_before_finish = mismatched_scope.observation().completion
                 != MdbxPublicationReadCompletion::TargetExact;
+        } catch(const std::invalid_argument& error) {
+            rejected_before_finish = std::string_view{error.what()}.find(
+                "canonical participant is bound to a different storage context"
+            ) != std::string_view::npos;
         } catch(const std::exception&) {
-            rejected_before_finish = true;
+            return fail("cross-context canonical rejection must report invalid context binding");
         }
         std::error_code foreign_cleanup;
         std::filesystem::remove(foreign_database, foreign_cleanup);

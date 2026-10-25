@@ -42,6 +42,9 @@ public:
     MdbxPublicationCoordinator(MdbxPublicationCoordinator&&) noexcept;
     MdbxPublicationCoordinator& operator=(MdbxPublicationCoordinator&&) noexcept;
 
+    /// Returns the storage context that owns coordinator metadata.
+    [[nodiscard]] const MdbxStorageContext& context() const noexcept;
+
     [[nodiscard]] PublicationAdmissionResult admit_profile(
         PublicationProfileIdentity profile,
         PublicationFencingIdentity fencing

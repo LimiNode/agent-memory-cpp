@@ -30,6 +30,12 @@ independent of a missing document in the foreign store; a foreign document is
 present and readable through its own context, but cannot be used as evidence
 inside A's pinned scope.
 
+The frontier participant has the same boundary: its coordinator is now checked
+against the declared context before the participant can be admitted. The
+regression creates valid coordinator metadata in an independent environment
+and verifies the expected `invalid_argument` connection-identity rejection,
+rather than treating an arbitrary MDBX exception as proof.
+
 ## Implemented
 
 - coordinator-owned writable MDBX transaction;

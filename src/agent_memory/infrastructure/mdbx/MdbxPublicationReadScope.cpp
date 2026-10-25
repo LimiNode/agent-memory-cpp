@@ -289,7 +289,9 @@ const MdbxPublicationReadObservation& MdbxPublicationReadScope::observation() co
 MdbxFrontierReadParticipant::MdbxFrontierReadParticipant(
     std::shared_ptr<MdbxStorageContext> context,
     const MdbxPublicationCoordinator& coordinator
-) : m_context(std::move(context)), m_coordinator(&coordinator) {}
+) : m_context(std::move(context)), m_coordinator(&coordinator) {
+    require_store_context(m_context, coordinator.context(), "frontier");
+}
 const MdbxStorageContext& MdbxFrontierReadParticipant::context() const noexcept { return *m_context; }
 void MdbxFrontierReadParticipant::read(
     const mdbxc::Transaction& transaction,
