@@ -21,12 +21,13 @@ Each durable run creates a fresh MDBX data file and lock file. The TSV separates
 environment creation, adapter initialization, writes, full validated snapshot
 read, close, reopen/adapter initialization, and full validated snapshot read
 after reopen. The dependency-free `FlatLexicalIndex` row is an in-process
-reference and therefore has no durable or reopen timing. Durable rows also carry
-benchmark-only diagnostic telemetry after the timed write phase: live rows and
-value bytes observed by a separate scan, estimated rebuild publications, and
-estimated rows deleted/inserted by the full-rewrite publication loop. These
-counters are explicitly observational; they are not adapter-internal events and
-do not represent physical disk writes.
+reference and therefore has no durable or reopen timing. Durable rows optionally
+carry benchmark-only telemetry from exactly two observations: one after the
+write snapshot and one after reopen. The reported live-row and key/value-byte
+counters come from the final (post-reopen) observation; the scan count is `0`
+when telemetry is disabled and `2` when it is enabled. These counters are
+logical observations, not adapter-internal events and do not represent physical
+disk writes.
 
 Example command:
 
@@ -42,9 +43,11 @@ and timed write/read phases are unchanged.
 
 MinGW Release, bundled MDBX dependencies, 128 units, two repeats. Values below
 are representative rows from the first repeat; the command emits every repeat
-as TSV. `write_ms` is isolated from adapter initialization and diagnostic scans;
-`write_diagnostic_ms` reports that separate post-write scan overhead. The read
-columns are full snapshot validation, not selective query latency.
+as TSV. `write_ms` is isolated from adapter initialization, snapshot validation,
+and diagnostic scans. `snapshot_ms` measures only the validated snapshot read,
+`write_diagnostic_ms` measures the separate post-write scan, and
+`reopen_diagnostic_ms` measures the separate post-reopen scan. The read columns
+are full snapshot validation, not selective query latency.
 
 | workload | backend | write ms | snapshot ms | reopen snapshot ms | database bytes |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -67,13 +70,21 @@ growth, and physical I/O before any layout or default change is proposed.
 
 ### Timing-integrity control
 
-With the same MinGW Release build and `128 units × 5 repeats`, the segmented
-backend produced a median `write_ms` of 2,229.45 ms with diagnostics disabled
-and 2,226.52 ms with diagnostics enabled. The separate
-`write_diagnostic_ms` median was 0 ms versus 32.697 ms. This confirms that the
-post-write scans are no longer included in the reported write timing. The
+The earlier smoke receipt reported a median `write_ms` of 2,229.45 ms with
+diagnostics disabled and 2,226.52 ms with diagnostics enabled. The corrective
+pass supersedes that directional sample; its scans are measured in separate
+phases and do not enter the reported write timing. The
 figures are directional local evidence, not a hardware-normalized performance
 claim.
+
+The corrective pass measured `128 units × 5 repeats` in the same MinGW Release
+build. Segmented `write_ms` medians (diagnostics off/on) were 2,361.3/2,322.3
+ms for `unique+anchor`, 581.9/597.0 ms for `shared-hot`, 782.5/768.7 ms for
+`zipf-like`, and 2,675.7/2,682.0 ms for `mixed-utf8`. Snapshot medians stayed
+separate (off/on: 2.563/2.256, 1.224/1.236, 1.601/1.576, and 2.674/2.846 ms
+respectively); diagnostic scans were measured separately. Telemetry-enabled
+rows report exactly two scans and disabled rows report none. A 512-unit × 5
+sweep exceeded the local runtime budget and remains a follow-up measurement.
 
 ## Limitations and next checks
 
@@ -82,9 +93,9 @@ claim.
 - The workloads are synthetic and use short ASCII tokens, not technical UTF-8
   documents.
 - `db_bytes` is the final MDBX file size, not a write-amplification counter.
-- `estimated_rows_deleted`, `estimated_rows_inserted`, and observed encoded
-  bytes describe logical MDBX row work observed by the benchmark, not
-  storage-engine page I/O.
+- `live_rows_observed`, `live_value_bytes_observed`, and
+  `observed_live_key_value_bytes` describe the final logical MDBX state observed
+  by the benchmark, not storage-engine page I/O.
 - The benchmark does not yet expose MDBX live-page or physical-write counters;
   file geometry must not be interpreted as write amplification.
 - The benchmark does not claim cross-store atomicity or production throughput.

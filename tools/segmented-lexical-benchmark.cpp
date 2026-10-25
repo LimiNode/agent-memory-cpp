@@ -84,16 +84,11 @@ struct PhysicalCounters final {
     std::size_t live_rows_observed = 0;
     std::size_t live_value_bytes_observed = 0;
     std::size_t diagnostic_scans = 0;
-    std::size_t estimated_rebuild_publications = 0;
-    std::size_t estimated_rows_deleted = 0;
-    std::size_t estimated_rows_inserted = 0;
-    std::size_t observed_encoded_bytes = 0;
+    std::size_t observed_live_key_value_bytes = 0;
 };
 
 PhysicalCounters scan_rows(
     const std::shared_ptr<MdbxStorageContext>& context,
-    const std::size_t previous_rows,
-    const bool account_rebuild,
     const bool segmented
 ) {
     mdbxc::KeyValueTable<std::string, std::string> table(
@@ -106,23 +101,20 @@ PhysicalCounters scan_rows(
         [&counters](const std::string& key, const std::string& value) {
             ++counters.live_rows_observed;
             counters.live_value_bytes_observed += value.size();
-            counters.observed_encoded_bytes += key.size() + value.size();
+            counters.observed_live_key_value_bytes += key.size() + value.size();
             return true;
         }, txn);
     counters.diagnostic_scans = 1;
-    counters.estimated_rows_deleted = previous_rows;
-    counters.estimated_rows_inserted = counters.live_rows_observed;
-    counters.estimated_rebuild_publications = account_rebuild ? 1U : 0U;
     return counters;
 }
 
 void print_header() {
     std::cout << "backend\tworkload\tunits\trepeat\tenvironment_ms\tadapter_init_ms"
-                 "\twrite_ms\tsnapshot_ms\tclose_ms\treopen_ms\treopen_snapshot_ms"
-                 "\tdb_bytes\tactive_units\ttotal_tokens\twrite_diagnostic_ms"
+                 "\twrite_ms\tsnapshot_ms\twrite_diagnostic_ms\tclose_ms"
+                 "\treopen_ms\treopen_snapshot_ms\treopen_diagnostic_ms"
+                 "\tdb_bytes\tactive_units\ttotal_tokens"
                  "\tdiagnostic_scans\tlive_rows_observed\tlive_value_bytes_observed"
-                 "\testimated_rebuild_publications\testimated_rows_deleted"
-                 "\testimated_rows_inserted\tobserved_encoded_bytes\n";
+                 "\tobserved_live_key_value_bytes\n";
 }
 
 void run_flat_reference(
@@ -142,9 +134,10 @@ void run_flat_reference(
     std::cout << "flat-reference\t" << workload << '\t' << units << '\t' << repeat
               << "\t0\t0\t" << milliseconds(write_done - started)
               << '\t' << milliseconds(read_done - write_done)
-              << "\t0\t0\t0\t0\t" << index.collection_stats().unit_count
+              << "\t0\t0\t0\t0\t0\t0\t"
+              << index.collection_stats().unit_count
               << '\t' << index.collection_stats().total_token_count
-              << "\t0\t0\t0\t0\t0\t0\t0\t0\n";
+              << "\t0\t0\t0\t0\n";
 }
 
 template<typename IndexT, typename OptionsT>
@@ -178,41 +171,32 @@ void run_durable(
     const auto adapter_started = Clock::now();
     auto index = std::make_unique<IndexT>(options);
     const auto adapter_done = Clock::now();
-    Clock::time_point write_done;
-    Clock::time_point read_done;
+    Clock::time_point write_started;
+    Clock::time_point write_finished;
+    Clock::time_point snapshot_started;
+    Clock::time_point snapshot_finished;
+    Clock::time_point diagnostic_started;
+    Clock::time_point diagnostic_finished;
     PhysicalCounters counters;
-    std::size_t previous_rows = 0;
-    Clock::duration diagnostic_duration{};
     {
+        write_started = Clock::now();
         for(std::size_t index_value = 0; index_value < units; ++index_value) {
             index->upsert(unit(index_value, workload));
         }
-        write_done = Clock::now();
-        const auto diagnostic_started = Clock::now();
-        if(diagnostics_enabled) {
-            for(std::size_t index_value = 0; index_value < units; ++index_value) {
-                const auto sample = scan_rows(
-                    context, previous_rows, true, backend == "segmented-v1");
-                previous_rows = sample.live_rows_observed;
-                counters.live_rows_observed += sample.live_rows_observed;
-                counters.live_value_bytes_observed += sample.live_value_bytes_observed;
-                counters.diagnostic_scans += sample.diagnostic_scans;
-                counters.estimated_rebuild_publications += sample.estimated_rebuild_publications;
-                counters.estimated_rows_deleted += sample.estimated_rows_deleted;
-                counters.estimated_rows_inserted += sample.estimated_rows_inserted;
-                counters.observed_encoded_bytes += sample.observed_encoded_bytes;
-            }
-        }
-        diagnostic_duration = diagnostics_enabled
-            ? Clock::now() - diagnostic_started
-            : Clock::duration{};
+        write_finished = Clock::now();
+        snapshot_started = Clock::now();
         {
             const auto snapshot = index->read_snapshot();
             const auto anchor = snapshot.index.find_token_id("anchor");
             if(!anchor) throw std::runtime_error("benchmark anchor token missing");
             static_cast<void>(snapshot.index.postings(*anchor));
-            read_done = Clock::now();
         }
+        snapshot_finished = Clock::now();
+        diagnostic_started = Clock::now();
+        if(diagnostics_enabled) {
+            counters = scan_rows(context, backend == "segmented-v1");
+        }
+        diagnostic_finished = Clock::now();
     }
     const auto before_close = Clock::now();
     index.reset();
@@ -240,35 +224,34 @@ void run_durable(
         total_tokens = reopened_snapshot.index.collection_stats().total_token_count;
     }
     const auto reopen_snapshot_done = Clock::now();
+    const auto reopen_diagnostic_started = Clock::now();
+    PhysicalCounters reopen_counters;
     if(diagnostics_enabled) {
-        const auto reopen_sample = scan_rows(
-            reopen_context, previous_rows, false, backend == "segmented-v1");
-        counters.live_rows_observed += reopen_sample.live_rows_observed;
-        counters.live_value_bytes_observed += reopen_sample.live_value_bytes_observed;
-        counters.diagnostic_scans += reopen_sample.diagnostic_scans;
-        counters.estimated_rows_deleted += reopen_sample.estimated_rows_deleted;
-        counters.estimated_rows_inserted += reopen_sample.estimated_rows_inserted;
-        counters.observed_encoded_bytes += reopen_sample.observed_encoded_bytes;
+        reopen_counters = scan_rows(reopen_context, backend == "segmented-v1");
+        if(counters.live_rows_observed != reopen_counters.live_rows_observed ||
+           counters.live_value_bytes_observed != reopen_counters.live_value_bytes_observed ||
+           counters.observed_live_key_value_bytes != reopen_counters.observed_live_key_value_bytes) {
+            throw std::runtime_error("benchmark live-row observation changed across reopen");
+        }
     }
+    const auto reopen_diagnostic_done = Clock::now();
     std::cout << backend << '\t' << workload << '\t' << units << '\t' << repeat
               << '\t' << milliseconds(environment_done - environment_started)
               << '\t' << milliseconds(adapter_done - adapter_started)
-              << '\t' << milliseconds(write_done - adapter_done)
-              << '\t' << milliseconds(read_done - write_done)
+              << '\t' << milliseconds(write_finished - write_started)
+              << '\t' << milliseconds(snapshot_finished - snapshot_started)
+              << '\t' << milliseconds(diagnostic_finished - diagnostic_started)
               << '\t' << milliseconds(close_done - before_close)
               << '\t' << milliseconds(reopen_done - reopen_started)
               << '\t' << milliseconds(reopen_snapshot_done - reopen_snapshot_started)
+              << '\t' << milliseconds(reopen_diagnostic_done - reopen_diagnostic_started)
               << '\t' << database_bytes(path)
               << '\t' << active_units
               << '\t' << total_tokens
-              << '\t' << milliseconds(diagnostic_duration)
-              << '\t' << counters.diagnostic_scans
-              << '\t' << counters.live_rows_observed
-              << '\t' << counters.live_value_bytes_observed
-              << '\t' << counters.estimated_rebuild_publications
-              << '\t' << counters.estimated_rows_deleted
-              << '\t' << counters.estimated_rows_inserted
-              << '\t' << counters.observed_encoded_bytes
+              << '\t' << counters.diagnostic_scans + reopen_counters.diagnostic_scans
+              << '\t' << (diagnostics_enabled ? reopen_counters.live_rows_observed : 0U)
+              << '\t' << (diagnostics_enabled ? reopen_counters.live_value_bytes_observed : 0U)
+              << '\t' << (diagnostics_enabled ? reopen_counters.observed_live_key_value_bytes : 0U)
               << '\n';
 }
 
