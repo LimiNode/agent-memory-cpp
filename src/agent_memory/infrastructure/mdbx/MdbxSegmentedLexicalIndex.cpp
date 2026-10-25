@@ -364,7 +364,8 @@ bool parse_segment_suffix(
     TokenId& token_id,
     std::uint32_t& segment_id
 ) {
-    const auto prefix = marker_prefix(kSegment);
+    auto prefix = marker_prefix(kSegment);
+    prefix.push_back(kSeparator);
     if(marker.rfind(prefix, 0) != 0) return false;
     const auto suffix = marker.substr(prefix.size());
     const auto separator = suffix.find(':');
