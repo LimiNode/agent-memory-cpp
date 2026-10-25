@@ -203,7 +203,9 @@ void run_durable(
                 counters.observed_encoded_bytes += sample.observed_encoded_bytes;
             }
         }
-        diagnostic_duration = Clock::now() - diagnostic_started;
+        diagnostic_duration = diagnostics_enabled
+            ? Clock::now() - diagnostic_started
+            : Clock::duration{};
         {
             const auto snapshot = index->read_snapshot();
             const auto anchor = snapshot.index.find_token_id("anchor");
