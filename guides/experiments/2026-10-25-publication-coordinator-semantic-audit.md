@@ -1,7 +1,7 @@
 # Publication coordinator semantic audit
 
-**Date:** 2026-10-25  
-**Base:** corrective PR #554 (`0386c942`)  
+**Date:** 2026-10-25
+**Base:** corrective PR #554 (`0386c942`)
 **Status:** bounded audit; no merge performed
 
 ## Contract changes
