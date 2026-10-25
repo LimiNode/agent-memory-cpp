@@ -812,6 +812,7 @@ void MdbxSegmentedLexicalIndex::upsert(
     }
     state.snapshot.statistics_generation = before_generation + 1U;
     state.sequence = LexicalPublicationSequence{before_sequence + 1U};
+    index.restore_active_snapshot_for_storage(state.snapshot);
     state.dictionary = index.token_dictionary_for_storage();
     state.next_token_id = index.next_token_id_for_storage();
     m_impl->write_state(state, index, txn);
@@ -839,6 +840,7 @@ bool MdbxSegmentedLexicalIndex::erase(const KnowledgeUnitId& unit_id) {
     }
     ++state.snapshot.statistics_generation;
     state.sequence = LexicalPublicationSequence{state.sequence.value() + 1U};
+    index.restore_active_snapshot_for_storage(state.snapshot);
     state.dictionary = index.token_dictionary_for_storage();
     state.next_token_id = index.next_token_id_for_storage();
     m_impl->write_state(state, index, txn);
@@ -863,6 +865,7 @@ void MdbxSegmentedLexicalIndex::clear() {
     }
     ++state.snapshot.statistics_generation;
     state.sequence = LexicalPublicationSequence{state.sequence.value() + 1U};
+    index.restore_active_snapshot_for_storage(state.snapshot);
     m_impl->write_state(state, index, txn);
     if(m_impl->failure == MdbxSegmentedLexicalIndexFaultPoint::AfterWriteBeforeCommit) {
         m_impl->failure = MdbxSegmentedLexicalIndexFaultPoint::None;
