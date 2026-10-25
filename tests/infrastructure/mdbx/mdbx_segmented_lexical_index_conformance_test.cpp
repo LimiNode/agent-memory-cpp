@@ -168,6 +168,8 @@ void test_faults_and_corruption(
     auto context = MdbxStorageContext::open(path.string());
     MdbxSegmentedLexicalIndex index{segmented_options(path, context, scope)};
     index.upsert(unit(scope, 1, 1, {"stable", "shared"}));
+    require(index.active_snapshot().statistics_generation == 2,
+        "initial segmented publication generation is wrong");
     for(const auto point : {
         MdbxSegmentedLexicalIndexFaultPoint::BeforeCommit,
         MdbxSegmentedLexicalIndexFaultPoint::AfterWriteBeforeCommit
@@ -187,21 +189,95 @@ void test_faults_and_corruption(
 
     mdbxc::KeyValueTable<std::string, std::string> table(
         context->connection(), "agent_memory_lexical_posting_segments");
-    auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
     std::string from = "seg-v1\x1f";
     std::string to = from;
     to.push_back(static_cast<char>(0xff));
-    bool changed = table.for_each_range(from, to,
-        [&table, &txn](const std::string& key, const std::string& value) {
+    std::string descriptor_key;
+    std::string descriptor_value;
+    auto descriptor_txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    table.for_each_range(from, to,
+        [&table, &descriptor_txn, &descriptor_key, &descriptor_value](
+            const std::string& key, const std::string& value) {
+            if(key.find("descriptor") == std::string::npos) return true;
+            descriptor_key = key;
+            descriptor_value = value;
+            table.erase(key, descriptor_txn);
+            return false;
+        }, descriptor_txn);
+    require(!descriptor_key.empty(), "segmented descriptor fixture was not found");
+    descriptor_txn.commit();
+    bool rejected = false;
+    try {
+        static_cast<void>(index.read_snapshot());
+    } catch(const std::runtime_error&) {
+        rejected = true;
+    }
+    require(rejected, "segmented namespace without descriptor was accepted");
+    auto restore_descriptor_txn = context->connection()->transaction(
+        mdbxc::TransactionMode::WRITABLE);
+    table.insert_or_assign(
+        descriptor_key, descriptor_value, restore_descriptor_txn);
+    restore_descriptor_txn.commit();
+
+    auto unknown_txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    table.insert_or_assign(
+        descriptor_key.substr(0, descriptor_key.rfind('\x1f'))
+            + "\x1funknown", "invalid", unknown_txn);
+    unknown_txn.commit();
+    rejected = false;
+    try {
+        static_cast<void>(index.read_snapshot());
+    } catch(const std::runtime_error&) {
+        rejected = true;
+    }
+    require(rejected, "segmented unknown row kind was accepted");
+    auto remove_unknown_txn = context->connection()->transaction(
+        mdbxc::TransactionMode::WRITABLE);
+    table.erase(
+        descriptor_key.substr(0, descriptor_key.rfind('\x1f'))
+            + "\x1funknown", remove_unknown_txn);
+    remove_unknown_txn.commit();
+
+    std::string original_segment_key;
+    std::string original_segment_value;
+    auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    bool changed_again = table.for_each_range(from, to,
+        [&table, &txn, &original_segment_key, &original_segment_value](
+            const std::string& key, const std::string& value) {
+            if(key.find("\x1fsegment\x1f") == std::string::npos) return true;
+            original_segment_key = key;
+            original_segment_value = value;
+            table.insert_or_assign(key + "9", value, txn);
+            table.erase(key, txn);
+            return false;
+        }, txn);
+    static_cast<void>(changed_again);
+    txn.commit();
+    rejected = false;
+    try {
+        static_cast<void>(index.read_snapshot());
+    } catch(const std::runtime_error&) {
+        rejected = true;
+    }
+    require(rejected, "segment key/value identity mismatch was not rejected");
+
+    auto restore_txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    table.erase(original_segment_key + "9", restore_txn);
+    table.insert_or_assign(original_segment_key, original_segment_value, restore_txn);
+    restore_txn.commit();
+
+    auto corrupt_txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    bool changed_corruption = table.for_each_range(from, to,
+        [&table, &corrupt_txn](const std::string& key, const std::string& value) {
             if(key.find("\x1fsegment\x1f") == std::string::npos) return true;
             auto corrupt = value;
             corrupt.back() ^= static_cast<char>(0x01);
-            table.insert_or_assign(key, corrupt, txn);
+            table.insert_or_assign(key, corrupt, corrupt_txn);
             return false;
-        }, txn);
-    static_cast<void>(changed);
-    txn.commit();
-    bool rejected = false;
+        }, corrupt_txn);
+    static_cast<void>(changed_corruption);
+    corrupt_txn.commit();
+    rejected = false;
     try {
         static_cast<void>(index.read_snapshot());
     } catch(const std::runtime_error&) {
