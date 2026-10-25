@@ -142,6 +142,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxWorkspaceStorageRegistry.cpp
             src/agent_memory/infrastructure/mdbx/MdbxDurableLexicalDocumentMemory.cpp
             src/agent_memory/infrastructure/mdbx/MdbxPersistentLexicalIndex.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxSegmentedLexicalIndex.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceImporter.cpp
             src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.cpp
     )
