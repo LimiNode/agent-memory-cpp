@@ -124,6 +124,27 @@ does not change the flat MDBX payload or its migration policy. A durable adapter
 must validate the same complete membership and generation binding before
 publishing segment rows.
 
+For `posting_layout_version = 1`, deterministic also means canonical packing:
+every segment except the last contains exactly `max_postings_per_segment`
+postings, and the last contains the remaining one through
+`max_postings_per_segment` postings. Segment ids remain contiguous from zero.
+The reader rejects a bounded but differently packed set even when its total
+membership is otherwise identical. The `posting_layout_version` owns this
+packing rule as part of the physical contract; changing the packing policy
+requires an explicit layout-version decision and a corresponding reader and
+writer conformance update.
+
+The read-integrity slice adds a dependency-free reconstruction admission
+helper. A caller supplies the expected epoch/generation/layout, segment and
+posting counts, segment bound, and an independent ordered posting witness. The
+helper accepts only contiguous segment ids, matching metadata, canonical
+version-1 packing, bounded and strictly ordered unit ids, complete counts, and
+exact witness membership. It returns `ConfirmedEmpty` only for an explicitly
+expected empty partition; an absent non-empty partition remains a non-complete
+result. This validation is separate from `LexicalRouteCompletion` and
+`LexicalReadConsistency`: it does not manufacture a storage snapshot or claim
+canonical/manifest linearizability.
+
 ## Index identity
 
 Every persisted lexical index is identified by the complete tuple below. A

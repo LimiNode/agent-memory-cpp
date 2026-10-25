@@ -565,6 +565,315 @@ namespace {
         return 0;
     }
 
+    agent_memory::FlatLexicalPostingPartitionExpectation make_partition_expectation(
+        const agent_memory::FlatLexicalIndex& index,
+        const agent_memory::TokenId& token_id,
+        const std::size_t max_postings_per_segment
+    ) {
+        const auto postings = index.postings(token_id);
+        const auto segments = index.posting_segments(
+            token_id,
+            max_postings_per_segment
+        );
+        return agent_memory::FlatLexicalPostingPartitionExpectation{
+            index.descriptor().ref.statistics_epoch,
+            index.active_snapshot().statistics_generation,
+            index.active_snapshot().posting_layout_version,
+            token_id,
+            segments.size(),
+            postings.size(),
+            max_postings_per_segment,
+            postings
+        };
+    }
+
+    int test_posting_partition_reconstruction_is_fail_closed() {
+        agent_memory::FlatLexicalIndex index{make_descriptor()};
+        index.upsert(make_input(1, 7, {"partition", "partition"}));
+        index.upsert(make_input(2, 7, {"partition"}));
+        index.upsert(make_input(3, 7, {"partition"}));
+        index.upsert(make_input(4, 7, {"partition"}));
+        index.upsert(make_input(5, 7, {"partition"}));
+        const auto token_id = index.find_token_id("partition");
+        if(!token_id) {
+            return fail("partition fixture must allocate a token");
+        }
+
+        const auto segments = index.posting_segments(*token_id, 2);
+        const auto expectation = make_partition_expectation(index, *token_id, 2);
+        const auto complete =
+            agent_memory::reconstruct_flat_lexical_posting_partition(
+                segments,
+                expectation
+            );
+        if(!complete.complete()
+            || complete.postings.size() != expectation.expected_posting_count) {
+            return fail("complete partition must be admitted");
+        }
+        for(std::size_t index_position = 0;
+            index_position < complete.postings.size();
+            ++index_position) {
+            if(!same_flat_posting(
+                complete.postings[index_position],
+                expectation.expected_postings[index_position]
+            )) {
+                return fail("complete partition must preserve posting identity");
+            }
+        }
+
+        const auto assert_status = [](
+            const std::vector<agent_memory::FlatLexicalPostingSegment>& candidate,
+            const agent_memory::FlatLexicalPostingPartitionExpectation& expected,
+            const agent_memory::FlatLexicalPostingPartitionReadStatus status
+        ) {
+            const auto result =
+                agent_memory::reconstruct_flat_lexical_posting_partition(
+                    candidate,
+                    expected
+                );
+            return result.status == status && result.postings.empty();
+        };
+
+        auto missing_first = segments;
+        missing_first.erase(missing_first.begin());
+        if(!assert_status(
+            missing_first,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::SegmentCountMismatch
+        )) {
+            return fail("missing first segment must not be admitted");
+        }
+        auto missing_middle = segments;
+        missing_middle.erase(missing_middle.begin() + 1);
+        if(!assert_status(
+            missing_middle,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::SegmentCountMismatch
+        )) {
+            return fail("missing middle segment must not be admitted");
+        }
+        auto missing_last = segments;
+        missing_last.pop_back();
+        if(!assert_status(
+            missing_last,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::SegmentCountMismatch
+        )) {
+            return fail("missing last segment must not be admitted");
+        }
+
+        auto duplicate_segment = segments;
+        duplicate_segment[1].segment_id = duplicate_segment[0].segment_id;
+        if(!assert_status(
+            duplicate_segment,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::DuplicateSegmentId
+        )) {
+            return fail("duplicate segment id must not be admitted");
+        }
+        auto out_of_order_segment = segments;
+        out_of_order_segment[1].segment_id = out_of_order_segment[2].segment_id;
+        if(!assert_status(
+            out_of_order_segment,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::OutOfOrderSegmentId
+        )) {
+            return fail("out-of-order segment id must not be admitted");
+        }
+
+        auto noncanonical_layout = segments;
+        noncanonical_layout[0].postings = {
+            segments[0].postings[0]
+        };
+        noncanonical_layout[1].postings = {
+            segments[0].postings[1],
+            segments[1].postings[0]
+        };
+        noncanonical_layout[2].postings = {
+            segments[1].postings[1],
+            segments[2].postings[0]
+        };
+        if(!assert_status(
+            noncanonical_layout,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::SegmentLayoutMismatch
+        )) {
+            return fail("noncanonical segment packing must not be admitted");
+        }
+
+        auto over_limit = segments;
+        over_limit[0].postings = {
+            segments[0].postings[0],
+            segments[0].postings[1],
+            segments[1].postings[0]
+        };
+        over_limit[1].postings = {
+            segments[1].postings[1]
+        };
+        over_limit[2].postings = segments[2].postings;
+        if(!assert_status(
+            over_limit,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::SegmentLimitExceeded
+        )) {
+            return fail("segment limit overflow must be rejected explicitly");
+        }
+
+        auto wrong_epoch = segments;
+        wrong_epoch[0].statistics_epoch = agent_memory::LexicalStatisticsEpoch{};
+        if(!assert_status(
+            wrong_epoch,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::MetadataMismatch
+        )) {
+            return fail("wrong epoch must not be admitted");
+        }
+        auto wrong_generation = segments;
+        ++wrong_generation[0].statistics_generation;
+        if(!assert_status(
+            wrong_generation,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::MetadataMismatch
+        )) {
+            return fail("wrong generation must not be admitted");
+        }
+        auto wrong_layout = segments;
+        ++wrong_layout[0].posting_layout_version;
+        if(!assert_status(
+            wrong_layout,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::MetadataMismatch
+        )) {
+            return fail("wrong posting layout must not be admitted");
+        }
+        auto wrong_token = segments;
+        wrong_token[0].token_id = agent_memory::TokenId{999};
+        if(!assert_status(
+            wrong_token,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::MetadataMismatch
+        )) {
+            return fail("wrong token id must not be admitted");
+        }
+
+        auto invalid_term_frequency = segments;
+        invalid_term_frequency[0].postings[0].term_frequency = 0;
+        if(!assert_status(
+            invalid_term_frequency,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::InvalidSegment
+        )) {
+            return fail("zero term frequency must reject the segment");
+        }
+        auto invalid_resource = segments;
+        invalid_resource[0].postings[0].resource_id = agent_memory::ResourceId{};
+        if(!assert_status(
+            invalid_resource,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::InvalidSegment
+        )) {
+            return fail("empty resource id must reject the segment");
+        }
+
+        auto duplicate_unit = segments;
+        duplicate_unit[1].postings[0].unit_id =
+            duplicate_unit[0].postings.back().unit_id;
+        if(!assert_status(
+            duplicate_unit,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::PostingOrderMismatch
+        )) {
+            return fail("duplicate unit id across segments must not be admitted");
+        }
+        auto truncated = segments;
+        truncated[1].postings.pop_back();
+        if(!assert_status(
+            truncated,
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::PostingCountMismatch
+        )) {
+            return fail("truncated posting list must not be admitted");
+        }
+
+        auto membership_mismatch = expectation;
+        membership_mismatch.expected_postings.back().unit_id =
+            agent_memory::KnowledgeUnitId{999};
+        if(!assert_status(
+            segments,
+            membership_mismatch,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::MembershipMismatch
+        )) {
+            return fail("membership witness mismatch must be rejected");
+        }
+        auto wrong_expected_count = expectation;
+        wrong_expected_count.expected_posting_count = 4;
+        wrong_expected_count.expected_postings.resize(4);
+        if(!assert_status(
+            segments,
+            wrong_expected_count,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::InvalidExpectation
+        )) {
+            return fail("inconsistent expected posting count must be rejected");
+        }
+        auto wrong_expected_segment_count = expectation;
+        ++wrong_expected_segment_count.expected_segment_count;
+        if(!assert_status(
+            segments,
+            wrong_expected_segment_count,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::InvalidExpectation
+        )) {
+            return fail("inconsistent expected segment count must be rejected");
+        }
+        auto invalid_expected_posting = expectation;
+        invalid_expected_posting.expected_postings[0].resource_id =
+            agent_memory::ResourceId{};
+        if(!assert_status(
+            segments,
+            invalid_expected_posting,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::InvalidExpectation
+        )) {
+            return fail("invalid expected posting identity must be rejected");
+        }
+        auto zero_limit = expectation;
+        zero_limit.max_postings_per_segment = 0;
+        if(!assert_status(
+            segments,
+            zero_limit,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::InvalidExpectation
+        )) {
+            return fail("zero reconstruction limit must be rejected");
+        }
+
+        const auto empty_expectation =
+            agent_memory::FlatLexicalPostingPartitionExpectation{
+                expectation.statistics_epoch,
+                expectation.statistics_generation,
+                expectation.posting_layout_version,
+                expectation.token_id,
+                0,
+                0,
+                2,
+                {}
+            };
+        const auto confirmed_empty =
+            agent_memory::reconstruct_flat_lexical_posting_partition(
+                {},
+                empty_expectation
+            );
+        if(!confirmed_empty.confirmed_empty()
+            || !confirmed_empty.postings.empty()) {
+            return fail("empty partition must be distinguishable as confirmed empty");
+        }
+        if(!assert_status(
+            {},
+            expectation,
+            agent_memory::FlatLexicalPostingPartitionReadStatus::SegmentCountMismatch
+        )) {
+            return fail("absent non-empty partition must remain unverified");
+        }
+        return 0;
+    }
+
     int test_original_projection_only() {
         auto descriptor = make_descriptor();
         descriptor.ref.projection_kind = agent_memory::ProjectionKind::Summary;
@@ -588,6 +897,7 @@ int main() {
     failures += test_failure_injection_preserves_state();
     failures += test_shared_token_statistics_rollback();
     failures += test_posting_segments_are_bounded_and_generation_bound();
+    failures += test_posting_partition_reconstruction_is_fail_closed();
     failures += test_original_projection_only();
     return failures == 0 ? 0 : 1;
 }
