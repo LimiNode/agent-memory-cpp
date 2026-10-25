@@ -367,6 +367,17 @@ void test_faults_and_corruption(
     require(limited_rejected, "segmented namespace row resource limit was ignored");
 
     limited_options.encoding_limits.max_namespace_rows = 8'000'000U;
+    limited_options.encoding_limits.max_decoded_value_bytes = 1;
+    limited_rejected = false;
+    try {
+        MdbxSegmentedLexicalIndex limited{limited_options};
+        static_cast<void>(limited.read_snapshot());
+    } catch(const std::runtime_error&) {
+        limited_rejected = true;
+    }
+    require(limited_rejected, "segmented decoded byte budget was ignored");
+
+    limited_options.encoding_limits.max_decoded_value_bytes = 256U * 1024U * 1024U;
     limited_options.encoding_limits.max_decoded_postings = 1;
     limited_rejected = false;
     try {
