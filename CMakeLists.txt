@@ -175,6 +175,18 @@ endif()
 
 if(AGENT_MEMORY_BUILD_BENCHMARKS)
     add_subdirectory(tools/agent-memory-bench)
+    if(AGENT_MEMORY_ENABLE_MDBX)
+        add_executable(agent_memory_segmented_lexical_benchmark
+            tools/segmented-lexical-benchmark.cpp
+        )
+        target_link_libraries(agent_memory_segmented_lexical_benchmark
+            PRIVATE agent_memory::agent_memory
+                    ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET}
+        )
+        target_compile_features(agent_memory_segmented_lexical_benchmark
+            PRIVATE cxx_std_17
+        )
+    endif()
 endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
@@ -2204,5 +2216,15 @@ if(AGENT_MEMORY_BUILD_TESTS)
         )
     endif() # Python3_Interpreter_FOUND
     endif() # AGENT_MEMORY_BUILD_RESEARCH_TESTS
+    if(AGENT_MEMORY_BUILD_BENCHMARKS AND AGENT_MEMORY_ENABLE_MDBX)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(
+            NAME agent_memory_segmented_lexical_benchmark_contract
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate-segmented-lexical-benchmark.py
+                    --binary $<TARGET_FILE:agent_memory_segmented_lexical_benchmark>
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+    endif()
     add_subdirectory(tests)
 endif()
