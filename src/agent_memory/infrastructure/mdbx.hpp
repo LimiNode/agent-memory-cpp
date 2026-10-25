@@ -18,5 +18,6 @@
 #include "mdbx/MdbxKnowledgeUnitStore.hpp"
 #include "mdbx/MdbxProjectionStore.hpp"
 #include "mdbx/MdbxPublicationWriteScope.hpp"
+#include "mdbx/MdbxPublicationCoordinator.hpp"
 
 #endif
