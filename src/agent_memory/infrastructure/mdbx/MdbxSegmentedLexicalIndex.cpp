@@ -592,7 +592,8 @@ public:
                         || decoded.row.key.segment_id != key_segment
                         || decoded.row.key.posting_layout_version
                             != state.snapshot.posting_layout_version) {
-                        throw std::runtime_error("segmented lexical physical key mismatch");
+                        throw std::runtime_error(
+                            "segmented lexical physical key mismatch: " + marker);
                     }
                     state.segments.push_back(decoded.row);
                 } else if(marker.rfind(marker_prefix(kTokenStats), 0) == 0) {
