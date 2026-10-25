@@ -124,6 +124,16 @@ does not change the flat MDBX payload or its migration policy. A durable adapter
 must validate the same complete membership and generation binding before
 publishing segment rows.
 
+The read-integrity slice adds a dependency-free reconstruction admission
+helper. A caller supplies the expected epoch/generation/layout, segment and
+posting counts, segment bound, and an independent ordered posting witness. The
+helper accepts only contiguous segment ids, matching metadata, bounded and
+strictly ordered unit ids, complete counts, and exact witness membership. It
+returns `ConfirmedEmpty` only for an explicitly expected empty partition; an
+absent non-empty partition remains a non-complete result. This validation is
+separate from `LexicalRouteCompletion` and `LexicalReadConsistency`: it does
+not manufacture a storage snapshot or claim canonical/manifest linearizability.
+
 ## Index identity
 
 Every persisted lexical index is identified by the complete tuple below. A

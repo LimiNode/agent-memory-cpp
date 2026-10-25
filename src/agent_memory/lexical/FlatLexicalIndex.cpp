@@ -61,6 +61,36 @@ bool matches_expected(
         && same_projection_version(actual.projection_version, expected.projection_version);
 }
 
+bool same_flat_posting(
+    const agent_memory::FlatLexicalPosting& lhs,
+    const agent_memory::FlatLexicalPosting& rhs
+) noexcept {
+    return lhs.token_id == rhs.token_id
+        && lhs.unit_id == rhs.unit_id
+        && lhs.resource_id == rhs.resource_id
+        && lhs.resource_generation == rhs.resource_generation
+        && same_projection_version(lhs.projection_version, rhs.projection_version)
+        && lhs.term_frequency == rhs.term_frequency;
+}
+
+bool is_valid_partition_posting(
+    const agent_memory::FlatLexicalPosting& posting,
+    const agent_memory::TokenId& token_id,
+    std::uint64_t& previous_unit_id
+) noexcept {
+    if(posting.token_id != token_id
+        || posting.unit_id.empty()
+        || posting.resource_id.empty()
+        || posting.resource_generation == 0
+        || posting.term_frequency == 0
+        || !agent_memory::is_valid_projection_version(posting.projection_version)
+        || posting.unit_id.value() <= previous_unit_id) {
+        return false;
+    }
+    previous_unit_id = posting.unit_id.value();
+    return true;
+}
+
 } // namespace
 
 namespace agent_memory {
@@ -114,6 +144,156 @@ bool is_valid_flat_lexical_posting_segment(
         previous_unit_id = posting.unit_id.value();
     }
     return true;
+}
+
+FlatLexicalPostingPartitionRead reconstruct_flat_lexical_posting_partition(
+    const std::vector<FlatLexicalPostingSegment>& segments,
+    const FlatLexicalPostingPartitionExpectation& expectation
+) {
+    const auto invalid_expectation = FlatLexicalPostingPartitionRead{
+        FlatLexicalPostingPartitionReadStatus::InvalidExpectation,
+        {}
+    };
+    if(expectation.statistics_epoch.empty()
+        || expectation.statistics_generation == 0
+        || expectation.posting_layout_version == 0
+        || expectation.token_id.empty()
+        || expectation.max_postings_per_segment == 0
+        || expectation.expected_postings.size()
+            != expectation.expected_posting_count
+        || expectation.expected_segment_count
+            > std::numeric_limits<std::uint32_t>::max()) {
+        return invalid_expectation;
+    }
+
+    if(expectation.expected_posting_count == 0) {
+        if(expectation.expected_segment_count != 0
+            || !expectation.expected_postings.empty()) {
+            return invalid_expectation;
+        }
+        return segments.empty()
+            ? FlatLexicalPostingPartitionRead{
+                FlatLexicalPostingPartitionReadStatus::ConfirmedEmpty,
+                {}
+            }
+            : FlatLexicalPostingPartitionRead{
+                FlatLexicalPostingPartitionReadStatus::SegmentCountMismatch,
+                {}
+            };
+    }
+
+    const auto expected_segment_count =
+        expectation.expected_posting_count / expectation.max_postings_per_segment
+        + (expectation.expected_posting_count
+                % expectation.max_postings_per_segment == 0 ? 0U : 1U);
+    if(expected_segment_count != expectation.expected_segment_count) {
+        return invalid_expectation;
+    }
+
+    std::uint64_t previous_expected_unit_id = 0;
+    for(const auto& expected_posting : expectation.expected_postings) {
+        if(!is_valid_partition_posting(
+            expected_posting,
+            expectation.token_id,
+            previous_expected_unit_id
+        )) {
+            return invalid_expectation;
+        }
+    }
+
+    if(segments.size() != expectation.expected_segment_count) {
+        return {
+            FlatLexicalPostingPartitionReadStatus::SegmentCountMismatch,
+            {}
+        };
+    }
+
+    std::size_t received_posting_count = 0;
+    for(std::size_t segment_index = 0;
+        segment_index < segments.size();
+        ++segment_index) {
+        const auto& segment = segments[segment_index];
+        if(segment.segment_id < segment_index) {
+            return {
+                FlatLexicalPostingPartitionReadStatus::DuplicateSegmentId,
+                {}
+            };
+        }
+        if(segment.segment_id > segment_index) {
+            return {
+                FlatLexicalPostingPartitionReadStatus::OutOfOrderSegmentId,
+                {}
+            };
+        }
+        if(segment.statistics_epoch != expectation.statistics_epoch
+            || segment.statistics_generation != expectation.statistics_generation
+            || segment.posting_layout_version
+                != expectation.posting_layout_version
+            || segment.token_id != expectation.token_id) {
+            return {
+                FlatLexicalPostingPartitionReadStatus::MetadataMismatch,
+                {}
+            };
+        }
+        if(segment.postings.size() > expectation.max_postings_per_segment) {
+            return {
+                FlatLexicalPostingPartitionReadStatus::SegmentLimitExceeded,
+                {}
+            };
+        }
+        if(!is_valid_flat_lexical_posting_segment(segment)) {
+            return {
+                FlatLexicalPostingPartitionReadStatus::InvalidSegment,
+                {}
+            };
+        }
+        if(received_posting_count > std::numeric_limits<std::size_t>::max()
+                - segment.postings.size()) {
+            return {
+                FlatLexicalPostingPartitionReadStatus::PostingCountMismatch,
+                {}
+            };
+        }
+        received_posting_count += segment.postings.size();
+    }
+
+    if(received_posting_count != expectation.expected_posting_count) {
+        return {
+            FlatLexicalPostingPartitionReadStatus::PostingCountMismatch,
+            {}
+        };
+    }
+
+    FlatLexicalPostingPartitionRead result{
+        FlatLexicalPostingPartitionReadStatus::Complete,
+        {}
+    };
+    result.postings.reserve(received_posting_count);
+    std::uint64_t previous_unit_id = 0;
+    std::size_t posting_index = 0;
+    for(const auto& segment : segments) {
+        for(const auto& posting : segment.postings) {
+            if(posting.unit_id.value() <= previous_unit_id) {
+                return {
+                    FlatLexicalPostingPartitionReadStatus::PostingOrderMismatch,
+                    {}
+                };
+            }
+            if(!same_flat_posting(
+                posting,
+                expectation.expected_postings[posting_index]
+            )) {
+                return {
+                    FlatLexicalPostingPartitionReadStatus::MembershipMismatch,
+                    {}
+                };
+            }
+            previous_unit_id = posting.unit_id.value();
+            result.postings.push_back(posting);
+            ++posting_index;
+        }
+    }
+    return result;
 }
 
 FlatLexicalIndex::FlatLexicalIndex(

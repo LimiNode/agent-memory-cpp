@@ -72,6 +72,55 @@ namespace agent_memory {
         std::vector<FlatLexicalPosting> postings;
     };
 
+    /// \brief Trusted expectations used to validate one reconstructed posting partition.
+    ///
+    /// The expected posting records are an independent witness supplied by a
+    /// caller that already owns the authoritative logical view. A future
+    /// storage reader may replace that witness with an equivalent digest, but
+    /// a count derived only from received segments is not sufficient evidence
+    /// of complete membership.
+    struct FlatLexicalPostingPartitionExpectation final {
+        LexicalStatisticsEpoch statistics_epoch;
+        std::uint64_t statistics_generation = 0;
+        std::uint32_t posting_layout_version = 0;
+        TokenId token_id;
+        std::size_t expected_segment_count = 0;
+        std::size_t expected_posting_count = 0;
+        std::size_t max_postings_per_segment = 0;
+        std::vector<FlatLexicalPosting> expected_postings;
+    };
+
+    /// \brief Admission result for a reconstructed posting partition.
+    enum class FlatLexicalPostingPartitionReadStatus : std::uint8_t {
+        Complete,
+        ConfirmedEmpty,
+        InvalidExpectation,
+        SegmentCountMismatch,
+        DuplicateSegmentId,
+        OutOfOrderSegmentId,
+        MetadataMismatch,
+        InvalidSegment,
+        SegmentLimitExceeded,
+        PostingCountMismatch,
+        PostingOrderMismatch,
+        MembershipMismatch
+    };
+
+    /// \brief Reconstructed postings and their fail-closed admission status.
+    struct FlatLexicalPostingPartitionRead final {
+        FlatLexicalPostingPartitionReadStatus status =
+            FlatLexicalPostingPartitionReadStatus::InvalidExpectation;
+        std::vector<FlatLexicalPosting> postings;
+
+        [[nodiscard]] bool complete() const noexcept {
+            return status == FlatLexicalPostingPartitionReadStatus::Complete;
+        }
+
+        [[nodiscard]] bool confirmed_empty() const noexcept {
+            return status == FlatLexicalPostingPartitionReadStatus::ConfirmedEmpty;
+        }
+    };
+
     /// \brief Statistics for one active indexed unit.
     struct FlatLexicalUnitStats final {
         KnowledgeUnitId unit_id;
@@ -218,6 +267,18 @@ namespace agent_memory {
     [[nodiscard]] bool is_valid_flat_lexical_posting_segment(
         const FlatLexicalPostingSegment& segment
     ) noexcept;
+
+    /// \brief Reconstructs one complete posting partition from received segments.
+    ///
+    /// This is a dependency-free, fail-closed reader admission helper. It does
+    /// not claim a storage snapshot or route completion; callers must supply
+    /// trusted epoch/generation/layout metadata and an independent posting
+    /// witness in the expectation. No partial postings are returned on failure.
+    [[nodiscard]] FlatLexicalPostingPartitionRead
+    reconstruct_flat_lexical_posting_partition(
+        const std::vector<FlatLexicalPostingSegment>& segments,
+        const FlatLexicalPostingPartitionExpectation& expectation
+    );
 
 } // namespace agent_memory
 
