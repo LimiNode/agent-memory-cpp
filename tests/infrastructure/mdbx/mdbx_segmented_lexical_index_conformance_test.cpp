@@ -266,6 +266,90 @@ void test_faults_and_corruption(
     table.insert_or_assign(original_segment_key, original_segment_value, restore_txn);
     restore_txn.commit();
 
+    const auto segment_separator = original_segment_key.rfind('\x1f');
+    require(segment_separator != std::string::npos,
+        "segmented suffix fixture key is malformed");
+    const auto segment_prefix = original_segment_key.substr(0, segment_separator + 1U);
+    for(const auto& suffix : {std::string{"1:0junk"}, std::string{"01:0"},
+                              std::string{"1:0:0"}}) {
+        auto mutation_txn = context->connection()->transaction(
+            mdbxc::TransactionMode::WRITABLE);
+        table.erase(original_segment_key, mutation_txn);
+        table.insert_or_assign(segment_prefix + suffix, original_segment_value, mutation_txn);
+        mutation_txn.commit();
+        rejected = false;
+        try { static_cast<void>(index.read_snapshot()); }
+        catch(const std::runtime_error&) { rejected = true; }
+        require(rejected, "non-canonical segmented suffix was accepted");
+        auto restore = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        table.erase(segment_prefix + suffix, restore);
+        table.insert_or_assign(original_segment_key, original_segment_value, restore);
+        restore.commit();
+    }
+
+    auto expect_key_value_mismatch = [&](const std::string& marker,
+                                         const char* message) {
+        auto mutation_txn = context->connection()->transaction(
+            mdbxc::TransactionMode::WRITABLE);
+        std::string key;
+        std::string value;
+        table.for_each_range(from, to,
+            [&key, &value, &marker](const std::string& candidate,
+                                    const std::string& candidate_value) {
+                if(candidate.find(marker) == std::string::npos) return true;
+                key = candidate;
+                value = candidate_value;
+                return false;
+            }, mutation_txn);
+        require(!key.empty(), message);
+        table.erase(key, mutation_txn);
+        table.insert_or_assign(key + "-mismatch", value, mutation_txn);
+        mutation_txn.commit();
+        bool failed = false;
+        try { static_cast<void>(index.read_snapshot()); }
+        catch(const std::runtime_error&) { failed = true; }
+        require(failed, message);
+        auto restore = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        table.erase(key + "-mismatch", restore);
+        table.insert_or_assign(key, value, restore);
+        restore.commit();
+    };
+    expect_key_value_mismatch("\x1funit\x1f", "unit key/value mismatch was accepted");
+    expect_key_value_mismatch("\x1fdictionary\x1f", "dictionary key/value mismatch was accepted");
+    expect_key_value_mismatch("\x1ftoken-stats\x1f", "token stats key/value mismatch was accepted");
+    expect_key_value_mismatch("\x1fwitness\x1f", "witness key/value mismatch was accepted");
+
+    for(const auto& metadata : {std::string{"\x1fsnapshot"},
+                                std::string{"\x1fsequence"},
+                                std::string{"\x1fhigh-water"},
+                                std::string{"\x1fcollection-stats"}}) {
+        auto mutation_txn = context->connection()->transaction(
+            mdbxc::TransactionMode::WRITABLE);
+        std::string metadata_key;
+        std::string metadata_value;
+        table.for_each_range(from, to,
+            [&metadata_key, &metadata_value, &metadata](const std::string& key,
+                                                         const std::string& value) {
+                if(key.size() < metadata.size()
+                    || key.compare(key.size() - metadata.size(), metadata.size(), metadata) != 0) {
+                    return true;
+                }
+                metadata_key = key;
+                metadata_value = value;
+                return false;
+            }, mutation_txn);
+        require(!metadata_key.empty(), "required metadata fixture row missing");
+        table.erase(metadata_key, mutation_txn);
+        mutation_txn.commit();
+        rejected = false;
+        try { static_cast<void>(index.read_snapshot()); }
+        catch(const std::runtime_error&) { rejected = true; }
+        require(rejected, "partially initialized segmented namespace was accepted");
+        auto restore = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        table.insert_or_assign(metadata_key, metadata_value, restore);
+        restore.commit();
+    }
+
     auto corrupt_txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
     bool changed_corruption = table.for_each_range(from, to,
         [&table, &corrupt_txn](const std::string& key, const std::string& value) {
