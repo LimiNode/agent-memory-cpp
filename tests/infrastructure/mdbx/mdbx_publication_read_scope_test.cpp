@@ -96,7 +96,7 @@ int main() {
     coordinator_options.scope_id = scope;
     MdbxPublicationCoordinator coordinator{std::move(coordinator_options)};
     if(coordinator.admit_profile(profile, fencing).code != PublicationAdmissionCode::Admitted
-        || coordinator.publish(metadata_plan(scope, profile, fencing)).code
+        || coordinator.publish_metadata_only(metadata_plan(scope, profile, fencing)).code
             != PublicationOutcomeCode::Committed) {
         return fail("read-scope fixture metadata publication failed");
     }

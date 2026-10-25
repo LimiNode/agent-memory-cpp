@@ -48,9 +48,11 @@ PublicationPlan plan_for(
     const PublicationProfileIdentity& profile,
     const PublicationFencingIdentity& fencing,
     const std::string& publication_id,
-    const std::uint64_t expected_sequence = 0
+    const std::uint64_t expected_sequence = 0,
+    const std::uint64_t manifest_payload_version = 1
 ) {
-    const auto target = evidence();
+    auto target = evidence();
+    target.manifest_payload_version = manifest_payload_version;
     return PublicationPlan{
         PublicationIdentity{scope, publication_id},
         PublicationScopeFrontier{scope, PublicationSequence{expected_sequence}},
@@ -109,6 +111,10 @@ public:
         throw std::runtime_error("injected authoritative participant failure");
     }
 
+    [[nodiscard]] MdbxPublicationParticipantRole role() const noexcept override {
+        return MdbxPublicationParticipantRole::Canonical;
+    }
+
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
 };
@@ -154,7 +160,11 @@ int main() {
         }
 
         auto first_plan = plan_for(scope, profile, next_fencing, "publication-1");
-        const auto committed = coordinator.publish(first_plan);
+        if(coordinator.publish(first_plan, {}).code != PublicationOutcomeCode::InvalidPlan
+            || coordinator.frontier().sequence.value() != 0) {
+            return fail("authoritative publication API must reject an empty participant set");
+        }
+        const auto committed = coordinator.publish_metadata_only(first_plan);
         if(committed.code != PublicationOutcomeCode::Committed
             || !committed.receipt
             || committed.receipt->committed_frontier.sequence.value() != 1
@@ -162,7 +172,7 @@ int main() {
             return fail("first metadata publication must commit sequence one");
         }
 
-        const auto replay = coordinator.publish(first_plan);
+        const auto replay = coordinator.publish_metadata_only(first_plan);
         if(replay.code != PublicationOutcomeCode::Replayed
             || !replay.receipt
             || !replay.receipt->replay
@@ -171,18 +181,18 @@ int main() {
         }
         auto changed_plan = first_plan;
         changed_plan.payload.payload_digest = "changed";
-        if(coordinator.publish(changed_plan).code
+        if(coordinator.publish_metadata_only(changed_plan).code
             != PublicationOutcomeCode::PublicationIdentityConflict) {
             return fail("changed replay payload must conflict");
         }
         auto stale_plan = plan_for(scope, profile, next_fencing, "publication-2");
-        if(coordinator.publish(stale_plan).code != PublicationOutcomeCode::StaleFrontier) {
+        if(coordinator.publish_metadata_only(stale_plan).code != PublicationOutcomeCode::StaleFrontier) {
             return fail("stale new publication must be rejected");
         }
         auto wrong_fencing = first_plan;
         wrong_fencing.identity.publication_id = "publication-3";
         wrong_fencing.fencing = fencing;
-        if(coordinator.publish(wrong_fencing).code
+        if(coordinator.publish_metadata_only(wrong_fencing).code
             != PublicationOutcomeCode::FencingMismatch) {
             return fail("publication with stale fencing must be rejected");
         }
@@ -235,7 +245,11 @@ int main() {
             manifests,
             ResourceManifest{
                 ResourceRevision{ResourceId{"resource-1"}, 1, 1, 1},
-                {}
+                {},
+                ResourceManifestState::Active,
+                {},
+                ResourceManifestSchema{"manifest-v1", 1},
+                ResourceManifestPayloadVersion::V1
             },
             std::nullopt
         };
@@ -246,52 +260,12 @@ int main() {
             authoritative_plan,
             {&canonical_participant, &unit_participant, &manifest_participant}
         );
-        if(authoritative.code != PublicationOutcomeCode::Committed
-            || coordinator.frontier().sequence.value() != 2
-            || !canonical.read_current(DocumentId{"authoritative-document"})
-            || units.scan_by_scope(scope).size() != 1
-            || !manifests.find_manifest(ResourceId{"resource-1"})) {
-            return fail("authoritative participants must publish atomically");
-        }
-
-        FailingParticipant failing{context};
-        auto failed_plan = plan_for(scope, profile, next_fencing, "publication-failed", 2);
-        if(coordinator.publish(failed_plan, {&failing}).code
-            != PublicationOutcomeCode::CommitFailure
-            || coordinator.frontier().sequence.value() != 2
-            || coordinator.receipt("publication-failed")) {
-            return fail("participant failure must roll back metadata and frontier");
-        }
-
-        MdbxCanonicalPublicationParticipant retry_canonical{
-            context,
-            canonical,
-            CanonicalDocumentRevision{
-                DocumentId{"retry-document"},
-                0,
-                {},
-                {ContentBlock{
-                    ContentBlockId{"retry-block"},
-                    1,
-                    ContentBlockKind::Paragraph,
-                    std::nullopt,
-                    "retry body"
-                }}
-            }
-        };
-        auto retry_plan = plan_for(
-            scope, profile, next_fencing, "publication-retry", 2
-        );
-        if(coordinator.publish(retry_plan, {&retry_canonical, &failing}).code
-            != PublicationOutcomeCode::CommitFailure
-            || coordinator.frontier().sequence.value() != 2) {
-            return fail("failed retry fixture must leave the frontier unchanged");
-        }
-        const auto retry_result = coordinator.publish(retry_plan, {&retry_canonical});
-        if(retry_result.code != PublicationOutcomeCode::Committed
-            || coordinator.frontier().sequence.value() != 3
-            || !canonical.read_current(DocumentId{"retry-document"})) {
-            return fail("prepared participant must be reusable after rollback");
+        if(authoritative.code != PublicationOutcomeCode::InvalidPlan
+            || coordinator.frontier().sequence.value() != 1
+            || canonical.read_current(DocumentId{"authoritative-document"})
+            || !units.scan_by_scope(scope).empty()
+            || manifests.find_manifest(ResourceId{"resource-1"})) {
+            return fail("incomplete authoritative participant sets must be rejected");
         }
 
         MdbxCanonicalPublicationParticipant duplicate_a{
@@ -313,10 +287,10 @@ int main() {
             }
         };
         if(coordinator.publish(
-                plan_for(scope, profile, next_fencing, "publication-duplicate", 3),
+                plan_for(scope, profile, next_fencing, "publication-duplicate", 1),
                 {&duplicate_a, &duplicate_b}
             ).code != PublicationOutcomeCode::InvalidPlan
-            || coordinator.frontier().sequence.value() != 3) {
+            || coordinator.frontier().sequence.value() != 1) {
             return fail("duplicate participant roles must be rejected atomically");
         }
 
@@ -369,18 +343,50 @@ int main() {
                 {"authoritative", "body"}
             }
         };
-        auto projection_plan = plan_for(
-            scope, profile, next_fencing, "publication-projection", 3
+        if(!canonical.create_document(CanonicalDocumentRevision{
+                DocumentId{"retry-document"},
+                0,
+                {},
+                {ContentBlock{ContentBlockId{"retry-block"}, 1,
+                    ContentBlockKind::Paragraph, std::nullopt, "baseline"}}
+            })) {
+            return fail("retry canonical baseline failed");
+        }
+        MdbxCanonicalPublicationParticipant retry_canonical{
+            context,
+            canonical,
+            CanonicalEditRequest{
+                DocumentId{"retry-document"},
+                0,
+                {ReplaceBlockText{ContentBlockId{"retry-block"}, "authoritative body"}}
+            }
+        };
+        FailingParticipant failing{context};
+        auto retry_plan = plan_for(
+            scope, profile, next_fencing, "publication-retry", 1, 6
         );
-        const auto projection_result = coordinator.publish(
-            projection_plan,
-            {&projection_participant, &lexical_participant}
+        if(coordinator.publish(
+                retry_plan,
+                {&failing, &unit_participant, &projection_participant,
+                 &lexical_participant, &manifest_participant}
+            ).code != PublicationOutcomeCode::CommitFailure
+            || coordinator.frontier().sequence.value() != 1
+            || coordinator.receipt("publication-retry")) {
+            return fail("participant failure must roll back metadata and frontier");
+        }
+        const auto retry_result = coordinator.publish(
+            retry_plan,
+            {&retry_canonical, &unit_participant, &projection_participant,
+             &lexical_participant, &manifest_participant}
         );
-        if(projection_result.code != PublicationOutcomeCode::Committed
-            || coordinator.frontier().sequence.value() != 4
+        if(retry_result.code != PublicationOutcomeCode::Committed
+            || coordinator.frontier().sequence.value() != 2
+            || !canonical.read_current(DocumentId{"retry-document"})
+            || units.scan_by_scope(scope).size() != 1
+            || !manifests.find_manifest(ResourceId{"resource-1"})
             || projections.list(scope, KnowledgeUnitId{1}, ProjectionKind::Original).size() != 1
             || lexical.read_snapshot().index.size() != 1) {
-            return fail("projection and flat-v2 lexical participants must publish atomically");
+            return fail("complete participant publication must be atomic and retryable");
         }
 
         mdbxc::KeyValueTable<std::string, std::string> metadata(
@@ -404,7 +410,7 @@ int main() {
         options.context = context;
         options.scope_id = scope;
         MdbxPublicationCoordinator reopened{std::move(options)};
-        if(reopened.frontier().sequence.value() != 4
+        if(reopened.frontier().sequence.value() != 2
             || !reopened.receipt("publication-1")) {
             return fail("frontier and receipt must survive reopen");
         }

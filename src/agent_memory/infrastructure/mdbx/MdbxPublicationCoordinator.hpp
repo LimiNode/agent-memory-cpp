@@ -51,14 +51,17 @@ public:
         PublicationFencingIdentity fencing
     );
 
-    [[nodiscard]] PublicationOutcome publish(const PublicationPlan& plan);
+    /// \brief Advances only coordinator metadata for an explicitly weaker profile.
+    ///
+    /// This path never claims a complete publication and is intended for
+    /// migration/recovery tooling, not for authoritative data publication.
+    [[nodiscard]] PublicationOutcome publish_metadata_only(const PublicationPlan& plan);
 
     /// \brief Publishes metadata and supplied authoritative participants atomically.
     ///
     /// Participants must belong to this context and must not own, commit, abort,
-    /// or retain the transaction. An empty vector preserves the experimental
-    /// metadata-only PR-B behavior; production profiles must provide the
-    /// canonical, unit and manifest participants.
+    /// or retain the transaction. All five authoritative roles are required;
+    /// use `publish_metadata_only()` for an explicitly weaker metadata path.
     [[nodiscard]] PublicationOutcome publish(
         const PublicationPlan& plan,
         const std::vector<MdbxPublicationParticipant*>& participants
@@ -93,6 +96,12 @@ public:
 
 private:
     class Impl;
+
+    [[nodiscard]] PublicationOutcome publish_impl(
+        const PublicationPlan& plan,
+        const std::vector<MdbxPublicationParticipant*>& participants,
+        bool allow_metadata_only
+    );
 
     std::unique_ptr<Impl> m_impl;
 };

@@ -543,13 +543,23 @@ PublicationAdmissionResult MdbxPublicationCoordinator::rotate_fencing(
     return result;
 }
 
-PublicationOutcome MdbxPublicationCoordinator::publish(const PublicationPlan& plan) {
-    return publish(plan, {});
+PublicationOutcome MdbxPublicationCoordinator::publish_metadata_only(
+    const PublicationPlan& plan
+) {
+    return publish_impl(plan, {}, true);
 }
 
 PublicationOutcome MdbxPublicationCoordinator::publish(
     const PublicationPlan& plan,
     const std::vector<MdbxPublicationParticipant*>& participants
+) {
+    return publish_impl(plan, participants, false);
+}
+
+PublicationOutcome MdbxPublicationCoordinator::publish_impl(
+    const PublicationPlan& plan,
+    const std::vector<MdbxPublicationParticipant*>& participants,
+    const bool allow_metadata_only
 ) {
     PublicationOutcome result{PublicationOutcomeCode::InvalidPlan, std::nullopt};
     for(const auto* participant : participants) {
@@ -568,7 +578,9 @@ PublicationOutcome MdbxPublicationCoordinator::publish(
     };
     LambdaParticipant participant{
         m_impl->context,
-        [this, &plan, &result, &participants, &scope](const mdbxc::Transaction& transaction) {
+        [this, &plan, &result, &participants, &scope, allow_metadata_only](
+            const mdbxc::Transaction& transaction
+        ) {
             if(!is_valid_publication_plan(plan)
                 || plan.identity.scope_id != m_impl->scope_id) {
                 result.code = PublicationOutcomeCode::InvalidPlan;
@@ -698,6 +710,10 @@ PublicationOutcome MdbxPublicationCoordinator::publish(
                 && std::all_of(role_seen.begin(), role_seen.end(), [](const bool seen) {
                     return seen;
                 });
+            if(!complete_roles && !allow_metadata_only) {
+                result.code = PublicationOutcomeCode::InvalidPlan;
+                return;
+            }
             if(complete_roles) {
                 for(const auto* candidate : participants) {
                     if(!candidate->validates(plan, transaction)) {
