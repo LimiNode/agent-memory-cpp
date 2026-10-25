@@ -393,6 +393,7 @@ struct StoredState final {
     TokenId next_token_id{1};
     std::vector<FlatLexicalUnitInput> units;
     std::vector<LexicalSegmentRow> segments;
+    std::vector<std::pair<TokenId, std::uint32_t>> segment_addresses;
     std::map<TokenId, FlatLexicalTokenStats> token_stats;
     FlatLexicalCollectionStats collection_stats;
     std::map<TokenId, std::array<std::uint8_t, 32>> witnesses;
@@ -584,14 +585,8 @@ public:
                     TokenId key_token;
                     std::uint32_t key_segment = 0;
                     if(!parse_segment_suffix(marker, key_token, key_segment)
-                        || decoded.row.key.scope_id != descriptor.ref.scope_id
-                        || decoded.row.key.projection_kind != descriptor.ref.projection_kind
-                        || decoded.row.key.statistics_epoch != state.snapshot.statistics_epoch
-                        || decoded.row.key.statistics_generation != state.snapshot.statistics_generation
                         || decoded.row.key.token_id != key_token
-                        || decoded.row.key.segment_id != key_segment
-                        || decoded.row.key.posting_layout_version
-                            != state.snapshot.posting_layout_version) {
+                        || decoded.row.key.segment_id != key_segment) {
                         throw std::runtime_error(
                             "segmented lexical physical key mismatch: " + marker
                             + " decoded-generation="
@@ -604,6 +599,7 @@ public:
                             + std::to_string(key_token.value()));
                     }
                     state.segments.push_back(decoded.row);
+                    state.segment_addresses.emplace_back(key_token, key_segment);
                 } else if(marker.rfind(marker_prefix(kTokenStats), 0) == 0) {
                     if(state.token_stats.size() >= limits.max_token_stats) {
                         throw std::runtime_error("segmented lexical token statistics limit exceeded");
@@ -644,6 +640,23 @@ public:
 
         std::sort(state.dictionary.begin(), state.dictionary.end(),
             [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+
+        if(state.segments.size() != state.segment_addresses.size()) {
+            throw std::runtime_error("segmented lexical segment address mismatch");
+        }
+        for(std::size_t index = 0; index < state.segments.size(); ++index) {
+            const auto& row = state.segments[index];
+            const auto& address = state.segment_addresses[index];
+            if(row.key.scope_id != descriptor.ref.scope_id
+                || row.key.projection_kind != descriptor.ref.projection_kind
+                || row.key.statistics_epoch != state.snapshot.statistics_epoch
+                || row.key.statistics_generation != state.snapshot.statistics_generation
+                || row.key.token_id != address.first
+                || row.key.segment_id != address.second
+                || row.key.posting_layout_version != state.snapshot.posting_layout_version) {
+                throw std::runtime_error("segmented lexical physical key mismatch");
+            }
+        }
 
         if(!state.has_descriptor) {
             if(state.has_any_rows) {
