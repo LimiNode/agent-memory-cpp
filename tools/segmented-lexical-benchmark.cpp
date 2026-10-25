@@ -8,6 +8,7 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -42,13 +43,18 @@ FlatLexicalUnitInput unit(
     const std::string& workload
 ) {
     std::vector<std::string> tokens;
-    if(workload == "unique") {
+    if(workload == "unique+anchor") {
         tokens = {"token-" + std::to_string(index), "anchor"};
-    } else if(workload == "shared") {
-        tokens = {"shared", "shared", "anchor"};
+    } else if(workload == "shared-hot") {
+        tokens = {"shared-hot", "shared-hot", "anchor"};
+    } else if(workload == "zipf-like") {
+        const auto rank = (index * 37U + 11U) % 100U;
+        const auto bucket = rank < 50U ? 1U : rank < 75U ? 2U
+            : rank < 88U ? 3U : rank < 95U ? 4U : 5U;
+        tokens = {"zipf-" + std::to_string(bucket), "anchor"};
+        if(index % 3U == 0) tokens.push_back("shared-hot");
     } else {
-        tokens = {"zipf-" + std::to_string((index % 16U) + 1U), "anchor"};
-        if(index % 3U == 0) tokens.push_back("shared");
+        tokens = {"токен-" + std::to_string(index), "code::v1", "anchor"};
     }
     return FlatLexicalUnitInput{
         ScopeId{"scope-benchmark"},
@@ -73,7 +79,8 @@ std::uintmax_t database_bytes(const std::filesystem::path& path) {
 }
 
 void print_header() {
-    std::cout << "backend\tworkload\tunits\trepeat\twrite_ms\tread_ms\treopen_ms"
+    std::cout << "backend\tworkload\tunits\trepeat\tenvironment_ms\tadapter_init_ms"
+                 "\twrite_ms\tsnapshot_ms\tclose_ms\treopen_ms\treopen_snapshot_ms"
                  "\tdb_bytes\tactive_units\ttotal_tokens\n";
 }
 
@@ -92,9 +99,9 @@ void run_flat_reference(
         index.find_token_id("anchor").value()));
     const auto read_done = Clock::now();
     std::cout << "flat-reference\t" << workload << '\t' << units << '\t' << repeat
-              << '\t' << milliseconds(write_done - started)
+              << "\t0\t0\t" << milliseconds(write_done - started)
               << '\t' << milliseconds(read_done - write_done)
-              << "\t0\t0\t" << index.collection_stats().unit_count
+              << "\t0\t0\t0\t0\t" << index.collection_stats().unit_count
               << '\t' << index.collection_stats().total_token_count << '\n';
 }
 
@@ -120,29 +127,34 @@ void run_durable(
     remove_database_file(path);
     remove_database_file(path.string() + "-lck");
 
+    const auto environment_started = Clock::now();
     auto context = MdbxStorageContext::open(path.string());
+    const auto environment_done = Clock::now();
     options.path = path.string();
     options.context = context;
-    const auto started = Clock::now();
+    const auto adapter_started = Clock::now();
+    auto index = std::make_unique<IndexT>(options);
+    const auto adapter_done = Clock::now();
     Clock::time_point write_done;
     Clock::time_point read_done;
     {
-        IndexT index{options};
         for(std::size_t index_value = 0; index_value < units; ++index_value) {
-            index.upsert(unit(index_value, workload));
+            index->upsert(unit(index_value, workload));
         }
         write_done = Clock::now();
         {
-            const auto snapshot = index.read_snapshot();
+            const auto snapshot = index->read_snapshot();
             const auto anchor = snapshot.index.find_token_id("anchor");
             if(!anchor) throw std::runtime_error("benchmark anchor token missing");
             static_cast<void>(snapshot.index.postings(*anchor));
             read_done = Clock::now();
         }
     }
-    const auto before_reopen = Clock::now();
+    const auto before_close = Clock::now();
+    index.reset();
     options.context.reset();
     context.reset();
+    const auto close_done = Clock::now();
 
     OptionsT reopen_options;
     reopen_options.path = path.string();
@@ -150,21 +162,28 @@ void run_durable(
     if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
         reopen_options.encoding_limits.max_postings_per_segment = 128;
     }
+    const auto reopen_started = Clock::now();
     const auto reopen_context = MdbxStorageContext::open(path.string());
     reopen_options.context = reopen_context;
     IndexT reopened{reopen_options};
     const auto reopen_done = Clock::now();
     std::size_t active_units = 0;
     std::size_t total_tokens = 0;
+    const auto reopen_snapshot_started = Clock::now();
     {
         const auto reopened_snapshot = reopened.read_snapshot();
         active_units = reopened_snapshot.index.collection_stats().unit_count;
         total_tokens = reopened_snapshot.index.collection_stats().total_token_count;
     }
+    const auto reopen_snapshot_done = Clock::now();
     std::cout << backend << '\t' << workload << '\t' << units << '\t' << repeat
-              << '\t' << milliseconds(write_done - started)
+              << '\t' << milliseconds(environment_done - environment_started)
+              << '\t' << milliseconds(adapter_done - adapter_started)
+              << '\t' << milliseconds(write_done - adapter_done)
               << '\t' << milliseconds(read_done - write_done)
-              << '\t' << milliseconds(reopen_done - before_reopen)
+              << '\t' << milliseconds(close_done - before_close)
+              << '\t' << milliseconds(reopen_done - reopen_started)
+              << '\t' << milliseconds(reopen_snapshot_done - reopen_snapshot_started)
               << '\t' << database_bytes(path)
               << '\t' << active_units
               << '\t' << total_tokens
@@ -180,7 +199,8 @@ int main(int argc, char** argv) {
         ? argv[3]
         : (std::filesystem::temp_directory_path() / "agent_memory_segmented_benchmark");
     print_header();
-    for(const std::string workload : {"unique", "shared", "zipf"}) {
+    for(const std::string workload : {
+        "unique+anchor", "shared-hot", "zipf-like", "mixed-utf8"}) {
         for(std::size_t repeat = 0; repeat < repeats; ++repeat) {
             run_flat_reference(workload, units, repeat);
             {
