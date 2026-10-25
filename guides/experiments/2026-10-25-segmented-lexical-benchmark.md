@@ -31,8 +31,12 @@ do not represent physical disk writes.
 Example command:
 
 ```text
-agent_memory_segmented_lexical_benchmark.exe 128 5 <temporary-base-path>
+agent_memory_segmented_lexical_benchmark.exe 128 5 <temporary-base-path> 1
 ```
+
+The optional final flag enables the post-write diagnostic scans (`1`, the
+default). Use `0` for a matched telemetry-disabled control run; correctness
+and timed write/read phases are unchanged.
 
 ## Directional smoke result
 

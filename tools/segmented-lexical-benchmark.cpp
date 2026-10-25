@@ -154,7 +154,8 @@ void run_durable(
     const std::size_t units,
     const std::size_t repeat,
     const std::filesystem::path& path,
-    OptionsT options
+    OptionsT options,
+    const bool diagnostics_enabled
 ) {
     const auto remove_database_file = [](const std::filesystem::path& target) {
         std::error_code error;
@@ -188,17 +189,19 @@ void run_durable(
         }
         write_done = Clock::now();
         const auto diagnostic_started = Clock::now();
-        for(std::size_t index_value = 0; index_value < units; ++index_value) {
-            const auto sample = scan_rows(
-                context, previous_rows, true, backend == "segmented-v1");
-            previous_rows = sample.live_rows_observed;
-            counters.live_rows_observed += sample.live_rows_observed;
-            counters.live_value_bytes_observed += sample.live_value_bytes_observed;
-            counters.diagnostic_scans += sample.diagnostic_scans;
-            counters.estimated_rebuild_publications += sample.estimated_rebuild_publications;
-            counters.estimated_rows_deleted += sample.estimated_rows_deleted;
-            counters.estimated_rows_inserted += sample.estimated_rows_inserted;
-            counters.observed_encoded_bytes += sample.observed_encoded_bytes;
+        if(diagnostics_enabled) {
+            for(std::size_t index_value = 0; index_value < units; ++index_value) {
+                const auto sample = scan_rows(
+                    context, previous_rows, true, backend == "segmented-v1");
+                previous_rows = sample.live_rows_observed;
+                counters.live_rows_observed += sample.live_rows_observed;
+                counters.live_value_bytes_observed += sample.live_value_bytes_observed;
+                counters.diagnostic_scans += sample.diagnostic_scans;
+                counters.estimated_rebuild_publications += sample.estimated_rebuild_publications;
+                counters.estimated_rows_deleted += sample.estimated_rows_deleted;
+                counters.estimated_rows_inserted += sample.estimated_rows_inserted;
+                counters.observed_encoded_bytes += sample.observed_encoded_bytes;
+            }
         }
         diagnostic_duration = Clock::now() - diagnostic_started;
         {
@@ -235,14 +238,16 @@ void run_durable(
         total_tokens = reopened_snapshot.index.collection_stats().total_token_count;
     }
     const auto reopen_snapshot_done = Clock::now();
-    const auto reopen_sample = scan_rows(
-        reopen_context, previous_rows, false, backend == "segmented-v1");
-    counters.live_rows_observed += reopen_sample.live_rows_observed;
-    counters.live_value_bytes_observed += reopen_sample.live_value_bytes_observed;
-    counters.diagnostic_scans += reopen_sample.diagnostic_scans;
-    counters.estimated_rows_deleted += reopen_sample.estimated_rows_deleted;
-    counters.estimated_rows_inserted += reopen_sample.estimated_rows_inserted;
-    counters.observed_encoded_bytes += reopen_sample.observed_encoded_bytes;
+    if(diagnostics_enabled) {
+        const auto reopen_sample = scan_rows(
+            reopen_context, previous_rows, false, backend == "segmented-v1");
+        counters.live_rows_observed += reopen_sample.live_rows_observed;
+        counters.live_value_bytes_observed += reopen_sample.live_value_bytes_observed;
+        counters.diagnostic_scans += reopen_sample.diagnostic_scans;
+        counters.estimated_rows_deleted += reopen_sample.estimated_rows_deleted;
+        counters.estimated_rows_inserted += reopen_sample.estimated_rows_inserted;
+        counters.observed_encoded_bytes += reopen_sample.observed_encoded_bytes;
+    }
     std::cout << backend << '\t' << workload << '\t' << units << '\t' << repeat
               << '\t' << milliseconds(environment_done - environment_started)
               << '\t' << milliseconds(adapter_done - adapter_started)
@@ -273,6 +278,9 @@ int main(int argc, char** argv) {
     const std::filesystem::path base = argc > 3
         ? argv[3]
         : (std::filesystem::temp_directory_path() / "agent_memory_segmented_benchmark");
+    const bool diagnostics_enabled = argc > 4
+        ? std::stoull(argv[4]) != 0U
+        : true;
     print_header();
     for(const std::string workload : {
         "unique+anchor", "shared-hot", "zipf-like", "mixed-utf8"}) {
@@ -284,7 +292,7 @@ int main(int argc, char** argv) {
                 options.descriptor = descriptor();
                 run_durable<MdbxPersistentLexicalIndex>(
                     "flat-v2", workload, units, repeat,
-                    options.path, options);
+                    options.path, options, diagnostics_enabled);
             }
             {
                 MdbxSegmentedLexicalIndexOptions options;
@@ -293,7 +301,7 @@ int main(int argc, char** argv) {
                 options.encoding_limits.max_postings_per_segment = 128;
                 run_durable<MdbxSegmentedLexicalIndex>(
                     "segmented-v1", workload, units, repeat,
-                    options.path, options);
+                    options.path, options, diagnostics_enabled);
             }
         }
     }
