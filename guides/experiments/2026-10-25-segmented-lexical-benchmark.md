@@ -65,6 +65,16 @@ durable transaction per unit and is intentionally an experimental storage
 slice. A follow-up should measure larger corpora, transaction batching, map
 growth, and physical I/O before any layout or default change is proposed.
 
+### Timing-integrity control
+
+With the same MinGW Release build and `128 units × 5 repeats`, the segmented
+backend produced a median `write_ms` of 2,229.45 ms with diagnostics disabled
+and 2,226.52 ms with diagnostics enabled. The separate
+`write_diagnostic_ms` median was 0 ms versus 32.697 ms. This confirms that the
+post-write scans are no longer included in the reported write timing. The
+figures are directional local evidence, not a hardware-normalized performance
+claim.
+
 ## Limitations and next checks
 
 - The checked-in smoke table uses two repeats; comparative decisions require
