@@ -26,9 +26,6 @@ For the cross-PR causal history and merge/evidence ledger, see
 [`research-timeline.md`](research-timeline.md). It is an index into the
 experiment notes, not a replacement for them.
 
-The publication coordinator semantic-audit record is
-[2026-10-25-publication-coordinator-semantic-audit.md](2026-10-25-publication-coordinator-semantic-audit.md).
-
 ## When to write or update a note
 
 Create or update an experiment note when a PR:
