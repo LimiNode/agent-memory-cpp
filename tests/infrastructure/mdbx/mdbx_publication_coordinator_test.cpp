@@ -28,18 +28,57 @@ std::filesystem::path test_path() {
         / ("agent_memory_publication_coordinator_" + std::to_string(stamp) + ".mdbx");
 }
 
-PublicationEvidence evidence() {
+SearchProjection publication_projection(const ScopeId& scope) {
+    return SearchProjection{
+        scope,
+        KnowledgeUnitId{1},
+        ProjectionKind::Original,
+        ProjectionVersionRef{1, 1, 1, "projection-v1"},
+        "title",
+        "heading",
+        "authoritative body",
+        "",
+        {},
+        {}
+    };
+}
+
+ResourceManifest publication_manifest(
+    const ResourceManifestPayloadVersion payload_version
+) {
+    return ResourceManifest{
+        ResourceRevision{ResourceId{"resource-1"}, 1, 1, 1},
+        {},
+        ResourceManifestState::Active,
+        {},
+        ResourceManifestSchema{"manifest-v1", 1},
+        payload_version
+    };
+}
+
+PublicationEvidence evidence(
+    const ScopeId& scope,
+    const std::uint64_t manifest_payload_version
+) {
     PublicationEvidence value;
     value.resource_id = ResourceId{"resource-1"};
     value.resource_generation = 1;
+    value.canonical_document_id = DocumentId{"retry-document"};
     value.canonical_revision = 1;
+    value.unit_id = KnowledgeUnitId{1};
     value.unit_revision = 1;
     value.projection_version = ProjectionVersionRef{1, 1, 1, "projection-v1"};
+    value.projection_payload_digest = compute_projection_payload_digest(
+        publication_projection(scope)
+    );
     value.manifest_schema = ResourceManifestSchema{"manifest-v1", 1};
-    value.manifest_revision = 1;
     value.manifest_state = ResourceManifestState::Active;
-    value.manifest_payload_version = 1;
-    value.manifest_binding_digest = "binding-v1";
+    value.manifest_payload_version = static_cast<std::uint32_t>(manifest_payload_version);
+    value.manifest_binding_digest = compute_manifest_binding_digest(
+        publication_manifest(static_cast<ResourceManifestPayloadVersion>(
+            manifest_payload_version
+        ))
+    );
     return value;
 }
 
@@ -51,8 +90,7 @@ PublicationPlan plan_for(
     const std::uint64_t expected_sequence = 0,
     const std::uint64_t manifest_payload_version = 1
 ) {
-    auto target = evidence();
-    target.manifest_payload_version = manifest_payload_version;
+    auto target = evidence(scope, manifest_payload_version);
     return PublicationPlan{
         PublicationIdentity{scope, publication_id},
         PublicationScopeFrontier{scope, PublicationSequence{expected_sequence}},
@@ -98,25 +136,24 @@ KnowledgeUnitCreateRequest unit_request(const ScopeId& scope) {
     return request;
 }
 
-class FailingParticipant final : public MdbxPublicationParticipant {
+class CountingParticipant final : public MdbxPublicationParticipant {
 public:
-    explicit FailingParticipant(std::shared_ptr<MdbxStorageContext> context)
-        : m_context(std::move(context)) {}
+    CountingParticipant(
+        std::shared_ptr<MdbxStorageContext> context,
+        std::size_t& apply_count
+    ) : m_context(std::move(context)), m_apply_count(&apply_count) {}
 
     [[nodiscard]] const MdbxStorageContext& context() const noexcept override {
         return *m_context;
     }
 
     void apply(const mdbxc::Transaction&) override {
-        throw std::runtime_error("injected authoritative participant failure");
-    }
-
-    [[nodiscard]] MdbxPublicationParticipantRole role() const noexcept override {
-        return MdbxPublicationParticipantRole::Canonical;
+        ++*m_apply_count;
     }
 
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
+    std::size_t* m_apply_count;
 };
 
 } // namespace
@@ -163,6 +200,19 @@ int main() {
         if(coordinator.publish(first_plan, {}).code != PublicationOutcomeCode::InvalidPlan
             || coordinator.frontier().sequence.value() != 0) {
             return fail("authoritative publication API must reject an empty participant set");
+        }
+        std::size_t fake_apply_count = 0;
+        CountingParticipant fake_a{context, fake_apply_count};
+        CountingParticipant fake_b{context, fake_apply_count};
+        CountingParticipant fake_c{context, fake_apply_count};
+        CountingParticipant fake_d{context, fake_apply_count};
+        CountingParticipant fake_e{context, fake_apply_count};
+        if(coordinator.publish(
+                first_plan, {&fake_a, &fake_b, &fake_c, &fake_d, &fake_e}
+            ).code != PublicationOutcomeCode::InvalidPlan
+            || fake_apply_count != 0
+            || coordinator.frontier().sequence.value() != 0) {
+            return fail("arbitrary participants must be rejected before apply");
         }
         const auto committed = coordinator.publish_metadata_only(first_plan);
         if(committed.code != PublicationOutcomeCode::Committed
@@ -243,14 +293,7 @@ int main() {
         MdbxManifestPublicationParticipant manifest_participant{
             context,
             manifests,
-            ResourceManifest{
-                ResourceRevision{ResourceId{"resource-1"}, 1, 1, 1},
-                {},
-                ResourceManifestState::Active,
-                {},
-                ResourceManifestSchema{"manifest-v1", 1},
-                ResourceManifestPayloadVersion::V1
-            },
+            publication_manifest(ResourceManifestPayloadVersion::V1),
             std::nullopt
         };
         auto authoritative_plan = plan_for(
@@ -316,18 +359,7 @@ int main() {
         MdbxProjectionPublicationParticipant projection_participant{
             context,
             projections,
-            SearchProjection{
-                scope,
-                KnowledgeUnitId{1},
-                ProjectionKind::Original,
-                projection_version,
-                "title",
-                "heading",
-                "authoritative body",
-                "",
-                {},
-                {}
-            }
+            publication_projection(scope)
         };
         MdbxLexicalPublicationParticipant lexical_participant{
             context,
@@ -361,13 +393,21 @@ int main() {
                 {ReplaceBlockText{ContentBlockId{"retry-block"}, "authoritative body"}}
             }
         };
-        FailingParticipant failing{context};
+        MdbxCanonicalPublicationParticipant failing_canonical{
+            context,
+            canonical,
+            CanonicalEditRequest{
+                DocumentId{"missing-document"},
+                0,
+                {ReplaceBlockText{ContentBlockId{"missing-block"}, "never written"}}
+            }
+        };
         auto retry_plan = plan_for(
             scope, profile, next_fencing, "publication-retry", 1, 6
         );
         if(coordinator.publish(
                 retry_plan,
-                {&failing, &unit_participant, &projection_participant,
+                {&failing_canonical, &unit_participant, &projection_participant,
                  &lexical_participant, &manifest_participant}
             ).code != PublicationOutcomeCode::CommitFailure
             || coordinator.frontier().sequence.value() != 1

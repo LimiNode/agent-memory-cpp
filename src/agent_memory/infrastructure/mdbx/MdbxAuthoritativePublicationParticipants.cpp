@@ -56,11 +56,6 @@ void MdbxCanonicalPublicationParticipant::reset_after_abort() noexcept {
     m_applied = false;
 }
 
-MdbxPublicationParticipantRole
-MdbxCanonicalPublicationParticipant::role() const noexcept {
-    return MdbxPublicationParticipantRole::Canonical;
-}
-
 bool MdbxCanonicalPublicationParticipant::validates(
     const PublicationPlan& plan,
     const mdbxc::Transaction& transaction
@@ -69,7 +64,9 @@ bool MdbxCanonicalPublicationParticipant::validates(
         return false;
     }
     const auto current = m_store->read_current_in_transaction(m_document_id, transaction);
-    return current && current->revision == plan.target_evidence.canonical_revision;
+    return current
+        && current->document_id == plan.target_evidence.canonical_document_id
+        && current->revision == plan.target_evidence.canonical_revision;
 }
 
 MdbxKnowledgeUnitPublicationParticipant::MdbxKnowledgeUnitPublicationParticipant(
@@ -99,11 +96,6 @@ void MdbxKnowledgeUnitPublicationParticipant::reset_after_abort() noexcept {
     m_result.clear();
 }
 
-MdbxPublicationParticipantRole
-MdbxKnowledgeUnitPublicationParticipant::role() const noexcept {
-    return MdbxPublicationParticipantRole::KnowledgeUnit;
-}
-
 bool MdbxKnowledgeUnitPublicationParticipant::validates(
     const PublicationPlan& plan,
     const mdbxc::Transaction&
@@ -112,7 +104,9 @@ bool MdbxKnowledgeUnitPublicationParticipant::validates(
         return false;
     }
     return std::any_of(m_result.begin(), m_result.end(), [&plan](const auto& unit) {
-        if(unit.scope_id != plan.identity.scope_id || unit.revision != plan.target_evidence.unit_revision) {
+        if(unit.id.value() != plan.target_evidence.unit_id.value()
+            || unit.scope_id != plan.identity.scope_id
+            || unit.revision != plan.target_evidence.unit_revision) {
             return false;
         }
         return std::any_of(unit.sources.begin(), unit.sources.end(), [&plan](const auto& source) {
@@ -150,11 +144,6 @@ void MdbxManifestPublicationParticipant::reset_after_abort() noexcept {
     m_applied = false;
 }
 
-MdbxPublicationParticipantRole
-MdbxManifestPublicationParticipant::role() const noexcept {
-    return MdbxPublicationParticipantRole::Manifest;
-}
-
 bool MdbxManifestPublicationParticipant::validates(
     const PublicationPlan& plan,
     const mdbxc::Transaction& transaction
@@ -168,12 +157,14 @@ bool MdbxManifestPublicationParticipant::validates(
     return current
         && current->revision.resource_id == plan.target_evidence.resource_id
         && current->revision.generation == plan.target_evidence.resource_generation
-        && current->revision.content_hash != 0
+        && current->state == plan.target_evidence.manifest_state
         && current->schema.schema_id == plan.target_evidence.manifest_schema.schema_id
         && current->schema.schema_version == plan.target_evidence.manifest_schema.schema_version
         && current->payload_version == static_cast<ResourceManifestPayloadVersion>(
             plan.target_evidence.manifest_payload_version
-        );
+        )
+        && compute_manifest_binding_digest(*current)
+            == plan.target_evidence.manifest_binding_digest;
 }
 
 } // namespace agent_memory

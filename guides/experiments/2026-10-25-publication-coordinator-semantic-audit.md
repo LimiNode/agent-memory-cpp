@@ -1,7 +1,8 @@
 # Publication coordinator semantic audit
 
 **Date:** 2026-10-25
-**Base:** corrective PR #554 (`0386c942`)
+**Base:** PR #553 (`d5e82f731bdb0fb0f2d1673a95d7f414e45986d5`)
+**Corrective head:** proof-integrity pass (local, before CI)
 **Status:** bounded audit; no merge performed
 
 ## Contract changes
@@ -23,12 +24,13 @@ convenience method (that method was removed).
 
 The audit covered the nine coordinator/read/participant headers and
 implementations in the bounded MDBX slice: 2,074 physical lines, 11 concrete
-participant/scope classes, 2 participant interfaces, and 5 role values.
+participant/scope classes and 2 participant interfaces. Role values are no
+longer part of the participant API.
 
 | Component | Retained invariant or ownership responsibility |
 | --- | --- |
 | `MdbxPublicationWriteScope` | one owner-thread MDBX transaction; only scope commits/aborts |
-| `MdbxPublicationParticipant` | context admission, role declaration, in-transaction apply/validate, abort reset |
+| `MdbxPublicationParticipant` | context admission, in-transaction apply, abort reset |
 | five write participants | copy prepared payloads into their authoritative row family and validate the resulting row |
 | `MdbxPublicationReadScope` | one owner-thread pinned read transaction and completion classification |
 | six read participants | read one storage family through the supplied transaction; no nested transaction |
@@ -81,3 +83,31 @@ context. It does not globally quiesce arbitrary legacy writers. Production
 activation therefore still needs an external writer-registration/quiescence
 gate; a post-commit bypass mutation is detected by read-side evidence and
 downgrades completion, but is not prevented by this bounded slice.
+
+## Proof-integrity corrective
+
+Complete admission is a closed boundary: only the five `final` concrete storage
+participants are accepted. Unknown subclasses, duplicates, incomplete sets and
+wrong contexts are rejected before `apply()`. Role declaration and virtual
+`validates()` self-attestation were removed; concrete validators read their own
+authoritative rows in the coordinator transaction.
+
+Evidence coverage:
+
+| Field | Authoritative source | Comparison | Counterexample |
+| --- | --- | --- | --- |
+| resource generation | manifest revision + unit source | exact identity/generation | unrelated resource |
+| canonical document/revision | canonical row | document id + revision | post-commit edit |
+| unit id/revision | unit row | id, scope, revision, source generation | wrong unit |
+| projection version/payload | projection row | full version + SHA-256 payload digest | changed body |
+| manifest state/schema/payload | manifest row | state, schema, payload version | state mutation |
+| manifest topology/bindings | manifest row | SHA-256 over persisted revision, records and pending reclaim | membership mutation |
+| lexical membership/statistics | lexical rows plus read-scope checks | pinned descriptor and cross-family identities | fabricated lexical flags |
+| receipt/frontier | coordinator metadata | complete status, scope and sequence | metadata-only/corrupt receipt |
+
+`manifest_revision` is not claimed because `ResourceManifest` has no such
+durable field. `manifest_binding_digest` is computed from the persisted
+manifest fields above. The lexical adapter reports only lexical rows; the read
+scope derives active-binding flags only after independently reading unit,
+projection and manifest rows. A fresh context after destruction of all prepare
+objects revalidates the complete fixture and must reach `Exact`.

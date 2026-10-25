@@ -19,16 +19,6 @@ class Transaction;
 
 namespace agent_memory {
 
-/// \brief Durable state family covered by one publication participant.
-enum class MdbxPublicationParticipantRole : std::uint8_t {
-    Unknown,
-    Canonical,
-    KnowledgeUnit,
-    Projection,
-    Lexical,
-    Manifest
-};
-
 /// \brief Internal participant boundary for a coordinator-owned transaction.
 ///
 /// Participants receive a const transaction reference, which is sufficient for
@@ -48,24 +38,6 @@ public:
     /// can retry the same prepared participant after a rolled-back attempt.
     virtual void reset_after_abort() noexcept {}
 
-    /// \brief Returns the authoritative state family written by this object.
-    ///
-    /// The default keeps older experimental participants source-compatible,
-    /// but an unknown participant can never make a receipt complete.
-    [[nodiscard]] virtual MdbxPublicationParticipantRole role() const noexcept {
-        return MdbxPublicationParticipantRole::Unknown;
-    }
-
-    /// \brief Checks the durable row written by this participant in-place.
-    ///
-    /// Validation runs before the coordinator commits.  Implementations must
-    /// read through the supplied transaction and must not open a nested one.
-    [[nodiscard]] virtual bool validates(
-        const PublicationPlan&,
-        const mdbxc::Transaction&
-    ) const {
-        return false;
-    }
 };
 
 /// \brief Owns one thread-bound writable transaction for a publication.

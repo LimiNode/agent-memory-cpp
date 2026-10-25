@@ -34,11 +34,6 @@ void MdbxProjectionPublicationParticipant::reset_after_abort() noexcept {
     m_applied = false;
 }
 
-MdbxPublicationParticipantRole
-MdbxProjectionPublicationParticipant::role() const noexcept {
-    return MdbxPublicationParticipantRole::Projection;
-}
-
 bool MdbxProjectionPublicationParticipant::validates(
     const PublicationPlan& plan,
     const mdbxc::Transaction& transaction
@@ -60,7 +55,9 @@ bool MdbxProjectionPublicationParticipant::validates(
             && actual.derivation_generation == expected.derivation_generation
             && actual.derivation_fingerprint == expected.derivation_fingerprint
             && row.scope_id == plan.identity.scope_id
-            && row.unit_id == m_projection->unit_id;
+            && row.unit_id.value() == plan.target_evidence.unit_id.value()
+            && compute_projection_payload_digest(row)
+                == plan.target_evidence.projection_payload_digest;
     });
 }
 
@@ -94,11 +91,6 @@ void MdbxLexicalPublicationParticipant::reset_after_abort() noexcept {
     m_applied = false;
 }
 
-MdbxPublicationParticipantRole
-MdbxLexicalPublicationParticipant::role() const noexcept {
-    return MdbxPublicationParticipantRole::Lexical;
-}
-
 bool MdbxLexicalPublicationParticipant::validates(
     const PublicationPlan& plan,
     const mdbxc::Transaction& transaction
@@ -114,6 +106,7 @@ bool MdbxLexicalPublicationParticipant::validates(
     const auto& expected = plan.target_evidence.projection_version;
     const auto& actual = stats->projection_version;
     return stats
+        && stats->unit_id.value() == plan.target_evidence.unit_id.value()
         && stats->resource_id == plan.target_evidence.resource_id
         && stats->resource_generation == plan.target_evidence.resource_generation
         && stats->unit_revision == plan.target_evidence.unit_revision

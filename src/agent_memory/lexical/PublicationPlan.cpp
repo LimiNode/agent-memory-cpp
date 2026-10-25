@@ -1,10 +1,47 @@
 #include "PublicationPlan.hpp"
 
+#include <agent_memory/domain/Sha256.hpp>
+
+#include <array>
 #include <limits>
+#include <string_view>
 #include <utility>
 
 namespace agent_memory {
 namespace {
+
+    void append_u64(std::string& out, const std::uint64_t value) {
+        for(int shift = 56; shift >= 0; shift -= 8) {
+            out.push_back(static_cast<char>((value >> shift) & 0xffU));
+        }
+    }
+
+    void append_text(std::string& out, const std::string_view value) {
+        append_u64(out, static_cast<std::uint64_t>(value.size()));
+        out.append(value.data(), value.size());
+    }
+
+    std::string sha256_hex(const std::string_view value) {
+        static constexpr std::array<char, 16> digits{{
+            '0', '1', '2', '3', '4', '5', '6', '7',
+            '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'
+        }};
+        const auto digest = sha256(value);
+        std::string result;
+        result.reserve(digest.size() * 2U);
+        for(const auto byte : digest) {
+            result.push_back(digits[(byte >> 4U) & 0x0fU]);
+            result.push_back(digits[byte & 0x0fU]);
+        }
+        return result;
+    }
+
+    void append_record(std::string& out, const DerivedRecordRef& record) {
+        append_u64(out, static_cast<std::uint64_t>(record.kind));
+        append_text(out, record.chunk_id.value());
+        append_text(out, record.key);
+        append_u64(out, record.ordinal);
+    }
 
     bool is_valid_manifest_state(const ResourceManifestState state) noexcept {
         switch(state) {
@@ -66,11 +103,13 @@ namespace {
     ) noexcept {
         return left.resource_id == right.resource_id
             && left.resource_generation == right.resource_generation
+            && left.canonical_document_id == right.canonical_document_id
             && left.canonical_revision == right.canonical_revision
+            && left.unit_id.value() == right.unit_id.value()
             && left.unit_revision == right.unit_revision
             && same_projection_version(left.projection_version, right.projection_version)
+            && left.projection_payload_digest == right.projection_payload_digest
             && same_manifest_schema(left.manifest_schema, right.manifest_schema)
-            && left.manifest_revision == right.manifest_revision
             && left.manifest_state == right.manifest_state
             && left.manifest_payload_version == right.manifest_payload_version
             && left.manifest_binding_digest == right.manifest_binding_digest;
@@ -78,21 +117,85 @@ namespace {
 
     bool is_empty_expected_evidence(const PublicationEvidence& evidence) noexcept {
         return evidence.resource_generation == 0
+            && evidence.canonical_document_id.empty()
             && evidence.canonical_revision == 0
+            && evidence.unit_id.empty()
             && evidence.unit_revision == 0
             && evidence.projection_version.unit_revision_at_build == 0
             && evidence.projection_version.projection_revision == 0
             && evidence.projection_version.derivation_generation == 0
             && evidence.projection_version.derivation_fingerprint.empty()
+            && evidence.projection_payload_digest.empty()
             && evidence.manifest_schema.schema_id.empty()
             && evidence.manifest_schema.schema_version == 0
-            && evidence.manifest_revision == 0
             && evidence.manifest_state == ResourceManifestState::Active
             && evidence.manifest_payload_version == 0
             && evidence.manifest_binding_digest.empty();
     }
 
 } // namespace
+
+std::string compute_projection_payload_digest(const SearchProjection& projection) {
+    std::string canonical;
+    append_text(canonical, projection.scope_id.value());
+    append_u64(canonical, projection.unit_id.value());
+    append_u64(canonical, static_cast<std::uint64_t>(projection.kind));
+    append_u64(canonical, projection.version.unit_revision_at_build);
+    append_u64(canonical, projection.version.projection_revision);
+    append_u64(canonical, projection.version.derivation_generation);
+    append_text(canonical, projection.version.derivation_fingerprint);
+    append_text(canonical, projection.title);
+    append_text(canonical, projection.heading);
+    append_text(canonical, projection.body);
+    append_text(canonical, projection.code);
+    append_u64(canonical, projection.tags.size());
+    for(const auto& tag : projection.tags) {
+        append_text(canonical, tag);
+    }
+    append_u64(canonical, projection.symbols.size());
+    for(const auto& symbol : projection.symbols) {
+        append_text(canonical, symbol);
+    }
+    return sha256_hex(canonical);
+}
+
+std::string compute_manifest_binding_digest(const ResourceManifest& manifest) {
+    std::string canonical;
+    append_text(canonical, manifest.revision.resource_id.value());
+    append_u64(canonical, manifest.revision.generation);
+    append_u64(canonical, manifest.revision.content_hash);
+    append_u64(canonical, manifest.revision.pipeline_config_hash);
+    append_u64(canonical, manifest.revision.body_digest.has_value() ? 1U : 0U);
+    if(manifest.revision.body_digest) {
+        append_u64(canonical, static_cast<std::uint64_t>(
+            manifest.revision.body_digest->algorithm
+        ));
+        canonical.append(
+            reinterpret_cast<const char*>(manifest.revision.body_digest->bytes.data()),
+            manifest.revision.body_digest->bytes.size()
+        );
+    }
+    append_u64(canonical, static_cast<std::uint64_t>(manifest.revision.text_origin));
+    append_u64(canonical, manifest.revision.derived_text_provenance.has_value() ? 1U : 0U);
+    if(manifest.revision.derived_text_provenance) {
+        append_text(canonical, manifest.revision.derived_text_provenance->source_media_type);
+        append_text(canonical, manifest.revision.derived_text_provenance->extractor_id);
+        append_text(canonical, manifest.revision.derived_text_provenance->extractor_version);
+    }
+    append_u64(canonical, manifest.records.size());
+    for(const auto& record : manifest.records) {
+        append_record(canonical, record);
+    }
+    append_u64(canonical, static_cast<std::uint64_t>(manifest.state));
+    append_u64(canonical, manifest.pending_reclaim_records.size());
+    for(const auto& record : manifest.pending_reclaim_records) {
+        append_record(canonical, record);
+    }
+    append_text(canonical, manifest.schema.schema_id);
+    append_u64(canonical, manifest.schema.schema_version);
+    append_u64(canonical, static_cast<std::uint64_t>(manifest.payload_version));
+    return sha256_hex(canonical);
+}
 
 bool is_valid_publication_identity(
     const PublicationIdentity& identity
@@ -129,12 +232,14 @@ bool is_valid_publication_evidence(
 ) noexcept {
     return !evidence.resource_id.empty()
         && evidence.resource_generation != 0
+        && !evidence.canonical_document_id.empty()
         && evidence.canonical_revision != 0
+        && !evidence.unit_id.empty()
         && evidence.unit_revision != 0
         && is_valid_projection_version(evidence.projection_version)
+        && !evidence.projection_payload_digest.empty()
         && !evidence.manifest_schema.schema_id.empty()
         && evidence.manifest_schema.schema_version != 0
-        && evidence.manifest_revision != 0
         && is_valid_manifest_state(evidence.manifest_state)
         && evidence.manifest_payload_version != 0
         && !evidence.manifest_binding_digest.empty();
@@ -169,9 +274,7 @@ bool is_valid_publication_plan(
                 < plan.expected_evidence.resource_generation
             || plan.target_evidence.canonical_revision
                 < plan.expected_evidence.canonical_revision
-            || plan.target_evidence.unit_revision < plan.expected_evidence.unit_revision
-            || plan.target_evidence.manifest_revision
-                < plan.expected_evidence.manifest_revision)) {
+            || plan.target_evidence.unit_revision < plan.expected_evidence.unit_revision)) {
         return false;
     }
 

@@ -67,15 +67,27 @@ namespace agent_memory {
     struct PublicationEvidence final {
         ResourceId resource_id;
         std::uint64_t resource_generation = 0;
+        DocumentId canonical_document_id;
         std::uint64_t canonical_revision = 0;
+        KnowledgeUnitId unit_id;
         std::uint64_t unit_revision = 0;
         ProjectionVersionRef projection_version;
+        std::string projection_payload_digest;
         ResourceManifestSchema manifest_schema;
-        std::uint64_t manifest_revision = 0;
         ResourceManifestState manifest_state = ResourceManifestState::Active;
         std::uint32_t manifest_payload_version = 0;
         std::string manifest_binding_digest;
     };
+
+    /// \brief Computes the publication digest of every persisted projection field.
+    [[nodiscard]] std::string compute_projection_payload_digest(
+        const SearchProjection& projection
+    );
+
+    /// \brief Computes the publication digest of every persisted manifest field.
+    [[nodiscard]] std::string compute_manifest_binding_digest(
+        const ResourceManifest& manifest
+    );
 
     /// \brief One scope-wide frontier observed before or committed by a plan.
     struct PublicationScopeFrontier final {

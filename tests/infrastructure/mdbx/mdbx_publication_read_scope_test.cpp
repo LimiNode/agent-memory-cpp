@@ -53,6 +53,124 @@ KnowledgeUnitCreateRequest unit_request(const ScopeId& scope) {
     return request;
 }
 
+SearchProjection projection_value(
+    const ScopeId& scope,
+    std::string body = "pinned body",
+    const std::uint64_t projection_revision = 1
+) {
+    return SearchProjection{
+        scope,
+        KnowledgeUnitId{1},
+        ProjectionKind::Original,
+        ProjectionVersionRef{1, projection_revision, 1, "projection-read"},
+        "title",
+        "heading",
+        std::move(body),
+        "",
+        {},
+        {}
+    };
+}
+
+ResourceManifest manifest_value(
+    const ResourceManifestPayloadVersion payload_version,
+    const ResourceManifestState state = ResourceManifestState::Active
+) {
+    return ResourceManifest{
+        ResourceRevision{ResourceId{"resource-read"}, 1, 1, 1},
+        {DerivedRecordRef{
+            DerivedRecordKind::Document,
+            {},
+            "complete-document",
+            0
+        }},
+        state,
+        {},
+        ResourceManifestSchema{"manifest-read", 1},
+        payload_version
+    };
+}
+
+PublicationPlan metadata_plan(
+    const ScopeId& scope,
+    const PublicationProfileIdentity& profile,
+    const PublicationFencingIdentity& fencing,
+    const std::uint64_t canonical_revision,
+    const std::uint64_t manifest_payload_version
+);
+
+bool prepare_reopen_fixture(
+    const std::filesystem::path& database,
+    const ScopeId& scope,
+    const PublicationProfileIdentity& profile,
+    const PublicationFencingIdentity& fencing
+) {
+    auto context = MdbxStorageContext::open(database.string(), false, 48);
+    MdbxPublicationCoordinatorOptions coordinator_options;
+    coordinator_options.context = context;
+    coordinator_options.scope_id = scope;
+    MdbxPublicationCoordinator coordinator{std::move(coordinator_options)};
+    if(coordinator.admit_profile(profile, fencing).code != PublicationAdmissionCode::Admitted) {
+        return false;
+    }
+    MdbxCanonicalContentStoreOptions canonical_options;
+    canonical_options.context = context;
+    MdbxCanonicalContentStore canonical{std::move(canonical_options)};
+    MdbxKnowledgeUnitStoreOptions unit_options;
+    unit_options.context = context;
+    MdbxKnowledgeUnitStore units{std::move(unit_options)};
+    MdbxResourceManifestStorageOptions manifest_options;
+    manifest_options.context = context;
+    MdbxResourceManifestStorage manifests{std::move(manifest_options)};
+    MdbxProjectionStoreOptions projection_options;
+    projection_options.context = context;
+    MdbxProjectionStore projections{std::move(projection_options)};
+    std::array<std::uint8_t, 16> epoch{};
+    epoch[0] = 9;
+    MdbxPersistentLexicalIndexOptions lexical_options;
+    lexical_options.context = context;
+    lexical_options.descriptor = LexicalIndexDescriptor{
+        LexicalIndexDescriptorRef{scope, ProjectionKind::Original, LexicalStatisticsEpoch{epoch}},
+        "original", 1, "tokenizer-read", "normalization-read", {1}
+    };
+    MdbxPersistentLexicalIndex lexical{std::move(lexical_options)};
+    if(!canonical.create_document(CanonicalDocumentRevision{
+            DocumentId{"complete-document"}, 0, {},
+            {ContentBlock{ContentBlockId{"complete-block"}, 1,
+                ContentBlockKind::Paragraph, std::nullopt, "baseline body"}}
+        })) {
+        return false;
+    }
+    MdbxCanonicalPublicationParticipant canonical_participant{
+        context, canonical,
+        CanonicalEditRequest{
+            DocumentId{"complete-document"}, 0,
+            {ReplaceBlockText{ContentBlockId{"complete-block"}, "pinned body"}}
+        }
+    };
+    MdbxKnowledgeUnitPublicationParticipant unit_participant{
+        context, units, {unit_request(scope)}
+    };
+    MdbxManifestPublicationParticipant manifest_participant{
+        context, manifests, manifest_value(ResourceManifestPayloadVersion::V6), std::nullopt
+    };
+    MdbxProjectionPublicationParticipant projection_participant{
+        context, projections, projection_value(scope)
+    };
+    MdbxLexicalPublicationParticipant lexical_participant{
+        context, lexical,
+        FlatLexicalUnitInput{
+            scope, KnowledgeUnitId{1}, ProjectionKind::Original,
+            ResourceId{"resource-read"}, 1, 1,
+            ProjectionVersionRef{1, 1, 1, "projection-read"}, {"pinned", "body"}
+        }
+    };
+    return coordinator.publish(metadata_plan(scope, profile, fencing, 1, 6), {
+        &canonical_participant, &unit_participant, &projection_participant,
+        &lexical_participant, &manifest_participant
+    }).code == PublicationOutcomeCode::Committed;
+}
+
 PublicationPlan metadata_plan(
     const ScopeId& scope,
     const PublicationProfileIdentity& profile,
@@ -63,13 +181,21 @@ PublicationPlan metadata_plan(
     PublicationEvidence target;
     target.resource_id = ResourceId{"resource-read"};
     target.resource_generation = 1;
+    target.canonical_document_id = DocumentId{"complete-document"};
     target.canonical_revision = canonical_revision;
+    target.unit_id = KnowledgeUnitId{1};
     target.unit_revision = 1;
     target.projection_version = ProjectionVersionRef{1, 1, 1, "projection-read"};
+    target.projection_payload_digest = compute_projection_payload_digest(
+        projection_value(scope)
+    );
     target.manifest_schema = ResourceManifestSchema{"manifest-read", 1};
-    target.manifest_revision = 1;
     target.manifest_payload_version = manifest_payload_version;
-    target.manifest_binding_digest = "binding-read";
+    target.manifest_binding_digest = compute_manifest_binding_digest(
+        manifest_value(static_cast<ResourceManifestPayloadVersion>(
+            manifest_payload_version
+        ))
+    );
     return PublicationPlan{
         PublicationIdentity{scope, "read-publication"},
         PublicationScopeFrontier{scope, {}},
@@ -122,18 +248,13 @@ int main() {
     MdbxResourceManifestStorageOptions manifest_options;
     manifest_options.context = context;
     MdbxResourceManifestStorage manifests{std::move(manifest_options)};
-    manifests.upsert_manifest(ResourceManifest{
-        ResourceRevision{ResourceId{"resource-read"}, 1, 1, 1}, {}
-    });
+    manifests.upsert_manifest(manifest_value(ResourceManifestPayloadVersion::V1));
 
     const ProjectionVersionRef projection_version{1, 1, 1, "projection-read"};
     MdbxProjectionStoreOptions projection_options;
     projection_options.context = context;
     MdbxProjectionStore projections{std::move(projection_options)};
-    projections.put(SearchProjection{
-        scope, KnowledgeUnitId{1}, ProjectionKind::Original, projection_version,
-        "title", "heading", "pinned body", "", {}, {}
-    });
+    projections.put(projection_value(scope));
 
     std::array<std::uint8_t, 16> epoch{};
     epoch[0] = 3;
@@ -173,6 +294,84 @@ int main() {
     }
 
     std::filesystem::remove(database, cleanup);
+
+    const auto reopen_database = path();
+    if(!prepare_reopen_fixture(reopen_database, scope, profile, fencing)) {
+        return fail("close/reopen fixture publication failed");
+    }
+    {
+        auto reopened_context = MdbxStorageContext::open(reopen_database.string(), false, 48);
+        MdbxPublicationCoordinatorOptions reopened_coordinator_options;
+        reopened_coordinator_options.context = reopened_context;
+        reopened_coordinator_options.scope_id = scope;
+        MdbxPublicationCoordinator reopened_coordinator{
+            std::move(reopened_coordinator_options)
+        };
+        MdbxCanonicalContentStoreOptions canonical_options;
+        canonical_options.context = reopened_context;
+        MdbxCanonicalContentStore canonical{std::move(canonical_options)};
+        MdbxKnowledgeUnitStoreOptions unit_options;
+        unit_options.context = reopened_context;
+        MdbxKnowledgeUnitStore units{std::move(unit_options)};
+        MdbxResourceManifestStorageOptions manifest_options;
+        manifest_options.context = reopened_context;
+        MdbxResourceManifestStorage manifests{std::move(manifest_options)};
+        MdbxProjectionStoreOptions projection_options;
+        projection_options.context = reopened_context;
+        MdbxProjectionStore projections{std::move(projection_options)};
+        std::array<std::uint8_t, 16> epoch{};
+        epoch[0] = 9;
+        MdbxPersistentLexicalIndexOptions lexical_options;
+        lexical_options.context = reopened_context;
+        lexical_options.descriptor = LexicalIndexDescriptor{
+            LexicalIndexDescriptorRef{scope, ProjectionKind::Original, LexicalStatisticsEpoch{epoch}},
+            "original", 1, "tokenizer-read", "normalization-read", {1}
+        };
+        MdbxPersistentLexicalIndex lexical{std::move(lexical_options)};
+        auto read_scope = MdbxPublicationReadScope::begin(reopened_context);
+        MdbxFrontierReadParticipant frontier{reopened_context, reopened_coordinator};
+        MdbxCanonicalReadParticipant canonical_read{
+            reopened_context, canonical, DocumentId{"complete-document"}
+        };
+        MdbxKnowledgeUnitReadParticipant unit_read{
+            reopened_context, units, KnowledgeUnitId{1}
+        };
+        MdbxProjectionReadParticipant projection_read{
+            reopened_context, projections, scope, KnowledgeUnitId{1}, ProjectionKind::Original
+        };
+        MdbxLexicalReadParticipant lexical_read{reopened_context, lexical};
+        MdbxManifestReadParticipant manifest_read{
+            reopened_context, manifests, ResourceId{"resource-read"}
+        };
+        read_scope.read(frontier);
+        read_scope.read(canonical_read);
+        read_scope.read(unit_read);
+        read_scope.read(projection_read);
+        read_scope.read(lexical_read);
+        read_scope.read(manifest_read);
+        read_scope.finish();
+        if(read_scope.observation().completion != MdbxPublicationReadCompletion::Exact) {
+            return fail("fresh context close/reopen must preserve Exact evidence");
+        }
+        mdbxc::KeyValueTable<std::string, std::string> metadata(
+            reopened_context->connection(), "agent_memory_publication_coordinator_v1"
+        );
+        auto corrupt = reopened_context->connection()->transaction(
+            mdbxc::TransactionMode::WRITABLE
+        );
+        metadata.insert_or_assign(scope.value() + "|meta/latest-receipt", "corrupt", corrupt);
+        corrupt.commit();
+        auto corrupt_scope = MdbxPublicationReadScope::begin(reopened_context);
+        MdbxFrontierReadParticipant corrupt_frontier{
+            reopened_context, reopened_coordinator
+        };
+        corrupt_scope.read(corrupt_frontier);
+        corrupt_scope.finish();
+        if(corrupt_scope.observation().completion == MdbxPublicationReadCompletion::Exact) {
+            return fail("corrupt receipt must not produce Exact evidence");
+        }
+    }
+    std::filesystem::remove(reopen_database, cleanup);
 
     const auto complete_database = path();
     auto complete_context = MdbxStorageContext::open(complete_database.string(), false, 48);
@@ -247,35 +446,16 @@ int main() {
         complete_units,
         {unit_request(scope)}
     };
-    ResourceManifest complete_manifest{
-        ResourceRevision{ResourceId{"resource-read"}, 1, 1, 1},
-        {},
-        ResourceManifestState::Active,
-        {},
-        ResourceManifestSchema{"manifest-read", 1},
-        ResourceManifestPayloadVersion::V1
-    };
     MdbxManifestPublicationParticipant complete_manifest_participant{
         complete_context,
         complete_manifests,
-        complete_manifest,
+        manifest_value(ResourceManifestPayloadVersion::V6),
         std::nullopt
     };
     MdbxProjectionPublicationParticipant complete_projection_participant{
         complete_context,
         complete_projections,
-        SearchProjection{
-            scope,
-            KnowledgeUnitId{1},
-            ProjectionKind::Original,
-            complete_projection_version,
-            "title",
-            "heading",
-            "pinned body",
-            "",
-            {},
-            {}
-        }
+        projection_value(scope)
     };
     MdbxLexicalPublicationParticipant complete_lexical_participant{
         complete_context,
@@ -342,6 +522,48 @@ int main() {
     if(complete_observation.completion != MdbxPublicationReadCompletion::Exact) {
         return fail("one coordinated commit must produce Exact after reopen-equivalent read");
     }
+
+    complete_manifests.upsert_manifest(
+        manifest_value(ResourceManifestPayloadVersion::V6, ResourceManifestState::ErasePending)
+    );
+    auto manifest_mutation_scope = MdbxPublicationReadScope::begin(complete_context);
+    MdbxFrontierReadParticipant manifest_mutation_frontier{
+        complete_context, complete_coordinator
+    };
+    manifest_mutation_scope.read(manifest_mutation_frontier);
+    manifest_mutation_scope.read(complete_canonical_read);
+    manifest_mutation_scope.read(complete_unit_read);
+    manifest_mutation_scope.read(complete_projection_read);
+    manifest_mutation_scope.read(complete_lexical_read);
+    manifest_mutation_scope.read(complete_manifest_read);
+    manifest_mutation_scope.finish();
+    if(manifest_mutation_scope.observation().completion == MdbxPublicationReadCompletion::Exact) {
+        return fail("manifest state mutation must invalidate Exact evidence");
+    }
+    complete_manifests.upsert_manifest(manifest_value(ResourceManifestPayloadVersion::V6));
+
+    const auto deleted_projection = complete_projections.delete_revision(
+        scope, KnowledgeUnitId{1}, ProjectionKind::Original, 1
+    );
+    if(!deleted_projection) {
+        return fail("projection payload mutation fixture failed");
+    }
+    complete_projections.put(projection_value(scope, "changed body", 2));
+    auto projection_mutation_scope = MdbxPublicationReadScope::begin(complete_context);
+    MdbxFrontierReadParticipant projection_mutation_frontier{
+        complete_context, complete_coordinator
+    };
+    projection_mutation_scope.read(projection_mutation_frontier);
+    projection_mutation_scope.read(complete_canonical_read);
+    projection_mutation_scope.read(complete_unit_read);
+    projection_mutation_scope.read(complete_projection_read);
+    projection_mutation_scope.read(complete_lexical_read);
+    projection_mutation_scope.read(complete_manifest_read);
+    projection_mutation_scope.finish();
+    if(projection_mutation_scope.observation().completion == MdbxPublicationReadCompletion::Exact) {
+        return fail("projection payload mutation must invalidate Exact evidence");
+    }
+    complete_projections.put(projection_value(scope));
 
     const auto independent_mutation = complete_canonical.commit(CanonicalEditRequest{
         DocumentId{"complete-document"},

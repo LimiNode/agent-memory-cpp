@@ -2,6 +2,8 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+#include "MdbxAuthoritativePublicationParticipants.hpp"
+#include "MdbxProjectionLexicalPublicationParticipants.hpp"
 #include "MdbxPublicationWriteScope.hpp"
 
 #include <mdbx_containers/KeyValueTable.hpp>
@@ -77,15 +79,17 @@ ResourceId read_resource(std::string_view value, std::size_t& position) {
 void append_evidence(std::string& out, const PublicationEvidence& evidence) {
     append_resource(out, evidence.resource_id);
     append_u64(out, evidence.resource_generation);
+    append_text(out, evidence.canonical_document_id.value());
     append_u64(out, evidence.canonical_revision);
+    append_u64(out, evidence.unit_id.value());
     append_u64(out, evidence.unit_revision);
     append_u64(out, evidence.projection_version.unit_revision_at_build);
     append_u64(out, evidence.projection_version.projection_revision);
     append_u64(out, evidence.projection_version.derivation_generation);
     append_text(out, evidence.projection_version.derivation_fingerprint);
+    append_text(out, evidence.projection_payload_digest);
     append_text(out, evidence.manifest_schema.schema_id);
     append_u64(out, evidence.manifest_schema.schema_version);
-    append_u64(out, evidence.manifest_revision);
     append_u64(out, static_cast<std::uint8_t>(evidence.manifest_state));
     append_u64(out, evidence.manifest_payload_version);
     append_text(out, evidence.manifest_binding_digest);
@@ -101,17 +105,19 @@ PublicationEvidence read_evidence(std::string_view value, std::size_t& position)
     PublicationEvidence evidence;
     evidence.resource_id = read_resource(value, position);
     evidence.resource_generation = read_u64(value, position);
+    evidence.canonical_document_id = DocumentId{read_text(value, position)};
     evidence.canonical_revision = read_u64(value, position);
+    evidence.unit_id = KnowledgeUnitId{read_u64(value, position)};
     evidence.unit_revision = read_u64(value, position);
     evidence.projection_version.unit_revision_at_build = read_u64(value, position);
     evidence.projection_version.projection_revision = read_u64(value, position);
     evidence.projection_version.derivation_generation = read_u64(value, position);
     evidence.projection_version.derivation_fingerprint = read_text(value, position);
+    evidence.projection_payload_digest = read_text(value, position);
     evidence.manifest_schema.schema_id = read_text(value, position);
     evidence.manifest_schema.schema_version = static_cast<std::uint32_t>(
         read_u64(value, position)
     );
-    evidence.manifest_revision = read_u64(value, position);
     evidence.manifest_state = static_cast<ResourceManifestState>(
         read_u64(value, position)
     );
@@ -278,12 +284,14 @@ bool same_projection(const ProjectionVersionRef& left, const ProjectionVersionRe
 bool same_evidence(const PublicationEvidence& left, const PublicationEvidence& right) {
     return left.resource_id == right.resource_id
         && left.resource_generation == right.resource_generation
+        && left.canonical_document_id == right.canonical_document_id
         && left.canonical_revision == right.canonical_revision
+        && left.unit_id.value() == right.unit_id.value()
         && left.unit_revision == right.unit_revision
         && same_projection(left.projection_version, right.projection_version)
+        && left.projection_payload_digest == right.projection_payload_digest
         && left.manifest_schema.schema_id == right.manifest_schema.schema_id
         && left.manifest_schema.schema_version == right.manifest_schema.schema_version
-        && left.manifest_revision == right.manifest_revision
         && left.manifest_state == right.manifest_state
         && left.manifest_payload_version == right.manifest_payload_version
         && left.manifest_binding_digest == right.manifest_binding_digest;
@@ -339,10 +347,6 @@ public:
 
     void apply(const mdbxc::Transaction& transaction) override {
         m_operation(transaction);
-    }
-
-    [[nodiscard]] MdbxPublicationParticipantRole role() const noexcept override {
-        return MdbxPublicationParticipantRole::Unknown;
     }
 
 private:
@@ -568,6 +572,47 @@ PublicationOutcome MdbxPublicationCoordinator::publish_impl(
             return result;
         }
     }
+    MdbxCanonicalPublicationParticipant* canonical = nullptr;
+    MdbxKnowledgeUnitPublicationParticipant* unit = nullptr;
+    MdbxProjectionPublicationParticipant* projection = nullptr;
+    MdbxLexicalPublicationParticipant* lexical = nullptr;
+    MdbxManifestPublicationParticipant* manifest = nullptr;
+    if(allow_metadata_only) {
+        if(!participants.empty()) {
+            return result;
+        }
+    } else {
+        for(auto* candidate : participants) {
+            if(auto* typed = dynamic_cast<MdbxCanonicalPublicationParticipant*>(candidate)) {
+                if(canonical) { return result; }
+                canonical = typed;
+            } else if(auto* typed = dynamic_cast<MdbxKnowledgeUnitPublicationParticipant*>(candidate)) {
+                if(unit) { return result; }
+                unit = typed;
+            } else if(auto* typed = dynamic_cast<MdbxProjectionPublicationParticipant*>(candidate)) {
+                if(projection) { return result; }
+                projection = typed;
+            } else if(auto* typed = dynamic_cast<MdbxLexicalPublicationParticipant*>(candidate)) {
+                if(lexical) { return result; }
+                lexical = typed;
+            } else if(auto* typed = dynamic_cast<MdbxManifestPublicationParticipant*>(candidate)) {
+                if(manifest) { return result; }
+                manifest = typed;
+            } else {
+                return result;
+            }
+        }
+        if(!canonical || !unit || !projection || !lexical || !manifest) {
+            return result;
+        }
+        if(canonical->context().connection() != m_impl->context->connection()
+            || unit->context().connection() != m_impl->context->connection()
+            || projection->context().connection() != m_impl->context->connection()
+            || lexical->context().connection() != m_impl->context->connection()
+            || manifest->context().connection() != m_impl->context->connection()) {
+            return result;
+        }
+    }
     auto scope = MdbxPublicationWriteScope::begin(m_impl->context);
     const auto reset_participants = [&participants]() noexcept {
         for(auto* candidate : participants) {
@@ -578,7 +623,8 @@ PublicationOutcome MdbxPublicationCoordinator::publish_impl(
     };
     LambdaParticipant participant{
         m_impl->context,
-        [this, &plan, &result, &participants, &scope, allow_metadata_only](
+        [this, &plan, &result, &participants, &scope, allow_metadata_only,
+         canonical, unit, projection, lexical, manifest](
             const mdbxc::Transaction& transaction
         ) {
             if(!is_valid_publication_plan(plan)
@@ -668,36 +714,6 @@ PublicationOutcome MdbxPublicationCoordinator::publish_impl(
                 return;
             }
 
-            std::array<bool, 5> role_seen{};
-            bool unknown_role = false;
-            for(const auto* candidate : participants) {
-                switch(candidate->role()) {
-                    case MdbxPublicationParticipantRole::Canonical:
-                        if(role_seen[0]) { result.code = PublicationOutcomeCode::InvalidPlan; return; }
-                        role_seen[0] = true;
-                        break;
-                    case MdbxPublicationParticipantRole::KnowledgeUnit:
-                        if(role_seen[1]) { result.code = PublicationOutcomeCode::InvalidPlan; return; }
-                        role_seen[1] = true;
-                        break;
-                    case MdbxPublicationParticipantRole::Projection:
-                        if(role_seen[2]) { result.code = PublicationOutcomeCode::InvalidPlan; return; }
-                        role_seen[2] = true;
-                        break;
-                    case MdbxPublicationParticipantRole::Lexical:
-                        if(role_seen[3]) { result.code = PublicationOutcomeCode::InvalidPlan; return; }
-                        role_seen[3] = true;
-                        break;
-                    case MdbxPublicationParticipantRole::Manifest:
-                        if(role_seen[4]) { result.code = PublicationOutcomeCode::InvalidPlan; return; }
-                        role_seen[4] = true;
-                        break;
-                    case MdbxPublicationParticipantRole::Unknown:
-                        unknown_role = true;
-                        break;
-                }
-            }
-
             try {
                 for(auto* participant : participants) {
                     scope.apply(*participant);
@@ -706,20 +722,15 @@ PublicationOutcome MdbxPublicationCoordinator::publish_impl(
                 result.code = PublicationOutcomeCode::CommitFailure;
                 return;
             }
-            const bool complete_roles = !unknown_role
-                && std::all_of(role_seen.begin(), role_seen.end(), [](const bool seen) {
-                    return seen;
-                });
-            if(!complete_roles && !allow_metadata_only) {
-                result.code = PublicationOutcomeCode::InvalidPlan;
-                return;
-            }
+            const bool complete_roles = !allow_metadata_only;
             if(complete_roles) {
-                for(const auto* candidate : participants) {
-                    if(!candidate->validates(plan, transaction)) {
-                        result.code = PublicationOutcomeCode::BindingMismatch;
-                        return;
-                    }
+                if(!canonical->validates(plan, transaction)
+                    || !unit->validates(plan, transaction)
+                    || !projection->validates(plan, transaction)
+                    || !lexical->validates(plan, transaction)
+                    || !manifest->validates(plan, transaction)) {
+                    result.code = PublicationOutcomeCode::BindingMismatch;
+                    return;
                 }
             }
             const auto receipt_status = complete_roles

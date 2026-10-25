@@ -34,11 +34,10 @@ public:
     [[nodiscard]] const MdbxStorageContext& context() const noexcept override;
     void apply(const mdbxc::Transaction& transaction) override;
     void reset_after_abort() noexcept override;
-    [[nodiscard]] MdbxPublicationParticipantRole role() const noexcept override;
     [[nodiscard]] bool validates(
         const PublicationPlan& plan,
         const mdbxc::Transaction& transaction
-    ) const override;
+    ) const;
 
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
@@ -61,11 +60,10 @@ public:
     [[nodiscard]] const MdbxStorageContext& context() const noexcept override;
     void apply(const mdbxc::Transaction& transaction) override;
     void reset_after_abort() noexcept override;
-    [[nodiscard]] MdbxPublicationParticipantRole role() const noexcept override;
     [[nodiscard]] bool validates(
         const PublicationPlan& plan,
         const mdbxc::Transaction& transaction
-    ) const override;
+    ) const;
 
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
@@ -88,11 +86,10 @@ public:
     [[nodiscard]] const MdbxStorageContext& context() const noexcept override;
     void apply(const mdbxc::Transaction& transaction) override;
     void reset_after_abort() noexcept override;
-    [[nodiscard]] MdbxPublicationParticipantRole role() const noexcept override;
     [[nodiscard]] bool validates(
         const PublicationPlan& plan,
         const mdbxc::Transaction& transaction
-    ) const override;
+    ) const;
 
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
