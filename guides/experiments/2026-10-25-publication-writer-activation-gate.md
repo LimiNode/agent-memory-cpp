@@ -76,7 +76,23 @@ here:
 4. deployment guarantees external stop/restart/quiescence for every writer.
 
 The fourth option is the only currently supportable deployment rule. It must be
-explicitly recorded in the runbook and acceptance checklist.
+combined with enforced writer ownership for the entire active period: after
+activation, the deployment owner must continuously control which binaries may
+open the environment for writing. A one-time stop/start is not sufficient if
+an old binary can be launched again later. This requirement must be recorded in
+the runbook and acceptance checklist.
+
+## Deployment-profile guarantees
+
+| Deployment profile | Quiescence at activation | Ownership after activation | Achievable guarantee | Required external mechanism |
+| --- | --- | --- | --- | --- |
+| Single-process host controlled by one owner | Stop all writers and drain/abort open write transactions before activation | Host keeps the only process admission path and prevents legacy restart | Bounded coordinated profile can be made operationally safe | Supervisor-owned process lifecycle and restart policy |
+| Controlled multi-process host | Stop and drain every process before activation | Supervisor or service owner authorizes every later writer start | Coordinated writers can be restricted to one profile; legacy bypass is deployment-fenced | Service manager policy, binary allow-list, and writer ownership lease |
+| Unmanaged legacy processes | Cannot prove quiescence or drain | Cannot prevent a legacy binary from reopening and writing later | No safe activation guarantee; remain activation-blocked | External owner must first establish process and binary control |
+
+MDBX transaction serialization is a separate property from both columns. It
+orders transactions that reach MDBX; it does not establish quiescence and does
+not grant or revoke writer ownership.
 
 ## Minimal executable pilot
 
@@ -117,9 +133,36 @@ reviewed for DBI and terminology overlap after restack. No force-push should
 be performed while another writer is changing `main`; one integration owner
 must sequence the restack and keep every PR Draft.
 
+The only permitted squash sequence is:
+
+`#544 → #549 → #550 → #551 → #552 → #553 → #554`
+
+After each squash, retarget the next Draft PR to the new `main`, verify that
+its base contains exactly the prior squash, and run exact-head CI before
+continuing. #555 remains an independent documentation research PR and is not
+part of the functional publication chain.
+
 Required checks after each restack are exact-head CI, MDBX Release CTest,
 header self-sufficiency, documentation checks, and a clean mergeability
 status. Merging is deliberately outside this research PR.
+
+### Conflict and overlap audit
+
+The guarded restack must inspect these files and boundaries explicitly:
+
+| Surface | Expected overlap | Resolution rule |
+| --- | --- | --- |
+| `CMakeLists.txt`, `tests/CMakeLists.txt` | #544–#554 add coordinator test sources; #545–#548 add segmented sources and tests | retain both registrations; do not duplicate a source or target |
+| `guides/dbi-manifest.yaml` and MDBX table names | segmented-v1 and flat-v2 both use lexical physical storage names with different row namespaces | preserve the merged physical-segment contract; coordinator remains independent and must not relabel segmented rows |
+| lexical APIs and descriptors | #552/#553 refer to projection/lexical publication; #545–#548 define segmented codec and adapter APIs | keep coordinator participant contracts on the existing persistent lexical baseline; no implicit segmented-v1 integration |
+| `MdbxPublicationReadScope` and `MdbxSegmentedLexicalIndex` | no direct source dependency is expected | if a conflict appears, retain the coordinator's bounded target identity contract and the segmented adapter's explicit lexical-only boundary |
+| experiment notes | both lines record independent research | keep separate notes; link the integration decision instead of copying commits or claims |
+
+The scoped diff audit must also verify that each PR contributes only its
+declared layer: plan conformance, transaction ownership, metadata coordinator,
+authoritative participants, projection/lexical participants, pinned reads, and
+the corrective boundary tests. A commit that merely reintroduces an ancestor's
+files is a restack error, not a harmless duplicate.
 
 ## Activation preconditions
 
@@ -139,4 +182,5 @@ The coordinator stack is a useful bounded experiment and can be integrated as
 an experimental baseline after its guarded restack. It is not a global writer
 admission mechanism. The missing property is operational and architectural,
 not something that can be repaired by adding another marker or wrapper around
-one adapter.
+one adapter. This research PR adds zero production LOC; its 142 lines are an
+auditable deployment and integration record.
