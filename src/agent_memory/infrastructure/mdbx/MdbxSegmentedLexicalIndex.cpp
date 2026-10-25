@@ -521,7 +521,7 @@ public:
     }
 
     template<typename Transaction>
-    StoredState read_state(Transaction& txn) const {
+    StoredState read_state(Transaction& txn, const bool validate_rows = true) const {
         StoredState state;
         state.descriptor = descriptor;
         state.snapshot.statistics_epoch = descriptor.ref.statistics_epoch;
@@ -661,7 +661,9 @@ public:
             || state.sequence.empty()) {
             throw std::runtime_error("segmented lexical descriptor or snapshot mismatch");
         }
-        validate_derived_rows(state, rebuild_index(state), limits);
+        if(validate_rows) {
+            validate_derived_rows(state, rebuild_index(state), limits);
+        }
         return state;
     }
 
@@ -792,8 +794,11 @@ void MdbxSegmentedLexicalIndex::upsert(
     std::optional<FlatLexicalExpectedState> expected_current
 ) {
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
-    auto state = m_impl->read_state(txn);
+    auto state = m_impl->read_state(txn, false);
     auto index = rebuild_index(state);
+    if(state.has_descriptor) {
+        validate_derived_rows(state, index, m_impl->limits);
+    }
     index.upsert(input, expected_current);
     bool changed = true;
     for(const auto& unit : state.units) {
@@ -843,8 +848,11 @@ void MdbxSegmentedLexicalIndex::upsert(
 
 bool MdbxSegmentedLexicalIndex::erase(const KnowledgeUnitId& unit_id) {
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
-    auto state = m_impl->read_state(txn);
+    auto state = m_impl->read_state(txn, false);
     auto index = rebuild_index(state);
+    if(state.has_descriptor) {
+        validate_derived_rows(state, index, m_impl->limits);
+    }
     if(!index.erase(unit_id)) return false;
     state.units.erase(std::remove_if(state.units.begin(), state.units.end(),
         [unit_id](const auto& unit) { return unit.unit_id == unit_id; }), state.units.end());
@@ -868,9 +876,12 @@ bool MdbxSegmentedLexicalIndex::erase(const KnowledgeUnitId& unit_id) {
 
 void MdbxSegmentedLexicalIndex::clear() {
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
-    auto state = m_impl->read_state(txn);
+    auto state = m_impl->read_state(txn, false);
     if(state.units.empty()) return;
     auto index = rebuild_index(state);
+    if(state.has_descriptor) {
+        validate_derived_rows(state, index, m_impl->limits);
+    }
     state.units.clear();
     index.clear();
     if(state.snapshot.statistics_generation == std::numeric_limits<std::uint64_t>::max()
