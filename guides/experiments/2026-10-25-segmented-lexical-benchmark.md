@@ -22,11 +22,11 @@ environment creation, adapter initialization, writes, full validated snapshot
 read, close, reopen/adapter initialization, and full validated snapshot read
 after reopen. The dependency-free `FlatLexicalIndex` row is an in-process
 reference and therefore has no durable or reopen timing. Durable rows also carry
-benchmark-only physical telemetry: namespace rows scanned/decoded, decoded and
-encoded bytes, estimated rebuild publications, and rows deleted/inserted by the
-full-rewrite publication loop. These counters are observational scans performed
-by the benchmark; they are not production diagnostics and do not represent
-physical disk writes.
+benchmark-only diagnostic telemetry after the timed write phase: live rows and
+value bytes observed by a separate scan, estimated rebuild publications, and
+estimated rows deleted/inserted by the full-rewrite publication loop. These
+counters are explicitly observational; they are not adapter-internal events and
+do not represent physical disk writes.
 
 Example command:
 
@@ -38,7 +38,8 @@ agent_memory_segmented_lexical_benchmark.exe 128 5 <temporary-base-path>
 
 MinGW Release, bundled MDBX dependencies, 128 units, two repeats. Values below
 are representative rows from the first repeat; the command emits every repeat
-as TSV. `write_ms` is now isolated from adapter initialization and the read
+as TSV. `write_ms` is isolated from adapter initialization and diagnostic scans;
+`write_diagnostic_ms` reports that separate post-write scan overhead. The read
 columns are full snapshot validation, not selective query latency.
 
 | workload | backend | write ms | snapshot ms | reopen snapshot ms | database bytes |
@@ -67,8 +68,9 @@ growth, and physical I/O before any layout or default change is proposed.
 - The workloads are synthetic and use short ASCII tokens, not technical UTF-8
   documents.
 - `db_bytes` is the final MDBX file size, not a write-amplification counter.
-- `rows_deleted`, `rows_inserted`, and encoded/decoded byte counters describe
-  logical MDBX row work observed by the benchmark, not storage-engine page I/O.
+- `estimated_rows_deleted`, `estimated_rows_inserted`, and observed encoded
+  bytes describe logical MDBX row work observed by the benchmark, not
+  storage-engine page I/O.
 - The benchmark does not yet expose MDBX live-page or physical-write counters;
   file geometry must not be interpreted as write amplification.
 - The benchmark does not claim cross-store atomicity or production throughput.

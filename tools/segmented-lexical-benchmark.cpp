@@ -81,13 +81,13 @@ std::uintmax_t database_bytes(const std::filesystem::path& path) {
 }
 
 struct PhysicalCounters final {
-    std::size_t rows_scanned = 0;
-    std::size_t rows_decoded = 0;
-    std::size_t decoded_bytes = 0;
-    std::size_t rebuild_count = 0;
-    std::size_t rows_deleted = 0;
-    std::size_t rows_inserted = 0;
-    std::size_t encoded_bytes = 0;
+    std::size_t live_rows_observed = 0;
+    std::size_t live_value_bytes_observed = 0;
+    std::size_t diagnostic_scans = 0;
+    std::size_t estimated_rebuild_publications = 0;
+    std::size_t estimated_rows_deleted = 0;
+    std::size_t estimated_rows_inserted = 0;
+    std::size_t observed_encoded_bytes = 0;
 };
 
 PhysicalCounters scan_rows(
@@ -104,24 +104,25 @@ PhysicalCounters scan_rows(
     const std::string to = segmented ? "seg-v2" : "flat-v3";
     table.for_each_range(from, to,
         [&counters](const std::string& key, const std::string& value) {
-            ++counters.rows_scanned;
-            ++counters.rows_decoded;
-            counters.decoded_bytes += value.size();
-            counters.encoded_bytes += key.size() + value.size();
+            ++counters.live_rows_observed;
+            counters.live_value_bytes_observed += value.size();
+            counters.observed_encoded_bytes += key.size() + value.size();
             return true;
         }, txn);
-    counters.rows_deleted = previous_rows;
-    counters.rows_inserted = counters.rows_scanned;
-    counters.rebuild_count = account_rebuild ? 1U : 0U;
+    counters.diagnostic_scans = 1;
+    counters.estimated_rows_deleted = previous_rows;
+    counters.estimated_rows_inserted = counters.live_rows_observed;
+    counters.estimated_rebuild_publications = account_rebuild ? 1U : 0U;
     return counters;
 }
 
 void print_header() {
     std::cout << "backend\tworkload\tunits\trepeat\tenvironment_ms\tadapter_init_ms"
                  "\twrite_ms\tsnapshot_ms\tclose_ms\treopen_ms\treopen_snapshot_ms"
-                 "\tdb_bytes\tactive_units\ttotal_tokens\trows_scanned\trows_decoded"
-                 "\tdecoded_bytes\trebuild_count\trows_deleted\trows_inserted"
-                 "\tencoded_bytes\n";
+                 "\tdb_bytes\tactive_units\ttotal_tokens\twrite_diagnostic_ms"
+                 "\tdiagnostic_scans\tlive_rows_observed\tlive_value_bytes_observed"
+                 "\testimated_rebuild_publications\testimated_rows_deleted"
+                 "\testimated_rows_inserted\tobserved_encoded_bytes\n";
 }
 
 void run_flat_reference(
@@ -143,7 +144,7 @@ void run_flat_reference(
               << '\t' << milliseconds(read_done - write_done)
               << "\t0\t0\t0\t0\t" << index.collection_stats().unit_count
               << '\t' << index.collection_stats().total_token_count
-              << "\t0\t0\t0\t0\t0\t0\t0\n";
+              << "\t0\t0\t0\t0\t0\t0\t0\t0\n";
 }
 
 template<typename IndexT, typename OptionsT>
@@ -180,21 +181,26 @@ void run_durable(
     Clock::time_point read_done;
     PhysicalCounters counters;
     std::size_t previous_rows = 0;
+    Clock::duration diagnostic_duration{};
     {
         for(std::size_t index_value = 0; index_value < units; ++index_value) {
             index->upsert(unit(index_value, workload));
-            const auto sample = scan_rows(
-                context, previous_rows, true, backend == "segmented-v1");
-            previous_rows = sample.rows_scanned;
-            counters.rows_scanned += sample.rows_scanned;
-            counters.rows_decoded += sample.rows_decoded;
-            counters.decoded_bytes += sample.decoded_bytes;
-            counters.rebuild_count += sample.rebuild_count;
-            counters.rows_deleted += sample.rows_deleted;
-            counters.rows_inserted += sample.rows_inserted;
-            counters.encoded_bytes += sample.encoded_bytes;
         }
         write_done = Clock::now();
+        const auto diagnostic_started = Clock::now();
+        for(std::size_t index_value = 0; index_value < units; ++index_value) {
+            const auto sample = scan_rows(
+                context, previous_rows, true, backend == "segmented-v1");
+            previous_rows = sample.live_rows_observed;
+            counters.live_rows_observed += sample.live_rows_observed;
+            counters.live_value_bytes_observed += sample.live_value_bytes_observed;
+            counters.diagnostic_scans += sample.diagnostic_scans;
+            counters.estimated_rebuild_publications += sample.estimated_rebuild_publications;
+            counters.estimated_rows_deleted += sample.estimated_rows_deleted;
+            counters.estimated_rows_inserted += sample.estimated_rows_inserted;
+            counters.observed_encoded_bytes += sample.observed_encoded_bytes;
+        }
+        diagnostic_duration = Clock::now() - diagnostic_started;
         {
             const auto snapshot = index->read_snapshot();
             const auto anchor = snapshot.index.find_token_id("anchor");
@@ -231,12 +237,12 @@ void run_durable(
     const auto reopen_snapshot_done = Clock::now();
     const auto reopen_sample = scan_rows(
         reopen_context, previous_rows, false, backend == "segmented-v1");
-    counters.rows_scanned += reopen_sample.rows_scanned;
-    counters.rows_decoded += reopen_sample.rows_decoded;
-    counters.decoded_bytes += reopen_sample.decoded_bytes;
-    counters.rows_deleted += reopen_sample.rows_deleted;
-    counters.rows_inserted += reopen_sample.rows_inserted;
-    counters.encoded_bytes += reopen_sample.encoded_bytes;
+    counters.live_rows_observed += reopen_sample.live_rows_observed;
+    counters.live_value_bytes_observed += reopen_sample.live_value_bytes_observed;
+    counters.diagnostic_scans += reopen_sample.diagnostic_scans;
+    counters.estimated_rows_deleted += reopen_sample.estimated_rows_deleted;
+    counters.estimated_rows_inserted += reopen_sample.estimated_rows_inserted;
+    counters.observed_encoded_bytes += reopen_sample.observed_encoded_bytes;
     std::cout << backend << '\t' << workload << '\t' << units << '\t' << repeat
               << '\t' << milliseconds(environment_done - environment_started)
               << '\t' << milliseconds(adapter_done - adapter_started)
@@ -248,13 +254,14 @@ void run_durable(
               << '\t' << database_bytes(path)
               << '\t' << active_units
               << '\t' << total_tokens
-              << '\t' << counters.rows_scanned
-              << '\t' << counters.rows_decoded
-              << '\t' << counters.decoded_bytes
-              << '\t' << counters.rebuild_count
-              << '\t' << counters.rows_deleted
-              << '\t' << counters.rows_inserted
-              << '\t' << counters.encoded_bytes
+              << '\t' << milliseconds(diagnostic_duration)
+              << '\t' << counters.diagnostic_scans
+              << '\t' << counters.live_rows_observed
+              << '\t' << counters.live_value_bytes_observed
+              << '\t' << counters.estimated_rebuild_publications
+              << '\t' << counters.estimated_rows_deleted
+              << '\t' << counters.estimated_rows_inserted
+              << '\t' << counters.observed_encoded_bytes
               << '\n';
 }
 
