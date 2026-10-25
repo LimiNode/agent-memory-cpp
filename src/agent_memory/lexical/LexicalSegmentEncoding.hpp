@@ -43,6 +43,12 @@ namespace agent_memory {
         std::size_t max_row_bytes = 16U * 1024U * 1024U;
         std::size_t max_total_postings = 4'000'000U;
         std::size_t max_token_bytes = 4'096U;
+        std::size_t max_units = 100'000U;
+        std::size_t max_dictionary_entries = 4'000'000U;
+        std::size_t max_token_stats = 4'000'000U;
+        std::size_t max_witnesses = 4'000'000U;
+        std::size_t max_namespace_rows = 8'000'000U;
+        std::size_t max_total_unit_tokens = 4'000'000U;
     };
 
     /// \brief Fail-closed result for row encoding and decoding.
