@@ -4,6 +4,7 @@
 
 #include <mdbx_containers/KeyValueTable.hpp>
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -55,15 +56,38 @@ void MdbxPublicationReadScope::read(MdbxPublicationReadParticipant& participant)
 
 void MdbxPublicationReadScope::finish() {
     require_active();
+    const bool projection_identity_matches =
+        m_observation.unit.has_value()
+        && !m_observation.projections.empty()
+        && std::all_of(
+            m_observation.projections.begin(),
+            m_observation.projections.end(),
+            [this](const SearchProjection& projection) {
+                return projection.scope_id == m_observation.frontier.scope_id
+                    && projection.unit_id == m_observation.unit->id;
+            }
+        );
+    const bool unit_resource_matches_manifest =
+        m_observation.unit
+        && m_observation.manifest
+        && !m_observation.unit->sources.empty()
+        && m_observation.unit->sources.front().resource_id
+            == m_observation.manifest->revision.resource_id;
+    const bool lexical_identity_matches =
+        m_observation.lexical
+        && m_observation.lexical->frontier.index_descriptor.ref.scope_id
+            == m_observation.frontier.scope_id
+        && m_observation.lexical->frontier.consistency
+            == LexicalReadConsistency::PinnedSnapshot
+        && is_valid_lexical_read_frontier(m_observation.lexical->frontier);
     const bool has_authoritative_evidence =
         !m_observation.frontier.scope_id.empty()
         && m_observation.canonical.has_value()
         && m_observation.unit.has_value()
-        && !m_observation.projections.empty()
-        && m_observation.lexical.has_value()
+        && projection_identity_matches
+        && lexical_identity_matches
         && m_observation.manifest.has_value()
-        && m_observation.lexical->frontier.consistency
-            == LexicalReadConsistency::PinnedSnapshot;
+        && unit_resource_matches_manifest;
     m_observation.completion = has_authoritative_evidence
         ? MdbxPublicationReadCompletion::Exact
         : (!m_observation.frontier.scope_id.empty()
