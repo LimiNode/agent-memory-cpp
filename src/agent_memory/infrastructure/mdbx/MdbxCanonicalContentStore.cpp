@@ -768,14 +768,19 @@ bool MdbxCanonicalContentStore::create_document_impl(
 std::optional<CanonicalDocumentRevision>
 MdbxCanonicalContentStore::read_current(const DocumentId& id) const {
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-    const auto head = m_impl->heads.find(id.value(), txn);
-    if (!head) {
-        txn.commit();
-        return std::nullopt;
-    }
-    auto result = m_impl->read_revision(id, parse_u64(*head, "head revision"), txn);
+    auto result = read_current_in_transaction(id, txn);
     txn.commit();
     return result;
+}
+
+std::optional<CanonicalDocumentRevision>
+MdbxCanonicalContentStore::read_current_in_transaction(
+    const DocumentId& id,
+    const mdbxc::Transaction& transaction
+) const {
+    const auto head = m_impl->heads.find(id.value(), transaction);
+    if(!head) return std::nullopt;
+    return m_impl->read_revision(id, parse_u64(*head, "head revision"), transaction);
 }
 
 std::optional<CanonicalDocumentRevision>

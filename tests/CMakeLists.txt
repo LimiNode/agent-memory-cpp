@@ -709,6 +709,17 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         COMMAND agent_memory_mdbx_publication_coordinator_test
     )
 
+    add_executable(agent_memory_mdbx_publication_read_scope_test
+        infrastructure/mdbx/mdbx_publication_read_scope_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_publication_read_scope_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_publication_read_scope_test
+        COMMAND agent_memory_mdbx_publication_read_scope_test
+    )
+
     add_executable(agent_memory_mdbx_document_storage_test
         infrastructure/mdbx/mdbx_document_storage_test.cpp
     )

@@ -113,6 +113,11 @@ class MdbxCanonicalContentStore final : public ICanonicalContentStore,
     /// \copydoc ICanonicalContentStore::read_current
     [[nodiscard]] std::optional<CanonicalDocumentRevision>
     read_current(const DocumentId&) const override;
+    [[nodiscard]] std::optional<CanonicalDocumentRevision>
+    read_current_in_transaction(
+        const DocumentId&,
+        const mdbxc::Transaction& transaction
+    ) const;
     /// \copydoc ICanonicalContentStore::read_revision
     [[nodiscard]] std::optional<CanonicalDocumentRevision>
     read_revision(const DocumentId&, std::uint64_t) const override;
