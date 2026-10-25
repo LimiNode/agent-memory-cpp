@@ -175,6 +175,17 @@ endif()
 
 if(AGENT_MEMORY_BUILD_BENCHMARKS)
     add_subdirectory(tools/agent-memory-bench)
+    if(AGENT_MEMORY_ENABLE_MDBX)
+        add_executable(agent_memory_segmented_lexical_benchmark
+            tools/segmented-lexical-benchmark.cpp
+        )
+        target_link_libraries(agent_memory_segmented_lexical_benchmark
+            PRIVATE agent_memory::agent_memory
+        )
+        target_compile_features(agent_memory_segmented_lexical_benchmark
+            PRIVATE cxx_std_17
+        )
+    endif()
 endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
