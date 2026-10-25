@@ -3,6 +3,7 @@
 #if AGENT_MEMORY_HAS_MDBX
 
 #include <stdexcept>
+#include <algorithm>
 #include <utility>
 
 namespace agent_memory {
@@ -22,11 +23,45 @@ const MdbxStorageContext& MdbxProjectionPublicationParticipant::context() const 
 void MdbxProjectionPublicationParticipant::apply(
     const mdbxc::Transaction& transaction
 ) {
-    if(!m_projection) {
+    if(!m_projection || m_applied) {
         throw std::logic_error("projection publication participant has no operation");
     }
-    m_store->put_in_transaction(std::move(*m_projection), transaction);
-    m_projection.reset();
+    m_store->put_in_transaction(*m_projection, transaction);
+    m_applied = true;
+}
+
+void MdbxProjectionPublicationParticipant::reset_after_abort() noexcept {
+    m_applied = false;
+}
+
+MdbxPublicationParticipantRole
+MdbxProjectionPublicationParticipant::role() const noexcept {
+    return MdbxPublicationParticipantRole::Projection;
+}
+
+bool MdbxProjectionPublicationParticipant::validates(
+    const PublicationPlan& plan,
+    const mdbxc::Transaction& transaction
+) const {
+    if(!m_applied || !m_projection) {
+        return false;
+    }
+    const auto rows = m_store->list_in_transaction(
+        plan.identity.scope_id,
+        m_projection->unit_id,
+        transaction,
+        m_projection->kind
+    );
+    return std::any_of(rows.begin(), rows.end(), [this, &plan](const auto& row) {
+        const auto& expected = plan.target_evidence.projection_version;
+        const auto& actual = row.version;
+        return row.version.unit_revision_at_build == plan.target_evidence.unit_revision
+            && actual.projection_revision == expected.projection_revision
+            && actual.derivation_generation == expected.derivation_generation
+            && actual.derivation_fingerprint == expected.derivation_fingerprint
+            && row.scope_id == plan.identity.scope_id
+            && row.unit_id == m_projection->unit_id;
+    });
 }
 
 MdbxLexicalPublicationParticipant::MdbxLexicalPublicationParticipant(
@@ -46,14 +81,48 @@ const MdbxStorageContext& MdbxLexicalPublicationParticipant::context() const noe
 void MdbxLexicalPublicationParticipant::apply(
     const mdbxc::Transaction& transaction
 ) {
-    if(!m_input) {
+    if(!m_input || m_applied) {
         throw std::logic_error("lexical publication participant has no operation");
     }
     m_index->upsert_in_transaction(
-        std::move(*m_input), std::move(m_expected_current), transaction
+        *m_input, m_expected_current, transaction
     );
-    m_input.reset();
-    m_expected_current.reset();
+    m_applied = true;
+}
+
+void MdbxLexicalPublicationParticipant::reset_after_abort() noexcept {
+    m_applied = false;
+}
+
+MdbxPublicationParticipantRole
+MdbxLexicalPublicationParticipant::role() const noexcept {
+    return MdbxPublicationParticipantRole::Lexical;
+}
+
+bool MdbxLexicalPublicationParticipant::validates(
+    const PublicationPlan& plan,
+    const mdbxc::Transaction& transaction
+) const {
+    if(!m_applied || !m_input) {
+        return false;
+    }
+    const auto read = m_index->read_in_transaction(transaction);
+    const auto stats = read.index.find_unit_stats(m_input->unit_id);
+    if(!stats) {
+        return false;
+    }
+    const auto& expected = plan.target_evidence.projection_version;
+    const auto& actual = stats->projection_version;
+    return stats
+        && stats->resource_id == plan.target_evidence.resource_id
+        && stats->resource_generation == plan.target_evidence.resource_generation
+        && stats->unit_revision == plan.target_evidence.unit_revision
+        && actual.unit_revision_at_build == expected.unit_revision_at_build
+        && actual.projection_revision == expected.projection_revision
+        && actual.derivation_generation == expected.derivation_generation
+        && actual.derivation_fingerprint == expected.derivation_fingerprint
+        && read.frontier.index_descriptor.ref.scope_id == plan.identity.scope_id
+        && read.frontier.index_descriptor.ref.projection_kind == m_input->projection_kind;
 }
 
 } // namespace agent_memory

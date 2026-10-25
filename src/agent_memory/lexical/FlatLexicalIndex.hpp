@@ -214,6 +214,9 @@ namespace agent_memory {
             const KnowledgeUnitId& unit_id
         ) const;
 
+        /// \brief Returns the complete active unit evidence in deterministic order.
+        [[nodiscard]] std::vector<FlatLexicalUnitStats> active_unit_stats() const;
+
         [[nodiscard]] std::optional<TokenId> find_token_id(
             const std::string& normalized_token
         ) const;

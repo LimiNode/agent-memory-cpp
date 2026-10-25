@@ -291,7 +291,9 @@ PublicationOutcome PublicationConformanceModel::publish(
             PublicationSequence{current_sequence + 1}
         },
         plan.payload,
-        false
+        false,
+        PublicationReceiptStatus::MetadataOnly,
+        plan.target_evidence
     };
     CommittedPublication committed{plan, receipt};
 

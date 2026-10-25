@@ -94,12 +94,24 @@ namespace agent_memory {
         PublicationPayloadIdentity payload;
     };
 
+    /// \brief Whether a receipt carries complete authoritative evidence.
+    ///
+    /// Metadata-only coordinator commits remain useful for fencing/frontier
+    /// experiments, but they must never be used as proof that all stores were
+    /// published through one coordinated transaction.
+    enum class PublicationReceiptStatus : std::uint8_t {
+        MetadataOnly,
+        Complete
+    };
+
     /// \brief Receipt returned by a first commit or an idempotent replay.
     struct PublicationReceipt final {
         PublicationIdentity identity;
         PublicationScopeFrontier committed_frontier;
         PublicationPayloadIdentity payload;
         bool replay = false;
+        PublicationReceiptStatus status = PublicationReceiptStatus::MetadataOnly;
+        PublicationEvidence target_evidence;
     };
 
     /// \brief Deterministic result of applying a plan to the conformance model.

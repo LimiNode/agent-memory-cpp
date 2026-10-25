@@ -868,6 +868,15 @@ std::optional<FlatLexicalUnitStats> FlatLexicalIndex::find_unit_stats(
     return found->second.stats;
 }
 
+std::vector<FlatLexicalUnitStats> FlatLexicalIndex::active_unit_stats() const {
+    std::vector<FlatLexicalUnitStats> result;
+    result.reserve(m_units.size());
+    for(const auto& entry : m_units) {
+        result.push_back(entry.second.stats);
+    }
+    return result;
+}
+
 std::optional<TokenId> FlatLexicalIndex::find_token_id(
     const std::string& normalized_token
 ) const {

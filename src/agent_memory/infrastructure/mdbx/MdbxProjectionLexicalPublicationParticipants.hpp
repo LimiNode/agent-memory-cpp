@@ -26,11 +26,18 @@ public:
 
     [[nodiscard]] const MdbxStorageContext& context() const noexcept override;
     void apply(const mdbxc::Transaction& transaction) override;
+    void reset_after_abort() noexcept override;
+    [[nodiscard]] MdbxPublicationParticipantRole role() const noexcept override;
+    [[nodiscard]] bool validates(
+        const PublicationPlan& plan,
+        const mdbxc::Transaction& transaction
+    ) const override;
 
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
     MdbxProjectionStore* m_store;
     std::optional<SearchProjection> m_projection;
+    bool m_applied = false;
 };
 
 /// \brief Publishes one bounded flat-v2 lexical contribution and statistics state.
@@ -45,12 +52,19 @@ public:
 
     [[nodiscard]] const MdbxStorageContext& context() const noexcept override;
     void apply(const mdbxc::Transaction& transaction) override;
+    void reset_after_abort() noexcept override;
+    [[nodiscard]] MdbxPublicationParticipantRole role() const noexcept override;
+    [[nodiscard]] bool validates(
+        const PublicationPlan& plan,
+        const mdbxc::Transaction& transaction
+    ) const override;
 
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
     MdbxPersistentLexicalIndex* m_index;
     std::optional<FlatLexicalUnitInput> m_input;
     std::optional<FlatLexicalExpectedState> m_expected_current;
+    bool m_applied = false;
 };
 
 } // namespace agent_memory

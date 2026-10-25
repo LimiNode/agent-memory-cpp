@@ -263,6 +263,63 @@ int main() {
             return fail("participant failure must roll back metadata and frontier");
         }
 
+        MdbxCanonicalPublicationParticipant retry_canonical{
+            context,
+            canonical,
+            CanonicalDocumentRevision{
+                DocumentId{"retry-document"},
+                0,
+                {},
+                {ContentBlock{
+                    ContentBlockId{"retry-block"},
+                    1,
+                    ContentBlockKind::Paragraph,
+                    std::nullopt,
+                    "retry body"
+                }}
+            }
+        };
+        auto retry_plan = plan_for(
+            scope, profile, next_fencing, "publication-retry", 2
+        );
+        if(coordinator.publish(retry_plan, {&retry_canonical, &failing}).code
+            != PublicationOutcomeCode::CommitFailure
+            || coordinator.frontier().sequence.value() != 2) {
+            return fail("failed retry fixture must leave the frontier unchanged");
+        }
+        const auto retry_result = coordinator.publish(retry_plan, {&retry_canonical});
+        if(retry_result.code != PublicationOutcomeCode::Committed
+            || coordinator.frontier().sequence.value() != 3
+            || !canonical.read_current(DocumentId{"retry-document"})) {
+            return fail("prepared participant must be reusable after rollback");
+        }
+
+        MdbxCanonicalPublicationParticipant duplicate_a{
+            context,
+            canonical,
+            CanonicalDocumentRevision{
+                DocumentId{"duplicate-a"}, 0, {},
+                {ContentBlock{ContentBlockId{"duplicate-a-block"}, 1,
+                    ContentBlockKind::Paragraph, std::nullopt, "a"}}
+            }
+        };
+        MdbxCanonicalPublicationParticipant duplicate_b{
+            context,
+            canonical,
+            CanonicalDocumentRevision{
+                DocumentId{"duplicate-b"}, 0, {},
+                {ContentBlock{ContentBlockId{"duplicate-b-block"}, 1,
+                    ContentBlockKind::Paragraph, std::nullopt, "b"}}
+            }
+        };
+        if(coordinator.publish(
+                plan_for(scope, profile, next_fencing, "publication-duplicate", 3),
+                {&duplicate_a, &duplicate_b}
+            ).code != PublicationOutcomeCode::InvalidPlan
+            || coordinator.frontier().sequence.value() != 3) {
+            return fail("duplicate participant roles must be rejected atomically");
+        }
+
         std::array<std::uint8_t, 16> epoch{};
         epoch[0] = 7;
         MdbxPersistentLexicalIndexOptions lexical_options;
@@ -313,14 +370,14 @@ int main() {
             }
         };
         auto projection_plan = plan_for(
-            scope, profile, next_fencing, "publication-projection", 2
+            scope, profile, next_fencing, "publication-projection", 3
         );
         const auto projection_result = coordinator.publish(
             projection_plan,
             {&projection_participant, &lexical_participant}
         );
         if(projection_result.code != PublicationOutcomeCode::Committed
-            || coordinator.frontier().sequence.value() != 3
+            || coordinator.frontier().sequence.value() != 4
             || projections.list(scope, KnowledgeUnitId{1}, ProjectionKind::Original).size() != 1
             || lexical.read_snapshot().index.size() != 1) {
             return fail("projection and flat-v2 lexical participants must publish atomically");
@@ -347,7 +404,7 @@ int main() {
         options.context = context;
         options.scope_id = scope;
         MdbxPublicationCoordinator reopened{std::move(options)};
-        if(reopened.frontier().sequence.value() != 3
+        if(reopened.frontier().sequence.value() != 4
             || !reopened.receipt("publication-1")) {
             return fail("frontier and receipt must survive reopen");
         }

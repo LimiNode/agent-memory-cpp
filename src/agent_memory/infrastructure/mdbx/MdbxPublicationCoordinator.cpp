@@ -7,6 +7,8 @@
 #include <mdbx_containers/KeyValueTable.hpp>
 
 #include <cstdint>
+#include <algorithm>
+#include <array>
 #include <functional>
 #include <limits>
 #include <stdexcept>
@@ -20,6 +22,7 @@ constexpr const char* kSchemaKey = "meta/schema";
 constexpr const char* kProfileKey = "meta/profile";
 constexpr const char* kFencingKey = "meta/fencing";
 constexpr const char* kFrontierKey = "meta/frontier";
+constexpr const char* kLatestReceiptKey = "meta/latest-receipt";
 constexpr const char* kSchemaValue = "agent_memory.publication_coordinator.v1";
 
 void append_u64(std::string& out, const std::uint64_t value) {
@@ -88,6 +91,12 @@ void append_evidence(std::string& out, const PublicationEvidence& evidence) {
     append_text(out, evidence.manifest_binding_digest);
 }
 
+std::string serialize_evidence(const PublicationEvidence& evidence) {
+    std::string value;
+    append_evidence(value, evidence);
+    return value;
+}
+
 PublicationEvidence read_evidence(std::string_view value, std::size_t& position) {
     PublicationEvidence evidence;
     evidence.resource_id = read_resource(value, position);
@@ -110,6 +119,15 @@ PublicationEvidence read_evidence(std::string_view value, std::size_t& position)
         read_u64(value, position)
     );
     evidence.manifest_binding_digest = read_text(value, position);
+    return evidence;
+}
+
+PublicationEvidence deserialize_evidence(std::string_view value) {
+    std::size_t position = 0;
+    const auto evidence = read_evidence(value, position);
+    if(position != value.size()) {
+        throw std::runtime_error("trailing publication evidence metadata");
+    }
     return evidence;
 }
 
@@ -207,24 +225,47 @@ PublicationPlan deserialize_plan(std::string_view value) {
     return plan;
 }
 
-std::string serialize_receipt(const PublicationPlan& plan, const PublicationSequence sequence) {
+std::string serialize_receipt(
+    const PublicationPlan& plan,
+    const PublicationSequence sequence,
+    const PublicationReceiptStatus status
+) {
     std::string value = serialize_plan(plan);
     append_u64(value, sequence.value());
+    value.push_back(static_cast<char>(status));
     return value;
 }
 
 struct StoredReceipt final {
     PublicationPlan plan;
     PublicationSequence sequence;
+    PublicationReceiptStatus status = PublicationReceiptStatus::MetadataOnly;
 };
 
 StoredReceipt deserialize_receipt(std::string_view value) {
     if(value.size() < 8U) {
         throw std::runtime_error("truncated publication receipt metadata");
     }
+    if(value.size() >= 9U && (value.back() == 0 || value.back() == 1)) {
+        try {
+            const auto plan = deserialize_plan(value.substr(0, value.size() - 9U));
+            std::size_t position = value.size() - 9U;
+            const auto sequence = PublicationSequence{read_u64(value, position)};
+            const auto status = static_cast<PublicationReceiptStatus>(
+                static_cast<std::uint8_t>(value.back())
+            );
+            return StoredReceipt{plan, sequence, status};
+        } catch(const std::exception&) {
+            // Fall through for receipts written by the pre-status format.
+        }
+    }
     const auto plan = deserialize_plan(value.substr(0, value.size() - 8U));
     std::size_t position = value.size() - 8U;
-    return StoredReceipt{plan, PublicationSequence{read_u64(value, position)}};
+    return StoredReceipt{
+        plan,
+        PublicationSequence{read_u64(value, position)},
+        PublicationReceiptStatus::MetadataOnly
+    };
 }
 
 bool same_projection(const ProjectionVersionRef& left, const ProjectionVersionRef& right) {
@@ -298,6 +339,10 @@ public:
 
     void apply(const mdbxc::Transaction& transaction) override {
         m_operation(transaction);
+    }
+
+    [[nodiscard]] MdbxPublicationParticipantRole role() const noexcept override {
+        return MdbxPublicationParticipantRole::Unknown;
     }
 
 private:
@@ -514,6 +559,13 @@ PublicationOutcome MdbxPublicationCoordinator::publish(
         }
     }
     auto scope = MdbxPublicationWriteScope::begin(m_impl->context);
+    const auto reset_participants = [&participants]() noexcept {
+        for(auto* candidate : participants) {
+            if(candidate) {
+                candidate->reset_after_abort();
+            }
+        }
+    };
     LambdaParticipant participant{
         m_impl->context,
         [this, &plan, &result, &participants, &scope](const mdbxc::Transaction& transaction) {
@@ -557,7 +609,9 @@ PublicationOutcome MdbxPublicationCoordinator::publish(
                             committed.sequence
                         },
                         plan.payload,
-                        true
+                        true,
+                        committed.status,
+                        committed.plan.target_evidence
                     };
                 } else {
                     result.code = PublicationOutcomeCode::PublicationIdentityConflict;
@@ -579,6 +633,59 @@ PublicationOutcome MdbxPublicationCoordinator::publish(
                 return;
             }
 
+            const auto binding_key = m_impl->key(
+                std::string{"binding:"} + plan.target_evidence.resource_id.value()
+            );
+            const auto stored_binding = m_impl->records.find(binding_key, transaction);
+            if(stored_binding) {
+                try {
+                    if(plan.expected_evidence.resource_id.empty()
+                        || !same_evidence(
+                            plan.expected_evidence,
+                            deserialize_evidence(*stored_binding)
+                        )) {
+                        result.code = PublicationOutcomeCode::BindingMismatch;
+                        return;
+                    }
+                } catch(const std::exception&) {
+                    result.code = PublicationOutcomeCode::InvalidModel;
+                    return;
+                }
+            } else if(!plan.expected_evidence.resource_id.empty()) {
+                result.code = PublicationOutcomeCode::BindingMismatch;
+                return;
+            }
+
+            std::array<bool, 5> role_seen{};
+            bool unknown_role = false;
+            for(const auto* candidate : participants) {
+                switch(candidate->role()) {
+                    case MdbxPublicationParticipantRole::Canonical:
+                        if(role_seen[0]) { result.code = PublicationOutcomeCode::InvalidPlan; return; }
+                        role_seen[0] = true;
+                        break;
+                    case MdbxPublicationParticipantRole::KnowledgeUnit:
+                        if(role_seen[1]) { result.code = PublicationOutcomeCode::InvalidPlan; return; }
+                        role_seen[1] = true;
+                        break;
+                    case MdbxPublicationParticipantRole::Projection:
+                        if(role_seen[2]) { result.code = PublicationOutcomeCode::InvalidPlan; return; }
+                        role_seen[2] = true;
+                        break;
+                    case MdbxPublicationParticipantRole::Lexical:
+                        if(role_seen[3]) { result.code = PublicationOutcomeCode::InvalidPlan; return; }
+                        role_seen[3] = true;
+                        break;
+                    case MdbxPublicationParticipantRole::Manifest:
+                        if(role_seen[4]) { result.code = PublicationOutcomeCode::InvalidPlan; return; }
+                        role_seen[4] = true;
+                        break;
+                    case MdbxPublicationParticipantRole::Unknown:
+                        unknown_role = true;
+                        break;
+                }
+            }
+
             try {
                 for(auto* participant : participants) {
                     scope.apply(*participant);
@@ -587,14 +694,44 @@ PublicationOutcome MdbxPublicationCoordinator::publish(
                 result.code = PublicationOutcomeCode::CommitFailure;
                 return;
             }
+            const bool complete_roles = !unknown_role
+                && std::all_of(role_seen.begin(), role_seen.end(), [](const bool seen) {
+                    return seen;
+                });
+            if(complete_roles) {
+                for(const auto* candidate : participants) {
+                    if(!candidate->validates(plan, transaction)) {
+                        result.code = PublicationOutcomeCode::BindingMismatch;
+                        return;
+                    }
+                }
+            }
+            const auto receipt_status = complete_roles
+                ? PublicationReceiptStatus::Complete
+                : PublicationReceiptStatus::MetadataOnly;
             const PublicationSequence next_sequence{current_sequence + 1};
             std::string frontier_value;
             append_u64(frontier_value, next_sequence.value());
+            const auto serialized_receipt = serialize_receipt(
+                plan, next_sequence, receipt_status
+            );
             m_impl->records.insert_or_assign(
                 receipt_key,
-                serialize_receipt(plan, next_sequence),
+                serialized_receipt,
                 transaction
             );
+            m_impl->records.insert_or_assign(
+                m_impl->key(kLatestReceiptKey),
+                serialized_receipt,
+                transaction
+            );
+            if(receipt_status == PublicationReceiptStatus::Complete) {
+                m_impl->records.insert_or_assign(
+                    binding_key,
+                    serialize_evidence(plan.target_evidence),
+                    transaction
+                );
+            }
             m_impl->records.insert_or_assign(
                 m_impl->key(kFrontierKey),
                 frontier_value,
@@ -605,7 +742,9 @@ PublicationOutcome MdbxPublicationCoordinator::publish(
                 plan.identity,
                 PublicationScopeFrontier{m_impl->scope_id, next_sequence},
                 plan.payload,
-                false
+                false,
+                receipt_status,
+                plan.target_evidence
             };
         }
     };
@@ -615,13 +754,20 @@ PublicationOutcome MdbxPublicationCoordinator::publish(
         if(scope.active()) {
             scope.abort();
         }
+        reset_participants();
         result.code = PublicationOutcomeCode::InvalidModel;
         return result;
     }
     if(result.code == PublicationOutcomeCode::Committed) {
-        scope.commit();
+        try {
+            scope.commit();
+        } catch(const std::exception&) {
+            reset_participants();
+            result.code = PublicationOutcomeCode::CommitFailure;
+        }
     } else {
         scope.abort();
+        reset_participants();
     }
     return result;
 }
@@ -639,15 +785,75 @@ PublicationScopeFrontier MdbxPublicationCoordinator::frontier_in_transaction(
     const mdbxc::Transaction& transaction
 ) const {
     const auto value = m_impl->records.find(m_impl->key(kFrontierKey), transaction);
-    PublicationSequence sequence;
-    if(value) {
-        std::size_t position = 0;
-        sequence = PublicationSequence{read_u64(*value, position)};
-        if(position != value->size()) {
-            throw std::runtime_error("invalid publication frontier metadata");
-        }
+    if(!value) {
+        return PublicationScopeFrontier{};
+    }
+    std::size_t position = 0;
+    const PublicationSequence sequence{read_u64(*value, position)};
+    if(position != value->size()) {
+        throw std::runtime_error("invalid publication frontier metadata");
     }
     return PublicationScopeFrontier{m_impl->scope_id, sequence};
+}
+
+bool MdbxPublicationCoordinator::metadata_valid_in_transaction(
+    const mdbxc::Transaction& transaction
+) const noexcept {
+    try {
+        const auto schema = m_impl->records.find(m_impl->key(kSchemaKey), transaction);
+        const auto profile = m_impl->records.find(m_impl->key(kProfileKey), transaction);
+        const auto fencing = m_impl->records.find(m_impl->key(kFencingKey), transaction);
+        if(!schema || *schema != kSchemaValue || !profile || !fencing) {
+            return false;
+        }
+        const auto admitted_profile = deserialize_profile(*profile);
+        const auto admitted_fencing = deserialize_fencing(*fencing);
+        return admitted_profile.scope_id == m_impl->scope_id
+            && is_valid_publication_profile(admitted_profile)
+            && is_valid_publication_fencing(admitted_fencing);
+    } catch(...) {
+        return false;
+    }
+}
+
+std::optional<PublicationReceipt> MdbxPublicationCoordinator::receipt_in_transaction(
+    const std::string& publication_id,
+    const mdbxc::Transaction& transaction
+) const {
+    const auto value = m_impl->records.find(
+        m_impl->key(std::string{"receipt:"} + publication_id), transaction
+    );
+    if(!value) {
+        return std::nullopt;
+    }
+    const auto stored = deserialize_receipt(*value);
+    return PublicationReceipt{
+        stored.plan.identity,
+        PublicationScopeFrontier{m_impl->scope_id, stored.sequence},
+        stored.plan.payload,
+        false,
+        stored.status,
+        stored.plan.target_evidence
+    };
+}
+
+std::optional<PublicationReceipt>
+MdbxPublicationCoordinator::latest_receipt_in_transaction(
+    const mdbxc::Transaction& transaction
+) const {
+    const auto value = m_impl->records.find(m_impl->key(kLatestReceiptKey), transaction);
+    if(!value) {
+        return std::nullopt;
+    }
+    const auto stored = deserialize_receipt(*value);
+    return PublicationReceipt{
+        stored.plan.identity,
+        PublicationScopeFrontier{m_impl->scope_id, stored.sequence},
+        stored.plan.payload,
+        false,
+        stored.status,
+        stored.plan.target_evidence
+    };
 }
 
 std::optional<PublicationReceipt> MdbxPublicationCoordinator::receipt(
@@ -656,22 +862,9 @@ std::optional<PublicationReceipt> MdbxPublicationCoordinator::receipt(
     auto transaction = m_impl->context->connection()->transaction(
         mdbxc::TransactionMode::READ_ONLY
     );
-    const auto value = m_impl->records.find(
-        m_impl->key(std::string{"receipt:"} + publication_id),
-        transaction
-    );
-    if(!value) {
-        transaction.commit();
-        return std::nullopt;
-    }
-    const auto stored = deserialize_receipt(*value);
+    const auto result = receipt_in_transaction(publication_id, transaction);
     transaction.commit();
-    return PublicationReceipt{
-        stored.plan.identity,
-        PublicationScopeFrontier{m_impl->scope_id, stored.sequence},
-        stored.plan.payload,
-        false
-    };
+    return result;
 }
 
 } // namespace agent_memory

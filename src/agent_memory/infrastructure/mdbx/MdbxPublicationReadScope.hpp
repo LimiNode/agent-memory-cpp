@@ -28,6 +28,8 @@ enum class MdbxPublicationReadCompletion : std::uint8_t {
 
 struct MdbxPublicationReadObservation final {
     PublicationScopeFrontier frontier;
+    bool coordinator_metadata_valid = false;
+    std::optional<PublicationReceipt> receipt;
     std::optional<CanonicalDocumentRevision> canonical;
     std::optional<KnowledgeUnitEnvelope> unit;
     std::vector<SearchProjection> projections;

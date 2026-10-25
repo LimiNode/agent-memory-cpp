@@ -69,6 +69,24 @@ public:
         const mdbxc::Transaction& transaction
     ) const;
 
+    /// \brief Checks that schema, profile and fencing metadata are complete.
+    ///
+    /// Read-side admission must fail closed when any coordinator prerequisite
+    /// is absent or malformed, even if a stale frontier/receipt remains.
+    [[nodiscard]] bool metadata_valid_in_transaction(
+        const mdbxc::Transaction& transaction
+    ) const noexcept;
+
+    [[nodiscard]] std::optional<PublicationReceipt> receipt_in_transaction(
+        const std::string& publication_id,
+        const mdbxc::Transaction& transaction
+    ) const;
+
+    /// \brief Returns the receipt that advanced the current committed frontier.
+    [[nodiscard]] std::optional<PublicationReceipt> latest_receipt_in_transaction(
+        const mdbxc::Transaction& transaction
+    ) const;
+
     [[nodiscard]] std::optional<PublicationReceipt> receipt(
         const std::string& publication_id
     ) const;
