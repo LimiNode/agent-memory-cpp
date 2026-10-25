@@ -274,29 +274,6 @@ StoredReceipt deserialize_receipt(std::string_view value) {
     };
 }
 
-bool same_projection(const ProjectionVersionRef& left, const ProjectionVersionRef& right) {
-    return left.unit_revision_at_build == right.unit_revision_at_build
-        && left.projection_revision == right.projection_revision
-        && left.derivation_generation == right.derivation_generation
-        && left.derivation_fingerprint == right.derivation_fingerprint;
-}
-
-bool same_evidence(const PublicationEvidence& left, const PublicationEvidence& right) {
-    return left.resource_id == right.resource_id
-        && left.resource_generation == right.resource_generation
-        && left.canonical_document_id == right.canonical_document_id
-        && left.canonical_revision == right.canonical_revision
-        && left.unit_id.value() == right.unit_id.value()
-        && left.unit_revision == right.unit_revision
-        && same_projection(left.projection_version, right.projection_version)
-        && left.projection_payload_digest == right.projection_payload_digest
-        && left.manifest_schema.schema_id == right.manifest_schema.schema_id
-        && left.manifest_schema.schema_version == right.manifest_schema.schema_version
-        && left.manifest_state == right.manifest_state
-        && left.manifest_payload_version == right.manifest_payload_version
-        && left.manifest_binding_digest == right.manifest_binding_digest;
-}
-
 bool same_plan(const PublicationPlan& left, const PublicationPlan& right) {
     return left.identity.scope_id == right.identity.scope_id
         && left.identity.publication_id == right.identity.publication_id
@@ -309,8 +286,8 @@ bool same_plan(const PublicationPlan& left, const PublicationPlan& right) {
         && left.fencing.owner_id == right.fencing.owner_id
         && left.fencing.epoch == right.fencing.epoch
         && left.fencing.token_digest == right.fencing.token_digest
-        && same_evidence(left.expected_evidence, right.expected_evidence)
-        && same_evidence(left.target_evidence, right.target_evidence)
+        && same_publication_evidence(left.expected_evidence, right.expected_evidence)
+        && same_publication_evidence(left.target_evidence, right.target_evidence)
         && left.payload.payload_id == right.payload.payload_id
         && left.payload.payload_digest == right.payload.payload_digest
         && left.payload.canonical_coverage == right.payload.canonical_coverage;
@@ -698,7 +675,7 @@ PublicationOutcome MdbxPublicationCoordinator::publish_impl(
             if(stored_binding) {
                 try {
                     if(plan.expected_evidence.resource_id.empty()
-                        || !same_evidence(
+                        || !same_publication_evidence(
                             plan.expected_evidence,
                             deserialize_evidence(*stored_binding)
                         )) {
@@ -881,6 +858,18 @@ MdbxPublicationCoordinator::latest_receipt_in_transaction(
         stored.status,
         stored.plan.target_evidence
     };
+}
+
+std::optional<PublicationEvidence> MdbxPublicationCoordinator::binding_in_transaction(
+    const ResourceId& resource_id,
+    const mdbxc::Transaction& transaction
+) const {
+    const auto value = m_impl->records.find(
+        m_impl->key(std::string{"binding:"} + resource_id.value()), transaction
+    );
+    return value
+        ? std::optional<PublicationEvidence>{deserialize_evidence(*value)}
+        : std::nullopt;
 }
 
 std::optional<PublicationReceipt> MdbxPublicationCoordinator::receipt(

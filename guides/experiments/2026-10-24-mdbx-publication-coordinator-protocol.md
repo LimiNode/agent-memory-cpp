@@ -112,6 +112,15 @@ evidence checks and downgrades completion, but it is not prevented globally.
 Production activation still requires an external quiescence/registration gate
 for every writer before advertising the coordinated profile.
 
+The bounded MDBX reader therefore reports
+`MdbxPublicationReadCompletion::TargetExact`, not the scope-wide route `Exact`
+defined later in this protocol. `TargetExact` checks the latest receipt, its
+per-publication receipt, durable resource binding, frontier, canonical/unit,
+the receipt-selected projection revision, target lexical membership, and
+manifest evidence in one pinned transaction. Historical projection revisions
+and unrelated lexical units may coexist. Complete token-partition coverage and
+scope-wide legacy-writer exclusion remain unproved.
+
 ## Target publication protocol
 
 ### Publication identity and preconditions
@@ -345,13 +354,16 @@ publication.
 - Explicit `Exact`/`Partial`/`Unavailable` completion concepts in the retrieval
   roadmap.
 - Coordinator-owned metadata, authoritative participants, durable receipts,
-  evidence-validated complete publications, and a pinned read scope for the
-  shared MDBX context.
+  evidence-validated complete publications, and a closed six-family pinned
+  `TargetExact` read scope for one receipt-selected target in the shared MDBX
+  context.
 
 ### Not yet available
 
 - A scope-bound coordinated-profile marker, quiesced activation, and legacy
   writer rejection path (the external activation gate remains outstanding).
+- Scope-wide exact completion and complete query-token-partition authority;
+  the current reader intentionally stops at target-level exactness.
 - Full crash/fault-injection coverage for every participant boundary and
   production recovery orchestration around orphaned staging.
 - Proof that the current independent importer transactions are linearizable;

@@ -97,24 +97,6 @@ namespace {
             && left.canonical_coverage == right.canonical_coverage;
     }
 
-    bool same_evidence(
-        const PublicationEvidence& left,
-        const PublicationEvidence& right
-    ) noexcept {
-        return left.resource_id == right.resource_id
-            && left.resource_generation == right.resource_generation
-            && left.canonical_document_id == right.canonical_document_id
-            && left.canonical_revision == right.canonical_revision
-            && left.unit_id.value() == right.unit_id.value()
-            && left.unit_revision == right.unit_revision
-            && same_projection_version(left.projection_version, right.projection_version)
-            && left.projection_payload_digest == right.projection_payload_digest
-            && same_manifest_schema(left.manifest_schema, right.manifest_schema)
-            && left.manifest_state == right.manifest_state
-            && left.manifest_payload_version == right.manifest_payload_version
-            && left.manifest_binding_digest == right.manifest_binding_digest;
-    }
-
     bool is_empty_expected_evidence(const PublicationEvidence& evidence) noexcept {
         return evidence.resource_generation == 0
             && evidence.canonical_document_id.empty()
@@ -134,6 +116,24 @@ namespace {
     }
 
 } // namespace
+
+bool same_publication_evidence(
+    const PublicationEvidence& left,
+    const PublicationEvidence& right
+) noexcept {
+    return left.resource_id == right.resource_id
+        && left.resource_generation == right.resource_generation
+        && left.canonical_document_id == right.canonical_document_id
+        && left.canonical_revision == right.canonical_revision
+        && left.unit_id.value() == right.unit_id.value()
+        && left.unit_revision == right.unit_revision
+        && same_projection_version(left.projection_version, right.projection_version)
+        && left.projection_payload_digest == right.projection_payload_digest
+        && same_manifest_schema(left.manifest_schema, right.manifest_schema)
+        && left.manifest_state == right.manifest_state
+        && left.manifest_payload_version == right.manifest_payload_version
+        && left.manifest_binding_digest == right.manifest_binding_digest;
+}
 
 std::string compute_projection_payload_digest(const SearchProjection& projection) {
     std::string canonical;
@@ -459,7 +459,7 @@ bool PublicationConformanceModel::matches_existing_binding(
     const PublicationEvidence& expected,
     const PublicationEvidence& current
 ) const noexcept {
-    return same_evidence(expected, current);
+    return same_publication_evidence(expected, current);
 }
 
 bool PublicationConformanceModel::equivalent_replay(
@@ -473,9 +473,13 @@ bool PublicationConformanceModel::equivalent_replay(
         && plan.expected_frontier.scope_id == committed.plan.expected_frontier.scope_id
         && plan.expected_frontier.sequence.value()
             == committed.plan.expected_frontier.sequence.value()
-        && same_evidence(plan.expected_evidence, committed.plan.expected_evidence)
+        && same_publication_evidence(
+            plan.expected_evidence, committed.plan.expected_evidence
+        )
         && same_payload(plan.payload, committed.plan.payload)
-        && same_evidence(plan.target_evidence, committed.plan.target_evidence);
+        && same_publication_evidence(
+            plan.target_evidence, committed.plan.target_evidence
+        );
 }
 
 } // namespace agent_memory

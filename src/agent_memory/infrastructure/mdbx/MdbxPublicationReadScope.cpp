@@ -9,6 +9,56 @@
 #include <utility>
 
 namespace agent_memory {
+namespace {
+
+constexpr std::uint8_t kFrontierFamily = 1U << 0U;
+constexpr std::uint8_t kCanonicalFamily = 1U << 1U;
+constexpr std::uint8_t kUnitFamily = 1U << 2U;
+constexpr std::uint8_t kProjectionFamily = 1U << 3U;
+constexpr std::uint8_t kLexicalFamily = 1U << 4U;
+constexpr std::uint8_t kManifestFamily = 1U << 5U;
+constexpr std::uint8_t kAllReadFamilies = kFrontierFamily | kCanonicalFamily
+    | kUnitFamily | kProjectionFamily | kLexicalFamily | kManifestFamily;
+
+std::uint8_t read_family(const MdbxPublicationReadParticipant& participant) noexcept {
+    if(dynamic_cast<const MdbxFrontierReadParticipant*>(&participant)) {
+        return kFrontierFamily;
+    }
+    if(dynamic_cast<const MdbxCanonicalReadParticipant*>(&participant)) {
+        return kCanonicalFamily;
+    }
+    if(dynamic_cast<const MdbxKnowledgeUnitReadParticipant*>(&participant)) {
+        return kUnitFamily;
+    }
+    if(dynamic_cast<const MdbxProjectionReadParticipant*>(&participant)) {
+        return kProjectionFamily;
+    }
+    if(dynamic_cast<const MdbxLexicalReadParticipant*>(&participant)) {
+        return kLexicalFamily;
+    }
+    if(dynamic_cast<const MdbxManifestReadParticipant*>(&participant)) {
+        return kManifestFamily;
+    }
+    return 0;
+}
+
+bool same_receipt_authority(
+    const PublicationReceipt& left,
+    const PublicationReceipt& right
+) noexcept {
+    return left.identity.scope_id == right.identity.scope_id
+        && left.identity.publication_id == right.identity.publication_id
+        && left.committed_frontier.scope_id == right.committed_frontier.scope_id
+        && left.committed_frontier.sequence.value()
+            == right.committed_frontier.sequence.value()
+        && left.payload.payload_id == right.payload.payload_id
+        && left.payload.payload_digest == right.payload.payload_digest
+        && left.payload.canonical_coverage == right.payload.canonical_coverage
+        && left.status == right.status
+        && same_publication_evidence(left.target_evidence, right.target_evidence);
+}
+
+} // namespace
 
 MdbxPublicationReadScope::MdbxPublicationReadScope(
     std::shared_ptr<MdbxStorageContext> context
@@ -48,14 +98,25 @@ void MdbxPublicationReadScope::require_active() const {
 
 void MdbxPublicationReadScope::read(MdbxPublicationReadParticipant& participant) {
     require_active();
+    const auto family = read_family(participant);
+    if(family == 0) {
+        throw std::invalid_argument("unknown publication read participant");
+    }
+    if((m_read_families & family) != 0) {
+        throw std::invalid_argument("duplicate publication read family");
+    }
     if(participant.context().connection() != m_context->connection()) {
         throw std::invalid_argument("publication read participant belongs to another context");
     }
     participant.read(*m_transaction, m_observation);
+    m_read_families |= family;
 }
 
 void MdbxPublicationReadScope::finish() {
     require_active();
+    if(m_read_families != kAllReadFamilies) {
+        throw std::logic_error("publication target read requires every authoritative family");
+    }
     const auto& frontier = m_observation.frontier;
     const auto receipt_matches_frontier =
         m_observation.receipt
@@ -125,7 +186,7 @@ void MdbxPublicationReadScope::finish() {
         && std::any_of(
             m_observation.lexical->frontier.observed_unit_revisions.begin(),
             m_observation.lexical->frontier.observed_unit_revisions.end(),
-            [this](const auto& observation) {
+            [this, &projection_version_matches](const auto& observation) {
                 if(!m_observation.unit || m_observation.unit->sources.empty()) {
                     return false;
                 }
@@ -134,17 +195,15 @@ void MdbxPublicationReadScope::finish() {
                     && observation.unit_id == m_observation.unit->id
                     && observation.unit_revision == m_observation.unit->revision
                     && observation.resource_id == source.resource_id
+                    && m_observation.receipt->target_evidence.manifest_state
+                        == ResourceManifestState::Active
                     && observation.resource_generation
                         == (source.resource_revision
                             ? source.resource_revision->generation : 0)
-                    && observation.projection_version.unit_revision_at_build
-                        == m_observation.receipt->target_evidence.projection_version.unit_revision_at_build
-                    && observation.projection_version.projection_revision
-                        == m_observation.receipt->target_evidence.projection_version.projection_revision
-                    && observation.projection_version.derivation_generation
-                        == m_observation.receipt->target_evidence.projection_version.derivation_generation
-                    && observation.projection_version.derivation_fingerprint
-                        == m_observation.receipt->target_evidence.projection_version.derivation_fingerprint;
+                    && projection_version_matches(
+                        observation.projection_version,
+                        m_observation.receipt->target_evidence.projection_version
+                    );
             }
         );
     const bool projection_version_is_target = m_observation.unit
@@ -158,23 +217,28 @@ void MdbxPublicationReadScope::finish() {
                     == target_evidence.projection_payload_digest;
             }
         );
-    if(m_observation.lexical && m_observation.unit && m_observation.manifest) {
-        for(auto& observed : m_observation.lexical->frontier.observed_unit_revisions) {
-            if(observed.unit_id == m_observation.unit->id
-                && observed.resource_id == m_observation.manifest->revision.resource_id) {
-                observed.manifest_state = m_observation.manifest->state;
-                observed.has_active_unit_binding = unit_matches_target;
-                observed.has_active_projection_binding = projection_version_is_target;
-            }
-        }
-    }
     const bool lexical_identity_matches =
         m_observation.lexical
         && m_observation.lexical->frontier.index_descriptor.ref.scope_id
             == frontier.scope_id
         && m_observation.lexical->frontier.consistency
             == LexicalReadConsistency::PinnedSnapshot
-        && is_valid_lexical_read_frontier(m_observation.lexical->frontier);
+        && is_valid_lexical_index_descriptor(
+            m_observation.lexical->frontier.index_descriptor
+        )
+        && is_valid_lexical_active_snapshot(
+            m_observation.lexical->frontier.active_snapshot
+        )
+        && m_observation.lexical->frontier.index_descriptor.ref.statistics_epoch
+            == m_observation.lexical->frontier.active_snapshot.statistics_epoch
+        && std::find(
+            m_observation.lexical->frontier.index_descriptor
+                .supported_posting_layout_versions.begin(),
+            m_observation.lexical->frontier.index_descriptor
+                .supported_posting_layout_versions.end(),
+            m_observation.lexical->frontier.active_snapshot.posting_layout_version
+        ) != m_observation.lexical->frontier.index_descriptor
+                .supported_posting_layout_versions.end();
     const bool has_authoritative_evidence =
         m_observation.coordinator_metadata_valid
         &&
@@ -192,7 +256,7 @@ void MdbxPublicationReadScope::finish() {
         && unit_resource_matches_manifest
         && manifest_matches_target;
     m_observation.completion = has_authoritative_evidence
-        ? MdbxPublicationReadCompletion::Exact
+        ? MdbxPublicationReadCompletion::TargetExact
         : (!frontier.scope_id.empty() && frontier.sequence.value() != 0
             && m_observation.receipt
             && m_observation.receipt->status == PublicationReceiptStatus::Complete
@@ -217,14 +281,34 @@ void MdbxFrontierReadParticipant::read(
     const mdbxc::Transaction& transaction,
     MdbxPublicationReadObservation& observation
 ) {
-    observation.frontier = m_coordinator->frontier_in_transaction(transaction);
-    observation.coordinator_metadata_valid =
-        m_coordinator->metadata_valid_in_transaction(transaction);
     try {
+        observation.frontier = m_coordinator->frontier_in_transaction(transaction);
+        observation.coordinator_metadata_valid =
+            m_coordinator->metadata_valid_in_transaction(transaction);
         observation.receipt = m_coordinator->latest_receipt_in_transaction(transaction);
+        if(!observation.receipt) {
+            return;
+        }
+        const auto publication_receipt = m_coordinator->receipt_in_transaction(
+            observation.receipt->identity.publication_id, transaction
+        );
+        if(!publication_receipt
+            || !same_receipt_authority(*observation.receipt, *publication_receipt)) {
+            observation.coordinator_metadata_valid = false;
+            return;
+        }
+        if(observation.receipt->status == PublicationReceiptStatus::Complete) {
+            const auto binding = m_coordinator->binding_in_transaction(
+                observation.receipt->target_evidence.resource_id, transaction
+            );
+            if(!binding || !same_publication_evidence(
+                    *binding, observation.receipt->target_evidence
+                )) {
+                observation.coordinator_metadata_valid = false;
+            }
+        }
     } catch(const std::exception&) {
         observation.coordinator_metadata_valid = false;
-        observation.receipt.reset();
     }
 }
 

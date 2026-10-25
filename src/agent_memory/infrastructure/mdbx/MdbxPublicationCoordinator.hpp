@@ -90,6 +90,12 @@ public:
         const mdbxc::Transaction& transaction
     ) const;
 
+    /// \brief Reads the durable resource binding from the supplied transaction.
+    [[nodiscard]] std::optional<PublicationEvidence> binding_in_transaction(
+        const ResourceId& resource_id,
+        const mdbxc::Transaction& transaction
+    ) const;
+
     [[nodiscard]] std::optional<PublicationReceipt> receipt(
         const std::string& publication_id
     ) const;

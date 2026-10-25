@@ -79,6 +79,12 @@ namespace agent_memory {
         std::string manifest_binding_digest;
     };
 
+    /// \brief Compares every persisted publication-evidence field.
+    [[nodiscard]] bool same_publication_evidence(
+        const PublicationEvidence& left,
+        const PublicationEvidence& right
+    ) noexcept;
+
     /// \brief Computes the publication digest of every persisted projection field.
     [[nodiscard]] std::string compute_projection_payload_digest(
         const SearchProjection& projection

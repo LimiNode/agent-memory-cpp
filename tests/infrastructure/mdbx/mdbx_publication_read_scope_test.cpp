@@ -14,6 +14,7 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -207,6 +208,52 @@ PublicationPlan metadata_plan(
     };
 }
 
+class ForgedCanonicalReadParticipant final : public MdbxPublicationReadParticipant {
+public:
+    ForgedCanonicalReadParticipant(
+        std::shared_ptr<MdbxStorageContext> context,
+        CanonicalDocumentRevision canonical
+    ) : m_context(std::move(context)), m_canonical(std::move(canonical)) {}
+
+    const MdbxStorageContext& context() const noexcept override {
+        m_context_called = true;
+        return *m_context;
+    }
+
+    void read(
+        const mdbxc::Transaction&,
+        MdbxPublicationReadObservation& observation
+    ) override {
+        m_read_called = true;
+        observation.canonical = m_canonical;
+    }
+
+    bool context_called() const noexcept { return m_context_called; }
+    bool read_called() const noexcept { return m_read_called; }
+
+private:
+    std::shared_ptr<MdbxStorageContext> m_context;
+    CanonicalDocumentRevision m_canonical;
+    mutable bool m_context_called = false;
+    bool m_read_called = false;
+};
+
+bool replace_once(
+    std::string& value,
+    const std::string_view expected,
+    const std::string_view replacement
+) {
+    if(expected.size() != replacement.size()) {
+        return false;
+    }
+    const auto position = value.find(expected);
+    if(position == std::string::npos) {
+        return false;
+    }
+    value.replace(position, expected.size(), replacement);
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -289,8 +336,8 @@ int main() {
     read_scope.read(manifest_read);
     read_scope.finish();
     const auto& observation = read_scope.observation();
-    if(observation.completion == MdbxPublicationReadCompletion::Exact) {
-        return fail("metadata-only and legacy writes must not produce Exact");
+    if(observation.completion == MdbxPublicationReadCompletion::TargetExact) {
+        return fail("metadata-only and legacy writes must not produce TargetExact");
     }
 
     std::filesystem::remove(database, cleanup);
@@ -350,8 +397,8 @@ int main() {
         read_scope.read(lexical_read);
         read_scope.read(manifest_read);
         read_scope.finish();
-        if(read_scope.observation().completion != MdbxPublicationReadCompletion::Exact) {
-            return fail("fresh context close/reopen must preserve Exact evidence");
+        if(read_scope.observation().completion != MdbxPublicationReadCompletion::TargetExact) {
+            return fail("fresh context close/reopen must preserve TargetExact evidence");
         }
         mdbxc::KeyValueTable<std::string, std::string> metadata(
             reopened_context->connection(), "agent_memory_publication_coordinator_v1"
@@ -366,9 +413,14 @@ int main() {
             reopened_context, reopened_coordinator
         };
         corrupt_scope.read(corrupt_frontier);
+        corrupt_scope.read(canonical_read);
+        corrupt_scope.read(unit_read);
+        corrupt_scope.read(projection_read);
+        corrupt_scope.read(lexical_read);
+        corrupt_scope.read(manifest_read);
         corrupt_scope.finish();
-        if(corrupt_scope.observation().completion == MdbxPublicationReadCompletion::Exact) {
-            return fail("corrupt receipt must not produce Exact evidence");
+        if(corrupt_scope.observation().completion == MdbxPublicationReadCompletion::TargetExact) {
+            return fail("corrupt receipt must not produce TargetExact evidence");
         }
     }
     std::filesystem::remove(reopen_database, cleanup);
@@ -488,7 +540,6 @@ int main() {
         );
     }
 
-    auto complete_read_scope = MdbxPublicationReadScope::begin(complete_context);
     MdbxFrontierReadParticipant complete_frontier{
         complete_context, complete_coordinator
     };
@@ -511,34 +562,213 @@ int main() {
     MdbxManifestReadParticipant complete_manifest_read{
         complete_context, complete_manifests, ResourceId{"resource-read"}
     };
-    complete_read_scope.read(complete_frontier);
-    complete_read_scope.read(complete_canonical_read);
-    complete_read_scope.read(complete_unit_read);
-    complete_read_scope.read(complete_projection_read);
-    complete_read_scope.read(complete_lexical_read);
-    complete_read_scope.read(complete_manifest_read);
-    complete_read_scope.finish();
-    const auto& complete_observation = complete_read_scope.observation();
-    if(complete_observation.completion != MdbxPublicationReadCompletion::Exact) {
-        return fail("one coordinated commit must produce Exact after reopen-equivalent read");
+    const auto read_complete_target = [&]() {
+        auto scope_read = MdbxPublicationReadScope::begin(complete_context);
+        scope_read.read(complete_frontier);
+        scope_read.read(complete_canonical_read);
+        scope_read.read(complete_unit_read);
+        scope_read.read(complete_projection_read);
+        scope_read.read(complete_lexical_read);
+        scope_read.read(complete_manifest_read);
+        scope_read.finish();
+        return scope_read.observation().completion;
+    };
+    if(read_complete_target() != MdbxPublicationReadCompletion::TargetExact) {
+        return fail("one coordinated commit must produce TargetExact after pinned read");
+    }
+
+    {
+        auto duplicate_scope = MdbxPublicationReadScope::begin(complete_context);
+        duplicate_scope.read(complete_frontier);
+        try {
+            duplicate_scope.read(complete_frontier);
+            return fail("duplicate authoritative read family must be rejected");
+        } catch(const std::invalid_argument&) {}
+    }
+    {
+        auto missing_scope = MdbxPublicationReadScope::begin(complete_context);
+        missing_scope.read(complete_frontier);
+        missing_scope.read(complete_canonical_read);
+        missing_scope.read(complete_unit_read);
+        missing_scope.read(complete_projection_read);
+        missing_scope.read(complete_lexical_read);
+        try {
+            missing_scope.finish();
+            return fail("missing authoritative read family must be rejected");
+        } catch(const std::logic_error&) {}
+    }
+
+    complete_projections.put(projection_value(scope, "historical body", 9));
+    complete_lexical.upsert(FlatLexicalUnitInput{
+        scope,
+        KnowledgeUnitId{99},
+        ProjectionKind::Original,
+        ResourceId{"unrelated-resource"},
+        7,
+        3,
+        ProjectionVersionRef{3, 4, 5, "unrelated-projection"},
+        {"unrelated", "tokens"}
+    });
+    if(read_complete_target() != MdbxPublicationReadCompletion::TargetExact) {
+        return fail(
+            "historical projections and unrelated lexical units must preserve target exactness"
+        );
+    }
+    {
+        auto wrong_unit_scope = MdbxPublicationReadScope::begin(complete_context);
+        MdbxKnowledgeUnitReadParticipant wrong_unit{
+            complete_context, complete_units, KnowledgeUnitId{99}
+        };
+        wrong_unit_scope.read(complete_frontier);
+        wrong_unit_scope.read(complete_canonical_read);
+        wrong_unit_scope.read(wrong_unit);
+        wrong_unit_scope.read(complete_projection_read);
+        wrong_unit_scope.read(complete_lexical_read);
+        wrong_unit_scope.read(complete_manifest_read);
+        wrong_unit_scope.finish();
+        if(wrong_unit_scope.observation().completion
+            == MdbxPublicationReadCompletion::TargetExact) {
+            return fail("wrong unit identity must invalidate TargetExact");
+        }
+    }
+
+    mdbxc::KeyValueTable<std::string, std::string> complete_metadata(
+        complete_context->connection(), "agent_memory_publication_coordinator_v1"
+    );
+    const auto read_metadata = [&](const std::string& key) {
+        auto transaction = complete_context->connection()->transaction(
+            mdbxc::TransactionMode::READ_ONLY
+        );
+        const auto value = complete_metadata.find(key, transaction);
+        transaction.commit();
+        return value;
+    };
+    const auto write_metadata = [&complete_context, &complete_metadata](
+        const std::string& key,
+        const std::optional<std::string>& value
+    ) {
+        auto transaction = complete_context->connection()->transaction(
+            mdbxc::TransactionMode::WRITABLE
+        );
+        if(value) {
+            complete_metadata.insert_or_assign(key, *value, transaction);
+        } else {
+            complete_metadata.erase(key, transaction);
+        }
+        transaction.commit();
+    };
+    const auto binding_key = scope.value() + "|binding:resource-read";
+    const auto original_binding = read_metadata(binding_key);
+    if(!original_binding) {
+        return fail("complete publication did not persist its resource binding");
+    }
+    const auto rejects_binding = [&](const std::optional<std::string>& candidate) {
+        write_metadata(binding_key, candidate);
+        const bool rejected = read_complete_target()
+            != MdbxPublicationReadCompletion::TargetExact;
+        write_metadata(binding_key, original_binding);
+        return rejected;
+    };
+    if(!rejects_binding(std::nullopt)) {
+        return fail("missing durable binding must invalidate TargetExact");
+    }
+    if(!rejects_binding(std::string{"malformed"})) {
+        return fail("malformed durable binding must invalidate TargetExact");
+    }
+    auto another_resource_binding = *original_binding;
+    if(!replace_once(another_resource_binding, "resource-read", "resource-evil")
+        || !rejects_binding(another_resource_binding)) {
+        return fail("binding for another resource must invalidate TargetExact");
+    }
+    auto stale_binding = *original_binding;
+    if(!replace_once(stale_binding, "complete-document", "outdated-document")
+        || !rejects_binding(stale_binding)) {
+        return fail("stale durable binding must invalidate TargetExact");
+    }
+    const auto complete_plan = metadata_plan(scope, profile, fencing, 1, 6);
+    auto projection_digest_binding = *original_binding;
+    auto changed_projection_digest = complete_plan.target_evidence.projection_payload_digest;
+    changed_projection_digest.front() = changed_projection_digest.front() == '0' ? '1' : '0';
+    if(!replace_once(
+            projection_digest_binding,
+            complete_plan.target_evidence.projection_payload_digest,
+            changed_projection_digest
+        ) || !rejects_binding(projection_digest_binding)) {
+        return fail("changed projection digest binding must invalidate TargetExact");
+    }
+    auto manifest_digest_binding = *original_binding;
+    auto changed_manifest_digest = complete_plan.target_evidence.manifest_binding_digest;
+    changed_manifest_digest.front() = changed_manifest_digest.front() == '0' ? '1' : '0';
+    if(!replace_once(
+            manifest_digest_binding,
+            complete_plan.target_evidence.manifest_binding_digest,
+            changed_manifest_digest
+        ) || !rejects_binding(manifest_digest_binding)) {
+        return fail("changed manifest digest binding must invalidate TargetExact");
+    }
+    auto moved_generation_binding = *original_binding;
+    const auto generation_last_byte = 8U + std::string_view{"resource-read"}.size() + 7U;
+    if(generation_last_byte >= moved_generation_binding.size()) {
+        return fail("resource generation binding fixture is malformed");
+    }
+    moved_generation_binding[generation_last_byte] = 2;
+    if(!rejects_binding(moved_generation_binding)) {
+        return fail("binding moved to another generation must invalidate TargetExact");
+    }
+
+    const auto publication_receipt_key = scope.value() + "|receipt:read-publication";
+    const auto original_publication_receipt = read_metadata(publication_receipt_key);
+    if(!original_publication_receipt) {
+        return fail("complete publication did not persist its per-publication receipt");
+    }
+    write_metadata(publication_receipt_key, std::string{"malformed"});
+    const bool malformed_receipt_rejected = read_complete_target()
+        != MdbxPublicationReadCompletion::TargetExact;
+    write_metadata(publication_receipt_key, original_publication_receipt);
+    if(!malformed_receipt_rejected) {
+        return fail("malformed per-publication receipt must invalidate TargetExact");
+    }
+
+    const auto frontier_key = scope.value() + "|meta/frontier";
+    const auto original_frontier = read_metadata(frontier_key);
+    if(!original_frontier || original_frontier->size() != 8U) {
+        return fail("complete publication frontier fixture is malformed");
+    }
+    auto mismatched_frontier = *original_frontier;
+    mismatched_frontier.back() = 2;
+    write_metadata(frontier_key, mismatched_frontier);
+    const bool mismatched_frontier_rejected = read_complete_target()
+        != MdbxPublicationReadCompletion::TargetExact;
+    write_metadata(frontier_key, original_frontier);
+    if(!mismatched_frontier_rejected) {
+        return fail("mismatched scope frontier must invalidate TargetExact");
+    }
+
+    if(!complete_lexical.erase(KnowledgeUnitId{1})) {
+        return fail("lexical membership mutation fixture failed");
+    }
+    if(read_complete_target() == MdbxPublicationReadCompletion::TargetExact) {
+        return fail("missing target lexical membership must invalidate TargetExact");
+    }
+    complete_lexical.upsert(FlatLexicalUnitInput{
+        scope,
+        KnowledgeUnitId{1},
+        ProjectionKind::Original,
+        ResourceId{"resource-read"},
+        1,
+        1,
+        complete_projection_version,
+        {"pinned", "body"}
+    });
+    if(read_complete_target() != MdbxPublicationReadCompletion::TargetExact) {
+        return fail("restored target lexical membership must recover TargetExact");
     }
 
     complete_manifests.upsert_manifest(
         manifest_value(ResourceManifestPayloadVersion::V6, ResourceManifestState::ErasePending)
     );
-    auto manifest_mutation_scope = MdbxPublicationReadScope::begin(complete_context);
-    MdbxFrontierReadParticipant manifest_mutation_frontier{
-        complete_context, complete_coordinator
-    };
-    manifest_mutation_scope.read(manifest_mutation_frontier);
-    manifest_mutation_scope.read(complete_canonical_read);
-    manifest_mutation_scope.read(complete_unit_read);
-    manifest_mutation_scope.read(complete_projection_read);
-    manifest_mutation_scope.read(complete_lexical_read);
-    manifest_mutation_scope.read(complete_manifest_read);
-    manifest_mutation_scope.finish();
-    if(manifest_mutation_scope.observation().completion == MdbxPublicationReadCompletion::Exact) {
-        return fail("manifest state mutation must invalidate Exact evidence");
+    if(read_complete_target() == MdbxPublicationReadCompletion::TargetExact) {
+        return fail("manifest state mutation must invalidate TargetExact evidence");
     }
     complete_manifests.upsert_manifest(manifest_value(ResourceManifestPayloadVersion::V6));
 
@@ -549,22 +779,17 @@ int main() {
         return fail("projection payload mutation fixture failed");
     }
     complete_projections.put(projection_value(scope, "changed body", 2));
-    auto projection_mutation_scope = MdbxPublicationReadScope::begin(complete_context);
-    MdbxFrontierReadParticipant projection_mutation_frontier{
-        complete_context, complete_coordinator
-    };
-    projection_mutation_scope.read(projection_mutation_frontier);
-    projection_mutation_scope.read(complete_canonical_read);
-    projection_mutation_scope.read(complete_unit_read);
-    projection_mutation_scope.read(complete_projection_read);
-    projection_mutation_scope.read(complete_lexical_read);
-    projection_mutation_scope.read(complete_manifest_read);
-    projection_mutation_scope.finish();
-    if(projection_mutation_scope.observation().completion == MdbxPublicationReadCompletion::Exact) {
-        return fail("projection payload mutation must invalidate Exact evidence");
+    if(read_complete_target() == MdbxPublicationReadCompletion::TargetExact) {
+        return fail("projection payload mutation must invalidate TargetExact evidence");
     }
     complete_projections.put(projection_value(scope));
 
+    const auto committed_canonical = complete_canonical.read_current(
+        DocumentId{"complete-document"}
+    );
+    if(!committed_canonical) {
+        return fail("committed canonical fixture disappeared");
+    }
     const auto independent_mutation = complete_canonical.commit(CanonicalEditRequest{
         DocumentId{"complete-document"},
         1,
@@ -583,14 +808,21 @@ int main() {
     mutated_read_scope.read(complete_projection_read);
     mutated_read_scope.read(complete_lexical_read);
     mutated_read_scope.read(complete_manifest_read);
+    ForgedCanonicalReadParticipant forged_canonical{
+        complete_context, *committed_canonical
+    };
+    try {
+        mutated_read_scope.read(forged_canonical);
+        return fail("unknown read participant must be rejected");
+    } catch(const std::invalid_argument&) {}
+    if(forged_canonical.context_called() || forged_canonical.read_called()) {
+        return fail("unknown read participant callback must not execute");
+    }
     mutated_read_scope.finish();
-    if(mutated_read_scope.observation().completion == MdbxPublicationReadCompletion::Exact) {
-        return fail("independent post-commit mutation must not remain Exact");
+    if(mutated_read_scope.observation().completion == MdbxPublicationReadCompletion::TargetExact) {
+        return fail("independent post-commit mutation must not remain TargetExact");
     }
 
-    mdbxc::KeyValueTable<std::string, std::string> complete_metadata(
-        complete_context->connection(), "agent_memory_publication_coordinator_v1"
-    );
     auto remove_schema = complete_context->connection()->transaction(
         mdbxc::TransactionMode::WRITABLE
     );
@@ -607,7 +839,8 @@ int main() {
     missing_schema_scope.read(complete_lexical_read);
     missing_schema_scope.read(complete_manifest_read);
     missing_schema_scope.finish();
-    if(missing_schema_scope.observation().completion == MdbxPublicationReadCompletion::Exact) {
+    if(missing_schema_scope.observation().completion
+        == MdbxPublicationReadCompletion::TargetExact) {
         return fail("missing coordinator schema must fail closed");
     }
 
