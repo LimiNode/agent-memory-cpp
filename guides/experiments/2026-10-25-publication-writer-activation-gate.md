@@ -182,5 +182,5 @@ The coordinator stack is a useful bounded experiment and can be integrated as
 an experimental baseline after its guarded restack. It is not a global writer
 admission mechanism. The missing property is operational and architectural,
 not something that can be repaired by adding another marker or wrapper around
-one adapter. This research PR adds zero production LOC; its 142 lines are an
+one adapter. This research PR adds zero production LOC; its 186 lines are an
 auditable deployment and integration record.
