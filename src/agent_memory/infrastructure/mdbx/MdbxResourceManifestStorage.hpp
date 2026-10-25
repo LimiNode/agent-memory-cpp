@@ -13,6 +13,7 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+namespace mdbxc { class Transaction; }
 #include "MdbxStorageContext.hpp"
 
 namespace agent_memory {
@@ -73,6 +74,13 @@ struct MdbxManifestPublicationGuard final {
             ResourceManifest manifest,
             const std::optional<ResourceManifest>& expected,
             MdbxManifestPublicationGuard guard
+        );
+
+        /// rief Applies a conditional manifest update through a coordinator-owned transaction.
+        void upsert_manifest_in_transaction(
+            ResourceManifest manifest,
+            const std::optional<ResourceManifest>& expected,
+            const mdbxc::Transaction& transaction
         );
 
         [[nodiscard]] std::optional<ResourceManifest> find_manifest(

@@ -719,6 +719,26 @@ bool MdbxCanonicalContentStore::create_document_guarded(
     return create_document_impl(std::move(initial), std::move(guard));
 }
 
+bool MdbxCanonicalContentStore::create_document_in_transaction(
+    CanonicalDocumentRevision initial,
+    const mdbxc::Transaction& transaction
+) {
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    InMemoryCanonicalContentStore validator;
+    if (!validator.create_document(initial))
+        return false;
+    initial = *validator.read_current(initial.document_id);
+    if (m_impl->heads.find(initial.document_id.value(), transaction))
+        return false;
+    std::set<ContentBlockId> ids;
+    for (const auto& block : initial.blocks)
+        ids.insert(block.id);
+    const auto body = encode_body(initial, 1);
+    m_impl->write_revision(
+        initial, 1, RAW_ENCODING_GENERATION, body.logical_body_digest, body, ids, transaction);
+    return true;
+}
+
 bool MdbxCanonicalContentStore::create_document_impl(
     CanonicalDocumentRevision initial,
     std::optional<MdbxCanonicalPublicationGuard> guard
@@ -802,6 +822,60 @@ CanonicalEditResult MdbxCanonicalContentStore::commit_guarded(
     MdbxCanonicalPublicationGuard guard
 ) {
     return commit_impl(request, std::move(guard));
+}
+
+CanonicalEditResult MdbxCanonicalContentStore::commit_in_transaction(
+    const CanonicalEditRequest& request,
+    const mdbxc::Transaction& transaction
+) {
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    auto loaded = m_impl->load(request.document_id, transaction);
+    if (!loaded.current) {
+        CanonicalEditResult result;
+        result.status = CanonicalEditStatus::NotFound;
+        result.message = "document not found";
+        return result;
+    }
+    InMemoryCanonicalContentStore temp;
+    const auto previous = *loaded.current;
+    if (!detail::CanonicalContentHistoryLoader::restore_current(
+            temp, std::move(*loaded.current), loaded.ledger)) {
+        throw std::runtime_error("corrupt canonical history");
+    }
+    auto result = temp.commit(request);
+    if (!result.succeeded() || result.status == CanonicalEditStatus::NoChange)
+        return result;
+    const auto& revision = *result.revision;
+    if (loaded.body_revision == 0 || loaded.body_generation == 0)
+        throw std::runtime_error("missing logical body binding");
+
+    std::uint64_t body_revision = loaded.body_revision;
+    const std::uint64_t body_generation = loaded.body_generation;
+    bool body_changed = previous.blocks.size() != revision.blocks.size();
+    if (!body_changed) {
+        for (std::size_t i = 0; i < revision.blocks.size(); ++i) {
+            const auto& left = previous.blocks[i];
+            const auto& right = revision.blocks[i];
+            if (left.id != right.id || left.kind != right.kind ||
+                left.parent_id != right.parent_id || left.text != right.text) {
+                body_changed = true;
+                break;
+            }
+        }
+    }
+    std::optional<EncodedBody> body;
+    LogicalBodyDigest logical_body_digest = loaded.logical_body_digest;
+    if (body_changed) {
+        ++body_revision;
+        body = encode_body(revision, body_revision);
+        logical_body_digest = body->logical_body_digest;
+    }
+    std::set<ContentBlockId> ledger = loaded.ledger;
+    for (const auto& block : revision.blocks)
+        ledger.insert(block.id);
+    m_impl->write_revision(
+        revision, body_revision, body_generation, logical_body_digest, body, ledger, transaction);
+    return result;
 }
 
 CanonicalEditResult MdbxCanonicalContentStore::commit_impl(

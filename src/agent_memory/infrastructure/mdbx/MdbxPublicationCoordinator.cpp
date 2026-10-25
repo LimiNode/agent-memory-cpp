@@ -499,11 +499,24 @@ PublicationAdmissionResult MdbxPublicationCoordinator::rotate_fencing(
 }
 
 PublicationOutcome MdbxPublicationCoordinator::publish(const PublicationPlan& plan) {
+    return publish(plan, {});
+}
+
+PublicationOutcome MdbxPublicationCoordinator::publish(
+    const PublicationPlan& plan,
+    const std::vector<MdbxPublicationParticipant*>& participants
+) {
     PublicationOutcome result{PublicationOutcomeCode::InvalidPlan, std::nullopt};
+    for(const auto* participant : participants) {
+        if(!participant) {
+            result.code = PublicationOutcomeCode::InvalidPlan;
+            return result;
+        }
+    }
     auto scope = MdbxPublicationWriteScope::begin(m_impl->context);
     LambdaParticipant participant{
         m_impl->context,
-        [this, &plan, &result](const mdbxc::Transaction& transaction) {
+        [this, &plan, &result, &participants, &scope](const mdbxc::Transaction& transaction) {
             if(!is_valid_publication_plan(plan)
                 || plan.identity.scope_id != m_impl->scope_id) {
                 result.code = PublicationOutcomeCode::InvalidPlan;
@@ -563,6 +576,15 @@ PublicationOutcome MdbxPublicationCoordinator::publish(const PublicationPlan& pl
             }
             if(current_sequence == std::numeric_limits<std::uint64_t>::max()) {
                 result.code = PublicationOutcomeCode::SequenceOverflow;
+                return;
+            }
+
+            try {
+                for(auto* participant : participants) {
+                    scope.apply(*participant);
+                }
+            } catch(const std::exception&) {
+                result.code = PublicationOutcomeCode::CommitFailure;
                 return;
             }
             const PublicationSequence next_sequence{current_sequence + 1};

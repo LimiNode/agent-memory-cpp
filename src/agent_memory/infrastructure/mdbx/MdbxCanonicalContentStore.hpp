@@ -15,6 +15,7 @@
 #include <agent_memory/storage/CanonicalContentStore.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
+namespace mdbxc { class Transaction; }
 #include "MdbxStorageContext.hpp"
 
 #include <array>
@@ -101,6 +102,14 @@ class MdbxCanonicalContentStore final : public ICanonicalContentStore,
         CanonicalDocumentRevision initial,
         MdbxCanonicalPublicationGuard guard
     );
+    /// rief Applies a creation through a coordinator-owned writable transaction.
+    ///
+    /// The caller retains commit/rollback ownership; this method never opens,
+    /// commits, or stores the transaction handle.
+    bool create_document_in_transaction(
+        CanonicalDocumentRevision initial,
+        const mdbxc::Transaction& transaction
+    );
     /// \copydoc ICanonicalContentStore::read_current
     [[nodiscard]] std::optional<CanonicalDocumentRevision>
     read_current(const DocumentId&) const override;
@@ -122,6 +131,11 @@ class MdbxCanonicalContentStore final : public ICanonicalContentStore,
     [[nodiscard]] CanonicalEditResult commit_guarded(
         const CanonicalEditRequest&,
         MdbxCanonicalPublicationGuard guard
+    );
+    /// rief Applies an edit through a coordinator-owned writable transaction.
+    [[nodiscard]] CanonicalEditResult commit_in_transaction(
+        const CanonicalEditRequest&,
+        const mdbxc::Transaction& transaction
     );
 
   private:

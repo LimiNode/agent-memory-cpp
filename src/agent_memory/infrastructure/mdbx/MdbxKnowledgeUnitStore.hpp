@@ -15,6 +15,7 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+namespace mdbxc { class Transaction; }
 #include "MdbxStorageContext.hpp"
 
 namespace agent_memory {
@@ -93,6 +94,12 @@ namespace agent_memory {
         [[nodiscard]] std::vector<KnowledgeUnitEnvelope> create_or_get_units_guarded(
             std::vector<KnowledgeUnitCreateRequest> requests,
             MdbxKnowledgeUnitPublicationGuard guard
+        );
+
+        /// rief Applies a bounded batch through a coordinator-owned transaction.
+        [[nodiscard]] std::vector<KnowledgeUnitEnvelope> create_or_get_units_in_transaction(
+            std::vector<KnowledgeUnitCreateRequest> requests,
+            const mdbxc::Transaction& transaction
         );
 
         [[nodiscard]] std::optional<KnowledgeUnitEnvelope> find(

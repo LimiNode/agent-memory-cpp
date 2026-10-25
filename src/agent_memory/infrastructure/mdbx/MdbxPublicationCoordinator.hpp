@@ -8,10 +8,12 @@
 #include <agent_memory/lexical/PublicationPlan.hpp>
 
 #include "MdbxStorageContext.hpp"
+#include "MdbxPublicationWriteScope.hpp"
 
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #if AGENT_MEMORY_HAS_MDBX
 namespace agent_memory {
@@ -50,6 +52,17 @@ public:
     );
 
     [[nodiscard]] PublicationOutcome publish(const PublicationPlan& plan);
+
+    /// \brief Publishes metadata and supplied authoritative participants atomically.
+    ///
+    /// Participants must belong to this context and must not own, commit, abort,
+    /// or retain the transaction. An empty vector preserves the experimental
+    /// metadata-only PR-B behavior; production profiles must provide the
+    /// canonical, unit and manifest participants.
+    [[nodiscard]] PublicationOutcome publish(
+        const PublicationPlan& plan,
+        const std::vector<MdbxPublicationParticipant*>& participants
+    );
 
     [[nodiscard]] PublicationScopeFrontier frontier() const;
 

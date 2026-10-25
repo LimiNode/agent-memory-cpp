@@ -148,6 +148,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxPublicationWriteScope.cpp
             src/agent_memory/infrastructure/mdbx/MdbxPublicationCoordinator.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxAuthoritativePublicationParticipants.cpp
     )
 
     agent_memory_provide_mdbx_containers(AGENT_MEMORY_MDBX_CONTAINERS_TARGET)

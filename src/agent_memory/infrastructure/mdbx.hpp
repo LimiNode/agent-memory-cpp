@@ -19,5 +19,6 @@
 #include "mdbx/MdbxProjectionStore.hpp"
 #include "mdbx/MdbxPublicationWriteScope.hpp"
 #include "mdbx/MdbxPublicationCoordinator.hpp"
+#include "mdbx/MdbxAuthoritativePublicationParticipants.hpp"
 
 #endif
