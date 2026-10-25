@@ -21,8 +21,11 @@ later measurement-driven slice.
 Readers load all rows through one pinned read transaction. Every segment is
 decoded with the physical codec, partitions are admitted with the read-integrity
 helper, witnesses and token/collection statistics are checked against the
-replayed logical `FlatLexicalIndex`, and incomplete or mismatched state fails
-closed. The read frontier is lexical-only; it does not claim canonical,
+replayed logical `FlatLexicalIndex`, and the physical key address is checked
+against the decoded row identity and active snapshot. Missing descriptors in a
+non-empty namespace, unknown row kinds, duplicate metadata rows, malformed
+physical addresses, and state beyond the configured unit/dictionary/row limits
+all fail closed. The read frontier is lexical-only; it does not claim canonical,
 projection, manifest, or scope-wide coordinator linearizability.
 
 The adapter deliberately has no DBI manifest change. A future production
