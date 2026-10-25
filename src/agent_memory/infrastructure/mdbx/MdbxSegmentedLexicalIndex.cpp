@@ -593,7 +593,15 @@ public:
                         || decoded.row.key.posting_layout_version
                             != state.snapshot.posting_layout_version) {
                         throw std::runtime_error(
-                            "segmented lexical physical key mismatch: " + marker);
+                            "segmented lexical physical key mismatch: " + marker
+                            + " decoded-generation="
+                            + std::to_string(decoded.row.key.statistics_generation)
+                            + " expected-generation="
+                            + std::to_string(state.snapshot.statistics_generation)
+                            + " decoded-token="
+                            + std::to_string(decoded.row.key.token_id.value())
+                            + " expected-token="
+                            + std::to_string(key_token.value()));
                     }
                     state.segments.push_back(decoded.row);
                 } else if(marker.rfind(marker_prefix(kTokenStats), 0) == 0) {
