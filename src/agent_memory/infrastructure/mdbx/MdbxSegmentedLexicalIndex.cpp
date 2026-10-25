@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cctype>
 #include <cstring>
 #include <limits>
@@ -95,8 +96,40 @@ void append_u64(std::string& bytes, const std::uint64_t value) {
 }
 
 void append_string(std::string& bytes, std::string_view value) {
+    if(value.size() > std::numeric_limits<std::uint32_t>::max()) {
+        throw std::overflow_error("segmented lexical string length overflow");
+    }
     append_u32(bytes, static_cast<std::uint32_t>(value.size()));
     bytes.append(value.data(), value.size());
+}
+
+bool parse_canonical_u64(std::string_view text, std::uint64_t& value) {
+    if(text.empty() || (text.size() > 1U && text.front() == '0')) return false;
+    const auto* begin = text.data();
+    const auto* end = begin + text.size();
+    const auto parsed = std::from_chars(begin, end, value, 10);
+    return parsed.ec == std::errc{} && parsed.ptr == end
+        && std::to_string(value) == text;
+}
+
+bool parse_canonical_u32(std::string_view text, std::uint32_t& value) {
+    std::uint64_t parsed = 0;
+    if(!parse_canonical_u64(text, parsed)
+        || parsed > std::numeric_limits<std::uint32_t>::max()) return false;
+    value = static_cast<std::uint32_t>(parsed);
+    return true;
+}
+
+bool extract_key_suffix(
+    std::string_view marker,
+    std::string_view kind,
+    std::string_view& suffix
+) {
+    const auto prefix = marker_prefix(kind);
+    if(marker.size() <= prefix.size() || marker.rfind(prefix, 0) != 0
+        || marker[prefix.size()] != kSeparator) return false;
+    suffix = marker.substr(prefix.size() + 1U);
+    return !suffix.empty();
 }
 
 class Reader final {
@@ -172,6 +205,10 @@ std::string serialize_descriptor(const LexicalIndexDescriptor& descriptor) {
     append_u32(bytes, descriptor.projection_schema_version);
     append_string(bytes, descriptor.tokenizer_fingerprint);
     append_string(bytes, descriptor.normalization_fingerprint);
+    if(descriptor.supported_posting_layout_versions.size()
+        > std::numeric_limits<std::uint32_t>::max()) {
+        throw std::overflow_error("segmented lexical layout count overflow");
+    }
     append_u32(bytes, static_cast<std::uint32_t>(
         descriptor.supported_posting_layout_versions.size()));
     for(const auto version : descriptor.supported_posting_layout_versions) {
@@ -227,6 +264,9 @@ std::string serialize_unit(const FlatLexicalUnitInput& input) {
     append_u64(bytes, input.projection_version.projection_revision);
     append_u64(bytes, input.projection_version.derivation_generation);
     append_string(bytes, input.projection_version.derivation_fingerprint);
+    if(input.normalized_tokens.size() > std::numeric_limits<std::uint32_t>::max()) {
+        throw std::overflow_error("segmented lexical token count overflow");
+    }
     append_u32(bytes, static_cast<std::uint32_t>(input.normalized_tokens.size()));
     for(const auto& token : input.normalized_tokens) append_string(bytes, token);
     return bytes;
@@ -364,25 +404,20 @@ bool parse_segment_suffix(
     TokenId& token_id,
     std::uint32_t& segment_id
 ) {
-    auto prefix = marker_prefix(kSegment);
-    prefix.push_back(kSeparator);
-    if(marker.rfind(prefix, 0) != 0) return false;
-    const auto suffix = marker.substr(prefix.size());
+    std::string_view suffix;
+    if(!extract_key_suffix(marker, kSegment, suffix)) return false;
     const auto separator = suffix.find(':');
-    if(separator == std::string_view::npos || separator == 0U
-        || separator + 1U >= suffix.size()) return false;
-    try {
-        const auto parsed_token = std::stoull(std::string{suffix.substr(0, separator)});
-        const auto parsed_segment = std::stoul(std::string{suffix.substr(separator + 1U)});
-        if(parsed_token == 0U || parsed_segment > std::numeric_limits<std::uint32_t>::max()) {
-            return false;
-        }
-        token_id = TokenId{parsed_token};
-        segment_id = static_cast<std::uint32_t>(parsed_segment);
-        return true;
-    } catch(const std::exception&) {
-        return false;
-    }
+    if(separator == std::string_view::npos || suffix.find(':', separator + 1U)
+            != std::string_view::npos) return false;
+    std::uint64_t parsed_token = 0;
+    std::uint32_t parsed_segment = 0;
+    if(!parse_canonical_u64(suffix.substr(0, separator), parsed_token)
+        || !parse_canonical_u32(suffix.substr(separator + 1U), parsed_segment)
+        || parsed_token == 0U) return false;
+    token_id = TokenId{parsed_token};
+    segment_id = parsed_segment;
+    return std::to_string(parsed_token) + ":" + std::to_string(parsed_segment)
+        == suffix;
 }
 
 struct StoredState final {
@@ -393,11 +428,14 @@ struct StoredState final {
     TokenId next_token_id{1};
     std::vector<FlatLexicalUnitInput> units;
     std::vector<LexicalSegmentRow> segments;
-    std::vector<std::pair<TokenId, std::uint32_t>> segment_addresses;
     std::map<TokenId, FlatLexicalTokenStats> token_stats;
     FlatLexicalCollectionStats collection_stats;
     std::map<TokenId, std::array<std::uint8_t, 32>> witnesses;
     bool has_descriptor = false;
+    bool has_snapshot = false;
+    bool has_sequence = false;
+    bool has_high_water = false;
+    bool has_collection_stats = false;
     bool has_any_rows = false;
 };
 
@@ -533,24 +571,37 @@ public:
         to.push_back(static_cast<char>(0xff));
         std::size_t namespace_rows = 0;
         std::size_t total_unit_tokens = 0;
+        std::size_t decoded_value_bytes = 0;
+        std::size_t decoded_postings = 0;
         table.for_each_range(from, to,
-            [&state, this, &namespace_rows, &total_unit_tokens](
+            [&state, this, &namespace_rows, &total_unit_tokens,
+                &decoded_value_bytes, &decoded_postings](
                 const std::string& key, const std::string& value) {
                 state.has_any_rows = true;
                 if(++namespace_rows > limits.max_namespace_rows) {
                     throw std::runtime_error("segmented lexical namespace row limit exceeded");
                 }
+                if(value.size() > limits.max_decoded_value_bytes
+                    || decoded_value_bytes > limits.max_decoded_value_bytes - value.size()) {
+                    throw std::runtime_error("segmented lexical decoded byte budget exceeded");
+                }
+                decoded_value_bytes += value.size();
                 const auto marker = key.substr(prefix.size());
                 if(marker == marker_prefix(kDescriptor)) {
                     state.descriptor = deserialize_descriptor(value);
                     state.has_descriptor = true;
                 } else if(marker == marker_prefix(kSnapshot)) {
                     state.snapshot = deserialize_snapshot(value);
+                    state.has_snapshot = true;
                 } else if(marker == marker_prefix(kSequence)) {
                     state.sequence = LexicalPublicationSequence{deserialize_u64(value)};
+                    state.has_sequence = true;
                 } else if(marker == marker_prefix(kHighWater)) {
                     state.next_token_id = TokenId{deserialize_u64(value)};
-                } else if(marker.rfind(marker_prefix(kDictionary), 0) == 0) {
+                    state.has_high_water = true;
+                } else {
+                    std::string_view suffix;
+                    if(extract_key_suffix(marker, kDictionary, suffix)) {
                     if(state.dictionary.size() >= limits.max_dictionary_entries) {
                         throw std::runtime_error("segmented lexical dictionary limit exceeded");
                     }
@@ -562,8 +613,11 @@ public:
                         || reader.remaining() != 0) {
                         throw std::runtime_error("segmented lexical dictionary decode failed");
                     }
+                    if(hex_component(token) != suffix || token_id == 0U) {
+                        throw std::runtime_error("segmented lexical dictionary physical key mismatch");
+                    }
                     state.dictionary.emplace_back(token, TokenId{token_id});
-                } else if(marker.rfind(marker_prefix(kUnit), 0) == 0) {
+                    } else if(extract_key_suffix(marker, kUnit, suffix)) {
                     if(state.units.size() >= limits.max_units
                         || value.size() > limits.max_row_bytes) {
                         throw std::runtime_error("segmented lexical unit limit exceeded");
@@ -573,8 +627,15 @@ public:
                     if(total_unit_tokens > limits.max_total_unit_tokens) {
                         throw std::runtime_error("segmented lexical unit token limit exceeded");
                     }
+                    std::uint64_t physical_id = 0;
+                    if(!parse_canonical_u64(suffix, physical_id)
+                        || physical_id != unit.unit_id.value()
+                        || unit.scope_id != descriptor.ref.scope_id
+                        || unit.projection_kind != descriptor.ref.projection_kind) {
+                        throw std::runtime_error("segmented lexical unit physical key mismatch");
+                    }
                     state.units.push_back(std::move(unit));
-                } else if(marker.rfind(marker_prefix(kSegment), 0) == 0) {
+                    } else if(extract_key_suffix(marker, kSegment, suffix)) {
                     if(state.segments.size() >= limits.max_segments) {
                         throw std::runtime_error("segmented lexical segment limit exceeded");
                     }
@@ -589,42 +650,48 @@ public:
                         || decoded.row.key.segment_id != key_segment) {
                         throw std::runtime_error("segmented lexical physical key mismatch");
                     }
+                    if(decoded_postings > limits.max_decoded_postings
+                        || decoded.row.segment.postings.size()
+                            > limits.max_decoded_postings - decoded_postings) {
+                        throw std::runtime_error("segmented lexical decoded postings budget exceeded");
+                    }
+                    decoded_postings += decoded.row.segment.postings.size();
                     state.segments.push_back(decoded.row);
-                    state.segment_addresses.emplace_back(key_token, key_segment);
-                } else if(marker.rfind(marker_prefix(kTokenStats), 0) == 0) {
+                    } else if(extract_key_suffix(marker, kTokenStats, suffix)) {
                     if(state.token_stats.size() >= limits.max_token_stats) {
                         throw std::runtime_error("segmented lexical token statistics limit exceeded");
                     }
-                    const auto separator = marker.rfind(kSeparator);
-                    if(separator == std::string::npos) {
+                    std::uint64_t token_id = 0;
+                    if(!parse_canonical_u64(suffix, token_id) || token_id == 0U) {
                         throw std::runtime_error("segmented lexical token stats key failed");
                     }
-                    const auto token_id = static_cast<std::uint64_t>(
-                        std::stoull(marker.substr(separator + 1)));
                     if(!state.token_stats.emplace(
                         TokenId{token_id},
                         deserialize_token_stats(value, TokenId{token_id})).second) {
                         throw std::runtime_error("segmented lexical duplicate token statistics");
                     }
-                } else if(marker == marker_prefix(kCollectionStats)) {
+                    } else if(marker == marker_prefix(kCollectionStats)) {
                     state.collection_stats = deserialize_collection_stats(value);
-                } else if(marker.rfind(marker_prefix(kWitness), 0) == 0) {
+                    state.has_collection_stats = true;
+                    } else if(extract_key_suffix(marker, kWitness, suffix)) {
                     if(state.witnesses.size() >= limits.max_witnesses) {
                         throw std::runtime_error("segmented lexical witness limit exceeded");
                     }
-                    const auto separator = marker.rfind(kSeparator);
-                    if(separator == std::string::npos || value.size() != 32U) {
+                    if(value.size() != 32U) {
                         throw std::runtime_error("segmented lexical witness failed admission");
                     }
-                    const auto token_id = static_cast<std::uint64_t>(
-                        std::stoull(marker.substr(separator + 1)));
+                    std::uint64_t token_id = 0;
+                    if(!parse_canonical_u64(suffix, token_id) || token_id == 0U) {
+                        throw std::runtime_error("segmented lexical witness key failed");
+                    }
                     std::array<std::uint8_t, 32> witness{};
                     std::memcpy(witness.data(), value.data(), witness.size());
                     if(!state.witnesses.emplace(TokenId{token_id}, witness).second) {
                         throw std::runtime_error("segmented lexical duplicate witness");
                     }
-                } else {
+                    } else {
                     throw std::runtime_error("segmented lexical unknown row kind");
+                    }
                 }
                 return true;
             }, txn);
@@ -632,18 +699,11 @@ public:
         std::sort(state.dictionary.begin(), state.dictionary.end(),
             [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
 
-        if(state.segments.size() != state.segment_addresses.size()) {
-            throw std::runtime_error("segmented lexical segment address mismatch");
-        }
-        for(std::size_t index = 0; index < state.segments.size(); ++index) {
-            const auto& row = state.segments[index];
-            const auto& address = state.segment_addresses[index];
+        for(const auto& row : state.segments) {
             if(row.key.scope_id != descriptor.ref.scope_id
                 || row.key.projection_kind != descriptor.ref.projection_kind
                 || row.key.statistics_epoch != state.snapshot.statistics_epoch
                 || row.key.statistics_generation != state.snapshot.statistics_generation
-                || row.key.token_id != address.first
-                || row.key.segment_id != address.second
                 || row.key.posting_layout_version != state.snapshot.posting_layout_version) {
                 throw std::runtime_error("segmented lexical physical key mismatch");
             }
@@ -654,6 +714,10 @@ public:
                 throw std::runtime_error("segmented lexical descriptor missing");
             }
             return state;
+        }
+        if(!state.has_snapshot || !state.has_sequence || !state.has_high_water
+            || !state.has_collection_stats) {
+            throw std::runtime_error("segmented lexical required metadata missing");
         }
         if(!same_descriptor(descriptor, state.descriptor)
             || state.snapshot.statistics_epoch != descriptor.ref.statistics_epoch

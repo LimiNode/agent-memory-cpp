@@ -49,6 +49,10 @@ namespace agent_memory {
         std::size_t max_witnesses = 4'000'000U;
         std::size_t max_namespace_rows = 8'000'000U;
         std::size_t max_total_unit_tokens = 4'000'000U;
+        /// Aggregate decoded value bytes admitted for one namespace snapshot.
+        std::size_t max_decoded_value_bytes = 256U * 1024U * 1024U;
+        /// Aggregate postings decoded across all segment rows in one snapshot.
+        std::size_t max_decoded_postings = 4'000'000U;
     };
 
     /// \brief Fail-closed result for row encoding and decoding.
