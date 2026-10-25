@@ -181,6 +181,7 @@ if(AGENT_MEMORY_BUILD_BENCHMARKS)
         )
         target_link_libraries(agent_memory_segmented_lexical_benchmark
             PRIVATE agent_memory::agent_memory
+                    ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET}
         )
         target_compile_features(agent_memory_segmented_lexical_benchmark
             PRIVATE cxx_std_17

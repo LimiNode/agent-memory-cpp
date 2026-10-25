@@ -21,7 +21,12 @@ Each durable run creates a fresh MDBX data file and lock file. The TSV separates
 environment creation, adapter initialization, writes, full validated snapshot
 read, close, reopen/adapter initialization, and full validated snapshot read
 after reopen. The dependency-free `FlatLexicalIndex` row is an in-process
-reference and therefore has no durable or reopen timing.
+reference and therefore has no durable or reopen timing. Durable rows also carry
+benchmark-only physical telemetry: namespace rows scanned/decoded, decoded and
+encoded bytes, estimated rebuild publications, and rows deleted/inserted by the
+full-rewrite publication loop. These counters are observational scans performed
+by the benchmark; they are not production diagnostics and do not represent
+physical disk writes.
 
 Example command:
 
@@ -62,6 +67,8 @@ growth, and physical I/O before any layout or default change is proposed.
 - The workloads are synthetic and use short ASCII tokens, not technical UTF-8
   documents.
 - `db_bytes` is the final MDBX file size, not a write-amplification counter.
+- `rows_deleted`, `rows_inserted`, and encoded/decoded byte counters describe
+  logical MDBX row work observed by the benchmark, not storage-engine page I/O.
 - The benchmark does not yet expose MDBX live-page or physical-write counters;
   file geometry must not be interpreted as write amplification.
 - The benchmark does not claim cross-store atomicity or production throughput.

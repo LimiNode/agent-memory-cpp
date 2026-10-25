@@ -4,6 +4,8 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+#include <mdbx_containers/KeyValueTable.hpp>
+
 #include <array>
 #include <chrono>
 #include <filesystem>
@@ -78,10 +80,48 @@ std::uintmax_t database_bytes(const std::filesystem::path& path) {
     return error ? 0U : size;
 }
 
+struct PhysicalCounters final {
+    std::size_t rows_scanned = 0;
+    std::size_t rows_decoded = 0;
+    std::size_t decoded_bytes = 0;
+    std::size_t rebuild_count = 0;
+    std::size_t rows_deleted = 0;
+    std::size_t rows_inserted = 0;
+    std::size_t encoded_bytes = 0;
+};
+
+PhysicalCounters scan_rows(
+    const std::shared_ptr<MdbxStorageContext>& context,
+    const std::size_t previous_rows,
+    const bool account_rebuild,
+    const bool segmented
+) {
+    mdbxc::KeyValueTable<std::string, std::string> table(
+        context->connection(), "agent_memory_lexical_posting_segments");
+    auto txn = context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+    PhysicalCounters counters;
+    const std::string from = segmented ? "seg-v1" : "flat-v1";
+    const std::string to = segmented ? "seg-v2" : "flat-v3";
+    table.for_each_range(from, to,
+        [&counters](const std::string& key, const std::string& value) {
+            ++counters.rows_scanned;
+            ++counters.rows_decoded;
+            counters.decoded_bytes += value.size();
+            counters.encoded_bytes += key.size() + value.size();
+            return true;
+        }, txn);
+    counters.rows_deleted = previous_rows;
+    counters.rows_inserted = counters.rows_scanned;
+    counters.rebuild_count = account_rebuild ? 1U : 0U;
+    return counters;
+}
+
 void print_header() {
     std::cout << "backend\tworkload\tunits\trepeat\tenvironment_ms\tadapter_init_ms"
                  "\twrite_ms\tsnapshot_ms\tclose_ms\treopen_ms\treopen_snapshot_ms"
-                 "\tdb_bytes\tactive_units\ttotal_tokens\n";
+                 "\tdb_bytes\tactive_units\ttotal_tokens\trows_scanned\trows_decoded"
+                 "\tdecoded_bytes\trebuild_count\trows_deleted\trows_inserted"
+                 "\tencoded_bytes\n";
 }
 
 void run_flat_reference(
@@ -102,7 +142,8 @@ void run_flat_reference(
               << "\t0\t0\t" << milliseconds(write_done - started)
               << '\t' << milliseconds(read_done - write_done)
               << "\t0\t0\t0\t0\t" << index.collection_stats().unit_count
-              << '\t' << index.collection_stats().total_token_count << '\n';
+              << '\t' << index.collection_stats().total_token_count
+              << "\t0\t0\t0\t0\t0\t0\t0\n";
 }
 
 template<typename IndexT, typename OptionsT>
@@ -137,9 +178,21 @@ void run_durable(
     const auto adapter_done = Clock::now();
     Clock::time_point write_done;
     Clock::time_point read_done;
+    PhysicalCounters counters;
+    std::size_t previous_rows = 0;
     {
         for(std::size_t index_value = 0; index_value < units; ++index_value) {
             index->upsert(unit(index_value, workload));
+            const auto sample = scan_rows(
+                context, previous_rows, true, backend == "segmented-v1");
+            previous_rows = sample.rows_scanned;
+            counters.rows_scanned += sample.rows_scanned;
+            counters.rows_decoded += sample.rows_decoded;
+            counters.decoded_bytes += sample.decoded_bytes;
+            counters.rebuild_count += sample.rebuild_count;
+            counters.rows_deleted += sample.rows_deleted;
+            counters.rows_inserted += sample.rows_inserted;
+            counters.encoded_bytes += sample.encoded_bytes;
         }
         write_done = Clock::now();
         {
@@ -176,6 +229,14 @@ void run_durable(
         total_tokens = reopened_snapshot.index.collection_stats().total_token_count;
     }
     const auto reopen_snapshot_done = Clock::now();
+    const auto reopen_sample = scan_rows(
+        reopen_context, previous_rows, false, backend == "segmented-v1");
+    counters.rows_scanned += reopen_sample.rows_scanned;
+    counters.rows_decoded += reopen_sample.rows_decoded;
+    counters.decoded_bytes += reopen_sample.decoded_bytes;
+    counters.rows_deleted += reopen_sample.rows_deleted;
+    counters.rows_inserted += reopen_sample.rows_inserted;
+    counters.encoded_bytes += reopen_sample.encoded_bytes;
     std::cout << backend << '\t' << workload << '\t' << units << '\t' << repeat
               << '\t' << milliseconds(environment_done - environment_started)
               << '\t' << milliseconds(adapter_done - adapter_started)
@@ -187,6 +248,13 @@ void run_durable(
               << '\t' << database_bytes(path)
               << '\t' << active_units
               << '\t' << total_tokens
+              << '\t' << counters.rows_scanned
+              << '\t' << counters.rows_decoded
+              << '\t' << counters.decoded_bytes
+              << '\t' << counters.rebuild_count
+              << '\t' << counters.rows_deleted
+              << '\t' << counters.rows_inserted
+              << '\t' << counters.encoded_bytes
               << '\n';
 }
 
