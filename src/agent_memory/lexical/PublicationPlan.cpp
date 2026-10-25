@@ -6,6 +6,15 @@
 namespace agent_memory {
 namespace {
 
+    bool is_valid_manifest_state(const ResourceManifestState state) noexcept {
+        switch(state) {
+            case ResourceManifestState::Active:
+            case ResourceManifestState::ErasePending:
+                return true;
+        }
+        return false;
+    }
+
     bool same_projection_version(
         const ProjectionVersionRef& left,
         const ProjectionVersionRef& right
@@ -57,15 +66,19 @@ namespace {
     ) noexcept {
         return left.resource_id == right.resource_id
             && left.resource_generation == right.resource_generation
+            && left.canonical_revision == right.canonical_revision
             && left.unit_revision == right.unit_revision
             && same_projection_version(left.projection_version, right.projection_version)
             && same_manifest_schema(left.manifest_schema, right.manifest_schema)
+            && left.manifest_revision == right.manifest_revision
+            && left.manifest_state == right.manifest_state
             && left.manifest_payload_version == right.manifest_payload_version
             && left.manifest_binding_digest == right.manifest_binding_digest;
     }
 
     bool is_empty_expected_evidence(const PublicationEvidence& evidence) noexcept {
         return evidence.resource_generation == 0
+            && evidence.canonical_revision == 0
             && evidence.unit_revision == 0
             && evidence.projection_version.unit_revision_at_build == 0
             && evidence.projection_version.projection_revision == 0
@@ -73,6 +86,8 @@ namespace {
             && evidence.projection_version.derivation_fingerprint.empty()
             && evidence.manifest_schema.schema_id.empty()
             && evidence.manifest_schema.schema_version == 0
+            && evidence.manifest_revision == 0
+            && evidence.manifest_state == ResourceManifestState::Active
             && evidence.manifest_payload_version == 0
             && evidence.manifest_binding_digest.empty();
     }
@@ -114,10 +129,13 @@ bool is_valid_publication_evidence(
 ) noexcept {
     return !evidence.resource_id.empty()
         && evidence.resource_generation != 0
+        && evidence.canonical_revision != 0
         && evidence.unit_revision != 0
         && is_valid_projection_version(evidence.projection_version)
         && !evidence.manifest_schema.schema_id.empty()
         && evidence.manifest_schema.schema_version != 0
+        && evidence.manifest_revision != 0
+        && is_valid_manifest_state(evidence.manifest_state)
         && evidence.manifest_payload_version != 0
         && !evidence.manifest_binding_digest.empty();
 }
@@ -149,7 +167,11 @@ bool is_valid_publication_plan(
     if(!expected_is_empty
         && (plan.target_evidence.resource_generation
                 < plan.expected_evidence.resource_generation
-            || plan.target_evidence.unit_revision < plan.expected_evidence.unit_revision)) {
+            || plan.target_evidence.canonical_revision
+                < plan.expected_evidence.canonical_revision
+            || plan.target_evidence.unit_revision < plan.expected_evidence.unit_revision
+            || plan.target_evidence.manifest_revision
+                < plan.expected_evidence.manifest_revision)) {
         return false;
     }
 
@@ -162,11 +184,15 @@ PublicationConformanceModel::PublicationConformanceModel(
     const PublicationSequence initial_sequence
 ) : m_scope_id(std::move(scope_id)),
     m_fencing(std::move(initial_fencing)),
-    m_frontier{m_scope_id, initial_sequence} {}
+    m_frontier{m_scope_id, initial_sequence},
+    m_valid(!m_scope_id.empty() && is_valid_publication_fencing(m_fencing)) {}
 
 PublicationAdmissionResult PublicationConformanceModel::admit_profile(
     PublicationProfileIdentity profile
 ) {
+    if(!m_valid) {
+        return PublicationAdmissionResult{PublicationAdmissionCode::InvalidModel};
+    }
     if(!is_valid_publication_profile(profile) || profile.scope_id != m_scope_id) {
         return PublicationAdmissionResult{PublicationAdmissionCode::InvalidProfile};
     }
@@ -183,16 +209,32 @@ PublicationAdmissionResult PublicationConformanceModel::admit_profile(
 PublicationAdmissionResult PublicationConformanceModel::rotate_fencing(
     PublicationFencingIdentity fencing
 ) {
+    if(!m_valid) {
+        return PublicationAdmissionResult{PublicationAdmissionCode::InvalidModel};
+    }
     if(!is_valid_publication_fencing(fencing)) {
         return PublicationAdmissionResult{PublicationAdmissionCode::InvalidFencing};
+    }
+    if(same_fencing(m_fencing, fencing)) {
+        return PublicationAdmissionResult{PublicationAdmissionCode::AlreadyAdmitted};
+    }
+    if(fencing.epoch <= m_fencing.epoch) {
+        return PublicationAdmissionResult{PublicationAdmissionCode::FencingConflict};
     }
     m_fencing = std::move(fencing);
     return PublicationAdmissionResult{PublicationAdmissionCode::Admitted};
 }
 
+void PublicationConformanceModel::fail_next_commit_for_testing() noexcept {
+    m_fail_next_commit = true;
+}
+
 PublicationOutcome PublicationConformanceModel::publish(
     const PublicationPlan& plan
 ) {
+    if(!m_valid) {
+        return PublicationOutcome{PublicationOutcomeCode::InvalidModel, std::nullopt};
+    }
     if(!is_valid_publication_plan(plan)) {
         return PublicationOutcome{PublicationOutcomeCode::InvalidPlan, std::nullopt};
     }
@@ -253,10 +295,21 @@ PublicationOutcome PublicationConformanceModel::publish(
     };
     CommittedPublication committed{plan, receipt};
 
-    // The model installs the fully prepared replacement only after all checks pass.
-    m_bindings[plan.target_evidence.resource_id] = plan.target_evidence;
-    m_frontier = receipt.committed_frontier;
-    m_committed.emplace(plan.identity.publication_id, std::move(committed));
+    // Prepare every potentially-throwing operation against detached maps. The
+    // installed state is changed only by no-throw swaps and a sequence update.
+    auto next_bindings = m_bindings;
+    auto next_committed = m_committed;
+    next_bindings[plan.target_evidence.resource_id] = plan.target_evidence;
+    next_committed.emplace(plan.identity.publication_id, std::move(committed));
+
+    if(m_fail_next_commit) {
+        m_fail_next_commit = false;
+        return PublicationOutcome{PublicationOutcomeCode::CommitFailure, std::nullopt};
+    }
+
+    m_bindings.swap(next_bindings);
+    m_committed.swap(next_committed);
+    m_frontier.sequence = receipt.committed_frontier.sequence;
     return PublicationOutcome{PublicationOutcomeCode::Committed, std::move(receipt)};
 }
 
@@ -273,6 +326,30 @@ PublicationConformanceModel::profile() const noexcept {
     return m_profile;
 }
 
+bool PublicationConformanceModel::valid() const noexcept {
+    return m_valid;
+}
+
+std::optional<PublicationEvidence> PublicationConformanceModel::binding(
+    const ResourceId& resource_id
+) const {
+    const auto found = m_bindings.find(resource_id);
+    if(found == m_bindings.end()) {
+        return std::nullopt;
+    }
+    return found->second;
+}
+
+std::optional<PublicationReceipt> PublicationConformanceModel::receipt(
+    const std::string& publication_id
+) const {
+    const auto found = m_committed.find(publication_id);
+    if(found == m_committed.end()) {
+        return std::nullopt;
+    }
+    return found->second.receipt;
+}
+
 bool PublicationConformanceModel::matches_existing_binding(
     const PublicationEvidence& expected,
     const PublicationEvidence& current
@@ -287,6 +364,11 @@ bool PublicationConformanceModel::equivalent_replay(
     return plan.identity.scope_id == committed.plan.identity.scope_id
         && plan.identity.publication_id == committed.plan.identity.publication_id
         && same_profile(plan.profile, committed.plan.profile)
+        && same_fencing(plan.fencing, committed.plan.fencing)
+        && plan.expected_frontier.scope_id == committed.plan.expected_frontier.scope_id
+        && plan.expected_frontier.sequence.value()
+            == committed.plan.expected_frontier.sequence.value()
+        && same_evidence(plan.expected_evidence, committed.plan.expected_evidence)
         && same_payload(plan.payload, committed.plan.payload)
         && same_evidence(plan.target_evidence, committed.plan.target_evidence);
 }

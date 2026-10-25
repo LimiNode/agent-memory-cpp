@@ -36,6 +36,7 @@ namespace {
         return PublicationEvidence{
             ResourceId{resource},
             generation,
+            generation,
             unit_revision,
             ProjectionVersionRef{
                 unit_revision,
@@ -44,6 +45,8 @@ namespace {
                 "original-v1"
             },
             ResourceManifestSchema{"resource-manifest-v6", 6},
+            generation,
+            ResourceManifestState::Active,
             6,
             digest
         };
@@ -78,6 +81,10 @@ namespace {
         const auto owner = fencing("writer-a", 1, "token-a");
         PublicationConformanceModel model{scope, owner};
 
+        if(!model.valid()) {
+            return fail("valid scope and fencing must create a valid model");
+        }
+
         if(model.has_admitted_profile()) {
             return fail("model must start without an admitted profile");
         }
@@ -100,11 +107,39 @@ namespace {
             return fail("invalid profile identity must fail closed");
         }
 
+        if(model.rotate_fencing(owner).code != PublicationAdmissionCode::AlreadyAdmitted) {
+            return fail("identical fencing rotation must be an idempotent no-op");
+        }
+        if(model.rotate_fencing(fencing("writer-a", 1, "token-old")).code
+                != PublicationAdmissionCode::FencingConflict
+            || model.rotate_fencing(fencing("writer-a", 2, "token-b")).code
+                != PublicationAdmissionCode::Admitted
+            || model.rotate_fencing(owner).code != PublicationAdmissionCode::FencingConflict) {
+            return fail("fencing epoch must advance monotonically and reject rollback");
+        }
+
         if(!is_valid_publication_fencing(owner)
             || !is_valid_publication_payload(PublicationPayloadIdentity{
                 "payload", "digest", "canonical"
             })) {
             return fail("valid ownership and payload identities must be admitted");
+        }
+        return 0;
+    }
+
+    int test_invalid_constructor_and_profile_guard() {
+        const auto owner = fencing("writer-a", 1, "token-a");
+        PublicationConformanceModel invalid_scope{ScopeId{}, owner};
+        PublicationConformanceModel invalid_owner{
+            ScopeId{"scope:invalid"},
+            PublicationFencingIdentity{}
+        };
+        if(invalid_scope.valid() || invalid_owner.valid()
+            || invalid_scope.admit_profile(profile(ScopeId{"scope:invalid"})).code
+                != PublicationAdmissionCode::InvalidModel
+            || invalid_owner.rotate_fencing(owner).code
+                != PublicationAdmissionCode::InvalidModel) {
+            return fail("invalid constructor state must remain unusable");
         }
         return 0;
     }
@@ -145,6 +180,13 @@ namespace {
             return fail("same publication must replay without advancing sequence");
         }
 
+        auto altered_precondition = first;
+        altered_precondition.expected_frontier.sequence = PublicationSequence{1};
+        if(model.publish(altered_precondition).code
+                != PublicationOutcomeCode::PublicationIdentityConflict) {
+            return fail("replay identity must include the original expected frontier");
+        }
+
         const auto stale = plan(
             scope,
             PublicationSequence{},
@@ -171,6 +213,9 @@ namespace {
         if(model.publish(update).code != PublicationOutcomeCode::Committed
             || model.frontier().sequence.value() != 2) {
             return fail("a plan with the current frontier must commit exactly once");
+        }
+        if(model.publish(first).code != PublicationOutcomeCode::Replayed) {
+            return fail("identical replay must survive later unrelated publication");
         }
         return 0;
     }
@@ -226,12 +271,69 @@ namespace {
             return fail("wrong expected binding must leave the prior frontier intact");
         }
 
+        auto wrong_profile = first;
+        wrong_profile.identity.publication_id = "publication-profile-mismatch";
+        wrong_profile.profile.profile_id = "other-profile";
+        if(model.publish(wrong_profile).code != PublicationOutcomeCode::ProfileMismatch) {
+            return fail("publish must reject a non-admitted profile");
+        }
+
+        auto invalid_manifest = first;
+        invalid_manifest.identity.publication_id = "publication-invalid-manifest";
+        invalid_manifest.target_evidence.manifest_state =
+            static_cast<ResourceManifestState>(255);
+        if(model.publish(invalid_manifest).code != PublicationOutcomeCode::InvalidPlan) {
+            return fail("invalid manifest state must fail closed");
+        }
+
+        auto wrong_canonical = plan(
+            scope,
+            PublicationSequence{1},
+            "publication-wrong-canonical",
+            "payload-a2",
+            owner,
+            target,
+            evidence("resource:alpha", 1, 2, "binding-a2")
+        );
+        wrong_canonical.target_evidence.canonical_revision = 0;
+        if(model.publish(wrong_canonical).code != PublicationOutcomeCode::InvalidPlan) {
+            return fail("missing canonical revision must fail closed");
+        }
+
         auto invalid = first;
         invalid.identity.publication_id = "publication-invalid";
         invalid.target_evidence = PublicationEvidence{};
         if(model.publish(invalid).code != PublicationOutcomeCode::InvalidPlan
             || model.frontier().sequence.value() != 1) {
             return fail("invalid target evidence must be rejected atomically");
+        }
+
+        const auto before_binding = model.binding(target.resource_id);
+        model.fail_next_commit_for_testing();
+        const auto failed_update = plan(
+            scope,
+            PublicationSequence{1},
+            "publication-2",
+            "payload-a2",
+            owner,
+            target,
+            evidence("resource:alpha", 2, 2, "binding-a2")
+        );
+        if(model.publish(failed_update).code != PublicationOutcomeCode::CommitFailure
+            || model.frontier().sequence.value() != 1
+            || !model.binding(target.resource_id).has_value()
+            || !before_binding.has_value()
+            || model.binding(target.resource_id)->manifest_binding_digest
+                != before_binding->manifest_binding_digest
+            || model.binding(target.resource_id)->resource_generation
+                != before_binding->resource_generation
+            || model.receipt("publication-2").has_value()) {
+            return fail("commit-stage failure must leave every model state component unchanged");
+        }
+        if(model.publish(failed_update).code != PublicationOutcomeCode::Committed
+            || model.frontier().sequence.value() != 2
+            || !model.receipt("publication-2").has_value()) {
+            return fail("a failed commit must be retryable without a partial mutation");
         }
         return 0;
     }
@@ -287,6 +389,7 @@ namespace {
 int main() {
     int failures = 0;
     failures += test_value_validation_and_admission();
+    failures += test_invalid_constructor_and_profile_guard();
     failures += test_commit_replay_and_scope_cas();
     failures += test_conflicts_and_atomic_rejection();
     failures += test_scope_profile_and_overflow_guards();

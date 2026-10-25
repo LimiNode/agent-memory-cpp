@@ -67,9 +67,12 @@ namespace agent_memory {
     struct PublicationEvidence final {
         ResourceId resource_id;
         std::uint64_t resource_generation = 0;
+        std::uint64_t canonical_revision = 0;
         std::uint64_t unit_revision = 0;
         ProjectionVersionRef projection_version;
         ResourceManifestSchema manifest_schema;
+        std::uint64_t manifest_revision = 0;
+        ResourceManifestState manifest_state = ResourceManifestState::Active;
         std::uint32_t manifest_payload_version = 0;
         std::string manifest_binding_digest;
     };
@@ -111,7 +114,9 @@ namespace agent_memory {
         StaleFrontier,
         BindingMismatch,
         PublicationIdentityConflict,
-        SequenceOverflow
+        SequenceOverflow,
+        CommitFailure,
+        InvalidModel
     };
 
     struct PublicationOutcome final {
@@ -125,7 +130,9 @@ namespace agent_memory {
         AlreadyAdmitted,
         InvalidProfile,
         InvalidFencing,
-        ProfileConflict
+        ProfileConflict,
+        FencingConflict,
+        InvalidModel
     };
 
     struct PublicationAdmissionResult final {
@@ -178,6 +185,9 @@ namespace agent_memory {
             PublicationFencingIdentity fencing
         );
 
+        /// \brief Arms one deterministic pre-install commit failure for tests.
+        void fail_next_commit_for_testing() noexcept;
+
         [[nodiscard]] PublicationOutcome publish(
             const PublicationPlan& plan
         );
@@ -187,6 +197,16 @@ namespace agent_memory {
         [[nodiscard]] bool has_admitted_profile() const noexcept;
 
         [[nodiscard]] const std::optional<PublicationProfileIdentity>& profile() const noexcept;
+
+        [[nodiscard]] bool valid() const noexcept;
+
+        [[nodiscard]] std::optional<PublicationEvidence> binding(
+            const ResourceId& resource_id
+        ) const;
+
+        [[nodiscard]] std::optional<PublicationReceipt> receipt(
+            const std::string& publication_id
+        ) const;
 
     private:
         struct CommittedPublication final {
@@ -210,6 +230,8 @@ namespace agent_memory {
         PublicationScopeFrontier m_frontier;
         std::map<ResourceId, PublicationEvidence> m_bindings;
         std::map<std::string, CommittedPublication> m_committed;
+        bool m_valid = false;
+        bool m_fail_next_commit = false;
     };
 
 } // namespace agent_memory
