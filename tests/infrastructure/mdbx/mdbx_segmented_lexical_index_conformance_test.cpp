@@ -314,15 +314,20 @@ void test_faults_and_corruption(
         table.insert_or_assign(key, value, restore);
         restore.commit();
     };
-    expect_key_value_mismatch("\x1funit\x1f", "unit key/value mismatch was accepted");
-    expect_key_value_mismatch("\x1fdictionary\x1f", "dictionary key/value mismatch was accepted");
-    expect_key_value_mismatch("\x1ftoken-stats\x1f", "token stats key/value mismatch was accepted");
-    expect_key_value_mismatch("\x1fwitness\x1f", "witness key/value mismatch was accepted");
+    expect_key_value_mismatch(std::string(1, '\x1f') + "unit" + std::string(1, '\x1f'),
+        "unit key/value mismatch was accepted");
+    expect_key_value_mismatch(std::string(1, '\x1f') + "dictionary" + std::string(1, '\x1f'),
+        "dictionary key/value mismatch was accepted");
+    expect_key_value_mismatch(std::string(1, '\x1f') + "token-stats" + std::string(1, '\x1f'),
+        "token stats key/value mismatch was accepted");
+    expect_key_value_mismatch(std::string(1, '\x1f') + "witness" + std::string(1, '\x1f'),
+        "witness key/value mismatch was accepted");
 
-    for(const auto& metadata : {std::string{"\x1fsnapshot"},
-                                std::string{"\x1fsequence"},
-                                std::string{"\x1fhigh-water"},
-                                std::string{"\x1fcollection-stats"}}) {
+    for(const auto& metadata : {
+            std::string(1, '\x1f') + "snapshot",
+            std::string(1, '\x1f') + "sequence",
+            std::string(1, '\x1f') + "high-water",
+            std::string(1, '\x1f') + "collection-stats"}) {
         auto mutation_txn = context->connection()->transaction(
             mdbxc::TransactionMode::WRITABLE);
         std::string metadata_key;
