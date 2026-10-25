@@ -650,9 +650,14 @@ public:
                         || decoded.row.key.segment_id != key_segment) {
                         throw std::runtime_error("segmented lexical physical key mismatch");
                     }
-                    if(decoded_postings > limits.max_decoded_postings
+                    if(decoded_postings > limits.max_total_postings
+                        || decoded_postings > limits.max_decoded_postings
                         || decoded.row.segment.postings.size()
-                            > limits.max_decoded_postings - decoded_postings) {
+                            > limits.max_total_postings - std::min(
+                                decoded_postings, limits.max_total_postings)
+                        || decoded.row.segment.postings.size()
+                            > limits.max_decoded_postings - std::min(
+                                decoded_postings, limits.max_decoded_postings)) {
                         throw std::runtime_error("segmented lexical decoded postings budget exceeded");
                     }
                     decoded_postings += decoded.row.segment.postings.size();
