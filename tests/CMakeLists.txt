@@ -685,6 +685,17 @@ target_compile_definitions(agent_memory_feature_flags_test
 add_test(NAME agent_memory_feature_flags_test COMMAND agent_memory_feature_flags_test)
 
 if(AGENT_MEMORY_ENABLE_MDBX)
+    add_executable(agent_memory_mdbx_publication_write_scope_test
+        infrastructure/mdbx/mdbx_publication_write_scope_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_publication_write_scope_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_publication_write_scope_test
+        COMMAND agent_memory_mdbx_publication_write_scope_test
+    )
+
     add_executable(agent_memory_mdbx_document_storage_test
         infrastructure/mdbx/mdbx_document_storage_test.cpp
     )
