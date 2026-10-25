@@ -946,11 +946,12 @@ bool MdbxSegmentedLexicalIndex::erase(const KnowledgeUnitId& unit_id) {
 void MdbxSegmentedLexicalIndex::clear() {
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
     auto state = m_impl->read_state(txn, false);
-    if(state.units.empty()) return;
+    if(state.units.empty() && !state.has_descriptor) return;
     auto index = rebuild_index(state);
     if(state.has_descriptor) {
         validate_derived_rows(state, index, m_impl->limits);
     }
+    if(state.units.empty()) return;
     state.units.clear();
     index.clear();
     if(state.snapshot.statistics_generation == std::numeric_limits<std::uint64_t>::max()
@@ -971,8 +972,9 @@ void MdbxSegmentedLexicalIndex::clear() {
 MdbxSegmentedLexicalIndexSnapshot MdbxSegmentedLexicalIndex::read_snapshot() const {
     auto transaction = std::make_shared<mdbxc::Transaction>(
         m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY));
-    const auto state = m_impl->read_state(*transaction);
+    const auto state = m_impl->read_state(*transaction, false);
     auto index = rebuild_index(state);
+    validate_derived_rows(state, index, m_impl->limits);
     auto frontier = make_frontier(state);
     std::shared_ptr<void> owner{std::move(transaction)};
     return MdbxSegmentedLexicalIndexSnapshot{
