@@ -9,6 +9,8 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+namespace mdbxc { class Transaction; }
+
 #include <agent_memory/lexical/FlatLexicalIndex.hpp>
 
 #include <cstddef>
@@ -98,6 +100,13 @@ public:
     void upsert(
         FlatLexicalUnitInput input,
         std::optional<FlatLexicalExpectedState> expected_current = std::nullopt
+    );
+
+    /// \brief Applies one lexical contribution through a coordinator-owned transaction.
+    void upsert_in_transaction(
+        FlatLexicalUnitInput input,
+        std::optional<FlatLexicalExpectedState> expected_current,
+        const mdbxc::Transaction& transaction
     );
 
     /// \brief Removes one active unit contribution atomically.

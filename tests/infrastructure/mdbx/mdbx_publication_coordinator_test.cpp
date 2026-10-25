@@ -1,10 +1,12 @@
 #include <agent_memory/infrastructure/mdbx/MdbxPublicationCoordinator.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxAuthoritativePublicationParticipants.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxProjectionLexicalPublicationParticipants.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 
 #include <mdbx_containers/KeyValueTable.hpp>
 
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <iostream>
@@ -261,6 +263,69 @@ int main() {
             return fail("participant failure must roll back metadata and frontier");
         }
 
+        std::array<std::uint8_t, 16> epoch{};
+        epoch[0] = 7;
+        MdbxPersistentLexicalIndexOptions lexical_options;
+        lexical_options.context = context;
+        lexical_options.descriptor = LexicalIndexDescriptor{
+            LexicalIndexDescriptorRef{
+                scope, ProjectionKind::Original, LexicalStatisticsEpoch{epoch}
+            },
+            "original",
+            1,
+            "tokenizer-v1",
+            "normalization-v1",
+            {1}
+        };
+        MdbxPersistentLexicalIndex lexical{std::move(lexical_options)};
+        MdbxProjectionStoreOptions projection_options;
+        projection_options.context = context;
+        MdbxProjectionStore projections{std::move(projection_options)};
+        const ProjectionVersionRef projection_version{1, 1, 1, "projection-v1"};
+        MdbxProjectionPublicationParticipant projection_participant{
+            context,
+            projections,
+            SearchProjection{
+                scope,
+                KnowledgeUnitId{1},
+                ProjectionKind::Original,
+                projection_version,
+                "title",
+                "heading",
+                "authoritative body",
+                "",
+                {},
+                {}
+            }
+        };
+        MdbxLexicalPublicationParticipant lexical_participant{
+            context,
+            lexical,
+            FlatLexicalUnitInput{
+                scope,
+                KnowledgeUnitId{1},
+                ProjectionKind::Original,
+                ResourceId{"resource-1"},
+                1,
+                1,
+                projection_version,
+                {"authoritative", "body"}
+            }
+        };
+        auto projection_plan = plan_for(
+            scope, profile, next_fencing, "publication-projection", 2
+        );
+        const auto projection_result = coordinator.publish(
+            projection_plan,
+            {&projection_participant, &lexical_participant}
+        );
+        if(projection_result.code != PublicationOutcomeCode::Committed
+            || coordinator.frontier().sequence.value() != 3
+            || projections.list(scope, KnowledgeUnitId{1}, ProjectionKind::Original).size() != 1
+            || lexical.read_snapshot().index.size() != 1) {
+            return fail("projection and flat-v2 lexical participants must publish atomically");
+        }
+
         mdbxc::KeyValueTable<std::string, std::string> metadata(
             context->connection(),
             "agent_memory_publication_coordinator_v1"
@@ -282,7 +347,7 @@ int main() {
         options.context = context;
         options.scope_id = scope;
         MdbxPublicationCoordinator reopened{std::move(options)};
-        if(reopened.frontier().sequence.value() != 2
+        if(reopened.frontier().sequence.value() != 3
             || !reopened.receipt("publication-1")) {
             return fail("frontier and receipt must survive reopen");
         }

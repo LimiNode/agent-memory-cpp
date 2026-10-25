@@ -678,6 +678,65 @@ void MdbxPersistentLexicalIndex::upsert(
     txn.commit();
 }
 
+void MdbxPersistentLexicalIndex::upsert_in_transaction(
+    FlatLexicalUnitInput input,
+    std::optional<FlatLexicalExpectedState> expected_current,
+    const mdbxc::Transaction& transaction
+) {
+    auto state = m_impl->read_state(transaction);
+    m_impl->validate_input_limits(input, state);
+    auto index = rebuild_index(state);
+    const auto before_generation = state.snapshot.statistics_generation;
+    const auto before_publication = state.publication_sequence.value();
+    index.upsert(input, expected_current);
+
+    bool changed = true;
+    for(const auto& current : state.units) {
+        if(current.unit_id == input.unit_id) {
+            changed = current.normalized_tokens != input.normalized_tokens
+                || current.resource_id != input.resource_id
+                || current.resource_generation != input.resource_generation
+                || current.unit_revision != input.unit_revision
+                || current.projection_version.unit_revision_at_build
+                    != input.projection_version.unit_revision_at_build
+                || current.projection_version.projection_revision
+                    != input.projection_version.projection_revision
+                || current.projection_version.derivation_generation
+                    != input.projection_version.derivation_generation
+                || current.projection_version.derivation_fingerprint
+                    != input.projection_version.derivation_fingerprint;
+            break;
+        }
+    }
+    if(!changed) {
+        return;
+    }
+    auto existing = std::find_if(state.units.begin(), state.units.end(),
+        [&input](const FlatLexicalUnitInput& current) {
+            return current.unit_id == input.unit_id;
+        });
+    if(existing == state.units.end()) {
+        state.units.push_back(std::move(input));
+    } else {
+        *existing = std::move(input);
+    }
+    if(before_generation == std::numeric_limits<std::uint64_t>::max()
+        || before_publication == std::numeric_limits<std::uint64_t>::max()) {
+        throw std::overflow_error("persistent lexical generation exhausted");
+    }
+    state.snapshot.statistics_generation = before_generation + 1U;
+    state.publication_sequence = LexicalPublicationSequence{before_publication + 1U};
+    state.snapshot.statistics_epoch = m_impl->descriptor.ref.statistics_epoch;
+    state.token_dictionary = index.token_dictionary_for_storage();
+    state.next_token_id = index.next_token_id_for_storage();
+    m_impl->validate_state_limits(state);
+    const auto payload = serialize_state(state);
+    if(payload.size() > m_impl->max_payload_bytes) {
+        throw std::runtime_error("persistent lexical payload exceeds configured limit");
+    }
+    m_impl->table.insert_or_assign(m_impl->key, payload, transaction);
+}
+
 bool MdbxPersistentLexicalIndex::erase(const KnowledgeUnitId& unit_id) {
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
     auto state = m_impl->read_state(txn);
