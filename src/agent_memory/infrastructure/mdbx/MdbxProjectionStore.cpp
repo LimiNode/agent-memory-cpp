@@ -201,6 +201,10 @@ MdbxProjectionStore::MdbxProjectionStore(MdbxProjectionStoreOptions options)
 
 MdbxProjectionStore::~MdbxProjectionStore() = default;
 
+const MdbxStorageContext& MdbxProjectionStore::context() const noexcept {
+    return *m_impl->context;
+}
+
 void MdbxProjectionStore::put(SearchProjection projection) {
     if(!is_valid_search_projection(projection)) {
         throw std::invalid_argument("invalid search projection");

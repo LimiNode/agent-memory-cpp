@@ -58,6 +58,20 @@ bool same_receipt_authority(
         && same_publication_evidence(left.target_evidence, right.target_evidence);
 }
 
+void require_store_context(
+    const std::shared_ptr<MdbxStorageContext>& participant_context,
+    const MdbxStorageContext& store_context,
+    const char* family
+) {
+    if(!participant_context || !participant_context->connection()
+        || store_context.connection() != participant_context->connection()) {
+        throw std::invalid_argument(
+            std::string("publication ") + family
+            + " participant is bound to a different storage context"
+        );
+    }
+}
+
 } // namespace
 
 MdbxPublicationReadScope::MdbxPublicationReadScope(
@@ -316,7 +330,9 @@ MdbxCanonicalReadParticipant::MdbxCanonicalReadParticipant(
     std::shared_ptr<MdbxStorageContext> context,
     const MdbxCanonicalContentStore& store,
     DocumentId document_id
-) : m_context(std::move(context)), m_store(&store), m_document_id(std::move(document_id)) {}
+) : m_context(std::move(context)), m_store(&store), m_document_id(std::move(document_id)) {
+    require_store_context(m_context, store.context(), "canonical");
+}
 const MdbxStorageContext& MdbxCanonicalReadParticipant::context() const noexcept { return *m_context; }
 void MdbxCanonicalReadParticipant::read(
     const mdbxc::Transaction& transaction,
@@ -327,7 +343,9 @@ MdbxKnowledgeUnitReadParticipant::MdbxKnowledgeUnitReadParticipant(
     std::shared_ptr<MdbxStorageContext> context,
     const MdbxKnowledgeUnitStore& store,
     KnowledgeUnitId unit_id
-) : m_context(std::move(context)), m_store(&store), m_unit_id(std::move(unit_id)) {}
+) : m_context(std::move(context)), m_store(&store), m_unit_id(std::move(unit_id)) {
+    require_store_context(m_context, store.context(), "knowledge-unit");
+}
 const MdbxStorageContext& MdbxKnowledgeUnitReadParticipant::context() const noexcept { return *m_context; }
 void MdbxKnowledgeUnitReadParticipant::read(
     const mdbxc::Transaction& transaction,
@@ -341,7 +359,9 @@ MdbxProjectionReadParticipant::MdbxProjectionReadParticipant(
     KnowledgeUnitId unit_id,
     ProjectionKind kind
 ) : m_context(std::move(context)), m_store(&store), m_scope_id(std::move(scope_id)),
-    m_unit_id(std::move(unit_id)), m_kind(kind) {}
+    m_unit_id(std::move(unit_id)), m_kind(kind) {
+    require_store_context(m_context, store.context(), "projection");
+}
 const MdbxStorageContext& MdbxProjectionReadParticipant::context() const noexcept { return *m_context; }
 void MdbxProjectionReadParticipant::read(
     const mdbxc::Transaction& transaction,
@@ -351,7 +371,9 @@ void MdbxProjectionReadParticipant::read(
 MdbxLexicalReadParticipant::MdbxLexicalReadParticipant(
     std::shared_ptr<MdbxStorageContext> context,
     const MdbxPersistentLexicalIndex& index
-) : m_context(std::move(context)), m_index(&index) {}
+) : m_context(std::move(context)), m_index(&index) {
+    require_store_context(m_context, index.context(), "lexical");
+}
 const MdbxStorageContext& MdbxLexicalReadParticipant::context() const noexcept { return *m_context; }
 void MdbxLexicalReadParticipant::read(
     const mdbxc::Transaction& transaction,
@@ -377,7 +399,9 @@ MdbxManifestReadParticipant::MdbxManifestReadParticipant(
     std::shared_ptr<MdbxStorageContext> context,
     const MdbxResourceManifestStorage& store,
     ResourceId resource_id
-) : m_context(std::move(context)), m_store(&store), m_resource_id(std::move(resource_id)) {}
+) : m_context(std::move(context)), m_store(&store), m_resource_id(std::move(resource_id)) {
+    require_store_context(m_context, store.context(), "manifest");
+}
 const MdbxStorageContext& MdbxManifestReadParticipant::context() const noexcept { return *m_context; }
 void MdbxManifestReadParticipant::read(
     const mdbxc::Transaction& transaction,

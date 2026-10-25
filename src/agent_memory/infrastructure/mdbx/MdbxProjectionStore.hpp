@@ -33,6 +33,9 @@ namespace agent_memory {
         MdbxProjectionStore(const MdbxProjectionStore&) = delete;
         MdbxProjectionStore& operator=(const MdbxProjectionStore&) = delete;
 
+        /// Returns the storage context that owns this store's tables.
+        [[nodiscard]] const MdbxStorageContext& context() const noexcept;
+
         void put(SearchProjection projection) override;
 
         /// \brief Applies one projection row through a coordinator-owned transaction.

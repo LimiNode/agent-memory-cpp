@@ -624,12 +624,42 @@ int main() {
         MdbxCanonicalContentStore foreign_canonical{
             std::move(foreign_canonical_options)
         };
-        MdbxCanonicalReadParticipant mismatched_canonical{
-            complete_context, foreign_canonical, DocumentId{"complete-document"}
-        };
-        auto mismatched_scope = MdbxPublicationReadScope::begin(complete_context);
+        if(!foreign_canonical.create_document(CanonicalDocumentRevision{
+                DocumentId{"complete-document"},
+                0,
+                {},
+                {ContentBlock{
+                    ContentBlockId{"complete-block"},
+                    1,
+                    ContentBlockKind::Paragraph,
+                    std::nullopt,
+                    "foreign baseline"
+                }}
+            })) {
+            return fail("foreign canonical fixture creation failed");
+        }
+        if(!foreign_canonical.commit(CanonicalEditRequest{
+                DocumentId{"complete-document"},
+                0,
+                {ReplaceBlockText{ContentBlockId{"complete-block"}, "foreign body"}}
+            }).succeeded()) {
+            return fail("foreign canonical target revision creation failed");
+        }
+        const auto foreign_document = foreign_canonical.read_current(
+            DocumentId{"complete-document"}
+        );
+        if(!foreign_document || foreign_document->revision != 1
+            || foreign_document->blocks.front().text != "foreign body") {
+            return fail(
+                "foreign canonical fixture must contain the same target identity"
+            );
+        }
         bool rejected_before_finish = false;
         try {
+            MdbxCanonicalReadParticipant mismatched_canonical{
+                complete_context, foreign_canonical, DocumentId{"complete-document"}
+            };
+            auto mismatched_scope = MdbxPublicationReadScope::begin(complete_context);
             mismatched_scope.read(complete_frontier);
             mismatched_scope.read(mismatched_canonical);
             mismatched_scope.read(complete_unit_read);
@@ -645,7 +675,10 @@ int main() {
         std::error_code foreign_cleanup;
         std::filesystem::remove(foreign_database, foreign_cleanup);
         if(!rejected_before_finish) {
-            return fail("cross-context storage participant must fail closed");
+            return fail(
+                "cross-context storage participant with a populated foreign store "
+                "must fail closed"
+            );
         }
     }
     {

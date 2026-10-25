@@ -708,6 +708,10 @@ MdbxCanonicalContentStore::MdbxCanonicalContentStore(MdbxCanonicalContentStoreOp
 
 MdbxCanonicalContentStore::~MdbxCanonicalContentStore() = default;
 
+const MdbxStorageContext& MdbxCanonicalContentStore::context() const noexcept {
+    return *m_impl->context;
+}
+
 bool MdbxCanonicalContentStore::create_document(CanonicalDocumentRevision initial) {
     return create_document_impl(std::move(initial), std::nullopt);
 }

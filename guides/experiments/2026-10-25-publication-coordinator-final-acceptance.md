@@ -22,10 +22,13 @@ token content is equivalent to the projection body, nor that arbitrary query
 token partitions are complete. A token-content binding would require a separate
 persisted digest contract and is not silently inferred from matching IDs.
 
-The fixture also constructs a read participant with context A and an underlying
-canonical store from context B. The read either rejects the mixed transaction
-or completes without `TargetExact`; the result cannot expose a cross-context
-observation as authoritative.
+The fixture also constructs a populated canonical store in context B with the
+same document identity and revision as the target in context A. A participant
+that claims context A while holding that store is rejected at construction by
+the connection-identity binding check. This makes the negative result
+independent of a missing document in the foreign store; a foreign document is
+present and readable through its own context, but cannot be used as evidence
+inside A's pinned scope.
 
 ## Implemented
 
@@ -38,6 +41,7 @@ observation as authoritative.
 - `TargetExact` evidence checks for all persisted receipt/binding and target
   rows;
 - close/reopen and negative conformance fixtures;
+- connection-identity binding for every concrete read participant;
 - explicit documentation of the target-level, identity-only lexical boundary.
 
 ## Not implemented

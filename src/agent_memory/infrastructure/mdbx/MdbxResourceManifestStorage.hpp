@@ -54,6 +54,9 @@ struct MdbxManifestPublicationGuard final {
             const MdbxResourceManifestStorage&
         ) = delete;
 
+        /// Returns the storage context that owns this store's tables.
+        [[nodiscard]] const MdbxStorageContext& context() const noexcept;
+
         MdbxResourceManifestStorage(MdbxResourceManifestStorage&& other) noexcept;
         MdbxResourceManifestStorage& operator=(
             MdbxResourceManifestStorage&& other

@@ -54,6 +54,9 @@ namespace agent_memory {
         MdbxKnowledgeUnitStore(const MdbxKnowledgeUnitStore&) = delete;
         MdbxKnowledgeUnitStore& operator=(const MdbxKnowledgeUnitStore&) = delete;
 
+        /// Returns the storage context that owns this store's tables.
+        [[nodiscard]] const MdbxStorageContext& context() const noexcept;
+
         void upsert(KnowledgeUnitEnvelope envelope) override;
 
         [[nodiscard]] bool erase(const KnowledgeUnitId& id) override;

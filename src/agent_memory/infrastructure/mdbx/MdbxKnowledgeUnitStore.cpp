@@ -1148,6 +1148,12 @@ namespace agent_memory {
             return next;
         }
 
+    public:
+        [[nodiscard]] const MdbxStorageContext& context() const noexcept {
+            return *m_context;
+        }
+
+    private:
         std::string m_prefix;
         std::shared_ptr<MdbxStorageContext> m_context;
         mdbxc::KeyValueTable<std::string, std::string> m_units;
@@ -1164,6 +1170,10 @@ namespace agent_memory {
         : m_impl(std::make_unique<Impl>(std::move(options))) {}
 
     MdbxKnowledgeUnitStore::~MdbxKnowledgeUnitStore() = default;
+
+    const MdbxStorageContext& MdbxKnowledgeUnitStore::context() const noexcept {
+        return m_impl->context();
+    }
 
     void MdbxKnowledgeUnitStore::upsert(KnowledgeUnitEnvelope envelope) {
         m_impl->upsert(std::move(envelope));
