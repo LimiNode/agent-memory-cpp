@@ -412,6 +412,7 @@ void test_faults_and_corruption(
     auto clean_segment = original_segment_value;
     table.insert_or_assign(original_segment_key, clean_segment, restore_clean_txn);
     restore_clean_txn.commit();
+    index.set_failure_injection_for_testing(MdbxSegmentedLexicalIndexFaultPoint::None);
     index.clear();
     auto stale_txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
     table.insert_or_assign(original_segment_key, original_segment_value, stale_txn);
