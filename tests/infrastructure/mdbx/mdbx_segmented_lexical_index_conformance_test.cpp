@@ -406,6 +406,20 @@ void test_faults_and_corruption(
         rejected = true;
     }
     require(rejected, "corrupted segment row was not rejected");
+
+    auto restore_clean_txn = context->connection()->transaction(
+        mdbxc::TransactionMode::WRITABLE);
+    auto clean_segment = original_segment_value;
+    table.insert_or_assign(original_segment_key, clean_segment, restore_clean_txn);
+    restore_clean_txn.commit();
+    index.clear();
+    auto stale_txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    table.insert_or_assign(original_segment_key, original_segment_value, stale_txn);
+    stale_txn.commit();
+    rejected = false;
+    try { index.clear(); }
+    catch(const std::runtime_error&) { rejected = true; }
+    require(rejected, "clear accepted stale derived rows in an empty namespace");
 }
 
 } // namespace
