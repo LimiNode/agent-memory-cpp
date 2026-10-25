@@ -69,6 +69,7 @@ add_library(agent_memory STATIC
     src/agent_memory/index/VectorIndex.cpp
     src/agent_memory/lexical/ExactLexicalIndex.cpp
     src/agent_memory/lexical/FlatLexicalIndex.cpp
+    src/agent_memory/lexical/LexicalSegmentEncoding.cpp
     src/agent_memory/lexical/IChunkEnricher.cpp
     src/agent_memory/lexical/ILexicalIndex.cpp
     src/agent_memory/lexical/IQueryAnalyzer.cpp
