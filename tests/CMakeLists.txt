@@ -766,6 +766,17 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         COMMAND agent_memory_mdbx_segmented_lexical_index_test
     )
 
+    add_executable(agent_memory_mdbx_segmented_lexical_index_conformance_test
+        infrastructure/mdbx/mdbx_segmented_lexical_index_conformance_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_segmented_lexical_index_conformance_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_segmented_lexical_index_conformance_test
+        COMMAND agent_memory_mdbx_segmented_lexical_index_conformance_test
+    )
+
     add_executable(agent_memory_mdbx_resource_importer_test
         infrastructure/mdbx/mdbx_resource_importer_test.cpp
     )
