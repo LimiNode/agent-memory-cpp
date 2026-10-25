@@ -615,6 +615,40 @@ int main() {
         );
     }
     {
+        const auto foreign_database = path();
+        auto foreign_context = MdbxStorageContext::open(
+            foreign_database.string(), false, 48
+        );
+        MdbxCanonicalContentStoreOptions foreign_canonical_options;
+        foreign_canonical_options.context = foreign_context;
+        MdbxCanonicalContentStore foreign_canonical{
+            std::move(foreign_canonical_options)
+        };
+        MdbxCanonicalReadParticipant mismatched_canonical{
+            complete_context, foreign_canonical, DocumentId{"complete-document"}
+        };
+        auto mismatched_scope = MdbxPublicationReadScope::begin(complete_context);
+        bool rejected_before_finish = false;
+        try {
+            mismatched_scope.read(complete_frontier);
+            mismatched_scope.read(mismatched_canonical);
+            mismatched_scope.read(complete_unit_read);
+            mismatched_scope.read(complete_projection_read);
+            mismatched_scope.read(complete_lexical_read);
+            mismatched_scope.read(complete_manifest_read);
+            mismatched_scope.finish();
+            rejected_before_finish = mismatched_scope.observation().completion
+                != MdbxPublicationReadCompletion::TargetExact;
+        } catch(const std::exception&) {
+            rejected_before_finish = true;
+        }
+        std::error_code foreign_cleanup;
+        std::filesystem::remove(foreign_database, foreign_cleanup);
+        if(!rejected_before_finish) {
+            return fail("cross-context storage participant must fail closed");
+        }
+    }
+    {
         auto wrong_unit_scope = MdbxPublicationReadScope::begin(complete_context);
         MdbxKnowledgeUnitReadParticipant wrong_unit{
             complete_context, complete_units, KnowledgeUnitId{99}
@@ -763,6 +797,37 @@ int main() {
     if(read_complete_target() != MdbxPublicationReadCompletion::TargetExact) {
         return fail("restored target lexical membership must recover TargetExact");
     }
+    if(!complete_lexical.erase(KnowledgeUnitId{1})) {
+        return fail("lexical token-content mutation erase failed");
+    }
+    complete_lexical.upsert(FlatLexicalUnitInput{
+        scope,
+        KnowledgeUnitId{1},
+        ProjectionKind::Original,
+        ResourceId{"resource-read"},
+        1,
+        1,
+        complete_projection_version,
+        {"wrong", "tokens"}
+    });
+    if(read_complete_target() != MdbxPublicationReadCompletion::TargetExact) {
+        return fail(
+            "TargetExact must remain identity-level when token content is not bound"
+        );
+    }
+    if(!complete_lexical.erase(KnowledgeUnitId{1})) {
+        return fail("lexical token-content mutation cleanup failed");
+    }
+    complete_lexical.upsert(FlatLexicalUnitInput{
+        scope,
+        KnowledgeUnitId{1},
+        ProjectionKind::Original,
+        ResourceId{"resource-read"},
+        1,
+        1,
+        complete_projection_version,
+        {"pinned", "body"}
+    });
 
     complete_manifests.upsert_manifest(
         manifest_value(ResourceManifestPayloadVersion::V6, ResourceManifestState::ErasePending)
