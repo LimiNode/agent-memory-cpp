@@ -1,24 +1,92 @@
 {
+  "schema_version": 2,
   "family": "incremental_segmented_point_update_v2",
   "date": "2026-10-26",
   "pr": "#559",
-  "head": "corrective-pass",
+  "head": "11afdc5c361c55c654aa62b6ec99e4e086ba7866",
   "runner": "agent_memory_segmented_lexical_benchmark",
-  "arguments": {
-    "runs": [
-      ["128", "1", "<temp>/bench128", "1"],
-      ["512", "1", "<temp>/bench512", "1"]
-    ],
-    "backends": ["flat-reference", "flat-v2", "segmented-v1", "segmented-v2"],
-    "workloads": ["unique+anchor", "shared-hot", "zipf-like", "mixed-utf8", "no-op"],
+  "build": {
+    "type": "Release",
+    "compiler": "MinGW-Builds g++ 15.2.0 x86_64-posix-seh",
+    "os": "Windows 11 Pro",
+    "cpu": "Intel Xeon E5-2696 v3 @ 2.30GHz",
+    "mdbx_config": "default",
     "diagnostics": true
+  },
+  "commands": [
+    "agent_memory_segmented_lexical_benchmark.exe 128 5 <temp>/control-128 1 <workload>",
+    "agent_memory_segmented_lexical_benchmark.exe 512 5 <temp>/control-512 1 <workload>",
+    "agent_memory_segmented_lexical_benchmark.exe 128 5 <temp>/isolated-128 1 isolated-sparse-replacement",
+    "agent_memory_segmented_lexical_benchmark.exe 512 5 <temp>/isolated-512 1 isolated-sparse-replacement",
+    "agent_memory_segmented_lexical_benchmark.exe 2048 5 <temp>/isolated-2048 1 isolated-sparse-replacement"
+  ],
+  "phases": [
+    "initialization",
+    "initial_ingestion",
+    "single_unit_replacement",
+    "erase",
+    "no_op",
+    "snapshot",
+    "close_reopen"
+  ],
+  "raw_inputs": [
+    {
+      "path": "2026-10-26-incremental-point-update-control.raw.tsv",
+      "rows": 200,
+      "sha256": "006265aa56674a9567366e533380592c212102da4ce86def454c89b590992d65"
+    },
+    {
+      "path": "2026-10-26-incremental-point-update-isolated.raw.tsv",
+      "rows": 45,
+      "sha256": "30448da502ee5de26ed0d6365604c9a972a10c9f35f11c86bb22cc00c0aa3216"
+    }
+  ],
+  "matched_backends": ["flat-reference", "flat-v2", "segmented-v1", "segmented-v2"],
+  "workloads": [
+    "unique+anchor",
+    "shared-hot",
+    "isolated-sparse-replacement",
+    "zipf-like",
+    "mixed-utf8",
+    "no-op"
+  ],
+  "repeats": 5,
+  "isolated_sparse_v2_p50": {
+    "128": {
+      "point_update_ms": 6.9648,
+      "update_range_rows_visited": 4,
+      "update_decoded_postings": 2,
+      "update_bytes_decoded": 1374,
+      "update_touched_tokens": 3
+    },
+    "512": {
+      "point_update_ms": 8.118,
+      "update_range_rows_visited": 4,
+      "update_decoded_postings": 2,
+      "update_bytes_decoded": 1374,
+      "update_touched_tokens": 3
+    },
+    "2048": {
+      "point_update_ms": 8.2106,
+      "update_range_rows_visited": 4,
+      "update_decoded_postings": 2,
+      "update_bytes_decoded": 1374,
+      "update_touched_tokens": 3
+    }
   },
   "checks": {
     "physical_rows_reopened": true,
     "final_logical_unit_count_preserved": true,
     "update_diagnostics_scoped": true,
+    "unique_backend_workload_repeat": true,
+    "p50_and_spread_recorded": true,
     "namespace_scan_for_metadata_getters": false,
     "interpretation": "directional; counters are adapter operations, not MDBX page writes"
   },
+  "limitations": [
+    "segmented-v1 is omitted only for the anchor-free isolated-sparse-replacement fixture because its legacy row writer rejects that shape",
+    "timings are Windows Release wall-clock measurements; cache state and physical page writes are not inferred",
+    "the receipt is evidence for the lexical-local adapter and does not claim coordinator or cross-store atomic publication"
+  ],
   "status": "replayable"
 }
