@@ -6,10 +6,12 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import io
 import json
 import math
 import pathlib
 import statistics
+import tempfile
 from collections import defaultdict
 
 
@@ -105,20 +107,55 @@ def run_self_test() -> int:
     row = {field: "0" for field in INT_FIELDS + FLOAT_FIELDS}
     row.update({"backend": "flat-v2", "workload": "no-op", "units": "1", "repeat": "0"})
     validate_rows([row])
+    def expect_failure(callback, message: str) -> None:
+        try:
+            callback()
+        except SystemExit:
+            return
+        fail(f"self-test accepted {message}")
+
     for field, value in (("point_update_ms", "nan"), ("write_ms", "inf"),
                          ("repeat", "not-an-int")):
         broken = dict(row)
         broken[field] = value
-        try:
-            validate_rows([broken])
-        except SystemExit:
-            continue
-        fail(f"self-test accepted malformed {field}")
-    try:
-        validate_rows([row, dict(row)])
-    except SystemExit:
-        return 0
-    fail("self-test accepted duplicate rows")
+        expect_failure(lambda broken=broken: validate_rows([broken]), f"malformed {field}")
+    expect_failure(lambda: validate_rows([row, dict(row)]), "duplicate rows")
+    fieldnames = ["backend", "workload"] + list(INT_FIELDS) + list(FLOAT_FIELDS)
+    stream = io.StringIO()
+    writer = csv.DictWriter(stream, fieldnames=fieldnames, delimiter="\t")
+    writer.writeheader()
+    writer.writerow(row)
+    raw = stream.getvalue().encode("utf-8")
+    with tempfile.TemporaryDirectory(prefix="segmented-receipt-self-test-") as directory:
+        root = pathlib.Path(directory)
+        input_path = root / "control.raw.tsv"
+        receipt_path = root / "receipt.json"
+        input_path.write_bytes(raw)
+        receipt = {
+            "raw_inputs": [{"path": input_path.name, "rows": 1,
+                            "sha256": hashlib.sha256(raw).hexdigest()}],
+            "matrix": {"control_units": [1], "control_workloads": ["no-op"],
+                       "control_backends": ["flat-v2"], "repeats": 1},
+        }
+        receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+        validate_receipt([row], raw, input_path, receipt_path)
+        missing = dict(receipt)
+        missing["matrix"] = dict(receipt["matrix"], control_units=[1, 2])
+        receipt_path.write_text(json.dumps(missing), encoding="utf-8")
+        expect_failure(lambda: validate_receipt([row], raw, input_path, receipt_path),
+                       "missing matrix row")
+        unexpected = dict(receipt)
+        unexpected["matrix"] = dict(receipt["matrix"], control_backends=["bogus"])
+        receipt_path.write_text(json.dumps(unexpected), encoding="utf-8")
+        expect_failure(lambda: validate_receipt([row], raw, input_path, receipt_path),
+                       "unexpected backend")
+        corrupted = dict(receipt)
+        corrupted["raw_inputs"] = [{"path": input_path.name, "rows": 1,
+                                     "sha256": "0" * 64}]
+        receipt_path.write_text(json.dumps(corrupted), encoding="utf-8")
+        expect_failure(lambda: validate_receipt([row], raw, input_path, receipt_path),
+                       "corrupted hash")
+    return 0
 
 
 def main() -> int:

@@ -3,7 +3,7 @@
   "family": "incremental_segmented_point_update_v2",
   "date": "2026-10-26",
   "pr": "#559",
-  "head": "11afdc5c361c55c654aa62b6ec99e4e086ba7866",
+  "head": "628d4664f4ea0ab78aeb17c625bc1aebc2c12849",
   "runner": "agent_memory_segmented_lexical_benchmark",
   "build": {
     "type": "Release",
@@ -33,12 +33,12 @@
     {
       "path": "2026-10-26-incremental-point-update-control.raw.tsv",
       "rows": 200,
-      "sha256": "006265aa56674a9567366e533380592c212102da4ce86def454c89b590992d65"
+      "sha256": "4611dc8cc8d94fe75e2295fda6cfff25a0807127660b9e82cf57a30936513936"
     },
     {
       "path": "2026-10-26-incremental-point-update-isolated.raw.tsv",
       "rows": 45,
-      "sha256": "30448da502ee5de26ed0d6365604c9a972a10c9f35f11c86bb22cc00c0aa3216"
+      "sha256": "5df5cf83175be18f65d2549788384b2c1bd9252d05f20e06e68ed62aeda66752"
     }
   ],
   "matched_backends": ["flat-reference", "flat-v2", "segmented-v1", "segmented-v2"],
@@ -51,28 +51,41 @@
     "no-op"
   ],
   "repeats": 5,
+  "matrix": {
+    "control_units": [128, 512],
+    "isolated_units": [128, 512, 2048],
+    "repeats": 5,
+    "control_workloads": ["unique+anchor", "shared-hot", "zipf-like", "mixed-utf8", "no-op"],
+    "control_backends": ["flat-reference", "flat-v2", "segmented-v1", "segmented-v2"],
+    "isolated_backends": ["flat-reference", "flat-v2", "segmented-v2"]
+  },
   "isolated_sparse_v2_p50": {
     "128": {
-      "point_update_ms": 6.9648,
+      "point_update_ms": 6.3036,
       "update_range_rows_visited": 4,
       "update_decoded_postings": 2,
       "update_bytes_decoded": 1374,
       "update_touched_tokens": 3
     },
     "512": {
-      "point_update_ms": 8.118,
+      "point_update_ms": 7.2585,
       "update_range_rows_visited": 4,
       "update_decoded_postings": 2,
       "update_bytes_decoded": 1374,
       "update_touched_tokens": 3
     },
     "2048": {
-      "point_update_ms": 8.2106,
+      "point_update_ms": 9.519,
       "update_range_rows_visited": 4,
       "update_decoded_postings": 2,
       "update_bytes_decoded": 1374,
       "update_touched_tokens": 3
     }
+  },
+  "isolated_flat_v2_p50": {
+    "128": 1.8089,
+    "512": 5.1819,
+    "2048": 19.9465
   },
   "checks": {
     "physical_rows_reopened": true,
