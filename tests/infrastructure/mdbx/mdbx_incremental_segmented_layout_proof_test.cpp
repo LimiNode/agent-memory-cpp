@@ -321,7 +321,7 @@ struct MutationTelemetry final {
     std::size_t insert_or_assign_calls = 0;
     std::size_t erase_calls = 0;
     std::vector<std::string> mutated_keys;
-    bool scanned_full_logical_index = false;
+    bool uses_full_logical_rebuild = false;
 };
 
 class ProofStore final {
@@ -399,7 +399,7 @@ public:
         const std::optional<FlatLexicalExpectedState>& expected = std::nullopt
     ) {
         m_telemetry = {};
-        m_telemetry.scanned_full_logical_index = true;
+        m_telemetry.uses_full_logical_rebuild = true;
         auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
         auto state = read_state(txn);
         auto before = rebuild(state);
@@ -463,7 +463,6 @@ public:
                         + std::to_string(source.segment_id),
                     encoded.bytes, txn);
             }
-            insert_row(kPartitionMeta, token_suffix(token), serialize_u64(generation), txn);
             insert_row(kStats, token_suffix(token), serialize_stats(state.stats[token]), txn);
             insert_row(kWitness, token_suffix(token),
                 std::string(reinterpret_cast<const char*>(witness.data()), witness.size()), txn);
@@ -844,13 +843,13 @@ void test_local_partition_update_and_recovery(const std::filesystem::path& path)
     const auto sparse_mutations = store.last_mutations();
     require(sparse_mutations.insert_or_assign_calls != 0
         && sparse_mutations.erase_calls != 0
-        && sparse_mutations.scanned_full_logical_index,
+        && sparse_mutations.uses_full_logical_rebuild,
         "proof sparse update telemetry is incomplete");
     std::cout << "sparse_kv_mutations insert_or_assign="
         << sparse_mutations.insert_or_assign_calls
         << " erase=" << sparse_mutations.erase_calls
-        << " full_logical_scan="
-        << (sparse_mutations.scanned_full_logical_index ? 1 : 0) << '\n';
+        << " full_logical_rebuild="
+        << (sparse_mutations.uses_full_logical_rebuild ? 1 : 0) << '\n';
     store.validate();
     const auto after_rows = store.segment_rows();
     std::size_t changed_rows = 0;
@@ -880,9 +879,19 @@ void test_local_partition_update_and_recovery(const std::filesystem::path& path)
         "removed partition generation did not advance");
     const auto untouched_segment_prefix = std::string{kSegment}
         + std::string(1, kSeparator) + std::to_string(old_untouched->value()) + ":";
+    const auto untouched_partition_meta_key = row_key(
+        kPartitionMeta, token_suffix(*old_untouched));
+    const auto untouched_stats_key = row_key(kStats, token_suffix(*old_untouched));
+    const auto untouched_witness_key = row_key(kWitness, token_suffix(*old_untouched));
     for(const auto& key : sparse_mutations.mutated_keys) {
-        require(key.find(untouched_segment_prefix) == std::string::npos,
-            "sparse update mutated an unrelated partition row");
+        require(key.compare(0, untouched_segment_prefix.size(), untouched_segment_prefix) != 0,
+            "sparse update mutated an unrelated segment row");
+        require(key != untouched_partition_meta_key,
+            "sparse update mutated an unrelated partition-meta row");
+        require(key != untouched_stats_key,
+            "sparse update mutated an unrelated stats row");
+        require(key != untouched_witness_key,
+            "sparse update mutated an unrelated witness row");
     }
 
     store.upsert(unit(scope, 4, 1, {"ephemeral"}));

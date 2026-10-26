@@ -56,9 +56,24 @@ silently changing the existing rows.
 
 The proof also records test-only KV mutation calls. A sparse update has no
 `insert_or_assign` or `erase` call for an unrelated partition, while the
-telemetry explicitly records that the current algorithm still scans and
-rebuilds the full logical index. Byte identity alone is not treated as proof
-of zero physical mutation.
+telemetry explicitly records that the current algorithm still performs a full
+logical rebuild. The receipt field is named `full_logical_rebuild` to describe
+that algorithm choice rather than claim that a scan counter was measured.
+Byte identity alone is not treated as proof of zero physical mutation; the
+proof checks segment, partition-meta, stats, and witness key families.
+
+### Corrective receipt
+
+The corrective run on the MinGW Release build reports:
+
+```text
+sparse_kv_mutations insert_or_assign=16 erase=4 full_logical_rebuild=1
+```
+
+The reduced `insert_or_assign` count reflects the removal of the duplicate
+`partition-meta` write. The `full_logical_rebuild=1` field is an algorithm
+selection marker for this proof store, not a measured row-scan count; the
+remaining rebuild is still global O(N) in the number of stored units.
 
 ## Deliberately out of scope
 
