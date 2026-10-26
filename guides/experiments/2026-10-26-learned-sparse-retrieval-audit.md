@@ -58,9 +58,19 @@ comparison is accepted:
 
 The normal operating mode is **frozen model → inference at insertion →
 persisted derived weights → cheap query lookup**. Re-training during insertion
-is out of scope. If a candidate requires query-time neural inference, it is a
-separate latency arm and cannot be compared as if it were an inverted-index
-scorer.
+is out of scope. Query-time behavior is a separate contract:
+
+| Mode | Document side | Query side | Candidates / accounting |
+| --- | --- | --- | --- |
+| `document_only_impact` | model produces and persists document-term impacts | ordinary project tokenizer; no neural query encoder | DeepCT and DeepImpact when the published checkpoint exposes document-side impacts; query encoding cost is zero only for the neural component |
+| `dual_side_sparse` | model produces sparse document weights | the same model family encodes every query into the compatible vocabulary | BGE-M3 sparse and uniCOIL variants that require query encoding; report model load, per-query encoding, and posting search separately |
+| `expanded_sparse` | model may add terms absent from source text | query may be lexical or model-encoded, but the choice is explicit | SPLADE-style arms; report expansion rate and never compare token IDs as if they were BM25 IDs |
+
+No candidate may be labelled document-only merely because its query encoder is
+omitted from a prototype. The receipt must state whether a query model is
+required, identify its checkpoint/tokenizer, and include its warm and cold cost.
+If a dual-side arm cannot run its query encoder, the result is unavailable, not
+a zero-cost query measurement.
 
 ## Artifact and posting contract
 
@@ -103,9 +113,9 @@ The minimum arms are:
 
 1. exhaustive project BM25 (mandatory relevance and ordering oracle);
 2. BM25+ and BM25L from the classical reference arm;
-3. DeepImpact or DeepCT document-side impacts;
-4. uniCOIL document/query weighting;
-5. BGE-M3 sparse for RU/EN coverage;
+3. DeepImpact or DeepCT `document_only_impact`;
+4. uniCOIL in an explicitly selected document-only or dual-side mode;
+5. BGE-M3 `dual_side_sparse` for RU/EN coverage;
 6. SPLADE only if its model terms pass the license gate;
 7. optional RRF fusion, reported separately from each lexical arm.
 
