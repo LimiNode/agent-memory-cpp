@@ -67,6 +67,11 @@ repeats, p50/min/max/spread for each phase, and records the raw-input SHA-256.
 Timing and map growth remain directional: counters are adapter operations, not
 physical MDBX page writes.
 
+`flat-reference` is an in-memory correctness/reference backend, but it now
+executes the same measured replacement, erase, insert and no-op operation as
+the durable backends. Its update timing is therefore valid as an in-memory
+control only; it is not compared as a durable MDBX latency claim.
+
 One local Debug/MinGW smoke run (`16` units, one repeat, diagnostics enabled)
 exercised the control workloads and emitted non-zero point-read, range-row,
 mutation, byte, touched-token and decoded-posting counters for `seg-v2`. This

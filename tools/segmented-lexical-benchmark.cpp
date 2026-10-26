@@ -151,6 +151,42 @@ void run_flat_reference(
     if(!probe) throw std::runtime_error("benchmark probe token missing");
     static_cast<void>(index.postings(*probe));
     const auto read_done = Clock::now();
+    const auto update_started = Clock::now();
+    const auto original = unit(0, workload);
+    if(workload == "unique+anchor" || workload == "shared-hot") {
+        auto replacement = original;
+        replacement.resource_generation = 2;
+        replacement.unit_revision = 2;
+        replacement.projection_version = ProjectionVersionRef{2, 2, 1, "benchmark-v2"};
+        replacement.normalized_tokens.push_back("point-update");
+        index.upsert(replacement, FlatLexicalExpectedState{
+            KnowledgeUnitId{1}, 1, 1,
+            ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+    } else if(workload == "isolated-sparse-replacement") {
+        auto replacement = original;
+        replacement.resource_generation = 2;
+        replacement.unit_revision = 2;
+        replacement.projection_version = ProjectionVersionRef{2, 2, 1, "benchmark-v2"};
+        replacement.normalized_tokens = {"sp-0", "sr"};
+        index.upsert(replacement, FlatLexicalExpectedState{
+            KnowledgeUnitId{1}, 1, 1,
+            ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+    } else if(workload == "zipf-like") {
+        static_cast<void>(index.erase(KnowledgeUnitId{1}));
+    } else if(workload == "no-op") {
+        index.upsert(original, FlatLexicalExpectedState{
+            KnowledgeUnitId{1}, 1, 1,
+            ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+    } else {
+        index.upsert(unit(units, workload));
+    }
+    const auto update_done = Clock::now();
+    if(workload == "zipf-like") {
+        index.upsert(original);
+    } else if(workload == "mixed-utf8") {
+        static_cast<void>(index.erase(
+            KnowledgeUnitId{static_cast<std::uint64_t>(units + 1U)}));
+    }
     std::cout << "flat-reference\t" << workload << '\t' << units << '\t' << repeat
               << "\t0\t0\t" << milliseconds(write_done - started)
               << '\t' << milliseconds(read_done - write_done)
@@ -158,7 +194,9 @@ void run_flat_reference(
               << index.collection_stats().unit_count
               << '\t' << index.collection_stats().total_token_count
               ;
-    for(int field = 0; field != 23; ++field) std::cout << "\t0";
+    for(int field = 0; field != 12; ++field) std::cout << "\t0";
+    std::cout << '\t' << milliseconds(update_done - update_started);
+    for(int field = 0; field != 10; ++field) std::cout << "\t0";
     std::cout << '\n';
 }
 

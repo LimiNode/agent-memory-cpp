@@ -2225,6 +2225,13 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --binary $<TARGET_FILE:agent_memory_segmented_lexical_benchmark>
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+        add_test(
+            NAME agent_memory_segmented_lexical_benchmark_receipt_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/summarize-segmented-lexical-benchmark.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
     endif()
     add_subdirectory(tests)
 endif()

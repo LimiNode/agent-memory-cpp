@@ -34,6 +34,7 @@ constexpr std::string_view kCollectionStats = "collection-stats";
 constexpr std::string_view kWitness = "witness";
 constexpr std::string_view kHighWater = "high-water";
 constexpr std::string_view kPartitionMeta = "partition-meta";
+constexpr std::uint32_t kPartitionMetadataVersion = 1U;
 
 std::string sanitize_table_part(std::string value) {
     if(value.empty()) return "agent_memory";
@@ -201,6 +202,48 @@ bool read_epoch(Reader& reader, LexicalStatisticsEpoch& epoch) {
     if(!reader.raw(value.data(), value.size())) return false;
     epoch = LexicalStatisticsEpoch{value};
     return true;
+}
+
+std::string serialize_partition_metadata(
+    const TokenId token_id,
+    const LexicalIndexDescriptor& descriptor,
+    const std::uint64_t generation
+) {
+    if(token_id.empty() || generation == 0U) {
+        throw std::invalid_argument("invalid segmented partition metadata");
+    }
+    std::string bytes;
+    append_u32(bytes, kPartitionMetadataVersion);
+    append_u32(bytes, descriptor.supported_posting_layout_versions.front());
+    append_epoch(bytes, descriptor.ref.statistics_epoch);
+    append_u64(bytes, token_id.value());
+    append_u64(bytes, generation);
+    return bytes;
+}
+
+std::uint64_t deserialize_partition_metadata(
+    std::string_view bytes,
+    const TokenId expected_token_id,
+    const LexicalIndexDescriptor& descriptor
+) {
+    Reader reader{bytes};
+    std::uint32_t version = 0;
+    std::uint32_t layout = 0;
+    LexicalStatisticsEpoch epoch{};
+    std::uint64_t token_id = 0;
+    std::uint64_t generation = 0;
+    if(!reader.u32(version) || version != kPartitionMetadataVersion
+        || !reader.u32(layout)
+        || layout != descriptor.supported_posting_layout_versions.front()
+        || !read_epoch(reader, epoch)
+        || epoch != descriptor.ref.statistics_epoch
+        || !reader.u64(token_id)
+        || token_id != expected_token_id.value()
+        || !reader.u64(generation)
+        || generation == 0U || reader.remaining() != 0) {
+        throw std::runtime_error("segmented lexical partition metadata failed admission");
+    }
+    return generation;
 }
 
 std::string serialize_descriptor(const LexicalIndexDescriptor& descriptor) {
@@ -487,13 +530,18 @@ void validate_incremental_derived_rows(
     std::size_t active_token_count = 0;
     for(const auto& entry : index.token_dictionary_for_storage()) {
         const auto token_id = entry.second;
+        const auto generation = state.partition_generations.find(token_id);
+        if(generation == state.partition_generations.end()
+            || generation->second == 0U) {
+            throw std::runtime_error(
+                "incremental segmented partition metadata is missing");
+        }
         const auto expected_postings = index.postings(token_id);
         if(expected_postings.empty()) continue;
         ++active_token_count;
         const auto actual = received.find(token_id);
         const auto witness = state.witnesses.find(token_id);
         const auto stats = state.token_stats.find(token_id);
-        const auto generation = state.partition_generations.find(token_id);
         if(actual == received.end() || witness == state.witnesses.end()
             || stats == state.token_stats.end()
             || generation == state.partition_generations.end()) {
@@ -531,6 +579,17 @@ void validate_incremental_derived_rows(
         if(index.postings(entry.first).empty()) {
             throw std::runtime_error(
                 "incremental segmented inactive partition is still published");
+        }
+    }
+    for(const auto& entry : state.partition_generations) {
+        const auto known = std::any_of(
+            state.dictionary.begin(), state.dictionary.end(),
+            [&entry](const auto& dictionary_entry) {
+                return dictionary_entry.second == entry.first;
+            });
+        if(!known) {
+            throw std::runtime_error(
+                "incremental segmented orphan partition metadata");
         }
     }
     if(received.size() != active_token_count
@@ -791,9 +850,14 @@ public:
                             "segmented lexical partition metadata is unsupported");
                     }
                     std::uint64_t token_id = 0;
-                    if(!parse_canonical_u64(suffix, token_id) || token_id == 0U
-                        || !state.partition_generations.emplace(
-                            TokenId{token_id}, deserialize_u64(value)).second) {
+                    if(!parse_canonical_u64(suffix, token_id) || token_id == 0U) {
+                        throw std::runtime_error(
+                            "segmented lexical partition metadata failed admission");
+                    }
+                    const auto parsed_generation = deserialize_partition_metadata(
+                        value, TokenId{token_id}, descriptor);
+                    if(!state.partition_generations.emplace(
+                        TokenId{token_id}, parsed_generation).second) {
                         throw std::runtime_error(
                             "segmented lexical partition metadata failed admission");
                     }
@@ -1014,12 +1078,19 @@ public:
     template<typename Transaction>
     IncrementalPartition read_incremental_partition(
         const TokenId token_id,
-        Transaction& txn
+        Transaction& txn,
+        const bool allow_new_token = false
     ) const {
         IncrementalPartition result;
         const auto metadata = find_row(
             row_key(prefix, kPartitionMeta, std::to_string(token_id.value())), txn);
-        if(metadata) result.generation = deserialize_u64(*metadata);
+        if(metadata) {
+            result.generation = deserialize_partition_metadata(
+                *metadata, token_id, descriptor);
+        } else if(!allow_new_token) {
+            throw std::runtime_error(
+                "incremental segmented partition metadata is missing");
+        }
         const auto witness = find_row(
             row_key(prefix, kWitness, std::to_string(token_id.value())), txn);
         std::optional<std::array<std::uint8_t, 32>> authoritative_witness;
@@ -1176,7 +1247,7 @@ public:
         erase_incremental_partition_rows(token_id, txn);
         insert_row(
             row_key(prefix, kPartitionMeta, std::to_string(token_id.value())),
-            serialize_u64(generation), txn);
+            serialize_partition_metadata(token_id, descriptor, generation), txn);
         if(postings.empty()) {
             erase_row(row_key(prefix, kTokenStats, std::to_string(token_id.value())), txn);
             erase_row(row_key(prefix, kWitness, std::to_string(token_id.value())), txn);
@@ -1389,7 +1460,10 @@ public:
         for(const auto& entry : new_counts) touched.insert(entry.first);
         if(diagnostics) diagnostics->touched_tokens += touched.size();
         for(const auto token_id : touched) {
-            auto partition = read_incremental_partition(token_id, txn);
+            const auto is_new_token = std::any_of(
+                new_dictionary.begin(), new_dictionary.end(),
+                [token_id](const auto& entry) { return entry.second == token_id; });
+            auto partition = read_incremental_partition(token_id, txn, is_new_token);
             const auto old_count = old_counts.find(token_id);
             const auto new_count = new_counts.find(token_id);
             const auto unit_id = input.unit_id;

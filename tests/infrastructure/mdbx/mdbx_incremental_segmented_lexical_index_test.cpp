@@ -139,6 +139,60 @@ std::string segment_key(
         + std::to_string(segment_id);
 }
 
+std::string partition_meta_key(const ScopeId& scope, const TokenId token_id) {
+    return v2_prefix(scope) + std::string(1, separator) + "partition-meta"
+        + std::string(1, separator) + std::to_string(token_id.value());
+}
+
+std::string partition_meta_value(
+    const ScopeId& scope,
+    const TokenId token_id,
+    const std::uint64_t generation
+) {
+    auto append_u32 = [](std::string& bytes, const std::uint32_t value) {
+        for(unsigned shift = 0; shift != 32U; shift += 8U) {
+            bytes.push_back(static_cast<char>((value >> shift) & 0xffU));
+        }
+    };
+    auto append_u64 = [](std::string& bytes, const std::uint64_t value) {
+        for(unsigned shift = 0; shift != 64U; shift += 8U) {
+            bytes.push_back(static_cast<char>((value >> shift) & 0xffU));
+        }
+    };
+    std::string bytes;
+    append_u32(bytes, 1U);
+    append_u32(bytes, kLexicalIncrementalSegmentLayoutVersion);
+    const auto epoch = descriptor(scope, kLexicalIncrementalSegmentLayoutVersion)
+        .ref.statistics_epoch.bytes();
+    bytes.append(reinterpret_cast<const char*>(epoch.data()), epoch.size());
+    append_u64(bytes, token_id.value());
+    append_u64(bytes, generation);
+    return bytes;
+}
+
+void erase_row(
+    const std::shared_ptr<MdbxStorageContext>& context,
+    const std::string& key
+) {
+    mdbxc::KeyValueTable<std::string, std::string> table(
+        context->connection(), "agent_memory_lexical_posting_segments");
+    auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    table.erase(key, txn);
+    txn.commit();
+}
+
+void replace_row(
+    const std::shared_ptr<MdbxStorageContext>& context,
+    const std::string& key,
+    const std::string& value
+) {
+    mdbxc::KeyValueTable<std::string, std::string> table(
+        context->connection(), "agent_memory_lexical_posting_segments");
+    auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    table.insert_or_assign(key, value, txn);
+    txn.commit();
+}
+
 enum class CorruptSegmentField : std::uint8_t {
     Scope,
     Epoch,
@@ -280,6 +334,78 @@ void test_incremental_metadata_getters(const std::filesystem::path& path) {
         "direct metadata getter returned stale state");
     require(diagnostics.range_rows_visited == 0,
         "direct metadata getter scanned the namespace");
+}
+
+void test_incremental_partition_metadata_admission(
+    const std::filesystem::path& path
+) {
+    const ScopeId scope{"scope-v2-partition-metadata"};
+    const auto run_corruption = [&](const bool inactive, const bool zero_generation,
+                                    const char* message) {
+        std::error_code error;
+        std::filesystem::remove(path, error);
+        auto context = MdbxStorageContext::open(path.string());
+        {
+            MdbxSegmentedLexicalIndex segmented{options(path, context, scope)};
+            segmented.upsert(unit(scope, 1, 1, {"retired"}));
+            const auto token_id = segmented.read_snapshot().index.find_token_id("retired");
+            require(token_id.has_value(), "partition metadata token missing");
+            if(inactive) {
+                require(segmented.erase(KnowledgeUnitId{1}),
+                    "partition metadata erase failed");
+            }
+            if(zero_generation) {
+                replace_row(context, partition_meta_key(scope, *token_id),
+                    partition_meta_value(scope, *token_id, 0));
+            } else {
+                erase_row(context, partition_meta_key(scope, *token_id));
+            }
+            const auto before = rows(context, v2_prefix(scope));
+            bool rejected = false;
+            try { static_cast<void>(segmented.read_snapshot()); }
+            catch(const std::runtime_error&) { rejected = true; }
+            require(rejected, message);
+            require(rows(context, v2_prefix(scope)) == before,
+                "partition metadata admission changed rows");
+            bool update_rejected = false;
+            try {
+                segmented.upsert(unit(scope, 1, 2, {"retired"}));
+            } catch(const std::runtime_error&) { update_rejected = true; }
+            require(update_rejected, "corrupt partition metadata accepted by upsert");
+            require(rows(context, v2_prefix(scope)) == before,
+                "corrupt partition metadata update published rows");
+        }
+        context.reset();
+        auto reopened_context = MdbxStorageContext::open(path.string());
+        MdbxSegmentedLexicalIndex reopened{options(path, reopened_context, scope)};
+        bool reopen_rejected = false;
+        try { static_cast<void>(reopened.read_snapshot()); }
+        catch(const std::runtime_error&) { reopen_rejected = true; }
+        require(reopen_rejected, "corrupt partition metadata accepted after reopen");
+    };
+    run_corruption(true, false, "inactive partition metadata absence accepted");
+    run_corruption(true, true, "inactive zero partition generation accepted");
+    run_corruption(false, false, "active partition metadata absence accepted");
+    run_corruption(false, true, "active zero partition generation accepted");
+
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    auto context = MdbxStorageContext::open(path.string());
+    MdbxSegmentedLexicalIndex segmented{options(path, context, scope)};
+    segmented.upsert(unit(scope, 1, 1, {"reactivate"}));
+    const auto token_id = segmented.read_snapshot().index.find_token_id("reactivate");
+    require(token_id.has_value(), "reactivation token missing");
+    const auto first_meta = rows(context, v2_prefix(scope)).at(
+        partition_meta_key(scope, *token_id));
+    require(segmented.erase(KnowledgeUnitId{1}), "reactivation erase failed");
+    const auto inactive_meta = rows(context, v2_prefix(scope)).at(
+        partition_meta_key(scope, *token_id));
+    require(inactive_meta != first_meta, "partition generation did not advance on erase");
+    segmented.upsert(unit(scope, 1, 2, {"reactivate"}));
+    const auto reactivated_meta = rows(context, v2_prefix(scope)).at(
+        partition_meta_key(scope, *token_id));
+    require(reactivated_meta != inactive_meta,
+        "partition generation did not advance on reactivation");
 }
 
 std::string v2_prefix(const ScopeId& scope) {
@@ -453,6 +579,7 @@ int main() {
         const auto witness_corruption = base / "agent_memory_mdbx_incremental_segmented_witness_corruption.mdbx";
         const auto contribution_corruption = base / "agent_memory_mdbx_incremental_segmented_contribution_corruption.mdbx";
         const auto getters = base / "agent_memory_mdbx_incremental_segmented_getters.mdbx";
+        const auto partition_metadata = base / "agent_memory_mdbx_incremental_segmented_partition_metadata.mdbx";
         std::error_code error;
         std::filesystem::remove(lifecycle, error);
         std::filesystem::remove(isolation, error);
@@ -468,6 +595,7 @@ int main() {
             witness_corruption, CorruptSegmentField::Witness);
         test_incremental_old_contribution_admission(contribution_corruption);
         test_incremental_metadata_getters(getters);
+        test_incremental_partition_metadata_admission(partition_metadata);
         std::filesystem::remove(lifecycle, error);
         std::filesystem::remove(isolation, error);
         std::filesystem::remove(scope_corruption, error);
@@ -476,6 +604,7 @@ int main() {
         std::filesystem::remove(witness_corruption, error);
         std::filesystem::remove(contribution_corruption, error);
         std::filesystem::remove(getters, error);
+        std::filesystem::remove(partition_metadata, error);
         require(!error, "v2 test database cleanup failed");
         return 0;
     } catch(const std::exception& error) {

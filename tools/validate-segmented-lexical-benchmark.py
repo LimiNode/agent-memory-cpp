@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import pathlib
 import subprocess
 import tempfile
@@ -93,7 +94,10 @@ def as_int(row: dict[str, str], field: str) -> int:
 
 def as_float(row: dict[str, str], field: str) -> float:
     try:
-        return float(row[field])
+        value = float(row[field])
+        if not math.isfinite(value):
+            raise ValueError("non-finite value")
+        return value
     except (KeyError, ValueError) as error:
         fail(f"invalid timing field {field!r}: {error}")
 
@@ -131,6 +135,8 @@ def check(rows: list[dict[str, str]], telemetry: bool, workload: str | None) -> 
         ):
             if as_float(row, field) < 0.0:
                 fail(f"negative timing value in {field}")
+        if row["backend"] == "flat-reference" and as_float(row, "point_update_ms") <= 0.0:
+            fail("flat-reference did not measure a point update")
         if as_int(row, "active_units") != 4:
             fail("reopen did not preserve active unit count")
         if as_int(row, "total_tokens") <= 0:

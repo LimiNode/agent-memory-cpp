@@ -314,9 +314,11 @@ is an idempotent replacement. The restore step is outside the measured update
 counter so the final snapshot remains comparable across backends.
 
 The matched Release isolated-control receipt uses five repeats at 128, 512 and
-2,048 units. For seg-v2 the update visited four range rows, decoded two
+2,048 units. In the latest rerun, seg-v2 visited four range rows, decoded two
 postings, touched three token partitions and decoded 1,374 bytes at every
-corpus size (p50 update time 6.96, 8.12 and 8.21 ms respectively). This is the
+corpus size (p50 update time 6.30, 7.26 and 9.52 ms respectively). The earlier
+6.96/8.12/8.21 ms observation remains historical evidence in the preceding
+receipt commit. This is the
 intended sparse-locality signal; the old `unique+anchor` control remains useful
 for demonstrating shared-anchor growth. The v1 rebuild adapter is not emitted
 for the anchor-free fixture because its legacy row writer rejects that shape;
