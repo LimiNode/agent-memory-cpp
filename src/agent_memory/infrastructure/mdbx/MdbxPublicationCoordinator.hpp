@@ -65,6 +65,9 @@ public:
     );
 
     [[nodiscard]] PublicationScopeFrontier frontier() const;
+    [[nodiscard]] PublicationScopeFrontier frontier_in_transaction(
+        const mdbxc::Transaction& transaction
+    ) const;
 
     [[nodiscard]] std::optional<PublicationReceipt> receipt(
         const std::string& publication_id

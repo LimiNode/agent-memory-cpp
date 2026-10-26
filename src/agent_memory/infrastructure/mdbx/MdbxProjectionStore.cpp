@@ -275,6 +275,44 @@ std::vector<SearchProjection> MdbxProjectionStore::list(
     return result;
 }
 
+std::vector<SearchProjection> MdbxProjectionStore::list_in_transaction(
+    const ScopeId& scope_id,
+    const KnowledgeUnitId& unit_id,
+    const mdbxc::Transaction& txn,
+    std::optional<ProjectionKind> kind
+) const {
+    if(scope_id.empty() || unit_id.empty()) {
+        throw std::invalid_argument("projection list identity is empty");
+    }
+    const auto prefix = projection_prefix(scope_id, unit_id);
+    std::string lower = prefix;
+    lower.push_back('\0');
+    std::string upper = prefix;
+    upper.push_back(static_cast<char>(0xff));
+    std::vector<SearchProjection> result;
+    m_impl->projections.for_each_range(
+        lower,
+        upper,
+        [&](const std::string& key, const std::string& payload) {
+            const auto key_identity = decode_key(key);
+            auto projection = deserialize(payload);
+            if(projection.scope_id.value() != key_identity.scope_id.value()
+               || projection.unit_id.value() != key_identity.unit_id.value()
+               || projection.kind != key_identity.kind
+               || projection.version.projection_revision != key_identity.projection_revision
+               || projection.scope_id.value() != scope_id.value()
+               || projection.unit_id.value() != unit_id.value()
+               || key != projection_key(projection)) {
+                throw std::runtime_error("search projection key and payload identity mismatch");
+            }
+            if(!kind || projection.kind == *kind) result.push_back(std::move(projection));
+            return true;
+        },
+        txn
+    );
+    return result;
+}
+
 bool MdbxProjectionStore::delete_revision(
     const ScopeId& scope_id,
     const KnowledgeUnitId& unit_id,

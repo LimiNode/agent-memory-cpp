@@ -808,6 +808,15 @@ MdbxPersistentLexicalIndexSnapshot MdbxPersistentLexicalIndex::read_snapshot() c
         std::move(index), std::move(frontier), std::move(transaction_owner)};
 }
 
+MdbxPersistentLexicalRead MdbxPersistentLexicalIndex::read_in_transaction(
+    const mdbxc::Transaction& transaction
+) const {
+    const auto state = m_impl->read_state(transaction);
+    auto index = rebuild_index(state);
+    auto frontier = make_frontier(state, index);
+    return MdbxPersistentLexicalRead{std::move(index), std::move(frontier)};
+}
+
 void MdbxPersistentLexicalIndex::set_failure_injection_for_testing(
     const MdbxPersistentLexicalIndexFaultPoint point
 ) noexcept {

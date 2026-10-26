@@ -86,6 +86,10 @@ struct MdbxManifestPublicationGuard final {
         [[nodiscard]] std::optional<ResourceManifest> find_manifest(
             const ResourceId& resource_id
         ) const override;
+        [[nodiscard]] std::optional<ResourceManifest> find_manifest_in_transaction(
+            const ResourceId& resource_id,
+            const mdbxc::Transaction& transaction
+        ) const;
 
         [[nodiscard]] bool erase_manifest(const ResourceId& resource_id) override;
 

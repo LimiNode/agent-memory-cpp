@@ -105,6 +105,10 @@ namespace agent_memory {
         [[nodiscard]] std::optional<KnowledgeUnitEnvelope> find(
             const KnowledgeUnitId& id
         ) const override;
+        [[nodiscard]] std::optional<KnowledgeUnitEnvelope> find_in_transaction(
+            const KnowledgeUnitId& id,
+            const mdbxc::Transaction& transaction
+        ) const;
 
         [[nodiscard]] std::optional<KnowledgeUnitId> find_by_content_key(
             const KnowledgeUnitKey& key

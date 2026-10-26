@@ -73,6 +73,17 @@ struct MdbxPersistentLexicalIndexSnapshot final {
         read_transaction_owner(std::move(transaction_owner)) {}
 };
 
+/// \brief Lexical view reconstructed while an external read transaction is pinned.
+struct MdbxPersistentLexicalRead final {
+    FlatLexicalIndex index;
+    LexicalReadFrontier frontier;
+
+    MdbxPersistentLexicalRead(
+        FlatLexicalIndex index_value,
+        LexicalReadFrontier frontier_value
+    ) : index(std::move(index_value)), frontier(std::move(frontier_value)) {}
+};
+
 /// \brief Durable flat lexical backend for one scope and projection.
 ///
 /// The first storage slice deliberately uses one versioned KV payload in the
@@ -117,6 +128,9 @@ public:
 
     /// \brief Materializes one coherent read frontier from a single read transaction.
     [[nodiscard]] MdbxPersistentLexicalIndexSnapshot read_snapshot() const;
+    [[nodiscard]] MdbxPersistentLexicalRead read_in_transaction(
+        const mdbxc::Transaction& transaction
+    ) const;
 
     /// \brief Arms a deterministic pre-commit interruption for tests.
     void set_failure_injection_for_testing(

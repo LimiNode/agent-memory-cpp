@@ -630,17 +630,23 @@ PublicationScopeFrontier MdbxPublicationCoordinator::frontier() const {
     auto transaction = m_impl->context->connection()->transaction(
         mdbxc::TransactionMode::READ_ONLY
     );
+    const auto result = frontier_in_transaction(transaction);
+    transaction.commit();
+    return result;
+}
+
+PublicationScopeFrontier MdbxPublicationCoordinator::frontier_in_transaction(
+    const mdbxc::Transaction& transaction
+) const {
     const auto value = m_impl->records.find(m_impl->key(kFrontierKey), transaction);
     PublicationSequence sequence;
     if(value) {
         std::size_t position = 0;
         sequence = PublicationSequence{read_u64(*value, position)};
         if(position != value->size()) {
-            transaction.rollback();
             throw std::runtime_error("invalid publication frontier metadata");
         }
     }
-    transaction.commit();
     return PublicationScopeFrontier{m_impl->scope_id, sequence};
 }
 
