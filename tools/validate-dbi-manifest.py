@@ -52,6 +52,7 @@ ALLOWED_SELECTORS = {
     "ResourceBodyStore",
     "DurableGlobalIdentity",
     "SequenceReplay",
+    "coordinated_publication_experimental",
     "UpstreamSync",
 }
 

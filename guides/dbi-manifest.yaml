@@ -249,6 +249,22 @@ canonical:
     migration_peak: 1
 
 profile_deltas:
+  - name: coordinated_publication_metadata_v1
+    dbis: 1
+    migration_peak: 1
+    default: false
+    names:
+      - agent_memory_publication_coordinator_v1
+    note: Experimental metadata-only publication coordinator. Stores the versioned profile marker, fencing observation, scope-wide frontier and idempotent publication receipts; it does not make legacy writers coordinated or publish canonical/derived rows.
+    dbi_entries:
+      - name: agent_memory_publication_coordinator_v1
+        owner: publication_coordinator
+        table_type: KeyValueTable
+        opens: coordinated_publication_experimental
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [MetadataKey]
+        migration_peak: 1
   - name: canonical_content_c1
     dbis: 4
     migration_peak: 4
