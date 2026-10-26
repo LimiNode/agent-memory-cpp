@@ -156,7 +156,7 @@ current remote heads; they do not replace the CI required after restack.
 | #552 | `0d0c8914` | `#551@2b2246a6` | `40161712876`, `40161713601` SUCCESS | none in simulated merge | yes | inherits prior restacks |
 | #553 | `d5e82f73` | `#552@0d0c8914` | `40161713743`, `40161714122` SUCCESS | none in simulated merge | yes | inherits prior restacks |
 | #554 | `a73ea1b6` | `#553@d5e82f73` | `40245801717` SUCCESS | none in simulated merge | yes | inherits prior restacks |
-| #555 | `6a9a3266` | `main@1e2806d2` | `40245985219` SUCCESS | none | independent | research-only; not in functional chain |
+| #555 | `a865f496` | `main@1e2806d2` | `40255596913` SUCCESS | none | independent | research-only; not in functional chain |
 | #556 | `9331ad16` | `main@1e2806d2` | `40254191303` SUCCESS | none | no | segmented-v2 research; keep outside coordinator stack |
 
 The current remote `main` is `1e2806d21bc36fa6baeca536aaccec0bf535502c`.
