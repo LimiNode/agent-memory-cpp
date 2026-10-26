@@ -13,6 +13,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -22,7 +23,9 @@ namespace {
 using namespace agent_memory;
 using Clock = std::chrono::steady_clock;
 
-LexicalIndexDescriptor descriptor() {
+LexicalIndexDescriptor descriptor(
+    const std::uint32_t layout = kLexicalSegmentLayoutVersion
+) {
     std::array<std::uint8_t, 16> epoch{};
     epoch[0] = 91;
     epoch[15] = 92;
@@ -36,7 +39,7 @@ LexicalIndexDescriptor descriptor() {
         1,
         "tokenizer-v1",
         "normalization-v1",
-        {kLexicalSegmentLayoutVersion}
+        {layout}
     };
 }
 
@@ -89,14 +92,15 @@ struct PhysicalCounters final {
 
 PhysicalCounters scan_rows(
     const std::shared_ptr<MdbxStorageContext>& context,
-    const bool segmented
+    const std::string_view namespace_prefix
 ) {
     mdbxc::KeyValueTable<std::string, std::string> table(
         context->connection(), "agent_memory_lexical_posting_segments");
     auto txn = context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
     PhysicalCounters counters;
-    const std::string from = segmented ? "seg-v1" : "flat-v1";
-    const std::string to = segmented ? "seg-v2" : "flat-v3";
+    const std::string from{namespace_prefix};
+    std::string to = from;
+    to.push_back(static_cast<char>(0xff));
     table.for_each_range(from, to,
         [&counters](const std::string& key, const std::string& value) {
             ++counters.live_rows_observed;
@@ -114,7 +118,9 @@ void print_header() {
                  "\treopen_ms\treopen_snapshot_ms\treopen_diagnostic_ms"
                  "\tdb_bytes\tactive_units\ttotal_tokens"
                  "\tdiagnostic_scans\tlive_rows_observed\tlive_value_bytes_observed"
-                 "\tobserved_live_key_value_bytes\n";
+                 "\tobserved_live_key_value_bytes\tpoint_reads\trange_rows_visited"
+                 "\tkv_inserts_or_assigns\tkv_deletes\tbytes_decoded\tbytes_encoded"
+                 "\ttouched_tokens\tdecoded_postings\n";
 }
 
 void run_flat_reference(
@@ -168,6 +174,10 @@ void run_durable(
     const auto environment_done = Clock::now();
     options.path = path.string();
     options.context = context;
+    MdbxSegmentedLexicalIndexDiagnostics diagnostics;
+    if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
+        options.diagnostics = diagnostics_enabled ? &diagnostics : nullptr;
+    }
     const auto adapter_started = Clock::now();
     auto index = std::make_unique<IndexT>(options);
     const auto adapter_done = Clock::now();
@@ -194,7 +204,9 @@ void run_durable(
         snapshot_finished = Clock::now();
         diagnostic_started = Clock::now();
         if(diagnostics_enabled) {
-            counters = scan_rows(context, backend == "segmented-v1");
+            counters = scan_rows(context,
+                backend == "segmented-v2" ? "seg-v2" :
+                backend == "segmented-v1" ? "seg-v1" : "flat-v1");
         }
         diagnostic_finished = Clock::now();
     }
@@ -206,9 +218,10 @@ void run_durable(
 
     OptionsT reopen_options;
     reopen_options.path = path.string();
-    reopen_options.descriptor = descriptor();
+    reopen_options.descriptor = options.descriptor;
     if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
         reopen_options.encoding_limits.max_postings_per_segment = 128;
+        reopen_options.diagnostics = diagnostics_enabled ? &diagnostics : nullptr;
     }
     const auto reopen_started = Clock::now();
     const auto reopen_context = MdbxStorageContext::open(path.string());
@@ -227,7 +240,9 @@ void run_durable(
     const auto reopen_diagnostic_started = Clock::now();
     PhysicalCounters reopen_counters;
     if(diagnostics_enabled) {
-        reopen_counters = scan_rows(reopen_context, backend == "segmented-v1");
+        reopen_counters = scan_rows(reopen_context,
+            backend == "segmented-v2" ? "seg-v2" :
+            backend == "segmented-v1" ? "seg-v1" : "flat-v1");
         if(counters.live_rows_observed != reopen_counters.live_rows_observed ||
            counters.live_value_bytes_observed != reopen_counters.live_value_bytes_observed ||
            counters.observed_live_key_value_bytes != reopen_counters.observed_live_key_value_bytes) {
@@ -252,6 +267,14 @@ void run_durable(
               << '\t' << (diagnostics_enabled ? reopen_counters.live_rows_observed : 0U)
               << '\t' << (diagnostics_enabled ? reopen_counters.live_value_bytes_observed : 0U)
               << '\t' << (diagnostics_enabled ? reopen_counters.observed_live_key_value_bytes : 0U)
+              << '\t' << diagnostics.point_reads
+              << '\t' << diagnostics.range_rows_visited
+              << '\t' << diagnostics.kv_inserts_or_assigns
+              << '\t' << diagnostics.kv_deletes
+              << '\t' << diagnostics.bytes_decoded
+              << '\t' << diagnostics.bytes_encoded
+              << '\t' << diagnostics.touched_tokens
+              << '\t' << diagnostics.decoded_postings
               << '\n';
 }
 
@@ -286,6 +309,15 @@ int main(int argc, char** argv) {
                 options.encoding_limits.max_postings_per_segment = 128;
                 run_durable<MdbxSegmentedLexicalIndex>(
                     "segmented-v1", workload, units, repeat,
+                    options.path, options, diagnostics_enabled);
+            }
+            {
+                MdbxSegmentedLexicalIndexOptions options;
+                options.path = (base.string() + "-segmented-v2");
+                options.descriptor = descriptor(kLexicalIncrementalSegmentLayoutVersion);
+                options.encoding_limits.max_postings_per_segment = 128;
+                run_durable<MdbxSegmentedLexicalIndex>(
+                    "segmented-v2", workload, units, repeat,
                     options.path, options, diagnostics_enabled);
             }
         }

@@ -17,6 +17,15 @@ namespace agent_memory {
 
     inline constexpr std::uint32_t kLexicalSegmentEncodingVersion = 1;
     inline constexpr std::uint32_t kLexicalSegmentLayoutVersion = 1;
+    /// Partition-local-generation contract used by the incremental adapter.
+    inline constexpr std::uint32_t kLexicalIncrementalSegmentLayoutVersion = 2;
+
+    [[nodiscard]] constexpr bool is_supported_lexical_segment_layout(
+        const std::uint32_t version
+    ) noexcept {
+        return version == kLexicalSegmentLayoutVersion
+            || version == kLexicalIncrementalSegmentLayoutVersion;
+    }
 
     /// \brief Physical identity of one immutable lexical segment row.
     struct LexicalSegmentPhysicalKey final {

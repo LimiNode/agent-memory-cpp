@@ -26,6 +26,8 @@ enum class MdbxSegmentedLexicalIndexFaultPoint : std::uint8_t {
     AfterWriteBeforeCommit
 };
 
+struct MdbxSegmentedLexicalIndexDiagnostics;
+
 struct MdbxSegmentedLexicalIndexOptions final {
     std::string path;
     std::string table_prefix = "agent_memory";
@@ -34,6 +36,24 @@ struct MdbxSegmentedLexicalIndexOptions final {
     std::shared_ptr<MdbxStorageContext> context;
     LexicalIndexDescriptor descriptor;
     LexicalSegmentEncodingLimits encoding_limits;
+    /// Optional counters for an instrumented run; null keeps the hot path quiet.
+    MdbxSegmentedLexicalIndexDiagnostics* diagnostics = nullptr;
+};
+
+/// \brief Actual KV work observed by one segmented-index instance.
+///
+/// Counters describe adapter calls and decoded rows, not durable page writes.
+/// They are intended for receipts and are populated only when the options
+/// diagnostics pointer is supplied.
+struct MdbxSegmentedLexicalIndexDiagnostics final {
+    std::uint64_t point_reads = 0;
+    std::uint64_t range_rows_visited = 0;
+    std::uint64_t kv_inserts_or_assigns = 0;
+    std::uint64_t kv_deletes = 0;
+    std::uint64_t bytes_decoded = 0;
+    std::uint64_t bytes_encoded = 0;
+    std::uint64_t touched_tokens = 0;
+    std::uint64_t decoded_postings = 0;
 };
 
 struct MdbxSegmentedLexicalIndexSnapshot final {

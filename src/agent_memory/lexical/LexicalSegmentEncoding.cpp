@@ -212,7 +212,7 @@ bool valid_key(
         && !key.statistics_epoch.empty()
         && key.statistics_generation != 0
         && !key.token_id.empty()
-        && key.posting_layout_version == kLexicalSegmentLayoutVersion
+        && is_supported_lexical_segment_layout(key.posting_layout_version)
         && key.segment_id < limits.max_segments
         && key.scope_id.value().size() <= limits.max_token_bytes;
 }
@@ -279,7 +279,7 @@ LexicalSegmentEncodingResult encode_lexical_segment_row(
     if(!valid_limits(limits)) {
         return {LexicalSegmentEncodingStatus::InvalidInput, {}};
     }
-    if(row.key.posting_layout_version != kLexicalSegmentLayoutVersion) {
+    if(!is_supported_lexical_segment_layout(row.key.posting_layout_version)) {
         return {LexicalSegmentEncodingStatus::UnsupportedLayoutVersion, {}};
     }
     if(!valid_key(row.key, limits)
@@ -368,7 +368,7 @@ LexicalSegmentDecodingResult decode_lexical_segment_row(
         result.status = reader.status();
         return result;
     }
-    if(layout_version != kLexicalSegmentLayoutVersion) {
+    if(!is_supported_lexical_segment_layout(layout_version)) {
         result.status = LexicalSegmentEncodingStatus::UnsupportedLayoutVersion;
         return result;
     }
