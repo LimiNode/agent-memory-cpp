@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -316,6 +317,13 @@ struct State final {
     FlatLexicalCollectionStats collection;
 };
 
+struct MutationTelemetry final {
+    std::size_t insert_or_assign_calls = 0;
+    std::size_t erase_calls = 0;
+    std::vector<std::string> mutated_keys;
+    bool scanned_full_logical_index = false;
+};
+
 class ProofStore final {
 public:
     ProofStore(
@@ -341,7 +349,37 @@ public:
     [[nodiscard]] FlatLexicalIndex read() const {
         auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
         const auto state = read_state(txn);
-        return rebuild(state);
+        const auto index = rebuild(state);
+        validate_physical(state, index, txn);
+        return index;
+    }
+
+    [[nodiscard]] MutationTelemetry last_mutations() const {
+        return m_telemetry;
+    }
+
+    [[nodiscard]] std::uint64_t partition_generation(const TokenId token) const {
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+        const auto state = read_state(txn);
+        const auto found = state.partition_generations.find(token);
+        require(found != state.partition_generations.end(),
+            "proof partition generation is missing");
+        return found->second;
+    }
+
+    void replace_physical_row(
+        const std::string& key,
+        const std::string& value
+    ) {
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        m_table.insert_or_assign(key, value, txn);
+        txn.commit();
+    }
+
+    void erase_physical_row(const std::string& key) {
+        auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        m_table.erase(key, txn);
+        txn.commit();
     }
 
     [[nodiscard]] std::uint64_t sequence() const {
@@ -360,6 +398,8 @@ public:
         FlatLexicalUnitInput input,
         const std::optional<FlatLexicalExpectedState>& expected = std::nullopt
     ) {
+        m_telemetry = {};
+        m_telemetry.scanned_full_logical_index = true;
         auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
         auto state = read_state(txn);
         auto before = rebuild(state);
@@ -382,20 +422,23 @@ public:
         const auto new_tokens = tokens_for_unit_after(after, input.unit_id);
         touched.insert(new_tokens.begin(), new_tokens.end());
         for(const auto token : touched) {
-            const auto old_generation = state.partition_generations[token];
+            const auto found_generation = state.partition_generations.find(token);
+            const auto old_generation = found_generation == state.partition_generations.end()
+                ? 0U : found_generation->second;
+            require(old_generation != UINT64_MAX,
+                "proof partition generation exhausted");
+            const auto generation = old_generation + 1U;
             const auto postings = after.postings(token);
             erase_partition_rows(token, txn);
+            state.partition_generations[token] = generation;
+            insert_row(kPartitionMeta, token_suffix(token), serialize_u64(generation), txn);
             if(postings.empty()) {
-                state.partition_generations.erase(token);
                 state.stats.erase(token);
                 state.witnesses.erase(token);
-                erase_row(kPartitionMeta, token_suffix(token), txn);
                 erase_row(kStats, token_suffix(token), txn);
                 erase_row(kWitness, token_suffix(token), txn);
                 continue;
             }
-            const auto generation = old_generation + 1U;
-            state.partition_generations[token] = generation;
             const auto witness = lexical_posting_membership_witness(postings);
             state.witnesses[token] = witness;
             state.stats[token] = *after.find_token_stats(token);
@@ -425,6 +468,9 @@ public:
             insert_row(kWitness, token_suffix(token),
                 std::string(reinterpret_cast<const char*>(witness.data()), witness.size()), txn);
         }
+        require(state.snapshot_generation != UINT64_MAX
+            && state.sequence != UINT64_MAX,
+            "proof publication sequence exhausted");
         ++state.snapshot_generation;
         ++state.sequence;
         insert_row(kDescriptor, {}, descriptor_bytes(m_descriptor), txn);
@@ -446,14 +492,26 @@ public:
         auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
         const auto state = read_state(txn);
         const auto index = rebuild(state);
+        validate_physical(state, index, txn);
+    }
+
+private:
+    template<typename Transaction>
+    void validate_physical(
+        const State& state,
+        const FlatLexicalIndex& index,
+        Transaction& txn
+    ) const {
         require(state.collection.unit_count == index.collection_stats().unit_count,
             "proof collection unit count mismatch");
         require(state.collection.total_token_count == index.collection_stats().total_token_count,
             "proof collection token count mismatch");
+        std::set<TokenId> active_tokens;
         for(const auto& entry : state.dictionary) {
             const auto token = entry.second;
             const auto postings = index.postings(token);
             if(postings.empty()) continue;
+            active_tokens.insert(token);
             const auto stat = state.stats.find(token);
             const auto witness = state.witnesses.find(token);
             require(stat != state.stats.end() && witness != state.witnesses.end(),
@@ -500,9 +558,27 @@ public:
                 && same_postings(reconstructed.postings, postings),
                 "proof partition posting order or membership mismatch");
         }
+        std::set<TokenId> physical_tokens;
+        const auto from = row_key(kSegment);
+        auto to = from;
+        to.push_back(static_cast<char>(0xff));
+        m_table.for_each_range(from, to,
+            [&physical_tokens](const std::string& key, const std::string&) {
+                const auto marker = key.substr(std::string{kPrefix}.size() + 1U);
+                const auto separator = marker.find(kSeparator);
+                require(separator != std::string::npos,
+                    "proof partition address is malformed");
+                const auto suffix = std::string_view{marker}.substr(separator + 1U);
+                const auto first = suffix.find(':');
+                require(first != std::string_view::npos,
+                    "proof partition address is malformed");
+                physical_tokens.insert(TokenId{
+                    decode_u64_suffix(suffix.substr(0, first))});
+                return true;
+            }, txn);
+        require(physical_tokens == active_tokens,
+            "proof physical partition set does not match active dictionary");
     }
-
-private:
     static std::string serialize_u64(const std::uint64_t value) {
         std::string result;
         append_u64(result, value);
@@ -516,7 +592,10 @@ private:
         const std::string& value,
         Transaction& txn
     ) const {
-        m_table.insert_or_assign(row_key(kind, suffix), value, txn);
+        const auto key = row_key(kind, suffix);
+        m_table.insert_or_assign(key, value, txn);
+        ++m_telemetry.insert_or_assign_calls;
+        m_telemetry.mutated_keys.push_back(key);
     }
 
     template<typename Transaction>
@@ -525,7 +604,10 @@ private:
         const std::string_view suffix,
         Transaction& txn
     ) const {
-        m_table.erase(row_key(kind, suffix), txn);
+        const auto key = row_key(kind, suffix);
+        m_table.erase(key, txn);
+        ++m_telemetry.erase_calls;
+        m_telemetry.mutated_keys.push_back(key);
     }
 
     template<typename Transaction>
@@ -539,7 +621,11 @@ private:
                 keys.push_back(key);
                 return true;
             }, txn);
-        for(const auto& key : keys) m_table.erase(key, txn);
+        for(const auto& key : keys) {
+            m_table.erase(key, txn);
+            ++m_telemetry.erase_calls;
+            m_telemetry.mutated_keys.push_back(key);
+        }
     }
 
     template<typename Transaction>
@@ -724,6 +810,7 @@ private:
     LexicalIndexDescriptor m_descriptor;
     mutable mdbxc::KeyValueTable<std::string, std::string> m_table;
     bool m_fail_after_write = false;
+    mutable MutationTelemetry m_telemetry;
 };
 
 void test_local_partition_update_and_recovery(const std::filesystem::path& path) {
@@ -747,12 +834,18 @@ void test_local_partition_update_and_recovery(const std::filesystem::path& path)
     const auto old_untouched = initial.find_token_id("untouched");
     require(old_shared && old_stable && old_untouched,
         "proof initial dictionary is incomplete");
+    const auto stable_generation_before = store.partition_generation(*old_stable);
 
     store.upsert(unit(scope, 1, 2, {"shared", "replacement"}),
         FlatLexicalExpectedState{
             KnowledgeUnitId{1}, 1, 1,
             ProjectionVersionRef{1, 1, 1, "derivation-v1"}
         });
+    const auto sparse_mutations = store.last_mutations();
+    require(sparse_mutations.insert_or_assign_calls != 0
+        && sparse_mutations.erase_calls != 0
+        && sparse_mutations.scanned_full_logical_index,
+        "proof sparse update telemetry is incomplete");
     store.validate();
     const auto after_rows = store.segment_rows();
     std::size_t changed_rows = 0;
@@ -778,6 +871,123 @@ void test_local_partition_update_and_recovery(const std::filesystem::path& path)
         "new token did not advance dictionary high-water");
     require(store.sequence() == before_sequence + 1U,
         "incremental update did not publish one sequence step");
+    require(store.partition_generation(*old_stable) > stable_generation_before,
+        "removed partition generation did not advance");
+    const auto untouched_segment_prefix = std::string{kSegment}
+        + std::string(1, kSeparator) + std::to_string(old_untouched->value()) + ":";
+    for(const auto& key : sparse_mutations.mutated_keys) {
+        require(key.find(untouched_segment_prefix) == std::string::npos,
+            "sparse update mutated an unrelated partition row");
+    }
+
+    store.upsert(unit(scope, 4, 1, {"ephemeral"}));
+    const auto ephemeral = store.read().find_token_id("ephemeral");
+    require(ephemeral.has_value(), "proof lifecycle token was not allocated");
+    const auto ephemeral_generation_1 = store.partition_generation(*ephemeral);
+    store.upsert(unit(scope, 4, 2, {"temporary"}),
+        FlatLexicalExpectedState{
+            KnowledgeUnitId{4}, 1, 1,
+            ProjectionVersionRef{1, 1, 1, "derivation-v1"}
+        });
+    const auto ephemeral_generation_2 = store.partition_generation(*ephemeral);
+    require(ephemeral_generation_2 > ephemeral_generation_1,
+        "partition generation did not advance on deactivation");
+    store.upsert(unit(scope, 4, 3, {"ephemeral"}),
+        FlatLexicalExpectedState{
+            KnowledgeUnitId{4}, 2, 2,
+            ProjectionVersionRef{2, 2, 1, "derivation-v1"}
+        });
+    require(store.read().find_token_id("ephemeral") == ephemeral
+        && store.partition_generation(*ephemeral) > ephemeral_generation_2,
+        "partition generation regressed after token reactivation");
+
+    const auto physical_rows = store.segment_rows();
+    const auto shared_prefix = std::string{kSegment} + std::string(1, kSeparator)
+        + std::to_string(old_shared->value()) + ":";
+    const auto shared_row = std::find_if(physical_rows.begin(), physical_rows.end(),
+        [&shared_prefix](const auto& entry) {
+            return entry.first.find(shared_prefix) != std::string::npos;
+        });
+    require(shared_row != physical_rows.end(), "proof shared physical row is missing");
+    const auto shared_key = shared_row->first;
+    const auto shared_value = shared_row->second;
+    auto expect_physical_rejection = [&](const char* message,
+                                         const std::function<void()>& corrupt,
+                                         const std::function<void()>& restore) {
+        corrupt();
+        bool rejected = false;
+        try { static_cast<void>(store.read()); }
+        catch(const std::runtime_error&) { rejected = true; }
+        restore();
+        require(rejected, message);
+        store.validate();
+    };
+
+    expect_physical_rejection(
+        "checksum corruption was not rejected",
+        [&] {
+            auto corrupt = shared_value;
+            corrupt.back() ^= static_cast<char>(0x01);
+            store.replace_physical_row(shared_key, corrupt);
+        },
+        [&] { store.replace_physical_row(shared_key, shared_value); });
+
+    expect_physical_rejection(
+        "missing active segment was not rejected",
+        [&] { store.erase_physical_row(shared_key); },
+        [&] { store.replace_physical_row(shared_key, shared_value); });
+
+    const auto extra_key = shared_key.substr(0, shared_key.rfind(':') + 1U) + "999";
+    expect_physical_rejection(
+        "extra segment was not rejected",
+        [&] { store.replace_physical_row(extra_key, shared_value); },
+        [&] { store.erase_physical_row(extra_key); });
+
+    const auto decoded_shared = decode_lexical_segment_row(shared_value);
+    require(decoded_shared.complete(), "proof shared row failed baseline decoding");
+    auto wrong_generation_row = decoded_shared.row;
+    ++wrong_generation_row.key.statistics_generation;
+    wrong_generation_row.segment.statistics_generation
+        = wrong_generation_row.key.statistics_generation;
+    const auto wrong_generation_value = encode_lexical_segment_row(
+        wrong_generation_row).bytes;
+    expect_physical_rejection(
+        "wrong partition generation was not rejected",
+        [&] { store.replace_physical_row(shared_key, wrong_generation_value); },
+        [&] { store.replace_physical_row(shared_key, shared_value); });
+
+    const auto witness_key = row_key(kWitness, token_suffix(*old_shared));
+    const std::string zero_witness(32, '\0');
+    const auto correct_witness = lexical_posting_membership_witness(
+        store.read().postings(*old_shared));
+    expect_physical_rejection(
+        "membership witness corruption was not rejected",
+        [&] { store.replace_physical_row(witness_key, zero_witness); },
+        [&] {
+            store.replace_physical_row(witness_key,
+                std::string(reinterpret_cast<const char*>(correct_witness.data()),
+                    correct_witness.size()));
+        });
+
+    const auto malformed_key = shared_key.substr(0, shared_key.rfind(':') + 1U) + "bad";
+    expect_physical_rejection(
+        "malformed physical address was not rejected",
+        [&] { store.replace_physical_row(malformed_key, shared_value); },
+        [&] { store.erase_physical_row(malformed_key); });
+
+    const auto stable_prefix = std::string{kSegment} + std::string(1, kSeparator)
+        + std::to_string(old_stable->value()) + ":";
+    const auto orphan = std::find_if(before_rows.begin(), before_rows.end(),
+        [&stable_prefix](const auto& entry) {
+            return entry.first.find(stable_prefix) != std::string::npos;
+        });
+    require(orphan != before_rows.end(), "proof orphan fixture row is missing");
+    const auto orphan_key = orphan->first;
+    const auto orphan_value = orphan->second;
+    expect_physical_rejection(
+        "orphan segment was not rejected",
+        [&] { store.replace_physical_row(orphan_key, orphan_value); },
+        [&] { store.erase_physical_row(orphan_key); });
 
     const auto no_op_sequence = store.sequence();
     store.upsert(unit(scope, 1, 2, {"shared", "replacement"}));
@@ -828,7 +1038,7 @@ void test_local_partition_update_and_recovery(const std::filesystem::path& path)
         try {
             store.upsert(unit(scope, 1, 3, {"rollback"}),
                 FlatLexicalExpectedState{
-                    KnowledgeUnitId{1}, 1, 2,
+                    KnowledgeUnitId{1}, 2, 2,
                     ProjectionVersionRef{2, 2, 1, "derivation-v1"}
                 });
         } catch(const std::runtime_error&) {

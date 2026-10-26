@@ -26,6 +26,9 @@ posting-segments table. It is intentionally not a migration of `seg-v1`.
 - A collection update increments the global snapshot generation and sequence.
   Untouched token partitions retain their exact key/value bytes and local
   generation.
+- Partition generation is a durable high-water mark for the lifetime of a
+  `TokenId`. Deactivation removes active rows but retains and advances the
+  partition metadata row, so reactivation cannot create an ABA generation.
 - MDBX provides atomic publication and a pinned read transaction. There is no
   application-level copy-on-write and no dual writer.
 
@@ -47,7 +50,15 @@ silently changing the existing rows.
 - stale expected state rejection before commit;
 - fault after all writes, with MDBX rollback and reopen preserving the prior
   revision;
+- physical admission rejection for checksum, missing/extra/orphan rows,
+  malformed addresses, wrong generations, and witness corruption;
 - one writable transaction for the changed unit, partitions, and metadata.
+
+The proof also records test-only KV mutation calls. A sparse update has no
+`insert_or_assign` or `erase` call for an unrelated partition, while the
+telemetry explicitly records that the current algorithm still scans and
+rebuilds the full logical index. Byte identity alone is not treated as proof
+of zero physical mutation.
 
 ## Deliberately out of scope
 
@@ -56,3 +67,19 @@ This slice does not expose a production incremental importer, change the
 scope-wide canonical/manifest consistency. A later PR may turn the proven
 layout into a bounded adapter after measuring transaction size and recovery
 costs.
+
+## Adapter boundary for the next PR
+
+The next adapter must not copy `ProofStore`. Existing reusable primitives are
+`FlatLexicalIndex` for the conformance oracle and
+`LexicalSegmentEncoding` for bounded row encoding, checksums, witnesses, and
+partition reconstruction. The smallest additional storage helpers are point
+lookup of one unit row, durable dictionary/high-water lookup, touched-token
+delta calculation, local partition row replacement, and a physical reader that
+admits all rows in one pinned transaction.
+
+If those point lookups cannot be implemented without scanning all unit rows,
+the next PR must stop and document the smallest required unit-contribution
+metadata. The proof's `read_state -> rebuild -> tokens_for_unit_after` path is
+deliberately retained as an O(N) oracle and must not become the durable adapter
+hot path.
