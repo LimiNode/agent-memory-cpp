@@ -218,6 +218,22 @@ void MdbxProjectionStore::put(SearchProjection projection) {
     txn.commit();
 }
 
+void MdbxProjectionStore::put_in_transaction(
+    SearchProjection projection,
+    const mdbxc::Transaction& transaction
+) {
+    if(!is_valid_search_projection(projection)) {
+        throw std::invalid_argument("invalid search projection");
+    }
+    const auto key = projection_key(projection);
+    const auto payload = serialize(projection);
+    const auto existing = m_impl->projections.find(key, transaction);
+    if(existing && *existing != payload) {
+        throw std::invalid_argument("projection revision already has different content");
+    }
+    m_impl->projections.insert_or_assign(key, payload, transaction);
+}
+
 std::vector<SearchProjection> MdbxProjectionStore::list(
     const ScopeId& scope_id,
     const KnowledgeUnitId& unit_id,

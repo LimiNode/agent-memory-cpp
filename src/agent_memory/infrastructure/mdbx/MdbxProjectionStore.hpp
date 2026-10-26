@@ -12,6 +12,7 @@
 #include <string>
 
 #if AGENT_MEMORY_HAS_MDBX
+namespace mdbxc { class Transaction; }
 #include "MdbxStorageContext.hpp"
 
 namespace agent_memory {
@@ -33,6 +34,12 @@ namespace agent_memory {
         MdbxProjectionStore& operator=(const MdbxProjectionStore&) = delete;
 
         void put(SearchProjection projection) override;
+
+        /// \brief Applies one projection row through a coordinator-owned transaction.
+        void put_in_transaction(
+            SearchProjection projection,
+            const mdbxc::Transaction& transaction
+        );
 
         [[nodiscard]] std::vector<SearchProjection> list(
             const ScopeId& scope_id,
