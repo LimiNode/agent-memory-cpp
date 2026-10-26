@@ -846,6 +846,11 @@ void test_local_partition_update_and_recovery(const std::filesystem::path& path)
         && sparse_mutations.erase_calls != 0
         && sparse_mutations.scanned_full_logical_index,
         "proof sparse update telemetry is incomplete");
+    std::cout << "sparse_kv_mutations insert_or_assign="
+        << sparse_mutations.insert_or_assign_calls
+        << " erase=" << sparse_mutations.erase_calls
+        << " full_logical_scan="
+        << (sparse_mutations.scanned_full_logical_index ? 1 : 0) << '\n';
     store.validate();
     const auto after_rows = store.segment_rows();
     std::size_t changed_rows = 0;
