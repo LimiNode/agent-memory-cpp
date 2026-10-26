@@ -237,3 +237,129 @@ coordinator in the same change.
 
 This document deliberately leaves the implementation uncommitted until the
 row/byte cost model and shared-hot behavior are measured against the oracle.
+
+## Compatibility addendum
+
+This addendum is the design gate for a future production `seg-v2` adapter. It
+does not add a public type, persisted row, DBI, coordinator dependency, or
+implementation code.
+
+### Independent identities and versions
+
+The following identities are deliberately separate:
+
+| Identity/version | Meaning | Current owner or representation |
+| --- | --- | --- |
+| DBI manifest version | Which physical tables exist and their lifecycle/budget rules | `guides/dbi-manifest.yaml`, currently v3 |
+| retrieval index family | Classical lexical, learned sparse, or another derived family | logical descriptor/key namespace; no new runtime type in this gate |
+| index descriptor identity | Scope, projection kind, schema identity and compatible index incarnation | `LexicalIndexDescriptor` plus versioned descriptor payload |
+| projection schema/version | Meaning and source revision of the indexed projection | `ProjectionVersionRef`, projection store contract |
+| tokenizer/normalization/vocabulary identity | Token text and dictionary semantics | existing tokenizer/normalization fingerprints; learned vocab must add its own fingerprint |
+| model/scoring identity | Model revision, codec identity, and scoring semantics | required descriptor fields for learned sparse; absent from classical BM25 |
+| posting layout version | Physical posting row/key semantics | `posting_layout_version`; must not imply scoring version |
+| payload encoding version | Serialization of one descriptor, unit, stat, or segment row | per-family encoded envelope/version |
+| statistics epoch | Which index incarnation owns DF/CF statistics | `LexicalIndexDescriptorRef.statistics_epoch` |
+| collection publication generation | Coherent published collection state | `LexicalActiveSnapshot.statistics_generation` and publication sequence |
+| partition-local generation | Monotonic generation for one token partition | future `partition-meta` family; never alias global generation |
+| source revision | Canonical/projection revision that produced one unit contribution | `FlatLexicalUnitInput` and `ProjectionVersionRef` |
+
+No one field may be used to infer another identity. In particular, a layout
+version is not a scoring-algorithm version, and equal numeric `TokenId`
+values from different vocabularies are never interchangeable.
+
+### Explicit physical contract for seg-v2
+
+The proof namespace `seg-v2-proof` is test-only and currently reuses the
+existing codec constant `kLexicalSegmentLayoutVersion = 1`. That reuse is
+acceptable only because the proof namespace is not admitted by production
+readers. The production adapter must not publish this combination.
+
+Production seg-v2 must carry a distinct physical contract identifier (the
+initial proposal is `posting_layout_version = 2`) in its descriptor, key
+namespace, segment envelope, and partition metadata. The existing segment
+wire shape may be reused only if its envelope validates version 2 and its
+documented `statistics_generation` meaning is partition-local. Otherwise a
+new payload encoding version is required. A seg-v1 reader must reject seg-v2
+rows; a seg-v2 reader must reject seg-v1 rows, unknown layout/encoding values,
+wrong epoch, wrong descriptor, and global-generation semantics presented as a
+partition generation.
+
+The compatibility fixture for the implementation gate must contain these
+negative pairs and expected result:
+
+| Stored rows | Reader | Result |
+| --- | --- | --- |
+| seg-v1 global-generation rows | seg-v2 reader | reject before publication |
+| seg-v2 partition-generation rows | seg-v1 reader | reject as unsupported layout/namespace |
+| unknown layout or payload encoding | either reader | reject, never heuristic decode |
+| seg-v2 rows with wrong epoch/descriptor | seg-v2 reader | reject |
+| seg-v2 row whose generation is collection-global | seg-v2 reader | reject semantic admission |
+| old reader after new active-root switch | old reader | reject/ignore unknown root, never read new rows as old |
+
+### Algorithm compatibility audit
+
+The storage contract must not force every retrieval algorithm into
+`FlatLexicalPosting::term_frequency`:
+
+| Algorithm family | Reuse classical postings? | Required boundary |
+| --- | --- | --- |
+| BM25 / BM25+ / BM25L | yes, when scoring only changes | scoring identity and formula stay outside posting layout |
+| BM25F / field-aware | not without fields | field-aware posting metadata or a separate field namespace |
+| positional phrase/proximity | not with TF-only rows | positions/payload encoding and a distinct layout contract |
+| WAND / Block-Max WAND | maybe | block-max metadata is a new payload/metadata contract; query planner remains separate |
+| DeepImpact / uniCOIL / SPLADE / BGE-M3 sparse | no shared TokenId assumption | independent vocabulary, model fingerprint, weighted impacts and derived-index identity |
+| INT8/INT5 impact quantization | only with explicit codec identity | quantization scale/codec version is part of payload identity |
+
+Learned sparse impacts are not integer term frequencies. A learned sparse
+index may share canonical units and source revisions, but it owns its
+vocabulary, model/scoring identity, statistics, and active snapshot. It must
+not reuse classical `TokenId` values without a proven vocabulary equivalence.
+
+### Rebuildable migration lifecycle and DBI budget
+
+The first production migration is rebuildable and adjacent, not in-place:
+
+```text
+old active -> new building -> new validated -> atomic activation -> old retired
+```
+
+The builder reads canonical units/projections, writes the new logical
+namespace inside the existing lexical KV DBI where possible, validates all
+rows against the independent `FlatLexicalIndex` oracle, and changes one active
+root/descriptor reference atomically. Before activation, crashes leave the old
+active root untouched; during activation, MDBX rollback leaves either old or
+new metadata; after activation, the old root remains until an explicit retire
+operation. Unknown roots and incompatible writers fail closed. Rebuild is
+quiesced when old writers could otherwise publish into the new namespace; no
+online migration guarantee is made.
+
+The manifest already accounts for the lexical families and a default
+`max_dbs_default: 96` with `minimum_free_slots: 16`. The design therefore
+prefers a new key namespace in the existing lexical table (migration peak is
+additional map bytes, not an automatic DBI) and adds no DBI in this gate. If a
+future implementation needs a separate DBI, it must provide a manifest row,
+`max_dbs` admission, peak-map estimate, insufficient-map/max-dbs negative
+tests, and a measured reason that the namespace cannot provide equivalent
+access. A generic MigrationManager is out of scope.
+
+### Gate and patch-drift audit
+
+The current PR scope remains narrow:
+
+- PR #556: executable proof/test and experiment note only; production C++ LOC
+  delta is zero.
+- PR #557: design documentation only; no public API, production type, DBI,
+  codec, or coordinator dependency was added.
+- The proposed production delta is one `partition-meta` family and one
+  versioned segmented adapter, not a universal index/migration framework.
+
+The existing proof reuses the checked-in segment codec, token identities and
+`FlatLexicalIndex` oracle. It does not copy its test-only `ProofStore` into
+production. Any implementation diff that changes importer, canonical storage,
+publication coordinator, learned model inference, or an unrelated profile is
+patch drift and must be removed or split.
+
+**Design gate result:** GO for one separate Draft implementation PR with an
+explicit seg-v2 physical contract and the compatibility negatives above;
+NO-GO for activating it, changing the default backend, executing migration,
+or coupling it to the coordinator in this design PR.
