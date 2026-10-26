@@ -51,14 +51,24 @@ index-management layer.
 
 ## Measurement receipt
 
-The segmented benchmark emits the matched flat, `seg-v1`, and `seg-v2`
-workloads and, when diagnostics are enabled, the adapter's KV-operation and
-decoded-byte counters. Timing and map growth remain directional until a
-release run records the dataset, hardware, cache state, repeats, transaction
-durations, and map-growth samples required by the benchmark guide.
+The segmented benchmark emits matched flat, `seg-v1`, and `seg-v2` workloads
+and, when diagnostics are enabled, the adapter's KV-operation and decoded-byte
+counters. In addition to the control workloads, `isolated-sparse-replacement`
+contains only per-unit rare tokens (no shared anchor) and replaces one unit
+with two local tokens. This is the locality control: unrelated units grow from
+128 to 2,048 while the replacement's touched partitions and decoded postings
+must remain bounded. The legacy rebuild path is intentionally omitted for this
+one workload because its v1 row writer rejects the anchor-free sparse fixture;
+the omission is explicit in the TSV contract and does not change v1 semantics.
+
+The release evidence is kept as raw TSV plus a machine-readable summary. The
+summary enforces unique `(backend, workload, units, repeat)` rows, contiguous
+repeats, p50/min/max/spread for each phase, and records the raw-input SHA-256.
+Timing and map growth remain directional: counters are adapter operations, not
+physical MDBX page writes.
 
 One local Debug/MinGW smoke run (`16` units, one repeat, diagnostics enabled)
-exercised all four workloads and emitted non-zero point-read, range-row,
+exercised the control workloads and emitted non-zero point-read, range-row,
 mutation, byte, touched-token and decoded-posting counters for `seg-v2`. This
 proves that the instrumentation is wired to the v2 adapter; it is not a
 release performance claim and is not used to choose a default layout.

@@ -308,9 +308,19 @@ including multiplicity, resource identity and the complete projection version.
 The benchmark runner separates initial ingestion, one point operation, snapshot
 materialization and reopen diagnostics. The operation is selected by workload:
 `unique+anchor` is sparse replacement, `shared-hot` is shared-hot replacement,
+`isolated-sparse-replacement` is the anchor-free locality control,
 `zipf-like` is erase-and-restore, `mixed-utf8` is insert-and-erase, and `no-op`
 is an idempotent replacement. The restore step is outside the measured update
 counter so the final snapshot remains comparable across backends.
+
+The matched Release isolated-control receipt uses five repeats at 128, 512 and
+2,048 units. For seg-v2 the update visited four range rows, decoded two
+postings, touched three token partitions and decoded 1,374 bytes at every
+corpus size (p50 update time 6.96, 8.12 and 8.21 ms respectively). This is the
+intended sparse-locality signal; the old `unique+anchor` control remains useful
+for demonstrating shared-anchor growth. The v1 rebuild adapter is not emitted
+for the anchor-free fixture because its legacy row writer rejects that shape;
+this benchmark limitation is explicit and does not alter v1 behavior.
 
 Directional Windows Release observations (one run, diagnostics enabled) are:
 

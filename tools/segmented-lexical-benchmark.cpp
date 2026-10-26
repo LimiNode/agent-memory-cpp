@@ -52,6 +52,12 @@ FlatLexicalUnitInput unit(
         tokens = {"token-" + std::to_string(index), "anchor"};
     } else if(workload == "shared-hot") {
         tokens = {"shared-hot", "shared-hot", "anchor"};
+    } else if(workload == "isolated-sparse-replacement") {
+        // Deliberately avoid a shared anchor: this workload measures whether a
+        // point replacement stays local as unrelated partitions are added.
+        tokens = {
+            "sp-" + std::to_string(index),
+            "sl-" + std::to_string(index)};
     } else if(workload == "zipf-like") {
         const auto rank = (index * 37U + 11U) % 100U;
         const auto bucket = rank < 50U ? 1U : rank < 75U ? 2U
@@ -139,8 +145,11 @@ void run_flat_reference(
         index.upsert(unit(index_value, workload));
     }
     const auto write_done = Clock::now();
-    static_cast<void>(index.postings(
-        index.find_token_id("anchor").value()));
+    const auto probe_token = workload == "isolated-sparse-replacement"
+        ? "sp-0" : "anchor";
+    const auto probe = index.find_token_id(probe_token);
+    if(!probe) throw std::runtime_error("benchmark probe token missing");
+    static_cast<void>(index.postings(*probe));
     const auto read_done = Clock::now();
     std::cout << "flat-reference\t" << workload << '\t' << units << '\t' << repeat
               << "\t0\t0\t" << milliseconds(write_done - started)
@@ -227,6 +236,18 @@ void run_durable(
                 FlatLexicalExpectedState{
                     KnowledgeUnitId{1}, 1, 1,
                     ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+        } else if(workload == "isolated-sparse-replacement") {
+            auto replacement = original;
+            replacement.resource_generation = 2;
+            replacement.unit_revision = 2;
+            replacement.projection_version = ProjectionVersionRef{2, 2, 1, "benchmark-v2"};
+            replacement.normalized_tokens = {
+                "sp-0", "sr"};
+            index->upsert(
+                replacement,
+                FlatLexicalExpectedState{
+                    KnowledgeUnitId{1}, 1, 1,
+                    ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
         } else if(workload == "zipf-like") {
             static_cast<void>(index->erase(KnowledgeUnitId{1}));
         } else if(workload == "no-op") {
@@ -250,16 +271,18 @@ void run_durable(
         if(workload == "zipf-like") {
             index->upsert(original);
         } else if(workload != "unique+anchor" && workload != "shared-hot"
-            && workload != "no-op") {
+            && workload != "isolated-sparse-replacement" && workload != "no-op") {
             static_cast<void>(index->erase(
                 KnowledgeUnitId{static_cast<std::uint64_t>(units + 1U)}));
         }
         snapshot_started = Clock::now();
         {
             const auto snapshot = index->read_snapshot();
-            const auto anchor = snapshot.index.find_token_id("anchor");
-            if(!anchor) throw std::runtime_error("benchmark anchor token missing");
-            static_cast<void>(snapshot.index.postings(*anchor));
+            const auto probe_token = workload == "isolated-sparse-replacement"
+                ? "sp-0" : "anchor";
+            const auto probe = snapshot.index.find_token_id(probe_token);
+            if(!probe) throw std::runtime_error("benchmark probe token missing");
+            static_cast<void>(snapshot.index.postings(*probe));
         }
         snapshot_finished = Clock::now();
         if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
@@ -367,9 +390,12 @@ int main(int argc, char** argv) {
     const bool diagnostics_enabled = argc > 4
         ? std::stoull(argv[4]) != 0U
         : true;
+    const std::string workload_filter = argc > 5 ? argv[5] : "";
     print_header();
     for(const std::string workload : {
-        "unique+anchor", "shared-hot", "zipf-like", "mixed-utf8", "no-op"}) {
+        "unique+anchor", "shared-hot", "isolated-sparse-replacement",
+        "zipf-like", "mixed-utf8", "no-op"}) {
+        if(!workload_filter.empty() && workload != workload_filter) continue;
         for(std::size_t repeat = 0; repeat < repeats; ++repeat) {
             run_flat_reference(workload, units, repeat);
             {
@@ -380,7 +406,7 @@ int main(int argc, char** argv) {
                     "flat-v2", workload, units, repeat,
                     options.path, options, diagnostics_enabled);
             }
-            {
+            if(workload != "isolated-sparse-replacement") {
                 MdbxSegmentedLexicalIndexOptions options;
                 options.path = (base.string() + "-segmented-v1");
                 options.descriptor = descriptor();
