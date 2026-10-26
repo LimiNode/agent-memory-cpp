@@ -1,8 +1,8 @@
 # Learned sparse retrieval: source and feasibility audit
 
-**Date:** 2026-10-26  
-**Status:** `PROTOCOL_ONLY` — no benchmark result and no production recommendation  
-**Base:** `main@1e2806d21bc36fa6baeca536aaccec0bf535502c`  
+**Date:** 2026-10-26
+**Status:** `PROTOCOL_ONLY` — no benchmark result and no production recommendation
+**Base:** `main@1e2806d21bc36fa6baeca536aaccec0bf535502c`
 **Scope:** independent research PR; no C++ API, MDBX schema, or production dependency
 
 ## Decision boundary
