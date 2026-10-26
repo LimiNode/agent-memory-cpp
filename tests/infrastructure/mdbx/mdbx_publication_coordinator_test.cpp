@@ -1,4 +1,5 @@
 #include <agent_memory/infrastructure/mdbx/MdbxPublicationCoordinator.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxAuthoritativePublicationParticipants.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 
@@ -62,6 +63,53 @@ PublicationPlan plan_for(
         }
     };
 }
+
+KnowledgeUnitCreateRequest unit_request(const ScopeId& scope) {
+    KnowledgeUnitCreateRequest request;
+    request.kind = KnowledgeUnitKind::Chunk;
+    request.scope_id = scope;
+    request.primary_text = "authoritative unit";
+    request.display_text = "authoritative unit";
+    request.content_hash_recipe_version = 2;
+    SourceRefSummary source;
+    source.resource_id = ResourceId{"resource-1"};
+    source.resource_revision = ResourceRevisionRef{
+        source.resource_id, 1, ResourceBodyDigest{}
+    };
+    source.uri = "memory://resource-1";
+    source.excerpt = TextRange{0, 5};
+    source.confidence = 1.0;
+    source.preview = "authoritative";
+    source.quote_hash = compute_quote_hash(source.preview);
+    request.sources.push_back(std::move(source));
+    request.created_at_ms = 1;
+    request.observed_at_ms = 1;
+    request.priority_weight = 1.0;
+    request.content_hash = compute_chunk_content_hash(
+        request.scope_id,
+        request.primary_text,
+        request.sources,
+        request.content_hash_recipe_version
+    );
+    return request;
+}
+
+class FailingParticipant final : public MdbxPublicationParticipant {
+public:
+    explicit FailingParticipant(std::shared_ptr<MdbxStorageContext> context)
+        : m_context(std::move(context)) {}
+
+    [[nodiscard]] const MdbxStorageContext& context() const noexcept override {
+        return *m_context;
+    }
+
+    void apply(const mdbxc::Transaction&) override {
+        throw std::runtime_error("injected authoritative participant failure");
+    }
+
+private:
+    std::shared_ptr<MdbxStorageContext> m_context;
+};
 
 } // namespace
 
@@ -149,6 +197,70 @@ int main() {
             return fail("independent scopes must have independent frontiers");
         }
 
+        MdbxCanonicalContentStoreOptions canonical_options;
+        canonical_options.context = context;
+        MdbxCanonicalContentStore canonical{std::move(canonical_options)};
+        MdbxKnowledgeUnitStoreOptions unit_options;
+        unit_options.context = context;
+        MdbxKnowledgeUnitStore units{std::move(unit_options)};
+        MdbxResourceManifestStorageOptions manifest_options;
+        manifest_options.context = context;
+        MdbxResourceManifestStorage manifests{std::move(manifest_options)};
+
+        MdbxCanonicalPublicationParticipant canonical_participant{
+            context,
+            canonical,
+            CanonicalDocumentRevision{
+                DocumentId{"authoritative-document"},
+                0,
+                {},
+                {ContentBlock{
+                    ContentBlockId{"block-1"},
+                    1,
+                    ContentBlockKind::Paragraph,
+                    std::nullopt,
+                    "authoritative body"
+                }}
+            }
+        };
+        MdbxKnowledgeUnitPublicationParticipant unit_participant{
+            context,
+            units,
+            {unit_request(scope)}
+        };
+        MdbxManifestPublicationParticipant manifest_participant{
+            context,
+            manifests,
+            ResourceManifest{
+                ResourceRevision{ResourceId{"resource-1"}, 1, 1, 1},
+                {}
+            },
+            std::nullopt
+        };
+        auto authoritative_plan = plan_for(
+            scope, profile, next_fencing, "publication-authoritative", 1
+        );
+        const auto authoritative = coordinator.publish(
+            authoritative_plan,
+            {&canonical_participant, &unit_participant, &manifest_participant}
+        );
+        if(authoritative.code != PublicationOutcomeCode::Committed
+            || coordinator.frontier().sequence.value() != 2
+            || !canonical.read_current(DocumentId{"authoritative-document"})
+            || units.scan_by_scope(scope).size() != 1
+            || !manifests.find_manifest(ResourceId{"resource-1"})) {
+            return fail("authoritative participants must publish atomically");
+        }
+
+        FailingParticipant failing{context};
+        auto failed_plan = plan_for(scope, profile, next_fencing, "publication-failed", 2);
+        if(coordinator.publish(failed_plan, {&failing}).code
+            != PublicationOutcomeCode::CommitFailure
+            || coordinator.frontier().sequence.value() != 2
+            || coordinator.receipt("publication-failed")) {
+            return fail("participant failure must roll back metadata and frontier");
+        }
+
         mdbxc::KeyValueTable<std::string, std::string> metadata(
             context->connection(),
             "agent_memory_publication_coordinator_v1"
@@ -170,7 +282,7 @@ int main() {
         options.context = context;
         options.scope_id = scope;
         MdbxPublicationCoordinator reopened{std::move(options)};
-        if(reopened.frontier().sequence.value() != 1
+        if(reopened.frontier().sequence.value() != 2
             || !reopened.receipt("publication-1")) {
             return fail("frontier and receipt must survive reopen");
         }

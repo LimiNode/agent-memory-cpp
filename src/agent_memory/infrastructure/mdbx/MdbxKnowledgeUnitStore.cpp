@@ -743,6 +743,26 @@ namespace agent_memory {
             return envelopes;
         }
 
+        std::vector<KnowledgeUnitEnvelope> create_or_get_units_in_transaction(
+            std::vector<KnowledgeUnitCreateRequest> requests,
+            const mdbxc::Transaction& txn
+        ) {
+            if(requests.empty()) {
+                throw std::invalid_argument("Knowledge-unit batch must not be empty");
+            }
+            if(requests.size() > kMdbxKnowledgeUnitMaxBatchSize) {
+                throw std::invalid_argument("Knowledge-unit batch exceeds the M0 limit");
+            }
+            std::vector<KnowledgeUnitEnvelope> envelopes;
+            envelopes.reserve(requests.size());
+            for(auto& request : requests) {
+                envelopes.push_back(create_or_get_unit_in_transaction(
+                    std::move(request), txn
+                ));
+            }
+            return envelopes;
+        }
+
         KnowledgeUnitEnvelope create_or_get_unit_in_transaction(
             KnowledgeUnitCreateRequest request,
             const mdbxc::Transaction& txn
@@ -1182,6 +1202,16 @@ namespace agent_memory {
         MdbxKnowledgeUnitPublicationGuard guard
     ) {
         return m_impl->create_or_get_units(std::move(requests), guard);
+    }
+
+    std::vector<KnowledgeUnitEnvelope>
+    MdbxKnowledgeUnitStore::create_or_get_units_in_transaction(
+        std::vector<KnowledgeUnitCreateRequest> requests,
+        const mdbxc::Transaction& transaction
+    ) {
+        return m_impl->create_or_get_units_in_transaction(
+            std::move(requests), transaction
+        );
     }
 
     std::optional<KnowledgeUnitEnvelope> MdbxKnowledgeUnitStore::find(
