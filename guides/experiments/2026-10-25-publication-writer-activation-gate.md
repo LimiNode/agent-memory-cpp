@@ -156,7 +156,7 @@ current remote heads; they do not replace the CI required after restack.
 | #552 | `e64630ab` | `#551@38c7473e` | `40265928511` SUCCESS | none | yes | ready for guarded squash |
 | #553 | `18548d1f` | `#552@e64630ab` | `40265958122` SUCCESS | none | yes | ready for guarded squash |
 | #554 | `7fc8f7ab` | `#553@18548d1f` | `40266029291` SUCCESS | none | yes | ready for guarded squash |
-| #555 | `642e8f51` | `main@1e2806d2` | `40267332754` SUCCESS | none | independent | research-only; not in functional chain |
+| #555 | `ed432280` | `main@1e2806d2` | `40288260379` SUCCESS | none | independent | research-only; not in functional chain |
 | #556 | `bfe90484` | `main@1e2806d2` | `40261838499` SUCCESS | none | no | segmented-v2 research; keep outside coordinator stack |
 
 The current remote `main` is `1e2806d21bc36fa6baeca536aaccec0bf535502c`.
