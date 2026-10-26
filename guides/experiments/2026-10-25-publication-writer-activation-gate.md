@@ -125,7 +125,7 @@ base `4018fb12`:
 | #551 | `2b2246a620d6ed6020bfdfac3acd1eb9bc42c4c7` | #550 | preserve participant scope; rerun exact-head CI |
 | #552 | `0d0c89140baa4f50affdcfe8f7d516a5ccb59d0c` | #551 | inspect projection/lexical overlap with segmented backend |
 | #553 | `d5e82f731bdb0fb0f2d1673a95d7f414e45986d5` | #552 | preserve pinned-read scope; rerun exact-head CI |
-| #554 | `6c1a2f523ed6f345e7a1f03018e1d3ad810d63b4` | #553 | apply the cross-context corrective commit, then rerun exact-head CI |
+| #554 | `a73ea1b60bb16b56ff8840217e32065fa6d52781` | #553 | apply the cross-context corrective commit, then rerun exact-head CI |
 
 The chain is independent of the segmented backend at the source-contract
 level, but #544/#552/#553 touch lexical publication concepts and must be
@@ -141,6 +141,29 @@ After each squash, retarget the next Draft PR to the new `main`, verify that
 its base contains exactly the prior squash, and run exact-head CI before
 continuing. #555 remains an independent documentation research PR and is not
 part of the functional publication chain.
+
+### Integration readiness snapshot (2026-10-26)
+
+This is a read-only snapshot. The listed CI runs are exact-head runs for the
+current remote heads; they do not replace the CI required after restack.
+
+| PR | HEAD | Base | CI | Conflicts now | Ready for guarded restack | Blocker |
+| --- | --- | --- | --- | --- | --- | --- |
+| #544 | `9cdba9b1` | `main@4018fb12` | `40157503343` SUCCESS | none in simulated merge to `main@1e2806d2` | yes | old base; rerun after restack |
+| #549 | `f079224e` | `#544@9cdba9b1` | `40158713072` SUCCESS | none in simulated merge | yes | inherits #544 restack |
+| #550 | `89f898ee` | `#549@f079224e` | `40161356788` SUCCESS | none in simulated merge | yes | inherits prior restacks |
+| #551 | `2b2246a6` | `#550@89f898ee` | `40161713009` SUCCESS | none in simulated merge | yes | inherits prior restacks |
+| #552 | `0d0c8914` | `#551@2b2246a6` | `40161712876`, `40161713601` SUCCESS | none in simulated merge | yes | inherits prior restacks |
+| #553 | `d5e82f73` | `#552@0d0c8914` | `40161713743`, `40161714122` SUCCESS | none in simulated merge | yes | inherits prior restacks |
+| #554 | `a73ea1b6` | `#553@d5e82f73` | `40245801717` SUCCESS | none in simulated merge | yes | inherits prior restacks |
+| #555 | `6a9a3266` | `main@1e2806d2` | `40245985219` SUCCESS | none | independent | research-only; not in functional chain |
+| #556 | `9331ad16` | `main@1e2806d2` | `40254191303` SUCCESS | none | no | segmented-v2 research; keep outside coordinator stack |
+
+The current remote `main` is `1e2806d21bc36fa6baeca536aaccec0bf535502c`.
+The simulated merges above are evidence that Git can construct a clean tree;
+they are not a substitute for resolving and testing each scoped diff on its
+new base. PR #556 belongs to the first agent's segmented-v2 line and must not
+be retargeted, restacked, or edited as part of this coordinator handoff.
 
 Required checks after each restack are exact-head CI, MDBX Release CTest,
 header self-sufficiency, documentation checks, and a clean mergeability
