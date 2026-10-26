@@ -296,6 +296,44 @@ negative pairs and expected result:
 | seg-v2 row whose generation is collection-global | seg-v2 reader | reject semantic admission |
 | old reader after new active-root switch | old reader | reject/ignore unknown root, never read new rows as old |
 
+## Corrective implementation evidence
+
+The corrective pass keeps the design document as the dependency-carried owner
+for PR #559; it does not introduce a second design copy or a new runtime
+manager. The production admission path now checks every decoded physical
+identity field and the authoritative partition witness before a mutation can
+rewrite a row. Old contributions are checked against the persisted unit row,
+including multiplicity, resource identity and the complete projection version.
+
+The benchmark runner separates initial ingestion, one point operation, snapshot
+materialization and reopen diagnostics. The operation is selected by workload:
+`unique+anchor` is sparse replacement, `shared-hot` is shared-hot replacement,
+`zipf-like` is erase-and-restore, `mixed-utf8` is insert-and-erase, and `no-op`
+is an idempotent replacement. The restore step is outside the measured update
+counter so the final snapshot remains comparable across backends.
+
+Directional Windows Release observations (one run, diagnostics enabled) are:
+
+| units | workload | point operation | point-update ms | update point reads | update range rows | touched tokens | decoded postings |
+| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 128 | unique+anchor | sparse replacement | 2.5595 | 20 | 4 | 3 | 129 |
+| 128 | shared-hot | shared-hot replacement | 2.1244 | 22 | 4 | 3 | 256 |
+| 128 | zipf-like | erase | 2.1118 | 18 | 6 | 3 | 235 |
+| 128 | mixed-utf8 | insert | 5.6739 | 18 | 4 | 3 | 256 |
+| 128 | no-op | no-op | 0.1675 | 6 | 0 | 0 | 0 |
+| 512 | unique+anchor | sparse replacement | 5.2715 | 20 | 10 | 3 | 513 |
+| 512 | shared-hot | shared-hot replacement | 5.0871 | 22 | 16 | 3 | 1024 |
+| 512 | zipf-like | erase | 5.0611 | 18 | 18 | 3 | 940 |
+| 512 | mixed-utf8 | insert | 7.5677 | 18 | 16 | 3 | 1024 |
+| 512 | no-op | no-op | 0.1422 | 6 | 0 | 0 | 0 |
+
+The values show that local work is bounded by touched partitions while shared
+hot tokens still decode their complete posting partition. They are directional,
+not a claim of physical page-write counts or a batch-size decision. A 2048-unit
+run remains a follow-up because the current Windows environment makes the full
+four-backend sweep substantially slower. The replay receipt records the exact
+runner arguments and the invariant checks used by the CI contract.
+
 ### Algorithm compatibility audit
 
 The storage contract must not force every retrieval algorithm into

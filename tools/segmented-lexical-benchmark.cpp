@@ -120,7 +120,12 @@ void print_header() {
                  "\tdiagnostic_scans\tlive_rows_observed\tlive_value_bytes_observed"
                  "\tobserved_live_key_value_bytes\tpoint_reads\trange_rows_visited"
                  "\tkv_inserts_or_assigns\tkv_deletes\tbytes_decoded\tbytes_encoded"
-                 "\ttouched_tokens\tdecoded_postings\n";
+                 "\ttouched_tokens\tdecoded_postings\tpoint_update_ms"
+                 "\tupdate_point_reads\tupdate_range_rows_visited"
+                 "\tupdate_kv_inserts_or_assigns\tupdate_kv_deletes"
+                 "\tupdate_bytes_decoded\tupdate_bytes_encoded"
+                 "\tupdate_touched_tokens\tupdate_decoded_postings"
+                 "\tdb_bytes_before_update\tdb_bytes_after_update\n";
 }
 
 void run_flat_reference(
@@ -143,7 +148,9 @@ void run_flat_reference(
               << "\t0\t0\t0\t0\t0\t0\t"
               << index.collection_stats().unit_count
               << '\t' << index.collection_stats().total_token_count
-              << "\t0\t0\t0\t0\n";
+              ;
+    for(int field = 0; field != 23; ++field) std::cout << "\t0";
+    std::cout << '\n';
 }
 
 template<typename IndexT, typename OptionsT>
@@ -187,13 +194,66 @@ void run_durable(
     Clock::time_point snapshot_finished;
     Clock::time_point diagnostic_started;
     Clock::time_point diagnostic_finished;
+    Clock::time_point update_started;
+    Clock::time_point update_finished;
+    std::uintmax_t db_bytes_before_update = 0;
+    std::uintmax_t db_bytes_after_update = 0;
     PhysicalCounters counters;
+    MdbxSegmentedLexicalIndexDiagnostics initial_diagnostics;
+    MdbxSegmentedLexicalIndexDiagnostics update_diagnostics;
+    MdbxSegmentedLexicalIndexDiagnostics snapshot_diagnostics;
+    MdbxSegmentedLexicalIndexDiagnostics reopen_diagnostics;
     {
         write_started = Clock::now();
         for(std::size_t index_value = 0; index_value < units; ++index_value) {
             index->upsert(unit(index_value, workload));
         }
         write_finished = Clock::now();
+        if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
+            initial_diagnostics = diagnostics;
+            diagnostics = {};
+        }
+        db_bytes_before_update = database_bytes(path);
+        update_started = Clock::now();
+        const auto original = unit(0, workload);
+        if(workload == "unique+anchor" || workload == "shared-hot") {
+            auto replacement = original;
+            replacement.resource_generation = 2;
+            replacement.unit_revision = 2;
+            replacement.projection_version = ProjectionVersionRef{2, 2, 1, "benchmark-v2"};
+            replacement.normalized_tokens.push_back("point-update");
+            index->upsert(
+                replacement,
+                FlatLexicalExpectedState{
+                    KnowledgeUnitId{1}, 1, 1,
+                    ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+        } else if(workload == "zipf-like") {
+            static_cast<void>(index->erase(KnowledgeUnitId{1}));
+        } else if(workload == "no-op") {
+            index->upsert(
+                original,
+                FlatLexicalExpectedState{
+                    KnowledgeUnitId{1}, 1, 1,
+                    ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+        } else {
+            auto inserted = unit(units, workload);
+            index->upsert(inserted);
+        }
+        update_finished = Clock::now();
+        if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
+            update_diagnostics = diagnostics;
+            diagnostics = {};
+        }
+        db_bytes_after_update = database_bytes(path);
+        // Restore the logical corpus before snapshot/reopen so every backend has
+        // the same final state while the measured operation remains isolated.
+        if(workload == "zipf-like") {
+            index->upsert(original);
+        } else if(workload != "unique+anchor" && workload != "shared-hot"
+            && workload != "no-op") {
+            static_cast<void>(index->erase(
+                KnowledgeUnitId{static_cast<std::uint64_t>(units + 1U)}));
+        }
         snapshot_started = Clock::now();
         {
             const auto snapshot = index->read_snapshot();
@@ -202,11 +262,15 @@ void run_durable(
             static_cast<void>(snapshot.index.postings(*anchor));
         }
         snapshot_finished = Clock::now();
+        if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
+            snapshot_diagnostics = diagnostics;
+            diagnostics = {};
+        }
         diagnostic_started = Clock::now();
         if(diagnostics_enabled) {
             counters = scan_rows(context,
                 backend == "segmented-v2" ? "seg-v2" :
-                backend == "segmented-v1" ? "seg-v1" : "flat-v1");
+                backend == "segmented-v1" ? "seg-v1" : "flat-v2");
         }
         diagnostic_finished = Clock::now();
     }
@@ -237,12 +301,15 @@ void run_durable(
         total_tokens = reopened_snapshot.index.collection_stats().total_token_count;
     }
     const auto reopen_snapshot_done = Clock::now();
+    if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
+        reopen_diagnostics = diagnostics;
+    }
     const auto reopen_diagnostic_started = Clock::now();
     PhysicalCounters reopen_counters;
     if(diagnostics_enabled) {
         reopen_counters = scan_rows(reopen_context,
             backend == "segmented-v2" ? "seg-v2" :
-            backend == "segmented-v1" ? "seg-v1" : "flat-v1");
+            backend == "segmented-v1" ? "seg-v1" : "flat-v2");
         if(counters.live_rows_observed != reopen_counters.live_rows_observed ||
            counters.live_value_bytes_observed != reopen_counters.live_value_bytes_observed ||
            counters.observed_live_key_value_bytes != reopen_counters.observed_live_key_value_bytes) {
@@ -267,14 +334,25 @@ void run_durable(
               << '\t' << (diagnostics_enabled ? reopen_counters.live_rows_observed : 0U)
               << '\t' << (diagnostics_enabled ? reopen_counters.live_value_bytes_observed : 0U)
               << '\t' << (diagnostics_enabled ? reopen_counters.observed_live_key_value_bytes : 0U)
-              << '\t' << diagnostics.point_reads
-              << '\t' << diagnostics.range_rows_visited
-              << '\t' << diagnostics.kv_inserts_or_assigns
-              << '\t' << diagnostics.kv_deletes
-              << '\t' << diagnostics.bytes_decoded
-              << '\t' << diagnostics.bytes_encoded
-              << '\t' << diagnostics.touched_tokens
-              << '\t' << diagnostics.decoded_postings
+              << '\t' << initial_diagnostics.point_reads
+              << '\t' << initial_diagnostics.range_rows_visited
+              << '\t' << initial_diagnostics.kv_inserts_or_assigns
+              << '\t' << initial_diagnostics.kv_deletes
+              << '\t' << initial_diagnostics.bytes_decoded
+              << '\t' << initial_diagnostics.bytes_encoded
+              << '\t' << initial_diagnostics.touched_tokens
+              << '\t' << initial_diagnostics.decoded_postings
+              << '\t' << milliseconds(update_finished - update_started)
+              << '\t' << update_diagnostics.point_reads
+              << '\t' << update_diagnostics.range_rows_visited
+              << '\t' << update_diagnostics.kv_inserts_or_assigns
+              << '\t' << update_diagnostics.kv_deletes
+              << '\t' << update_diagnostics.bytes_decoded
+              << '\t' << update_diagnostics.bytes_encoded
+              << '\t' << update_diagnostics.touched_tokens
+              << '\t' << update_diagnostics.decoded_postings
+              << '\t' << db_bytes_before_update
+              << '\t' << db_bytes_after_update
               << '\n';
 }
 
@@ -291,7 +369,7 @@ int main(int argc, char** argv) {
         : true;
     print_header();
     for(const std::string workload : {
-        "unique+anchor", "shared-hot", "zipf-like", "mixed-utf8"}) {
+        "unique+anchor", "shared-hot", "zipf-like", "mixed-utf8", "no-op"}) {
         for(std::size_t repeat = 0; repeat < repeats; ++repeat) {
             run_flat_reference(workload, units, repeat);
             {

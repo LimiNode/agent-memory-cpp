@@ -31,6 +31,25 @@ HEADER = [
     "live_rows_observed",
     "live_value_bytes_observed",
     "observed_live_key_value_bytes",
+    "point_reads",
+    "range_rows_visited",
+    "kv_inserts_or_assigns",
+    "kv_deletes",
+    "bytes_decoded",
+    "bytes_encoded",
+    "touched_tokens",
+    "decoded_postings",
+    "point_update_ms",
+    "update_point_reads",
+    "update_range_rows_visited",
+    "update_kv_inserts_or_assigns",
+    "update_kv_deletes",
+    "update_bytes_decoded",
+    "update_bytes_encoded",
+    "update_touched_tokens",
+    "update_decoded_postings",
+    "db_bytes_before_update",
+    "db_bytes_after_update",
 ]
 
 
@@ -69,8 +88,8 @@ def as_float(row: dict[str, str], field: str) -> float:
 
 
 def check(rows: list[dict[str, str]], telemetry: bool) -> None:
-    if len(rows) != 12:
-        fail(f"expected 12 rows for four workloads and three backends, got {len(rows)}")
+    if len(rows) != 20:
+        fail(f"expected 20 rows for five workloads and four backends, got {len(rows)}")
     for row in rows:
         if list(row) != HEADER:
             fail(f"unexpected TSV columns: {list(row)!r}")
@@ -80,6 +99,7 @@ def check(rows: list[dict[str, str]], telemetry: bool) -> None:
             "environment_ms", "adapter_init_ms", "write_ms", "snapshot_ms",
             "write_diagnostic_ms", "close_ms", "reopen_ms", "reopen_snapshot_ms",
             "reopen_diagnostic_ms",
+            "point_update_ms",
         ):
             if as_float(row, field) < 0.0:
                 fail(f"negative timing value in {field}")
@@ -94,10 +114,20 @@ def check(rows: list[dict[str, str]], telemetry: bool) -> None:
                 fail("telemetry-enabled run did not report live rows and bytes")
             if as_int(row, "observed_live_key_value_bytes") < as_int(row, "live_value_bytes_observed"):
                 fail("key/value bytes cannot be smaller than value bytes")
+            if row["backend"] == "segmented-v2":
+                if as_int(row, "update_point_reads") <= 0:
+                    fail("seg-v2 point update did not report metadata/partition reads")
+                if as_int(row, "db_bytes_after_update") <= 0:
+                    fail("seg-v2 point update did not report database size")
         else:
             for field in (
                 "diagnostic_scans", "live_rows_observed", "live_value_bytes_observed",
-                "observed_live_key_value_bytes",
+                "observed_live_key_value_bytes", "point_reads", "range_rows_visited",
+                "kv_inserts_or_assigns", "kv_deletes", "bytes_decoded", "bytes_encoded",
+                "touched_tokens", "decoded_postings", "update_point_reads",
+                "update_range_rows_visited", "update_kv_inserts_or_assigns",
+                "update_kv_deletes", "update_bytes_decoded", "update_bytes_encoded",
+                "update_touched_tokens", "update_decoded_postings",
             ):
                 if as_int(row, field) != 0:
                     fail(f"telemetry-disabled run reported {field}")

@@ -127,6 +127,161 @@ std::map<std::string, std::string> rows(
     return result;
 }
 
+std::string v2_prefix(const ScopeId& scope);
+
+std::string segment_key(
+    const ScopeId& scope,
+    const TokenId token_id,
+    const std::uint32_t segment_id = 0
+) {
+    return v2_prefix(scope) + std::string(1, separator) + "segment"
+        + std::string(1, separator) + std::to_string(token_id.value()) + ":"
+        + std::to_string(segment_id);
+}
+
+enum class CorruptSegmentField : std::uint8_t {
+    Scope,
+    Epoch,
+    Projection,
+    Witness
+};
+
+void corrupt_segment_field(
+    const std::shared_ptr<MdbxStorageContext>& context,
+    const ScopeId& scope,
+    const TokenId token_id,
+    const CorruptSegmentField field,
+    const bool recompute_witness
+) {
+    mdbxc::KeyValueTable<std::string, std::string> table(
+        context->connection(), "agent_memory_lexical_posting_segments");
+    auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    const auto key = segment_key(scope, token_id);
+    const auto encoded = table.find(key, txn);
+    require(encoded.has_value(), "corruption fixture segment row missing");
+    auto decoded = decode_lexical_segment_row(*encoded);
+    require(decoded.complete(), "corruption fixture segment row did not decode");
+    if(field == CorruptSegmentField::Scope) {
+        decoded.row.key.scope_id = ScopeId{"foreign-scope"};
+    } else if(field == CorruptSegmentField::Epoch) {
+        auto epoch = decoded.row.key.statistics_epoch.bytes();
+        epoch[0] ^= 0x7fU;
+        decoded.row.key.statistics_epoch = LexicalStatisticsEpoch{epoch};
+        decoded.row.segment.statistics_epoch = decoded.row.key.statistics_epoch;
+    } else if(field == CorruptSegmentField::Projection) {
+        decoded.row.key.projection_kind = ProjectionKind::Summary;
+    } else {
+        decoded.row.membership_witness[0] ^= 0x7fU;
+    }
+    if(recompute_witness) {
+        decoded.row.membership_witness = lexical_posting_membership_witness(
+            decoded.row.segment.postings, kLexicalIncrementalSegmentLayoutVersion);
+        table.insert_or_assign(
+            v2_prefix(scope) + std::string(1, separator) + "witness"
+                + std::string(1, separator) + std::to_string(token_id.value()),
+            std::string(reinterpret_cast<const char*>(decoded.row.membership_witness.data()), 32),
+            txn);
+    }
+    const auto reencoded = encode_lexical_segment_row(decoded.row);
+    require(reencoded.complete(), "corruption fixture segment row did not re-encode");
+    table.insert_or_assign(key, reencoded.bytes, txn);
+    txn.commit();
+}
+
+void test_incremental_physical_admission(
+    const std::filesystem::path& path,
+    const CorruptSegmentField field
+) {
+    const ScopeId scope{"scope-v2-corruption"};
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    auto context = MdbxStorageContext::open(path.string());
+    MdbxSegmentedLexicalIndex segmented{options(path, context, scope)};
+    segmented.upsert(unit(scope, 1, 1, {"guard"}));
+    const auto token_id = segmented.read_snapshot().index.find_token_id("guard");
+    require(token_id.has_value(), "corruption fixture token missing");
+    corrupt_segment_field(context, scope, *token_id, field, false);
+    const auto before = rows(context, v2_prefix(scope));
+    bool rejected = false;
+    try {
+        segmented.upsert(
+            unit(scope, 1, 2, {"guard"}),
+            FlatLexicalExpectedState{
+                KnowledgeUnitId{1}, 1, 1,
+                ProjectionVersionRef{1, 1, 1, "derivation-v1"}});
+    } catch(const std::runtime_error&) {
+        rejected = true;
+    }
+    require(rejected, "corrupt physical segment row was accepted");
+    require(rows(context, v2_prefix(scope)) == before,
+        "physical admission failure published a partial mutation");
+}
+
+void test_incremental_old_contribution_admission(const std::filesystem::path& path) {
+    const ScopeId scope{"scope-v2-contribution-corruption"};
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    auto context = MdbxStorageContext::open(path.string());
+    MdbxSegmentedLexicalIndex segmented{options(path, context, scope)};
+    segmented.upsert(unit(scope, 1, 1, {"guard"}));
+    const auto token_id = segmented.read_snapshot().index.find_token_id("guard");
+    require(token_id.has_value(), "contribution fixture token missing");
+    corrupt_segment_field(context, scope, *token_id, CorruptSegmentField::Witness, true);
+    mdbxc::KeyValueTable<std::string, std::string> table(
+        context->connection(), "agent_memory_lexical_posting_segments");
+    auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    const auto key = segment_key(scope, *token_id);
+    const auto encoded = table.find(key, txn);
+    require(encoded.has_value(), "contribution fixture segment missing");
+    auto decoded = decode_lexical_segment_row(*encoded);
+    require(decoded.complete(), "contribution fixture segment did not decode");
+    decoded.row.segment.postings.front().resource_id = ResourceId{"foreign-resource"};
+    decoded.row.membership_witness = lexical_posting_membership_witness(
+        decoded.row.segment.postings, kLexicalIncrementalSegmentLayoutVersion);
+    const auto reencoded = encode_lexical_segment_row(decoded.row);
+    require(reencoded.complete(), "contribution fixture re-encode failed");
+    table.insert_or_assign(key, reencoded.bytes, txn);
+    table.insert_or_assign(
+        v2_prefix(scope) + std::string(1, separator) + "witness"
+            + std::string(1, separator) + std::to_string(token_id->value()),
+        std::string(reinterpret_cast<const char*>(decoded.row.membership_witness.data()), 32),
+        txn);
+    txn.commit();
+    const auto before = rows(context, v2_prefix(scope));
+    bool rejected = false;
+    try {
+        segmented.upsert(
+            unit(scope, 1, 2, {"guard"}),
+            FlatLexicalExpectedState{
+                KnowledgeUnitId{1}, 1, 1,
+                ProjectionVersionRef{1, 1, 1, "derivation-v1"}});
+    } catch(const std::runtime_error&) {
+        rejected = true;
+    }
+    require(rejected, "incompatible old posting contribution was accepted");
+    require(rows(context, v2_prefix(scope)) == before,
+        "old contribution admission failure published a partial mutation");
+}
+
+void test_incremental_metadata_getters(const std::filesystem::path& path) {
+    const ScopeId scope{"scope-v2-getters"};
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    auto context = MdbxStorageContext::open(path.string());
+    MdbxSegmentedLexicalIndexDiagnostics diagnostics;
+    auto index_options = options(path, context, scope);
+    index_options.diagnostics = &diagnostics;
+    MdbxSegmentedLexicalIndex segmented{index_options};
+    segmented.upsert(unit(scope, 1, 1, {"getter"}));
+    diagnostics = {};
+    const auto snapshot = segmented.active_snapshot();
+    const auto sequence = segmented.publication_sequence();
+    require(snapshot.statistics_generation == 2 && sequence.value() == 2,
+        "direct metadata getter returned stale state");
+    require(diagnostics.range_rows_visited == 0,
+        "direct metadata getter scanned the namespace");
+}
+
 std::string v2_prefix(const ScopeId& scope) {
     static constexpr char digits[] = "0123456789abcdef";
     std::string encoded = "seg-v2";
@@ -292,13 +447,35 @@ int main() {
         const auto base = std::filesystem::temp_directory_path();
         const auto lifecycle = base / "agent_memory_mdbx_incremental_segmented_lifecycle.mdbx";
         const auto isolation = base / "agent_memory_mdbx_incremental_segmented_isolation.mdbx";
+        const auto scope_corruption = base / "agent_memory_mdbx_incremental_segmented_scope_corruption.mdbx";
+        const auto epoch_corruption = base / "agent_memory_mdbx_incremental_segmented_epoch_corruption.mdbx";
+        const auto projection_corruption = base / "agent_memory_mdbx_incremental_segmented_projection_corruption.mdbx";
+        const auto witness_corruption = base / "agent_memory_mdbx_incremental_segmented_witness_corruption.mdbx";
+        const auto contribution_corruption = base / "agent_memory_mdbx_incremental_segmented_contribution_corruption.mdbx";
+        const auto getters = base / "agent_memory_mdbx_incremental_segmented_getters.mdbx";
         std::error_code error;
         std::filesystem::remove(lifecycle, error);
         std::filesystem::remove(isolation, error);
         test_incremental_lifecycle(lifecycle);
         test_reopen_faults_and_namespace_isolation(isolation);
+        test_incremental_physical_admission(
+            scope_corruption, CorruptSegmentField::Scope);
+        test_incremental_physical_admission(
+            epoch_corruption, CorruptSegmentField::Epoch);
+        test_incremental_physical_admission(
+            projection_corruption, CorruptSegmentField::Projection);
+        test_incremental_physical_admission(
+            witness_corruption, CorruptSegmentField::Witness);
+        test_incremental_old_contribution_admission(contribution_corruption);
+        test_incremental_metadata_getters(getters);
         std::filesystem::remove(lifecycle, error);
         std::filesystem::remove(isolation, error);
+        std::filesystem::remove(scope_corruption, error);
+        std::filesystem::remove(epoch_corruption, error);
+        std::filesystem::remove(projection_corruption, error);
+        std::filesystem::remove(witness_corruption, error);
+        std::filesystem::remove(contribution_corruption, error);
+        std::filesystem::remove(getters, error);
         require(!error, "v2 test database cleanup failed");
         return 0;
     } catch(const std::exception& error) {

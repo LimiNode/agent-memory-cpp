@@ -1,0 +1,24 @@
+{
+  "family": "incremental_segmented_point_update_v2",
+  "date": "2026-10-26",
+  "pr": "#559",
+  "head": "corrective-pass",
+  "runner": "agent_memory_segmented_lexical_benchmark",
+  "arguments": {
+    "runs": [
+      ["128", "1", "<temp>/bench128", "1"],
+      ["512", "1", "<temp>/bench512", "1"]
+    ],
+    "backends": ["flat-reference", "flat-v2", "segmented-v1", "segmented-v2"],
+    "workloads": ["unique+anchor", "shared-hot", "zipf-like", "mixed-utf8", "no-op"],
+    "diagnostics": true
+  },
+  "checks": {
+    "physical_rows_reopened": true,
+    "final_logical_unit_count_preserved": true,
+    "update_diagnostics_scoped": true,
+    "namespace_scan_for_metadata_getters": false,
+    "interpretation": "directional; counters are adapter operations, not MDBX page writes"
+  },
+  "status": "replayable"
+}

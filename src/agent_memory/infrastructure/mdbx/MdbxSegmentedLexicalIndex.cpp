@@ -1020,6 +1020,18 @@ public:
         const auto metadata = find_row(
             row_key(prefix, kPartitionMeta, std::to_string(token_id.value())), txn);
         if(metadata) result.generation = deserialize_u64(*metadata);
+        const auto witness = find_row(
+            row_key(prefix, kWitness, std::to_string(token_id.value())), txn);
+        std::optional<std::array<std::uint8_t, 32>> authoritative_witness;
+        if(witness) {
+            if(witness->size() != 32U) {
+                throw std::runtime_error(
+                    "incremental segmented partition witness failed admission");
+            }
+            std::array<std::uint8_t, 32> decoded_witness{};
+            std::memcpy(decoded_witness.data(), witness->data(), decoded_witness.size());
+            authoritative_witness = decoded_witness;
+        }
         std::vector<FlatLexicalPostingSegment> segments;
         const auto from = row_key(prefix, kSegment,
             std::to_string(token_id.value()) + ":");
@@ -1027,12 +1039,24 @@ public:
         to.push_back(static_cast<char>(0xff));
         std::size_t decoded_postings = 0;
         for_each_row(from, to,
-            [this, token_id, &result, &segments, &decoded_postings](
+            [this, token_id, &result, &segments, &decoded_postings,
+                &authoritative_witness](
                 const std::string& key,
                                         const std::string& value) {
                 const auto decoded = decode_lexical_segment_row(value, limits);
-                if(!decoded.complete() || decoded.row.key.token_id != token_id
-                    || decoded.row.key.posting_layout_version != layout_version()) {
+                if(!decoded.complete()
+                    || decoded.row.key.scope_id != descriptor.ref.scope_id
+                    || decoded.row.key.projection_kind != descriptor.ref.projection_kind
+                    || decoded.row.key.statistics_epoch != descriptor.ref.statistics_epoch
+                    || decoded.row.key.statistics_generation != result.generation
+                    || decoded.row.key.token_id != token_id
+                    || decoded.row.key.posting_layout_version != layout_version()
+                    || decoded.row.segment.statistics_epoch != descriptor.ref.statistics_epoch
+                    || decoded.row.segment.statistics_generation != result.generation
+                    || decoded.row.segment.token_id != token_id
+                    || decoded.row.segment.posting_layout_version != layout_version()
+                    || !authoritative_witness
+                    || decoded.row.membership_witness != *authoritative_witness) {
                     throw std::runtime_error(
                         "incremental segmented partition row failed admission");
                 }
@@ -1081,16 +1105,14 @@ public:
         }
         const auto stats = find_row(
             row_key(prefix, kTokenStats, std::to_string(token_id.value())), txn);
-        const auto witness = find_row(
-            row_key(prefix, kWitness, std::to_string(token_id.value())), txn);
         if(result.postings.empty()) {
-            if(stats || witness) {
+            if(stats || authoritative_witness) {
                 throw std::runtime_error(
                     "incremental segmented empty partition has derived rows");
             }
             return result;
         }
-        if(!stats || !witness || witness->size() != 32U) {
+        if(!stats || !authoritative_witness) {
             throw std::runtime_error(
                 "incremental segmented partition derived rows are incomplete");
         }
@@ -1110,10 +1132,8 @@ public:
             throw std::runtime_error(
                 "incremental segmented token statistics failed admission");
         }
-        std::array<std::uint8_t, 32> expected_witness{};
-        std::memcpy(expected_witness.data(), witness->data(), expected_witness.size());
         if(!lexical_posting_membership_witness_matches(
-                result.postings, expected_witness, layout_version())) {
+                result.postings, *authoritative_witness, layout_version())) {
             throw std::runtime_error(
                 "incremental segmented partition witness failed admission");
         }
@@ -1269,6 +1289,27 @@ public:
                 == expected.projection_version.derivation_fingerprint;
     }
 
+    static bool posting_matches_unit(
+        const FlatLexicalPosting& posting,
+        const TokenId token_id,
+        const FlatLexicalUnitInput& unit,
+        const std::uint32_t expected_term_frequency
+    ) noexcept {
+        return posting.token_id == token_id
+            && posting.unit_id == unit.unit_id
+            && posting.resource_id == unit.resource_id
+            && posting.resource_generation == unit.resource_generation
+            && posting.projection_version.unit_revision_at_build
+                == unit.projection_version.unit_revision_at_build
+            && posting.projection_version.projection_revision
+                == unit.projection_version.projection_revision
+            && posting.projection_version.derivation_generation
+                == unit.projection_version.derivation_generation
+            && posting.projection_version.derivation_fingerprint
+                == unit.projection_version.derivation_fingerprint
+            && posting.term_frequency == expected_term_frequency;
+    }
+
     template<typename Transaction>
     void upsert_incremental(
         FlatLexicalUnitInput input,
@@ -1351,11 +1392,19 @@ public:
             auto partition = read_incremental_partition(token_id, txn);
             const auto old_count = old_counts.find(token_id);
             const auto new_count = new_counts.find(token_id);
+            const auto unit_id = input.unit_id;
             auto found = std::find_if(partition.postings.begin(), partition.postings.end(),
-                [input](const auto& posting) { return posting.unit_id == input.unit_id; });
+                [unit_id](const auto& posting) { return posting.unit_id == unit_id; });
             if((old_count != old_counts.end()) != (found != partition.postings.end())) {
                 throw std::runtime_error(
                     "incremental segmented old posting admission failed");
+            }
+            if(found != partition.postings.end()
+                && (!existing
+                    || !posting_matches_unit(
+                        *found, token_id, *existing, old_count->second))) {
+                throw std::runtime_error(
+                    "incremental segmented old posting contribution mismatch");
             }
             if(found != partition.postings.end()) partition.postings.erase(found);
             if(new_count != new_counts.end()) {
@@ -1447,6 +1496,11 @@ public:
                 [unit_id](const auto& posting) { return posting.unit_id == unit_id; });
             if(found == partition.postings.end()) {
                 throw std::runtime_error("incremental segmented erase posting is missing");
+            }
+            if(!posting_matches_unit(
+                    *found, entry.first, *existing, entry.second)) {
+                throw std::runtime_error(
+                    "incremental segmented erase posting contribution mismatch");
             }
             partition.postings.erase(found);
             write_incremental_partition(
@@ -1625,12 +1679,16 @@ const LexicalIndexDescriptor& MdbxSegmentedLexicalIndex::descriptor() const noex
 
 LexicalActiveSnapshot MdbxSegmentedLexicalIndex::active_snapshot() const {
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-    return m_impl->read_state(txn).snapshot;
+    return m_impl->incremental()
+        ? m_impl->read_incremental_metadata(txn).snapshot
+        : m_impl->read_state(txn).snapshot;
 }
 
 LexicalPublicationSequence MdbxSegmentedLexicalIndex::publication_sequence() const {
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-    return m_impl->read_state(txn).sequence;
+    return m_impl->incremental()
+        ? m_impl->read_incremental_metadata(txn).sequence
+        : m_impl->read_state(txn).sequence;
 }
 
 void MdbxSegmentedLexicalIndex::upsert(
