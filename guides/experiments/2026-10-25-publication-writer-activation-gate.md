@@ -119,13 +119,13 @@ base `4018fb12`:
 
 | PR | Current head | Current base | Required action |
 | --- | --- | --- | --- |
-| #544 | `9cdba9b1a956353a98b9e8b4e9c83fdb1631330a` | `4018fb12` | guarded restack onto current `main`; inspect overlap with segmented lexical files |
-| #549 | `f079224e754d08595005a8070a1f88c363d18b94` | #544 | restack after #544 and rerun exact-head CI |
-| #550 | `89f898eea090ed074f44b72fb3c2567f7a61b218` | #549 | restack after #549 and rerun exact-head CI |
-| #551 | `2b2246a620d6ed6020bfdfac3acd1eb9bc42c4c7` | #550 | preserve participant scope; rerun exact-head CI |
-| #552 | `0d0c89140baa4f50affdcfe8f7d516a5ccb59d0c` | #551 | inspect projection/lexical overlap with segmented backend |
-| #553 | `d5e82f731bdb0fb0f2d1673a95d7f414e45986d5` | #552 | preserve pinned-read scope; rerun exact-head CI |
-| #554 | `a73ea1b60bb16b56ff8840217e32065fa6d52781` | #553 | apply the cross-context corrective commit, then rerun exact-head CI |
+| #544 | `b7fff7002efd412d3e2a2630f160a86ac6303fbc` | `main@1e2806d2` | restacked; preserve plan conformance and rerun exact-head CI |
+| #549 | `be4c11f5459640d25bf382797b2b852d83faba72` | #544@b7fff700 | restacked; rerun exact-head CI |
+| #550 | `45c870c45e5ce20526e62e3ffd277c576cabe76c` | #549@be4c11f5 | restacked; preserve DBI/schema scope and rerun exact-head CI |
+| #551 | `38c7473e1f2b2c5e4a76172e2b052b4cc33f27e9` | #550@45c870c4 | restacked; preserve participant scope and rerun exact-head CI |
+| #552 | `e64630ab7ca0523bf1bf26e3fd5d6bbd41f3cdcf` | #551@38c7473e | restacked; rerun exact-head CI |
+| #553 | `18548d1fa65b25c7906e50214712199b9cac0aeb` | #552@e64630ab | restacked; preserve pinned-read scope and rerun exact-head CI |
+| #554 | `7fc8f7ab2679f11eb9b73c653ceba448526eaf61` | #553@18548d1f | restacked; rerun exact-head CI |
 
 The chain is independent of the segmented backend at the source-contract
 level, but #544/#552/#553 touch lexical publication concepts and must be
@@ -149,15 +149,15 @@ current remote heads; they do not replace the CI required after restack.
 
 | PR | HEAD | Base | CI | Conflicts now | Ready for guarded restack | Blocker |
 | --- | --- | --- | --- | --- | --- | --- |
-| #544 | `9cdba9b1` | `main@4018fb12` | `40157503343` SUCCESS | none in simulated merge to `main@1e2806d2` | yes | old base; rerun after restack |
-| #549 | `f079224e` | `#544@9cdba9b1` | `40158713072` SUCCESS | none in simulated merge | yes | inherits #544 restack |
-| #550 | `89f898ee` | `#549@f079224e` | `40161356788` SUCCESS | none in simulated merge | yes | inherits prior restacks |
-| #551 | `2b2246a6` | `#550@89f898ee` | `40161713009` SUCCESS | none in simulated merge | yes | inherits prior restacks |
-| #552 | `0d0c8914` | `#551@2b2246a6` | `40161712876`, `40161713601` SUCCESS | none in simulated merge | yes | inherits prior restacks |
-| #553 | `d5e82f73` | `#552@0d0c8914` | `40161713743`, `40161714122` SUCCESS | none in simulated merge | yes | inherits prior restacks |
-| #554 | `a73ea1b6` | `#553@d5e82f73` | `40245801717` SUCCESS | none in simulated merge | yes | inherits prior restacks |
-| #555 | `a865f496` | `main@1e2806d2` | `40255596913` SUCCESS | none | independent | research-only; not in functional chain |
-| #556 | `9331ad16` | `main@1e2806d2` | `40254191303` SUCCESS | none | no | segmented-v2 research; keep outside coordinator stack |
+| #544 | `b7fff700` | `main@1e2806d2` | `40265763503` SUCCESS | none | yes | ready for guarded squash |
+| #549 | `be4c11f5` | `#544@b7fff700` | `40265811788` SUCCESS | none | yes | ready for guarded squash |
+| #550 | `45c870c4` | `#549@be4c11f5` | `40265840967` SUCCESS | none | yes | ready for guarded squash |
+| #551 | `38c7473e` | `#550@45c870c4` | `40265877101` SUCCESS | none | yes | ready for guarded squash |
+| #552 | `e64630ab` | `#551@38c7473e` | `40265928511` SUCCESS | none | yes | ready for guarded squash |
+| #553 | `18548d1f` | `#552@e64630ab` | `40265958122` SUCCESS | none | yes | ready for guarded squash |
+| #554 | `7fc8f7ab` | `#553@18548d1f` | `40266029291` SUCCESS | none | yes | ready for guarded squash |
+| #555 | `deaa2ebd` | `main@1e2806d2` | `40255687249` SUCCESS | none | independent | research-only; not in functional chain |
+| #556 | `bfe90484` | `main@1e2806d2` | `40261838499` SUCCESS | none | no | segmented-v2 research; keep outside coordinator stack |
 
 The current remote `main` is `1e2806d21bc36fa6baeca536aaccec0bf535502c`.
 The simulated merges above are evidence that Git can construct a clean tree;
