@@ -4,6 +4,7 @@
 
 #include <stdexcept>
 #include <algorithm>
+#include <string>
 #include <utility>
 
 namespace agent_memory {
@@ -14,7 +15,15 @@ MdbxProjectionPublicationParticipant::MdbxProjectionPublicationParticipant(
     SearchProjection projection
 ) : m_context(std::move(context)),
     m_store(&store),
-    m_projection(std::move(projection)) {}
+    m_projection(std::move(projection)) {
+    if(!m_context || !m_context->connection()
+        || !store.context().connection()
+        || m_context->connection() != store.context().connection()) {
+        throw std::invalid_argument(
+            "publication projection participant context does not own the underlying store connection"
+        );
+    }
+}
 
 const MdbxStorageContext& MdbxProjectionPublicationParticipant::context() const noexcept {
     return *m_context;
@@ -69,7 +78,15 @@ MdbxLexicalPublicationParticipant::MdbxLexicalPublicationParticipant(
 ) : m_context(std::move(context)),
     m_index(&index),
     m_input(std::move(input)),
-    m_expected_current(std::move(expected_current)) {}
+    m_expected_current(std::move(expected_current)) {
+    if(!m_context || !m_context->connection()
+        || !index.context().connection()
+        || m_context->connection() != index.context().connection()) {
+        throw std::invalid_argument(
+            "publication lexical participant context does not own the underlying index connection"
+        );
+    }
+}
 
 const MdbxStorageContext& MdbxLexicalPublicationParticipant::context() const noexcept {
     return *m_context;

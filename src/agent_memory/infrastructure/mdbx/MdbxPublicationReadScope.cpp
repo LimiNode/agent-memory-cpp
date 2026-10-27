@@ -150,15 +150,10 @@ void MdbxPublicationReadScope::finish() {
             && left.derivation_generation == right.derivation_generation
             && left.derivation_fingerprint == right.derivation_fingerprint;
     };
-    const bool canonical_matches_target = m_observation.canonical
-        && m_observation.canonical->document_id == target_evidence.canonical_document_id
-        && m_observation.canonical->revision == target_evidence.canonical_revision;
-    const bool unit_matches_target = m_observation.unit
-        && m_observation.unit->id.value() == target_evidence.unit_id.value()
-        && m_observation.unit->revision == target_evidence.unit_revision
-        && std::any_of(
-            m_observation.unit->sources.begin(),
-            m_observation.unit->sources.end(),
+    const auto target_source_matches = [&target_evidence](const auto& unit) {
+        return std::any_of(
+            unit.sources.begin(),
+            unit.sources.end(),
             [&target_evidence](const auto& source) {
                 return source.resource_id == target_evidence.resource_id
                     && source.resource_revision
@@ -166,6 +161,14 @@ void MdbxPublicationReadScope::finish() {
                         == target_evidence.resource_generation;
             }
         );
+    };
+    const bool canonical_matches_target = m_observation.canonical
+        && m_observation.canonical->document_id == target_evidence.canonical_document_id
+        && m_observation.canonical->revision == target_evidence.canonical_revision;
+    const bool unit_matches_target = m_observation.unit
+        && m_observation.unit->id.value() == target_evidence.unit_id.value()
+        && m_observation.unit->revision == target_evidence.unit_revision
+        && target_source_matches(*m_observation.unit);
     const bool manifest_matches_target = m_observation.manifest
         && m_observation.manifest->revision.resource_id == target_evidence.resource_id
         && m_observation.manifest->revision.generation == target_evidence.resource_generation
@@ -191,29 +194,25 @@ void MdbxPublicationReadScope::finish() {
     const bool unit_resource_matches_manifest =
         m_observation.unit
         && m_observation.manifest
-        && !m_observation.unit->sources.empty()
-        && m_observation.unit->sources.front().resource_id
-            == m_observation.manifest->revision.resource_id;
+        && m_observation.manifest->revision.resource_id == target_evidence.resource_id
+        && target_source_matches(*m_observation.unit);
     const bool lexical_membership_matches =
         m_observation.lexical
         && m_observation.receipt
         && std::any_of(
             m_observation.lexical->frontier.observed_unit_revisions.begin(),
             m_observation.lexical->frontier.observed_unit_revisions.end(),
-            [this, &projection_version_matches](const auto& observation) {
-                if(!m_observation.unit || m_observation.unit->sources.empty()) {
+            [this, &projection_version_matches, &target_evidence](const auto& observation) {
+                if(!m_observation.unit) {
                     return false;
                 }
-                const auto& source = m_observation.unit->sources.front();
                 return observation.scope_id == m_observation.frontier.scope_id
                     && observation.unit_id == m_observation.unit->id
                     && observation.unit_revision == m_observation.unit->revision
-                    && observation.resource_id == source.resource_id
+                    && observation.resource_id == target_evidence.resource_id
                     && m_observation.receipt->target_evidence.manifest_state
                         == ResourceManifestState::Active
-                    && observation.resource_generation
-                        == (source.resource_revision
-                            ? source.resource_revision->generation : 0)
+                    && observation.resource_generation == target_evidence.resource_generation
                     && projection_version_matches(
                         observation.projection_version,
                         m_observation.receipt->target_evidence.projection_version

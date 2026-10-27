@@ -152,3 +152,25 @@ nor an exact scope-wide publication snapshot. Those stronger guarantees require
 an active-revision/partition authority and global legacy-writer exclusion that
 this experimental stack does not provide. The implementation stops at the
 bounded result instead of fabricating those guarantees.
+
+## Corrective pass (2026-10-27)
+
+The follow-up pass closes three concrete evidence gaps without introducing a
+new coordinator abstraction:
+
+1. Every write participant constructor now rejects a null or mismatched storage
+   connection before a writable publication scope can be opened. The focused
+   test constructs all five participants with a declared context from one
+   environment and an underlying store from another; construction fails and
+   the coordinator frontier remains unchanged.
+2. Knowledge-unit validation rereads the authoritative unit row through the
+   coordinator transaction and checks unit identity, scope, revision, resource
+   identity, and resource generation. The in-memory result returned by the
+   create operation is no longer sufficient evidence for `Complete`.
+3. Read-side target evidence selects a source by the receipt's resource ID and
+   generation. It no longer assumes `sources.front()` is the target, so
+   multi-source envelopes cannot silently downgrade or promote a target based
+   on source ordering.
+
+These checks preserve the bounded semantics above: they do not establish
+scope-wide lexical completeness or global legacy-writer exclusion.

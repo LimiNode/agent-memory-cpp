@@ -4,9 +4,29 @@
 
 #include <stdexcept>
 #include <algorithm>
+#include <string>
 #include <utility>
 
 namespace agent_memory {
+
+namespace {
+
+void require_participant_context(
+    const std::shared_ptr<MdbxStorageContext>& supplied,
+    const MdbxStorageContext& store_context,
+    const char* role
+) {
+    if(!supplied || !supplied->connection()
+        || !store_context.connection()
+        || supplied->connection() != store_context.connection()) {
+        throw std::invalid_argument(
+            std::string("publication ") + role
+            + " participant context does not own the underlying store connection"
+        );
+    }
+}
+
+} // namespace
 
 MdbxCanonicalPublicationParticipant::MdbxCanonicalPublicationParticipant(
     std::shared_ptr<MdbxStorageContext> context,
@@ -15,7 +35,9 @@ MdbxCanonicalPublicationParticipant::MdbxCanonicalPublicationParticipant(
 ) : m_context(std::move(context)),
     m_store(&store),
     m_document_id(initial.document_id),
-    m_initial(std::move(initial)) {}
+    m_initial(std::move(initial)) {
+    require_participant_context(m_context, store.context(), "canonical");
+}
 
 MdbxCanonicalPublicationParticipant::MdbxCanonicalPublicationParticipant(
     std::shared_ptr<MdbxStorageContext> context,
@@ -24,7 +46,9 @@ MdbxCanonicalPublicationParticipant::MdbxCanonicalPublicationParticipant(
 ) : m_context(std::move(context)),
     m_store(&store),
     m_document_id(request.document_id),
-    m_request(std::move(request)) {}
+    m_request(std::move(request)) {
+    require_participant_context(m_context, store.context(), "canonical");
+}
 
 const MdbxStorageContext& MdbxCanonicalPublicationParticipant::context() const noexcept {
     return *m_context;
@@ -75,7 +99,9 @@ MdbxKnowledgeUnitPublicationParticipant::MdbxKnowledgeUnitPublicationParticipant
     std::vector<KnowledgeUnitCreateRequest> requests
 ) : m_context(std::move(context)),
     m_store(&store),
-    m_requests(std::move(requests)) {}
+    m_requests(std::move(requests)) {
+    require_participant_context(m_context, store.context(), "knowledge-unit");
+}
 
 const MdbxStorageContext& MdbxKnowledgeUnitPublicationParticipant::context() const noexcept {
     return *m_context;
@@ -98,24 +124,26 @@ void MdbxKnowledgeUnitPublicationParticipant::reset_after_abort() noexcept {
 
 bool MdbxKnowledgeUnitPublicationParticipant::validates(
     const PublicationPlan& plan,
-    const mdbxc::Transaction&
+    const mdbxc::Transaction& transaction
 ) const {
-    if(!m_applied || m_result.empty()) {
+    if(!m_applied) {
         return false;
     }
-    return std::any_of(m_result.begin(), m_result.end(), [&plan](const auto& unit) {
-        if(unit.id.value() != plan.target_evidence.unit_id.value()
-            || unit.scope_id != plan.identity.scope_id
-            || unit.revision != plan.target_evidence.unit_revision) {
-            return false;
-        }
-        return std::any_of(unit.sources.begin(), unit.sources.end(), [&plan](const auto& source) {
+    const auto persisted = m_store->find_in_transaction(
+        plan.target_evidence.unit_id, transaction
+    );
+    if(!persisted) {
+        return false;
+    }
+    return persisted->id.value() == plan.target_evidence.unit_id.value()
+        && persisted->scope_id == plan.identity.scope_id
+        && persisted->revision == plan.target_evidence.unit_revision
+        && std::any_of(persisted->sources.begin(), persisted->sources.end(), [&plan](const auto& source) {
             return source.resource_id == plan.target_evidence.resource_id
                 && source.resource_revision
                 && source.resource_revision->generation
                     == plan.target_evidence.resource_generation;
         });
-    });
 }
 
 MdbxManifestPublicationParticipant::MdbxManifestPublicationParticipant(
@@ -126,7 +154,9 @@ MdbxManifestPublicationParticipant::MdbxManifestPublicationParticipant(
 ) : m_context(std::move(context)),
     m_store(&store),
     m_manifest(std::move(manifest)),
-    m_expected(std::move(expected)) {}
+    m_expected(std::move(expected)) {
+    require_participant_context(m_context, store.context(), "manifest");
+}
 
 const MdbxStorageContext& MdbxManifestPublicationParticipant::context() const noexcept {
     return *m_context;

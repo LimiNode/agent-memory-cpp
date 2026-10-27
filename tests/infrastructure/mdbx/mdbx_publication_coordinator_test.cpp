@@ -10,6 +10,7 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -214,6 +215,93 @@ int main() {
             || coordinator.frontier().sequence.value() != 0) {
             return fail("arbitrary participants must be rejected before apply");
         }
+
+        const auto foreign_path = test_path();
+        {
+        auto foreign_context = MdbxStorageContext::open(
+            foreign_path.string(), false, 32
+        );
+        MdbxCanonicalContentStoreOptions foreign_canonical_options;
+        foreign_canonical_options.context = foreign_context;
+        MdbxCanonicalContentStore foreign_canonical{
+            std::move(foreign_canonical_options)
+        };
+        MdbxKnowledgeUnitStoreOptions foreign_unit_options;
+        foreign_unit_options.context = foreign_context;
+        MdbxKnowledgeUnitStore foreign_units{std::move(foreign_unit_options)};
+        MdbxResourceManifestStorageOptions foreign_manifest_options;
+        foreign_manifest_options.context = foreign_context;
+        MdbxResourceManifestStorage foreign_manifests{
+            std::move(foreign_manifest_options)
+        };
+        MdbxProjectionStoreOptions foreign_projection_options;
+        foreign_projection_options.context = foreign_context;
+        MdbxProjectionStore foreign_projections{
+            std::move(foreign_projection_options)
+        };
+        MdbxPersistentLexicalIndexOptions foreign_lexical_options;
+        foreign_lexical_options.context = foreign_context;
+        foreign_lexical_options.descriptor = LexicalIndexDescriptor{
+            LexicalIndexDescriptorRef{
+                scope, ProjectionKind::Original, LexicalStatisticsEpoch{}
+            },
+            "original", 1, "tokenizer-v1", "normalization-v1", {1}
+        };
+        MdbxPersistentLexicalIndex foreign_lexical{
+            std::move(foreign_lexical_options)
+        };
+        auto expect_context_rejection = [](auto&& make_participant) {
+            try {
+                make_participant();
+            } catch(const std::invalid_argument&) {
+                return true;
+            }
+            return false;
+        };
+        if(!expect_context_rejection([&] {
+                MdbxCanonicalPublicationParticipant participant{
+                    context,
+                    foreign_canonical,
+                    CanonicalDocumentRevision{
+                        DocumentId{"foreign-document"}, 0, {}, {}
+                    }
+                };
+            })
+            || !expect_context_rejection([&] {
+                MdbxKnowledgeUnitPublicationParticipant participant{
+                    context, foreign_units, {unit_request(scope)}
+                };
+            })
+            || !expect_context_rejection([&] {
+                MdbxManifestPublicationParticipant participant{
+                    context, foreign_manifests,
+                    publication_manifest(ResourceManifestPayloadVersion::V1),
+                    std::nullopt
+                };
+            })
+            || !expect_context_rejection([&] {
+                MdbxProjectionPublicationParticipant participant{
+                    context, foreign_projections, publication_projection(scope)
+                };
+            })
+            || !expect_context_rejection([&] {
+                MdbxLexicalPublicationParticipant participant{
+                    context,
+                    foreign_lexical,
+                    FlatLexicalUnitInput{
+                        scope, KnowledgeUnitId{1}, ProjectionKind::Original,
+                        ResourceId{"resource-1"}, 1, 1,
+                        ProjectionVersionRef{1, 1, 1, "projection-v1"},
+                        {"foreign"}
+                    }
+                };
+            })
+            || coordinator.frontier().sequence.value() != 0) {
+            return fail("participants must reject a mismatched underlying store context");
+        }
+        }
+        std::filesystem::remove(foreign_path, cleanup_error);
+
         const auto committed = coordinator.publish_metadata_only(first_plan);
         if(committed.code != PublicationOutcomeCode::Committed
             || !committed.receipt
