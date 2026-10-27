@@ -24,6 +24,10 @@ corpora than the isolated sparse fixture used by PR #559?
 - Seed: `12648430`; workloads: `unique+anchor`, `shared-hot`,
   `isolated-sparse-replacement`, `zipf-like`, `mixed-utf8`, `long-document`,
   `small-insert`, `small-delete`, `inactive-history`, and `no-op`.
+- Corpus parameters are pinned in the receipt: overlap `32`, long-document
+  token count `64`, and inactive-token history `64`. The validator regenerates
+  every declared corpus within a bounded unit limit, checks the generator
+  source digest, and compares the resulting manifest and corpus SHA-256.
 - Requested scales: 128, 512, 2048, 8192, 32768 units. Scales above the
   configured `--max-units` are represented as explicit
   `SKIPPED_BY_CONFIG_LIMIT` case outcomes; they are not described as runtime
@@ -34,8 +38,8 @@ corpora than the isolated sparse fixture used by PR #559?
 - Raw artifact: `2026-10-27-seg-v2-qualification.raw.tsv`; its SHA-256 and
   receipt are recorded in the adjacent JSON file.
 - Current canonical-LF artifact digests (recompute after any receipt edit):
-  raw `ddd474f0aa3e25dc9d8cf656e0ec39ca8af28cf8a10e343dd381f8cf6db4d5c1`,
-  receipt `81d732cb0d152c30f611102878dc209652137f2403ad2bb9f28e841200ca4b52`.
+  raw `620ab431274790293dabee48d3ab390171f176f4399ec4358b9a366590f05071`,
+  receipt `242373dade90aff2aa0a5abace0a543e54cf40092a5c61d7e498ef28a0c6cd5c`.
   These artifacts use schema version 3 and record explicit configuration,
   provenance, terminal status, and stop evidence. Empty raw output is valid
   only for an explicitly `PARTIAL`/`FAILED` diagnostic receipt whose cases
@@ -57,16 +61,16 @@ directional local measurements, not cross-machine performance claims.
 
 | Workload / units | Backend | write | snapshot | reopen snapshot | point update | DB bytes | update range rows | decoded postings |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| shared-hot / 512 | flat-v2 | 1,102.20 | 2.063 | 2.020 | 3.545 | 16,777,216 | 0 | 0 |
-| shared-hot / 512 | seg-v2 | 1,793.65 | 5.384 | 6.105 | 6.042 | 16,777,216 | 16 | 1,024 |
-| isolated-sparse / 512 | flat-v2 | 1,756.93 | 3.656 | 4.330 | 5.729 | 16,777,216 | 0 | 0 |
-| isolated-sparse / 512 | seg-v2 | 3,106.47 | 16.973 | 16.384 | 10.659 | 16,777,216 | 4 | 2 |
-| long-document / 512 | flat-v2 | 10,147.70 | 16.517 | 16.117 | 34.776 | 16,777,216 | 0 | 0 |
-| long-document / 512 | seg-v2 | 2,014.12 | 19.503 | 20.784 | 7.835 | 16,777,216 | 16 | 1,024 |
-| inactive-history / 512 | flat-v2 | 1,477.76 | 3.228 | 3.187 | 4.094 | 16,777,216 | 0 | 0 |
-| inactive-history / 512 | seg-v2 | 2,421.22 | 14.303 | 12.166 | 5.058 | 16,777,216 | 12 | 514 |
-| no-op / 512 (per operation) | flat-v2 | 1,342.44 | 2.657 | 2.860 | 2.977 | 16,777,216 | 0 | 0 |
-| no-op / 512 (per operation) | seg-v2 | 2,275.85 | 8.396 | 8.276 | 0.152 | 16,777,216 | 0 | 0 |
+| shared-hot / 512 | flat-v2 | 1,071.53 | 2.042 | 2.111 | 3.651 | 16,777,216 | 0 | 0 |
+| shared-hot / 512 | seg-v2 | 1,816.76 | 5.327 | 5.642 | 6.275 | 16,777,216 | 16 | 1,024 |
+| isolated-sparse / 512 | flat-v2 | 1,657.75 | 3.564 | 3.654 | 5.578 | 16,777,216 | 0 | 0 |
+| isolated-sparse / 512 | seg-v2 | 3,170.18 | 16.136 | 16.981 | 10.726 | 16,777,216 | 4 | 2 |
+| long-document / 512 | flat-v2 | 10,183.80 | 15.741 | 14.759 | 37.266 | 16,777,216 | 0 | 0 |
+| long-document / 512 | seg-v2 | 2,144.38 | 19.210 | 19.253 | 7.811 | 16,777,216 | 16 | 1,024 |
+| inactive-history / 512 | flat-v2 | 1,384.86 | 2.854 | 3.033 | 4.072 | 16,777,216 | 0 | 0 |
+| inactive-history / 512 | seg-v2 | 3,088.22 | 13.974 | 13.026 | 5.157 | 16,777,216 | 12 | 514 |
+| no-op / 512 (per operation) | flat-v2 | 1,370.66 | 2.698 | 2.783 | 2.974 | 16,777,216 | 0 | 0 |
+| no-op / 512 (per operation) | seg-v2 | 2,374.06 | 9.213 | 8.423 | 0.149 | 16,777,216 | 0 | 0 |
 
 The segmented point update remains bounded for the isolated workload: decoded
 postings stay at 2 and range rows at 4 at both executed scales. The expanded

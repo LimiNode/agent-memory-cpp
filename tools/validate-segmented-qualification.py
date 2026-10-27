@@ -12,6 +12,8 @@ import math
 import pathlib
 import re
 import statistics
+import subprocess
+import sys
 import tempfile
 
 WORKLOADS = {
@@ -26,6 +28,8 @@ ALLOWED_RECEIPT_STATUSES = {"COMPLETED", "PARTIAL", "FAILED"}
 SUPPORTED_CLEANUP = {"process_exited", "not_started",
                      "runner_killed_and_reaped_process_no_descendant_claim"}
 MANIFEST_SHA = re.compile(r"^[0-9a-f]{64}$")
+GENERATOR_NAME = "generate-segmented-qualification-corpus.py"
+MAX_REGENERATE_UNITS = 4096
 
 
 P50_FIELDS = (
@@ -92,6 +96,41 @@ def load_rows(raw: bytes) -> list[dict[str, str]]:
     return rows
 
 
+def validate_regenerated_manifest(
+    manifest: dict[str, object],
+    workloads: tuple[str, ...],
+    seed: int,
+    generator_path: pathlib.Path,
+) -> None:
+    units = manifest.get("units")
+    if not isinstance(units, int) or isinstance(units, bool) or units > MAX_REGENERATE_UNITS:
+        fail("corpus manifest exceeds bounded regeneration limit")
+    with tempfile.TemporaryDirectory(prefix="segmented-corpus-validation-") as directory:
+        root = pathlib.Path(directory)
+        corpus_path = root / "corpus.tsv"
+        manifest_path = root / "corpus.manifest.json"
+        command = [
+            sys.executable, str(generator_path), "--units", str(units),
+            "--seed", str(seed), "--vocabulary-size", str(manifest["vocabulary_size"]),
+            "--long-document-tokens", str(manifest["long_document_tokens"]),
+            "--overlap", str(manifest["overlap"]),
+            "--inactive-token-history", str(manifest["inactive_token_history"]),
+            "--output", str(corpus_path), "--manifest", str(manifest_path),
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=10)
+            generated = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (subprocess.SubprocessError, OSError, json.JSONDecodeError) as error:
+            fail(f"corpus regeneration failed: {error}")
+        declared = {key: value for key, value in manifest.items() if key != "path"}
+        if generated != declared:
+            fail(f"corpus manifest parameters do not reproduce for scale {units}")
+        if generated.get("workloads") != list(workloads):
+            fail("regenerated corpus workload list mismatch")
+        if hashlib.sha256(corpus_path.read_bytes()).hexdigest() != generated.get("sha256"):
+            fail("regenerated corpus SHA-256 mismatch")
+
+
 def validate(raw_path: pathlib.Path, receipt_path: pathlib.Path) -> None:
     raw = raw_path.read_bytes()
     rows = load_rows(raw)
@@ -112,14 +151,23 @@ def validate(raw_path: pathlib.Path, receipt_path: pathlib.Path) -> None:
     if provenance.get("seed") != seed:
         fail("provenance seed does not match receipt seed")
     required_configuration = {"max_units", "long_document_tokens",
-                              "inactive_history", "timeout_seconds"}
+                              "inactive_history", "timeout_seconds", "overlap"}
     if not required_configuration.issubset(configuration):
         fail("receipt configuration is incomplete")
     if provenance.get("configuration") not in (None, configuration):
         fail("provenance configuration does not match receipt")
     if not isinstance(provenance.get("generator"), str) or not provenance["generator"]:
         fail("provenance generator is missing")
-    for field in ("max_units", "long_document_tokens", "inactive_history"):
+    if provenance["generator"] != GENERATOR_NAME:
+        fail("unsupported corpus generator")
+    generator_path = pathlib.Path(__file__).with_name(GENERATOR_NAME)
+    declared_generator_sha = provenance.get("generator_sha256")
+    if (not isinstance(declared_generator_sha, str)
+            or not MANIFEST_SHA.fullmatch(declared_generator_sha)
+            or not generator_path.is_file()
+            or hashlib.sha256(generator_path.read_bytes()).hexdigest() != declared_generator_sha):
+        fail("corpus generator source digest mismatch")
+    for field in ("max_units", "long_document_tokens", "inactive_history", "overlap"):
         value = configuration[field]
         if (not isinstance(value, int) or isinstance(value, bool) or value < 0
                 or (field != "inactive_history" and value == 0)):
@@ -170,6 +218,11 @@ def validate(raw_path: pathlib.Path, receipt_path: pathlib.Path) -> None:
     for manifest in manifests:
         if not isinstance(manifest, dict):
             fail("corpus manifest is not an object")
+        required_manifest = {"schema_version", "family", "seed", "units", "rows",
+                             "workloads", "path", "sha256", "vocabulary_size",
+                             "long_document_tokens", "overlap", "inactive_token_history"}
+        if not required_manifest.issubset(manifest):
+            fail("corpus manifest is incomplete")
         if manifest.get("family") != receipt["family"] or manifest.get("schema_version") != 1:
             fail("corpus manifest provenance is invalid")
         if manifest.get("seed") != seed:
@@ -184,6 +237,18 @@ def validate(raw_path: pathlib.Path, receipt_path: pathlib.Path) -> None:
             fail("corpus manifest row count mismatch")
         if manifest.get("workloads") != list(workloads):
             fail("corpus manifest workload list mismatch")
+        configuration_fields = {
+            "long_document_tokens": "long_document_tokens",
+            "overlap": "overlap",
+            "inactive_token_history": "inactive_history",
+        }
+        for manifest_field, configuration_field in configuration_fields.items():
+            if manifest[manifest_field] != configuration[configuration_field]:
+                fail(f"corpus manifest {manifest_field} contradicts receipt configuration")
+        vocabulary_size = manifest["vocabulary_size"]
+        if (not isinstance(vocabulary_size, int) or isinstance(vocabulary_size, bool)
+                or vocabulary_size <= 0):
+            fail("corpus manifest vocabulary size is invalid")
         path = manifest.get("path")
         if (not isinstance(path, str) or not path or pathlib.Path(path).name != path
                 or pathlib.Path(path).is_absolute()):
@@ -193,6 +258,7 @@ def validate(raw_path: pathlib.Path, receipt_path: pathlib.Path) -> None:
         manifest_paths.add(path)
         if not isinstance(manifest.get("sha256"), str) or not MANIFEST_SHA.fullmatch(manifest["sha256"]):
             fail("corpus manifest SHA-256 is invalid")
+        validate_regenerated_manifest(manifest, workloads, seed, generator_path)
     expected = {
         (backend, workload, str(units), str(repeat))
         for backend in backends for workload in workloads for units in scales
@@ -333,47 +399,71 @@ def self_test() -> int:
     fields = list(dict.fromkeys(["backend", "workload", "operation_type", "snapshot_scope",
               "reopen_snapshot_scope", "token_id_parity", *INT_FIELDS, *FLOAT_FIELDS, *P50_FIELDS]))
     row = {field: "0" for field in fields}
-    row.update({"backend": "flat-v2", "workload": "no-op", "operation_type": "no-op",
+    row.update({"backend": "flat-v2", "workload": "no-op", "operation_type": "replace",
                 "snapshot_scope": "durable_read_snapshot", "reopen_snapshot_scope": "durable_read_snapshot",
                 "token_id_parity": "true", "units": "1", "repeat": "0",
-                "active_units": "1", "total_tokens": "1", "no_op_operation_count": "16",
-                "operation_count": "16", "point_update_ms": "2.0", "no_op_batch_ms": "32.0"})
+                "active_units": "1", "total_tokens": "1", "point_update_ms": "2.0"})
+    test_workloads = [
+        "unique+anchor", "shared-hot", "isolated-sparse-replacement", "zipf-like",
+        "mixed-utf8", "long-document", "small-insert", "small-delete",
+        "inactive-history", "no-op",
+    ]
+    test_rows = []
+    for workload in test_workloads:
+        test_row = dict(row, workload=workload)
+        if workload == "no-op":
+            test_row.update({"operation_type": "no-op", "no_op_operation_count": "16",
+                             "operation_count": "16", "no_op_batch_ms": "32.0"})
+        test_rows.append(test_row)
     stream = io.StringIO()
     writer = csv.DictWriter(stream, fieldnames=fields, delimiter="\t")
     writer.writeheader()
-    writer.writerow(row)
+    writer.writerows(test_rows)
     raw = stream.getvalue().encode("utf-8")
     with tempfile.TemporaryDirectory(prefix="segmented-qualification-self-test-") as directory:
         root = pathlib.Path(directory)
         raw_path = root / "qualification.raw.tsv"
         receipt_path = root / "qualification.receipt.json"
         raw_path.write_bytes(raw)
+        generator_path = pathlib.Path(__file__).with_name(GENERATOR_NAME)
+        corpus_path = root / "corpus-1.tsv"
+        manifest_path = root / "corpus-1.manifest.json"
+        subprocess.run([
+            sys.executable, str(generator_path), "--units", "1", "--seed", "12648430",
+            "--vocabulary-size", "32", "--long-document-tokens", "8", "--overlap", "32",
+            "--inactive-token-history", "2", "--output", str(corpus_path),
+            "--manifest", str(manifest_path),
+        ], check=True)
+        corpus_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        corpus_manifest["path"] = corpus_path.name
         receipt = {
             "schema_version": 3,
             "family": "segmented_lexical_performance_qualification_v1",
             "status": "COMPLETED",
             "seed": 12648430,
             "repeats": 1,
-            "scales": [1], "workloads": ["no-op"], "backends": ["flat-v2"],
+            "scales": [1], "workloads": test_workloads, "backends": ["flat-v2"],
             "configuration": {"max_units": 1, "long_document_tokens": 8,
-                               "inactive_history": 2, "timeout_seconds": 2.0},
-            "raw": {"path": raw_path.name, "rows": 1,
+                               "inactive_history": 2, "timeout_seconds": 2.0, "overlap": 32},
+            "raw": {"path": raw_path.name, "rows": len(test_rows),
                     "sha256": hashlib.sha256(raw).hexdigest()},
             "matrix": {"scales": [1], "executed_scales": [1],
-                       "controlled_stops": [], "workloads": ["no-op"],
+                       "controlled_stops": [], "workloads": test_workloads,
                        "backends": ["flat-v2"], "requested_backends": ["flat-v2"], "repeats": 1},
-            "corpora": [{"schema_version": 1,
-                         "family": "segmented_lexical_performance_qualification_v1",
-                         "seed": 12648430, "units": 1, "rows": 2,
-                         "workloads": ["no-op"], "path": "corpus-1.tsv",
-                         "sha256": "0" * 64}],
+            "corpora": [corpus_manifest],
             "provenance": {"family": "segmented_lexical_performance_qualification_v1",
-                           "seed": 12648430, "generator": "generator.py",
+                           "seed": 12648430, "generator": GENERATOR_NAME,
+                           "generator_sha256": hashlib.sha256(generator_path.read_bytes()).hexdigest(),
                            "configuration": {"max_units": 1, "long_document_tokens": 8,
-                                              "inactive_history": 2, "timeout_seconds": 2.0}},
-            "p50": {"flat-v2/no-op/1": {
-                **{field: 0.0 for field in P50_FIELDS},
-                "point_update_ms": 2.0, "no_op_batch_ms": 32.0}},
+                                              "inactive_history": 2, "timeout_seconds": 2.0, "overlap": 32}},
+            "p50": {
+                f"flat-v2/{workload}/1": {
+                    **{field: 0.0 for field in P50_FIELDS},
+                    "point_update_ms": 2.0,
+                    **({"no_op_batch_ms": 32.0} if workload == "no-op" else {}),
+                }
+                for workload in test_workloads
+            },
         }
         receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
         validate(raw_path, receipt_path)
@@ -393,16 +483,23 @@ def self_test() -> int:
         altered["p50"]["flat-v2/no-op/1"]["write_ms"] = 1.0
         expect_failure(altered, "falsified aggregate")
         altered = json.loads(json.dumps(receipt))
+        altered["corpora"][0]["sha256"] = "0" * 64
+        expect_failure(altered, "forged corpus hash")
+        altered = json.loads(json.dumps(receipt))
+        altered["corpora"][0]["long_document_tokens"] = 9
+        expect_failure(altered, "altered corpus generator parameter")
+        altered = json.loads(json.dumps(receipt))
         altered["status"] = "FAILED"
         expect_failure(altered, "falsified overall status")
         altered = json.loads(json.dumps(receipt))
         altered["status"] = "COMPLETED"
         altered["matrix"] = dict(altered["matrix"], scales=[1, 2], controlled_stops=[2])
-        altered["stops"] = [{"scale": 2, "workload": "no-op", "backend": "flat-v2",
+        altered["stops"] = [{"scale": 2, "workload": workload, "backend": "flat-v2",
                              "repeat": 0, "status": "SKIPPED_BY_CONFIG_LIMIT",
                              "reason": "units_exceed_max_units", "budget_seconds": None,
                              "elapsed_seconds": 0.0, "started": False, "terminated": False,
-                             "cleanup": "not_started", "usable_evidence": False}]
+                             "cleanup": "not_started", "usable_evidence": False}
+                            for workload in test_workloads]
         expect_failure(altered, "false completed status")
         altered = json.loads(json.dumps(receipt))
         altered["status"] = "FAILED"
@@ -461,11 +558,12 @@ def self_test() -> int:
         altered["p50"] = {}
         altered["configuration"]["max_units"] = 1
         altered["provenance"]["configuration"]["max_units"] = 1
-        altered["stops"] = [{"scale": 2, "workload": "no-op", "backend": "flat-v2",
+        altered["stops"] = [{"scale": 2, "workload": workload, "backend": "flat-v2",
                              "repeat": 0, "status": "SKIPPED_BY_CONFIG_LIMIT",
                              "reason": "units_exceed_max_units", "budget_seconds": None,
                              "elapsed_seconds": 0.0, "started": False, "terminated": False,
-                             "cleanup": "not_started", "usable_evidence": False}]
+                             "cleanup": "not_started", "usable_evidence": False}
+                            for workload in test_workloads]
         raw_path.write_bytes(b"")
         receipt_path.write_text(json.dumps(altered), encoding="utf-8")
         validate(raw_path, receipt_path)

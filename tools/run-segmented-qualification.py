@@ -78,7 +78,7 @@ def run(args: argparse.Namespace) -> int:
                     "--seed", str(args.seed), "--long-document-tokens",
                     str(args.long_document_tokens), "--inactive-token-history",
                     str(args.inactive_history), "--output", str(corpus),
-                    "--manifest", str(manifest),
+                    "--manifest", str(manifest), "--overlap", str(args.overlap),
                 ], check=True)
                 manifest_value = json.loads(manifest.read_text(encoding="utf-8"))
                 if manifest_value.get("units") != units:
@@ -202,6 +202,7 @@ def run(args: argparse.Namespace) -> int:
             "long_document_tokens": args.long_document_tokens,
             "inactive_history": args.inactive_history,
             "timeout_seconds": args.timeout_seconds,
+            "overlap": args.overlap,
         },
         "matrix": {"scales": scales, "executed_scales": executed_scales,
                    "controlled_stops": stopped_scales, "workloads": list(WORKLOADS),
@@ -217,12 +218,14 @@ def run(args: argparse.Namespace) -> int:
         },
         "provenance": {"family": "segmented_lexical_performance_qualification_v1",
                        "corpus_kind": "synthetic deterministic UTF-8 corpus",
-                       "generator": args.generator.name, "seed": args.seed,
+                       "generator": args.generator.name,
+                       "generator_sha256": sha256(args.generator), "seed": args.seed,
                        "configuration": {
                            "max_units": args.max_units,
                            "long_document_tokens": args.long_document_tokens,
                            "inactive_history": args.inactive_history,
                            "timeout_seconds": args.timeout_seconds,
+                           "overlap": args.overlap,
                        },
                        "build_configuration": "caller supplied benchmark binary",
                        "case_identity": "(scale, workload, backend, repeat)",
@@ -260,7 +263,7 @@ def timeout_self_test(fixture_binary: Path | None = None) -> int:
                 generator=generator, output=output, receipt=receipt,
                 scales="1", max_units=1, repeats=1,
                 backends="flat-v2", seed=12648430, long_document_tokens=8,
-                inactive_history=2, timeout_seconds=2.0,
+                inactive_history=2, timeout_seconds=2.0, overlap=32,
             )
             run(namespace)
             validation = subprocess.run([
@@ -301,6 +304,7 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=12648430)
     parser.add_argument("--long-document-tokens", type=int, default=64)
     parser.add_argument("--inactive-history", type=int, default=64)
+    parser.add_argument("--overlap", type=int, default=32)
     parser.add_argument("--timeout-seconds", type=float, default=120.0)
     parser.add_argument("--timeout-self-test", action="store_true")
     parser.add_argument("--fixture-binary", type=Path)
