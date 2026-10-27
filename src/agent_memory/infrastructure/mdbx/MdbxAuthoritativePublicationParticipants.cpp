@@ -26,6 +26,61 @@ void require_participant_context(
     }
 }
 
+bool unit_matches_target(
+    const KnowledgeUnitEnvelope& unit,
+    const PublicationPlan& plan
+) {
+    return unit.id.value() == plan.target_evidence.unit_id.value()
+        && unit.scope_id.value() == plan.identity.scope_id.value()
+        && unit.revision == plan.target_evidence.unit_revision
+        && std::any_of(unit.sources.begin(), unit.sources.end(), [&plan](const auto& source) {
+            return source.resource_id == plan.target_evidence.resource_id
+                && source.resource_revision
+                && source.resource_revision->generation
+                    == plan.target_evidence.resource_generation;
+        });
+}
+
+bool same_unit_validation_identity(
+    const KnowledgeUnitEnvelope& left,
+    const KnowledgeUnitEnvelope& right
+) {
+    return left.id.value() == right.id.value()
+        && left.kind == right.kind
+        && left.scope_id.value() == right.scope_id.value()
+        && left.revision == right.revision
+        && left.lifecycle_state == right.lifecycle_state
+        && left.content_hash == right.content_hash
+        && left.content_hash_recipe_version == right.content_hash_recipe_version;
+}
+
+bool manifest_matches_target(
+    const ResourceManifest& manifest,
+    const PublicationPlan& plan
+) {
+    return manifest.revision.resource_id == plan.target_evidence.resource_id
+        && manifest.revision.generation == plan.target_evidence.resource_generation
+        && manifest.state == plan.target_evidence.manifest_state
+        && manifest.schema.schema_id == plan.target_evidence.manifest_schema.schema_id
+        && manifest.schema.schema_version == plan.target_evidence.manifest_schema.schema_version
+        && manifest.payload_version == static_cast<ResourceManifestPayloadVersion>(
+            plan.target_evidence.manifest_payload_version
+        )
+        && compute_manifest_binding_digest(manifest)
+            == plan.target_evidence.manifest_binding_digest;
+}
+
+bool manifest_operation_matches_target(
+    const ResourceManifest& manifest,
+    const PublicationPlan& plan
+) {
+    auto materialized = manifest;
+    materialized.payload_version = static_cast<ResourceManifestPayloadVersion>(
+        plan.target_evidence.manifest_payload_version
+    );
+    return manifest_matches_target(materialized, plan);
+}
+
 } // namespace
 
 MdbxCanonicalPublicationParticipant::MdbxCanonicalPublicationParticipant(
@@ -129,21 +184,19 @@ bool MdbxKnowledgeUnitPublicationParticipant::validates(
     if(!m_applied) {
         return false;
     }
+    const auto result = std::find_if(
+        m_result.begin(), m_result.end(),
+        [&plan](const auto& unit) { return unit_matches_target(unit, plan); }
+    );
+    if(result == m_result.end()) {
+        return false;
+    }
     const auto persisted = m_store->find_in_transaction(
         plan.target_evidence.unit_id, transaction
     );
-    if(!persisted) {
-        return false;
-    }
-    return persisted->id.value() == plan.target_evidence.unit_id.value()
-        && persisted->scope_id == plan.identity.scope_id
-        && persisted->revision == plan.target_evidence.unit_revision
-        && std::any_of(persisted->sources.begin(), persisted->sources.end(), [&plan](const auto& source) {
-            return source.resource_id == plan.target_evidence.resource_id
-                && source.resource_revision
-                && source.resource_revision->generation
-                    == plan.target_evidence.resource_generation;
-        });
+    return persisted
+        && unit_matches_target(*persisted, plan)
+        && same_unit_validation_identity(*result, *persisted);
 }
 
 MdbxManifestPublicationParticipant::MdbxManifestPublicationParticipant(
@@ -178,23 +231,15 @@ bool MdbxManifestPublicationParticipant::validates(
     const PublicationPlan& plan,
     const mdbxc::Transaction& transaction
 ) const {
-    if(!m_applied) {
+    if(!m_applied || !manifest_operation_matches_target(m_manifest, plan)) {
         return false;
     }
     const auto current = m_store->find_manifest_in_transaction(
         plan.target_evidence.resource_id, transaction
     );
     return current
-        && current->revision.resource_id == plan.target_evidence.resource_id
-        && current->revision.generation == plan.target_evidence.resource_generation
-        && current->state == plan.target_evidence.manifest_state
-        && current->schema.schema_id == plan.target_evidence.manifest_schema.schema_id
-        && current->schema.schema_version == plan.target_evidence.manifest_schema.schema_version
-        && current->payload_version == static_cast<ResourceManifestPayloadVersion>(
-            plan.target_evidence.manifest_payload_version
-        )
-        && compute_manifest_binding_digest(*current)
-            == plan.target_evidence.manifest_binding_digest;
+        && manifest_matches_target(*current, plan)
+        && manifest_operation_matches_target(m_manifest, plan);
 }
 
 } // namespace agent_memory

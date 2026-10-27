@@ -45,10 +45,11 @@ SearchProjection publication_projection(const ScopeId& scope) {
 }
 
 ResourceManifest publication_manifest(
-    const ResourceManifestPayloadVersion payload_version
+    const ResourceManifestPayloadVersion payload_version,
+    std::string resource_id = "resource-1"
 ) {
     return ResourceManifest{
-        ResourceRevision{ResourceId{"resource-1"}, 1, 1, 1},
+        ResourceRevision{ResourceId{std::move(resource_id)}, 1, 1, 1},
         {},
         ResourceManifestState::Active,
         {},
@@ -446,10 +447,21 @@ int main() {
         projection_options.context = context;
         MdbxProjectionStore projections{std::move(projection_options)};
         const ProjectionVersionRef projection_version{1, 1, 1, "projection-v1"};
+        const auto target_projection = publication_projection(scope);
+        projections.put(target_projection);
+        const auto target_unit = units.create_or_get_unit(unit_request(scope));
+        const auto target_manifest_input = publication_manifest(
+            ResourceManifestPayloadVersion::V6
+        );
+        manifests.upsert_manifest(target_manifest_input);
+        const auto target_manifest = manifests.find_manifest(ResourceId{"resource-1"});
+        if(target_unit.id.value() != 1 || !target_manifest) {
+            return fail("publication target baseline preparation failed");
+        }
         MdbxProjectionPublicationParticipant projection_participant{
             context,
             projections,
-            publication_projection(scope)
+            target_projection
         };
         MdbxLexicalPublicationParticipant lexical_participant{
             context,
@@ -492,22 +504,114 @@ int main() {
                 {ReplaceBlockText{ContentBlockId{"missing-block"}, "never written"}}
             }
         };
+        MdbxManifestPublicationParticipant target_manifest_participant{
+            context,
+            manifests,
+            target_manifest_input,
+            target_manifest
+        };
+        const auto no_partial_publication = [&](const std::string& publication_id) {
+            const auto document = canonical.read_current(DocumentId{"retry-document"});
+            const auto unit_rows = units.scan_by_scope(scope);
+            const auto projection_rows = projections.list(
+                scope, KnowledgeUnitId{1}, ProjectionKind::Original
+            );
+            auto read = context->connection()->transaction(
+                mdbxc::TransactionMode::READ_ONLY
+            );
+            const auto binding = coordinator.binding_in_transaction(
+                ResourceId{"resource-1"}, read
+            );
+            read.commit();
+            return coordinator.frontier().sequence.value() == 1
+                && !coordinator.receipt(publication_id)
+                && !binding
+                && document
+                && document->revision == 0
+                && unit_rows.size() == 1
+                && projection_rows.size() == 1
+                && lexical.read_snapshot().index.size() == 0
+                && !manifests.find_manifest(ResourceId{"resource-2"});
+        };
+        const auto apply_failure_plan = plan_for(
+            scope, profile, next_fencing, "publication-apply-failure", 1, 6
+        );
+        if(coordinator.publish(
+                apply_failure_plan,
+                {&failing_canonical, &unit_participant, &projection_participant,
+                 &lexical_participant, &target_manifest_participant}
+            ).code != PublicationOutcomeCode::CommitFailure
+            || !no_partial_publication("publication-apply-failure")) {
+            return fail("participant failure must roll back data, binding and frontier");
+        }
+
+        auto unrelated_unit_request = unit_request(scope);
+        unrelated_unit_request.primary_text = "unrelated unit";
+        unrelated_unit_request.display_text = "unrelated unit";
+        unrelated_unit_request.content_hash = compute_chunk_content_hash(
+            unrelated_unit_request.scope_id,
+            unrelated_unit_request.primary_text,
+            unrelated_unit_request.sources,
+            unrelated_unit_request.content_hash_recipe_version
+        );
+        MdbxKnowledgeUnitPublicationParticipant unrelated_unit_participant{
+            context, units, {std::move(unrelated_unit_request)}
+        };
+        const auto unit_mismatch_plan = plan_for(
+            scope, profile, next_fencing, "publication-unit-mismatch", 1, 6
+        );
+        if(coordinator.publish(
+                unit_mismatch_plan,
+                {&retry_canonical, &unrelated_unit_participant, &projection_participant,
+                 &lexical_participant, &target_manifest_participant}
+            ).code != PublicationOutcomeCode::BindingMismatch
+            || !no_partial_publication("publication-unit-mismatch")) {
+            return fail("unrelated unit result must not validate an existing target row");
+        }
+
+        MdbxManifestPublicationParticipant unrelated_manifest_participant{
+            context,
+            manifests,
+            publication_manifest(ResourceManifestPayloadVersion::V1, "resource-2"),
+            std::nullopt
+        };
+        const auto manifest_mismatch_plan = plan_for(
+            scope, profile, next_fencing, "publication-manifest-mismatch", 1, 6
+        );
+        if(coordinator.publish(
+                manifest_mismatch_plan,
+                {&retry_canonical, &unit_participant, &projection_participant,
+                 &lexical_participant, &unrelated_manifest_participant}
+            ).code != PublicationOutcomeCode::BindingMismatch
+            || !no_partial_publication("publication-manifest-mismatch")) {
+            return fail("unrelated manifest write must not validate an existing target row");
+        }
+
+        auto unrelated_projection = target_projection;
+        unrelated_projection.version.projection_revision = 2;
+        unrelated_projection.body = "unrelated projection";
+        MdbxProjectionPublicationParticipant unrelated_projection_participant{
+            context, projections, std::move(unrelated_projection)
+        };
+        const auto projection_mismatch_plan = plan_for(
+            scope, profile, next_fencing, "publication-projection-mismatch", 1, 6
+        );
+        if(coordinator.publish(
+                projection_mismatch_plan,
+                {&retry_canonical, &unit_participant, &unrelated_projection_participant,
+                 &lexical_participant, &target_manifest_participant}
+            ).code != PublicationOutcomeCode::BindingMismatch
+            || !no_partial_publication("publication-projection-mismatch")) {
+            return fail("unrelated projection write must not validate an existing target row");
+        }
+
         auto retry_plan = plan_for(
             scope, profile, next_fencing, "publication-retry", 1, 6
         );
-        if(coordinator.publish(
-                retry_plan,
-                {&failing_canonical, &unit_participant, &projection_participant,
-                 &lexical_participant, &manifest_participant}
-            ).code != PublicationOutcomeCode::CommitFailure
-            || coordinator.frontier().sequence.value() != 1
-            || coordinator.receipt("publication-retry")) {
-            return fail("participant failure must roll back metadata and frontier");
-        }
         const auto retry_result = coordinator.publish(
             retry_plan,
             {&retry_canonical, &unit_participant, &projection_participant,
-             &lexical_participant, &manifest_participant}
+             &lexical_participant, &target_manifest_participant}
         );
         if(retry_result.code != PublicationOutcomeCode::Committed
             || coordinator.frontier().sequence.value() != 2

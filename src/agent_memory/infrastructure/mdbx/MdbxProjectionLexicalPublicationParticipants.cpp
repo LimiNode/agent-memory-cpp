@@ -9,6 +9,27 @@
 
 namespace agent_memory {
 
+namespace {
+
+bool projection_matches_target(
+    const SearchProjection& projection,
+    const PublicationPlan& plan
+) {
+    const auto& expected = plan.target_evidence.projection_version;
+    const auto& actual = projection.version;
+    return projection.scope_id.value() == plan.identity.scope_id.value()
+        && projection.unit_id.value() == plan.target_evidence.unit_id.value()
+        && actual.unit_revision_at_build == plan.target_evidence.unit_revision
+        && actual.unit_revision_at_build == expected.unit_revision_at_build
+        && actual.projection_revision == expected.projection_revision
+        && actual.derivation_generation == expected.derivation_generation
+        && actual.derivation_fingerprint == expected.derivation_fingerprint
+        && compute_projection_payload_digest(projection)
+            == plan.target_evidence.projection_payload_digest;
+}
+
+} // namespace
+
 MdbxProjectionPublicationParticipant::MdbxProjectionPublicationParticipant(
     std::shared_ptr<MdbxStorageContext> context,
     MdbxProjectionStore& store,
@@ -47,7 +68,8 @@ bool MdbxProjectionPublicationParticipant::validates(
     const PublicationPlan& plan,
     const mdbxc::Transaction& transaction
 ) const {
-    if(!m_applied || !m_projection) {
+    if(!m_applied || !m_projection
+        || !projection_matches_target(*m_projection, plan)) {
         return false;
     }
     const auto rows = m_store->list_in_transaction(
@@ -57,16 +79,10 @@ bool MdbxProjectionPublicationParticipant::validates(
         m_projection->kind
     );
     return std::any_of(rows.begin(), rows.end(), [this, &plan](const auto& row) {
-        const auto& expected = plan.target_evidence.projection_version;
-        const auto& actual = row.version;
-        return row.version.unit_revision_at_build == plan.target_evidence.unit_revision
-            && actual.projection_revision == expected.projection_revision
-            && actual.derivation_generation == expected.derivation_generation
-            && actual.derivation_fingerprint == expected.derivation_fingerprint
-            && row.scope_id == plan.identity.scope_id
-            && row.unit_id.value() == plan.target_evidence.unit_id.value()
+        return row.kind == m_projection->kind
+            && projection_matches_target(row, plan)
             && compute_projection_payload_digest(row)
-                == plan.target_evidence.projection_payload_digest;
+                == compute_projection_payload_digest(*m_projection);
     });
 }
 
