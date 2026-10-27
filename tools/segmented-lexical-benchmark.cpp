@@ -485,6 +485,7 @@ void run_durable(
     MdbxSegmentedLexicalIndexDiagnostics reopen_diagnostics;
     FlatLexicalIndex oracle{descriptor()};
     bool token_id_parity = true;
+    decltype(oracle.token_dictionary_for_storage()) pre_reopen_dictionary;
     {
         write_started = Clock::now();
         for(std::size_t index_value = 0; index_value < units; ++index_value) {
@@ -510,9 +511,22 @@ void run_durable(
                     ProjectionVersionRef{revision - 1U, revision - 1U, 1,
                         revision == 2U ? "benchmark-v1" : "inactive-history"}};
                 index->upsert(historical, expected);
-                oracle.upsert(historical, expected);
             }
             historical_finished = Clock::now();
+            for(std::uint64_t revision = 2;
+                revision <= inactive_history_count + 1U; ++revision) {
+                auto historical = unit(0, workload, corpus);
+                historical.resource_generation = revision;
+                historical.unit_revision = revision;
+                historical.projection_version = ProjectionVersionRef{
+                    revision, revision, 1, "inactive-history"};
+                historical.normalized_tokens.push_back(
+                    "inactive-" + std::to_string(revision));
+                oracle.upsert(historical, FlatLexicalExpectedState{
+                    KnowledgeUnitId{1}, revision - 1U, revision - 1U,
+                    ProjectionVersionRef{revision - 1U, revision - 1U, 1,
+                        revision == 2U ? "benchmark-v1" : "inactive-history"}});
+            }
         }
         if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
             initial_diagnostics = diagnostics;
@@ -538,6 +552,7 @@ void run_durable(
                     KnowledgeUnitId{1}, expected_revision, expected_revision,
                     ProjectionVersionRef{expected_revision, expected_revision, 1,
                         expected_revision == 1U ? "benchmark-v1" : "inactive-history"}});
+            update_finished = Clock::now();
             oracle.upsert(replacement, FlatLexicalExpectedState{
                 KnowledgeUnitId{1}, expected_revision, expected_revision,
                 ProjectionVersionRef{expected_revision, expected_revision, 1,
@@ -554,17 +569,22 @@ void run_durable(
                 FlatLexicalExpectedState{
                     KnowledgeUnitId{1}, 1, 1,
                     ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+            update_finished = Clock::now();
             oracle.upsert(replacement, FlatLexicalExpectedState{
                 KnowledgeUnitId{1}, 1, 1,
                 ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
         } else if(workload == "zipf-like" || workload == "small-delete") {
             static_cast<void>(index->erase(KnowledgeUnitId{1}));
+            update_finished = Clock::now();
             static_cast<void>(oracle.erase(KnowledgeUnitId{1}));
         } else if(workload == "no-op") {
             for(std::size_t iteration = 0; iteration < 16U; ++iteration) {
                 index->upsert(original, FlatLexicalExpectedState{
                     KnowledgeUnitId{1}, 1, 1,
                     ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+            }
+            update_finished = Clock::now();
+            for(std::size_t iteration = 0; iteration < 16U; ++iteration) {
                 oracle.upsert(original, FlatLexicalExpectedState{
                     KnowledgeUnitId{1}, 1, 1,
                     ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
@@ -572,9 +592,9 @@ void run_durable(
         } else {
             auto inserted = unit(units, workload, corpus);
             index->upsert(inserted);
+            update_finished = Clock::now();
             oracle.upsert(inserted);
         }
-        update_finished = Clock::now();
         if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
             update_diagnostics = diagnostics;
             diagnostics = {};
@@ -596,6 +616,7 @@ void run_durable(
         {
             const auto snapshot = index->read_snapshot();
             snapshot_finished = Clock::now();
+            pre_reopen_dictionary = snapshot.index.token_dictionary_for_storage();
             snapshot_validation_started = Clock::now();
             require_logical_match(oracle, snapshot.index, units, token_id_parity);
             snapshot_validation_finished = Clock::now();
@@ -650,6 +671,9 @@ void run_durable(
         reopen_validation_finished = Clock::now();
         active_units = reopened_snapshot.index.collection_stats().unit_count;
         total_tokens = reopened_snapshot.index.collection_stats().total_token_count;
+        if(pre_reopen_dictionary != reopened_snapshot.index.token_dictionary_for_storage()) {
+            throw std::runtime_error("backend token IDs changed across reopen");
+        }
     }
     stale_started = Clock::now();
     require_expected_state_conflict(reopened, unit(0, workload, corpus));
@@ -699,7 +723,9 @@ void run_durable(
               << '\t' << initial_diagnostics.bytes_encoded
               << '\t' << initial_diagnostics.touched_tokens
               << '\t' << initial_diagnostics.decoded_postings
-              << '\t' << milliseconds(update_finished - update_started)
+              << '\t' << (workload == "no-op"
+                  ? milliseconds(update_finished - update_started) / 16.0
+                  : milliseconds(update_finished - update_started))
               << '\t' << update_diagnostics.point_reads
               << '\t' << update_diagnostics.range_rows_visited
               << '\t' << update_diagnostics.kv_inserts_or_assigns
@@ -715,11 +741,13 @@ void run_durable(
               << '\t' << milliseconds(reopen_validation_finished - reopen_validation_started)
               << '\t' << milliseconds(stale_finished - stale_started)
               << '\t' << (workload == "no-op"
-                  ? milliseconds(update_finished - update_started) / 16.0 : 0.0)
+                  ? milliseconds(update_finished - update_started) : 0.0)
               << '\t' << (workload == "no-op" ? 16U : 0U)
               << '\t' << milliseconds(historical_finished - historical_started)
               << '\t' << (workload == "inactive-history" ? inactive_history_count : 0U)
-              << '\t' << (workload == "no-op" ? "no-op" : "mutation")
+              << '\t' << (workload == "no-op" ? "no-op" : workload == "small-insert"
+                  ? "insert" : workload == "small-delete" || workload == "zipf-like"
+                  ? "erase" : "replace")
               << '\t' << (workload == "no-op" ? 16U : 1U)
               << "\tdurable_read_snapshot\tdurable_read_snapshot\t"
               << (token_id_parity ? "true" : "false")

@@ -1,6 +1,6 @@
 # 2026-10-27 `flat-v2` / `seg-v2` performance qualification
 
-Status: `HARNESS_ACCEPTED / PERFORMANCE_INCONCLUSIVE / PRODUCTION_ACTIVATION_BLOCKED`.
+Status: `HARNESS_PENDING_CI_REPLAY / PERFORMANCE_INCONCLUSIVE / PRODUCTION_ACTIVATION_BLOCKED`.
 This is a separate research
 PR after the experimental `seg-v2` adapter was integrated; it does not change
 the production default or coordinator activation.
@@ -14,28 +14,38 @@ corpora than the isolated sparse fixture used by PR #559?
 ## Setup
 
 - Target: `main` after PR #559, branch `feat/seg-v2-performance-qualification`.
-- Runner: `tools/run-segmented-qualification.py`; each workload runs in an
-  isolated subprocess with a 120-second runtime budget.
+- Runner: `tools/run-segmented-qualification.py`; each
+  `(scale, workload, backend, repeat)` case runs in an isolated subprocess
+  with a 120-second runtime budget. A timeout disposition applies only to the
+  case whose process actually exceeded the budget.
 - Corpus generator: `tools/generate-segmented-qualification-corpus.py`.
 - Corpus kind: synthetic deterministic UTF-8; it is not a production knowledge
   corpus and must not be presented as one.
 - Seed: `12648430`; workloads: `unique+anchor`, `shared-hot`,
   `isolated-sparse-replacement`, `zipf-like`, `mixed-utf8`, `long-document`,
   `small-insert`, `small-delete`, `inactive-history`, and `no-op`.
-- Requested scales: 128, 512, 2048, 8192, 32768 units. The local run executed
-  128/512 with three repeats and recorded 2048/8192/32768 as controlled stops
-  because the expanded inactive-history workload exceeded the local time
-  budget. The earlier six-workload smoke run reached 2048, but it is retained
-  only as directional context and is not mixed into this receipt.
+- Requested scales: 128, 512, 2048, 8192, 32768 units. Scales above the
+  configured `--max-units` are represented as explicit
+  `SKIPPED_BY_CONFIG_LIMIT` case outcomes; they are not described as runtime
+  timeouts. Runtime stops, when present, identify the single started case and
+  its process termination evidence.
 - Backends: `flat-reference`, `flat-v2`, `segmented-v1` where applicable, and
   `segmented-v2`.
 - Raw artifact: `2026-10-27-seg-v2-qualification.raw.tsv`; its SHA-256 and
   receipt are recorded in the adjacent JSON file.
+- Current canonical-LF artifact digests (recompute after any receipt edit):
+  raw `c5a181ac1c102e7ceebb7d14ac10c54a840a5ce513cb36328dad043fb275b2be`,
+  receipt `74de1fa5d91ab0490882c953f9d5de661cd58a12b3c6d53978d0a9e0f23fde2c`.
+  The CI replay gate must verify these bytes from its clean checkout before the
+  status can become `HARNESS_ACCEPTED`.
 
 The benchmark checks final active-unit count, non-empty token statistics,
-reopen stability, and equality of logical final state across backends. The
-validator rejects duplicate/incomplete rows, non-finite values, altered raw
-hashes, falsified p50 aggregates, and missing repeats.
+reopen stability (including direct token-to-ID dictionary equality within a
+backend), and equality of logical final state across backends. The validator
+rejects duplicate/incomplete case outcomes, non-finite values, fractional
+physical counters, altered raw hashes, falsified p50 aggregates, and missing
+repeats. No-op timings report the complete 16-operation backend batch and its
+per-operation mean separately.
 
 ## Selected p50 observations
 
@@ -44,16 +54,16 @@ directional local measurements, not cross-machine performance claims.
 
 | Workload / units | Backend | write | snapshot | reopen snapshot | point update | DB bytes | update range rows | decoded postings |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| shared-hot / 512 | flat-v2 | 995.208 | 2.060 | 1.884 | 3.332 | 16,777,216 | 0 | 0 |
-| shared-hot / 512 | seg-v2 | 1,808.01 | 5.095 | 5.440 | 5.911 | 16,777,216 | 16 | 1,024 |
-| isolated-sparse / 512 | flat-v2 | 1,464.83 | 3.540 | 3.554 | 5.481 | 16,777,216 | 0 | 0 |
-| isolated-sparse / 512 | seg-v2 | 3,226.66 | 17.036 | 16.596 | 10.628 | 16,777,216 | 4 | 2 |
-| long-document / 512 | flat-v2 | 8,887.03 | 14.648 | 14.016 | 33.188 | 16,777,216 | 0 | 0 |
-| long-document / 512 | seg-v2 | 1,997.50 | 17.944 | 14.970 | 7.259 | 16,777,216 | 16 | 1,024 |
-| inactive-history / 512 | flat-v2 | 1,386.85 | 2.862 | 2.892 | 4.337 | 16,777,216 | 0 | 0 |
-| inactive-history / 512 | seg-v2 | 2,316.29 | 11.226 | 10.804 | 4.908 | 16,777,216 | 12 | 514 |
-| no-op / 512 (per operation) | flat-v2 | 1,260.76 | 2.550 | 2.795 | 45.089 | 16,777,216 | 0 | 0 |
-| no-op / 512 (per operation) | seg-v2 | 2,201.05 | 7.863 | 7.911 | 2.292 | 16,777,216 | 0 | 0 |
+| shared-hot / 512 | flat-v2 | 1,074.72 | 1.998 | 2.189 | 3.557 | 16,777,216 | 0 | 0 |
+| shared-hot / 512 | seg-v2 | 2,225.68 | 5.374 | 5.979 | 6.981 | 16,777,216 | 16 | 1,024 |
+| isolated-sparse / 512 | flat-v2 | 2,220.51 | 3.789 | 3.680 | 7.623 | 16,777,216 | 0 | 0 |
+| isolated-sparse / 512 | seg-v2 | 6,794.90 | 15.883 | 17.100 | 16.710 | 16,777,216 | 4 | 2 |
+| long-document / 512 | flat-v2 | 11,985.30 | 15.926 | 14.928 | 77.449 | 16,777,216 | 0 | 0 |
+| long-document / 512 | seg-v2 | 5,482.49 | 19.062 | 20.034 | 7.333 | 16,777,216 | 16 | 1,024 |
+| inactive-history / 512 | flat-v2 | 3,401.00 | 2.864 | 3.071 | 4.124 | 16,777,216 | 0 | 0 |
+| inactive-history / 512 | seg-v2 | 8,685.44 | 11.230 | 11.863 | 6.995 | 16,777,216 | 12 | 514 |
+| no-op / 512 (per operation) | flat-v2 | 2,509.37 | 2.601 | 2.771 | 2.900 | 16,777,216 | 0 | 0 |
+| no-op / 512 (per operation) | seg-v2 | 5,691.23 | 7.753 | 7.579 | 0.154 | 16,777,216 | 0 | 0 |
 
 The segmented point update remains bounded for the isolated workload: decoded
 postings stay at 2 and range rows at 4 at both executed scales. The expanded
@@ -87,9 +97,8 @@ described as physical I/O equivalence.
 
 - The corpus is synthetic and deterministic; real technical documents and
   multilingual knowledge units remain untested.
-- 8192 and 32768 were controlled stops, not successful measurements.
-- 2048 was also recorded as `SKIPPED_BY_CONFIG_LIMIT` in the receipt; this is a
-  configuration stop, not evidence of a runtime timeout.
+- Scales above `--max-units` are configuration stops, not successful
+  measurements and not evidence of runtime timeout.
 - Three repeats are useful for smoke qualification but do not establish stable
   machine-independent timing. A future pilot must record hardware, MDBX
   configuration, cache order, warm-up policy, and more repeats.

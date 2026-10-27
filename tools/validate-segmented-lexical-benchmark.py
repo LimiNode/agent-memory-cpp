@@ -150,8 +150,36 @@ def check(rows: list[dict[str, str]], telemetry: bool, workload: str | None) -> 
             "reopen_diagnostic_ms",
             "point_update_ms",
         ):
-            if as_float(row, field) < 0.0:
-                fail(f"negative timing value in {field}")
+                if as_float(row, field) < 0.0:
+                    fail(f"negative timing value in {field}")
+        discrete_fields = (
+            "diagnostic_scans", "live_rows_observed", "live_value_bytes_observed",
+            "observed_live_key_value_bytes", "point_reads", "range_rows_visited",
+            "kv_inserts_or_assigns", "kv_deletes", "bytes_decoded", "bytes_encoded",
+            "touched_tokens", "decoded_postings", "update_point_reads",
+            "update_range_rows_visited", "update_kv_inserts_or_assigns",
+            "update_kv_deletes", "update_bytes_decoded", "update_bytes_encoded",
+            "update_touched_tokens", "update_decoded_postings",
+            "no_op_operation_count", "inactive_history_count", "operation_count",
+        )
+        for field in discrete_fields:
+            if as_int(row, field) < 0:
+                fail(f"invalid discrete counter {field}")
+        expected_operation = (
+            "no-op" if row["workload"] == "no-op" else
+            "insert" if row["workload"] == "small-insert" else
+            "erase" if row["workload"] in ("small-delete", "zipf-like") else "replace"
+        )
+        if row["operation_type"] != expected_operation:
+            fail(f"workload operation label mismatch for {row['workload']}")
+        if row["workload"] == "no-op":
+            count = as_int(row, "no_op_operation_count")
+            if count != 16 or as_int(row, "operation_count") != count:
+                fail("no-op workload must report 16 operations")
+            if not math.isclose(as_float(row, "no_op_batch_ms"),
+                                as_float(row, "point_update_ms") * count,
+                                rel_tol=1e-5, abs_tol=1e-5):
+                fail("no-op batch/per-operation timing relationship is invalid")
         if row["backend"] == "flat-reference" and as_float(row, "point_update_ms") <= 0.0:
             fail("flat-reference did not measure a point update")
         if as_int(row, "active_units") != 4:
@@ -181,9 +209,6 @@ def check(rows: list[dict[str, str]], telemetry: bool, workload: str | None) -> 
                 fail("unknown reopen snapshot scope")
             if row["token_id_parity"] not in ("true", "false"):
                 fail("invalid token-id parity marker")
-            for field in ("no_op_operation_count", "inactive_history_count", "operation_count"):
-                if as_int(row, field) < 0:
-                    fail(f"invalid discrete counter {field}")
             if as_float(row, "historical_preparation_ms") < 0.0:
                 fail("negative historical preparation timing")
             if row["workload"] == "no-op" and as_int(row, "no_op_operation_count") != 16:

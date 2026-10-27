@@ -13,6 +13,13 @@ import pathlib
 import statistics
 import tempfile
 
+WORKLOADS = {
+    "unique+anchor", "shared-hot", "isolated-sparse-replacement", "zipf-like",
+    "mixed-utf8", "long-document", "small-insert", "small-delete",
+    "inactive-history", "no-op",
+}
+BACKENDS = {"flat-reference", "flat-v2", "segmented-v2", "segmented-v1"}
+
 
 P50_FIELDS = (
     "write_ms", "snapshot_ms", "reopen_snapshot_ms", "point_update_ms",
@@ -27,14 +34,15 @@ INT_FIELDS = (
     "update_range_rows_visited", "update_decoded_postings", "live_rows_observed",
     "live_value_bytes_observed", "no_op_operation_count", "inactive_history_count",
     "operation_count", "active_units", "total_tokens", "diagnostic_scans",
+    "point_reads", "range_rows_visited", "kv_inserts_or_assigns", "kv_deletes",
+    "bytes_decoded", "bytes_encoded", "touched_tokens", "decoded_postings",
+    "update_point_reads", "update_kv_inserts_or_assigns", "update_kv_deletes",
+    "update_bytes_decoded", "update_bytes_encoded", "update_touched_tokens",
+    "update_decoded_postings",
 )
 FLOAT_FIELDS = ("runner_elapsed_seconds", "environment_ms", "adapter_init_ms",
     "write_diagnostic_ms", "close_ms", "reopen_ms", "reopen_diagnostic_ms",
-    "observed_live_key_value_bytes", "point_reads",
-    "range_rows_visited", "kv_inserts_or_assigns", "kv_deletes", "bytes_decoded",
-    "bytes_encoded", "touched_tokens", "decoded_postings",
-    "update_point_reads", "update_kv_inserts_or_assigns", "update_kv_deletes",
-    "update_bytes_decoded", "update_bytes_encoded", "update_touched_tokens",
+    "observed_live_key_value_bytes",
 )
 
 
@@ -89,49 +97,65 @@ def validate(raw_path: pathlib.Path, receipt_path: pathlib.Path) -> None:
     matrix = receipt.get("matrix")
     if not isinstance(matrix, dict):
         fail("receipt matrix is missing")
-    scales = [int(value) for value in matrix.get("scales", [])]
-    executed = [int(value) for value in matrix.get("executed_scales", [])]
-    stops = [int(value) for value in matrix.get("controlled_stops", [])]
-    repeats = int(matrix.get("repeats", 0))
-    if repeats <= 0 or sorted(executed + stops) != sorted(scales) or set(executed) & set(stops):
-        fail("receipt scale/control-stop partition is invalid")
+    try:
+        scales = [int(value) for value in matrix.get("scales", [])]
+        repeats = int(matrix.get("repeats", 0))
+    except (TypeError, ValueError):
+        fail("receipt matrix has invalid integer fields")
+    if repeats <= 0 or not scales or any(value <= 0 for value in scales) or len(set(scales)) != len(scales):
+        fail("receipt matrix scales/repeats are invalid")
     workloads = tuple(matrix.get("workloads", []))
     backends = tuple(matrix.get("backends", []))
     requested_backends = tuple(matrix.get("requested_backends", backends))
-    if not requested_backends or set(backends) != set(requested_backends):
-        fail("receipt backend set does not match requested backend set")
+    if (not requested_backends or set(backends) != set(requested_backends)
+            or set(backends) - BACKENDS or set(workloads) - WORKLOADS
+            or len(set(workloads)) != len(workloads)):
+        fail("receipt backend/workload set is invalid")
     expected = {
         (backend, workload, str(units), str(repeat))
-        for backend in backends for workload in workloads
-        for units in executed for repeat in range(repeats)
+        for backend in backends for workload in workloads for units in scales
+        for repeat in range(repeats)
         if not (backend == "segmented-v1" and workload == "isolated-sparse-replacement")
     }
     actual = {(row["backend"], row["workload"], row["units"], row["repeat"])
               for row in rows}
-    if actual != expected:
-        fail("qualification TSV does not cover the declared matrix exactly")
+    if not actual.issubset(expected):
+        fail("qualification TSV contains an unexpected case")
     stops = receipt.get("stops", [])
+    if not isinstance(stops, list):
+        fail("receipt stops must be a list")
     stop_keys = set()
     for stop in stops:
         required_stop = {"scale", "workload", "backend", "repeat", "status",
                          "reason", "budget_seconds", "elapsed_seconds",
-                         "terminated", "cleanup", "usable_evidence"}
+                         "started", "terminated", "cleanup", "usable_evidence"}
         if not required_stop.issubset(stop):
             fail("stop receipt is incomplete")
         key = (stop["backend"], stop["workload"], str(stop["scale"]), str(stop["repeat"]))
-        if key in actual or key in stop_keys:
+        if key not in expected or key in actual or key in stop_keys:
             fail("stop receipt duplicates a benchmark case")
         stop_keys.add(key)
         if stop["status"] == "SKIPPED_BY_CONFIG_LIMIT":
-            if stop["terminated"] or stop["usable_evidence"] or stop["elapsed_seconds"] != 0.0:
+            if stop["started"] or stop["terminated"] or stop["usable_evidence"] or stop["elapsed_seconds"] != 0.0:
                 fail("config-limited stop has execution evidence")
         elif stop["status"] == "STOPPED_BY_RUNTIME_BUDGET":
-            if not stop["terminated"] or not stop["usable_evidence"] is False:
+            if not stop["started"] or not stop["terminated"] or not stop["usable_evidence"] is False:
                 fail("runtime stop lacks termination/evidence disposition")
             if not isinstance(stop["budget_seconds"], (int, float)):
                 fail("runtime stop lacks a numeric budget")
+        elif stop["status"] in {"FAILED_CORRECTNESS", "FAILED_EXECUTION"}:
+            if not stop["started"] or stop["usable_evidence"]:
+                fail("failed case has invalid execution disposition")
         else:
             fail(f"unknown stop status: {stop['status']}")
+    if actual & stop_keys or actual | stop_keys != expected:
+        fail("case terminal-outcome union is incomplete or duplicated")
+    executed = sorted({int(row["units"]) for row in rows})
+    stopped_scales = sorted({int(stop["scale"]) for stop in stops})
+    declared_executed = sorted(int(value) for value in matrix.get("executed_scales", []))
+    declared_stopped = sorted(int(value) for value in matrix.get("controlled_stops", []))
+    if declared_executed != executed or declared_stopped != stopped_scales:
+        fail("scale summaries do not match case outcomes")
     by_case: dict[tuple[str, str, str], list[dict[str, str]]] = {}
     for row in rows:
         case = (row["workload"], row["units"], row["repeat"])
@@ -142,6 +166,15 @@ def validate(raw_path: pathlib.Path, receipt_path: pathlib.Path) -> None:
         logical = {(row["active_units"], row["total_tokens"]) for row in case_rows}
         if len(logical) != 1:
             fail(f"backends disagree on final logical state for {workload}/{units_text}/{repeat}")
+        for row in case_rows:
+            if row["workload"] == "no-op":
+                count = int(row["no_op_operation_count"])
+                if count != 16 or int(row["operation_count"]) != count:
+                    fail("no-op operation count is not 16")
+                batch = float(row["no_op_batch_ms"])
+                per_operation = float(row["point_update_ms"])
+                if not math.isclose(batch, per_operation * count, rel_tol=1e-5, abs_tol=1e-5):
+                    fail("no-op batch/per-operation timing relationship is invalid")
     declared_p50 = receipt.get("p50")
     if not isinstance(declared_p50, dict):
         fail("receipt p50 is missing")
@@ -152,8 +185,8 @@ def validate(raw_path: pathlib.Path, receipt_path: pathlib.Path) -> None:
             fail(f"invalid p50 key: {key}")
         candidates = [row for row in rows if row["backend"] == backend
                       and row["workload"] == workload and row["units"] == units]
-        if len(candidates) != repeats:
-            fail(f"p50 key {key} has {len(candidates)} rows, expected {repeats}")
+        if not candidates:
+            fail(f"p50 key {key} has no completed rows")
         if not isinstance(fields, dict):
             fail(f"p50 entry {key} is not an object")
         for field in P50_FIELDS:
@@ -177,7 +210,8 @@ def self_test() -> int:
     row.update({"backend": "flat-v2", "workload": "no-op", "operation_type": "no-op",
                 "snapshot_scope": "durable_read_snapshot", "reopen_snapshot_scope": "durable_read_snapshot",
                 "token_id_parity": "true", "units": "1", "repeat": "0",
-                "active_units": "1", "total_tokens": "1"})
+                "active_units": "1", "total_tokens": "1", "no_op_operation_count": "16",
+                "operation_count": "16", "point_update_ms": "2.0", "no_op_batch_ms": "32.0"})
     stream = io.StringIO()
     writer = csv.DictWriter(stream, fieldnames=fields, delimiter="\t")
     writer.writeheader()
@@ -193,8 +227,10 @@ def self_test() -> int:
                     "sha256": hashlib.sha256(raw).hexdigest()},
             "matrix": {"scales": [1], "executed_scales": [1],
                        "controlled_stops": [], "workloads": ["no-op"],
-                       "backends": ["flat-v2"], "repeats": 1},
-            "p50": {"flat-v2/no-op/1": {field: 0.0 for field in P50_FIELDS}},
+                       "backends": ["flat-v2"], "requested_backends": ["flat-v2"], "repeats": 1},
+            "p50": {"flat-v2/no-op/1": {
+                **{field: 0.0 for field in P50_FIELDS},
+                "point_update_ms": 2.0, "no_op_batch_ms": 32.0}},
         }
         receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
         validate(raw_path, receipt_path)
@@ -225,6 +261,42 @@ def self_test() -> int:
             pass
         else:
             fail("self-test accepted duplicate row")
+
+        def expect_case_failure(stops: list[dict[str, object]], message: str) -> None:
+            mutated = json.loads(json.dumps(receipt))
+            mutated["matrix"] = dict(mutated["matrix"], scales=[1, 2],
+                                      executed_scales=[1], controlled_stops=[2])
+            mutated["stops"] = stops
+            receipt_path.write_text(json.dumps(mutated), encoding="utf-8")
+            try:
+                validate(raw_path, receipt_path)
+            except SystemExit:
+                return
+            fail(f"self-test accepted {message}")
+
+        base_stop = {"scale": 2, "workload": "no-op", "backend": "flat-v2", "repeat": 0,
+                     "status": "SKIPPED_BY_CONFIG_LIMIT", "reason": "limit",
+                     "budget_seconds": None, "elapsed_seconds": 0.0, "started": False,
+                     "terminated": False, "cleanup": "not_started", "usable_evidence": False}
+        expect_case_failure([], "missing stop entry")
+        expect_case_failure([base_stop, dict(base_stop)], "duplicate stop entry")
+        collision = dict(base_stop)
+        collision["scale"] = 1
+        expect_case_failure([collision], "completed plus stop collision")
+        unknown_backend = dict(base_stop, backend="bogus")
+        expect_case_failure([unknown_backend], "unknown backend")
+        unknown_workload = dict(base_stop, workload="bogus")
+        expect_case_failure([unknown_workload], "unknown workload")
+        fractional = dict(row, point_reads="0.5")
+        fractional_stream = io.StringIO()
+        fractional_writer = csv.DictWriter(fractional_stream, fieldnames=fields, delimiter="\t")
+        fractional_writer.writeheader(); fractional_writer.writerow(fractional)
+        try:
+            load_rows(fractional_stream.getvalue().encode("utf-8"))
+        except SystemExit:
+            pass
+        else:
+            fail("self-test accepted fractional counter")
     return 0
 
 
