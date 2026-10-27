@@ -789,8 +789,11 @@ def self_test() -> int:
                 "doc-a": {"1": 4.0, "2": 2.0},
                 "doc-b": {"1": 1.0},
                 "query": {"1": 2.0, "2": 3.0},
+                "english": {"3": 1.0},
+                "code": {"5": 1.0},
+                "none": {"7": 1.0},
             }
-            return {"lexical_weights": [table[text] for text in texts]}
+            return {"lexical_weights": [table.get(text, {"6": 1.0}) for text in texts]}
 
         @staticmethod
         def compute_lexical_matching_score(left: dict[int, float], right: dict[int, float]) -> float:
@@ -952,6 +955,36 @@ def self_test() -> int:
             wrong = next(document_id for document_id in query_document.values() if document_id != relevant)
             good_rows.append({"query_id": query["id"], "language": query["language"], "answer_mode": query["answer_mode"], "sparse_hits": [{"doc_id": relevant, "score": 1.0}], "bm25_hits": [{"doc_id": wrong, "score": 1.0}]})
             bad_rows.append({"query_id": query["id"], "language": query["language"], "answer_mode": query["answer_mode"], "sparse_hits": [{"doc_id": wrong, "score": 1.0}], "bm25_hits": [{"doc_id": relevant, "score": 1.0}]})
+
+        # Exercise the complete dependency-free path instead of feeding the
+        # receipt validator precomputed rows.  This is intentionally a small
+        # smoke fixture: the completed result is validated from the generated
+        # rows, while the decision controls below cover qualified GO and NO_GO
+        # outcomes with deliberately contrasting arms.
+        fake_document_weights = normalize_inference_output(
+            encoder.encode([row["text"] for row in corpus["documents"]]),
+            len(corpus["documents"]), "fake-document", 8,
+        )
+        fake_query_weights = normalize_inference_output(
+            encoder.encode([row["text"] for row in queries["queries"]]),
+            len(queries["queries"]), "fake-query", 8,
+        )
+        fake_postings = build_postings(corpus["documents"], fake_document_weights)
+        fake_bm25 = build_bm25(corpus["documents"])
+        pipeline_rows = []
+        for query_row, query_weights in zip(queries["queries"], fake_query_weights):
+            pipeline_rows.append({
+                "query_id": query_row["id"],
+                "language": query_row["language"],
+                "answer_mode": query_row["answer_mode"],
+                "sparse_hits": rank_scores(score_candidates(fake_postings, query_weights), 10),
+                "bm25_hits": bm25_rank(fake_bm25, query_row["text"], 10),
+            })
+        pipeline_receipt = e2e_receipt(pipeline_rows, 10)
+        if pipeline_receipt["decision"] not in DECISIONS:
+            raise SystemExit(f"self-test fake end-to-end path produced an invalid decision: {pipeline_receipt['decision']}")
+        publish_receipt(pipeline_receipt, root / "receipt-pipeline.json")
+
         expected_decisions = ((good_rows, 10, "GO_TO_LARGER_EVALUATION"), (bad_rows, 10, "NO_GO"), (good_rows, 5, "INSUFFICIENT_EVIDENCE"))
         for index, (rows, limit, expected_decision) in enumerate(expected_decisions):
             output = root / f"receipt-{index}.json"
