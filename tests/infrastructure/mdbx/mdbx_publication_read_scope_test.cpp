@@ -31,7 +31,9 @@ std::filesystem::path path() {
 
 KnowledgeUnitCreateRequest unit_request(const ScopeId& scope) {
     KnowledgeUnitCreateRequest request;
-    request.kind = KnowledgeUnitKind::Chunk;
+    // A non-M0 unit permits multiple source summaries, which is required to
+    // exercise target-source matching independently of source ordering.
+    request.kind = KnowledgeUnitKind::Note;
     request.scope_id = scope;
     request.primary_text = "pinned unit";
     request.display_text = "pinned unit";

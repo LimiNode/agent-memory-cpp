@@ -241,9 +241,11 @@ int main() {
         };
         MdbxPersistentLexicalIndexOptions foreign_lexical_options;
         foreign_lexical_options.context = foreign_context;
+        std::array<std::uint8_t, 16> foreign_epoch{};
+        foreign_epoch[0] = 7;
         foreign_lexical_options.descriptor = LexicalIndexDescriptor{
             LexicalIndexDescriptorRef{
-                scope, ProjectionKind::Original, LexicalStatisticsEpoch{}
+                scope, ProjectionKind::Original, LexicalStatisticsEpoch{foreign_epoch}
             },
             "original", 1, "tokenizer-v1", "normalization-v1", {1}
         };
