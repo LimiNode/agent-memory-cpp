@@ -69,7 +69,7 @@ Completed receipt admission reloads the frozen corpus, queries and qrels from
 the paths bound by their SHA-256 values, validates the ranked-hit replay bundle,
 recomputes both arms' metrics and then checks the policy-derived decision. An
 empty quality object, forged verdict, metric-only tampering, non-finite sparse
-score or malformed qrel identity is rejected. Routine CI runs 21 dependency-free negative controls
+score or malformed qrel identity is rejected. Routine CI runs 22 dependency-free negative controls
 covering scoring, zero overlap and ties, token/weight schema, short and long
 inference output, identity/qrels/language completeness, corrupt artifact
 evidence, insufficient top-K coverage, false GO/NO-GO receipts, invalid policy

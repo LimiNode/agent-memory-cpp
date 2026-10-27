@@ -892,6 +892,8 @@ def self_test() -> int:
     reject(lambda: validate_policy(forged_path, REPOSITORY_ROOT), "unresolvable policy path")
     forged_digest = json.loads(json.dumps(registered_policy)); forged_digest["registration_manifest"]["policy_sha256"] = "0" * 64
     reject(lambda: validate_policy(forged_digest, REPOSITORY_ROOT), "forged policy body digest")
+    posthoc_policy = json.loads(json.dumps(registered_policy)); posthoc_policy["minimum_recall_at_10_delta"] = -1.0
+    reject(lambda: validate_policy(posthoc_policy, REPOSITORY_ROOT), "post-hoc policy threshold")
     with tempfile.TemporaryDirectory(prefix="bge-m3-self-test-") as directory:
         root = Path(directory)
         corpus_path, queries_path, qrels_path = root / "corpus.json", root / "queries.json", root / "qrels.json"
@@ -961,6 +963,10 @@ def self_test() -> int:
         forged_quality = e2e_receipt(good_rows, 10)
         forged_quality["quality"]["bge_m3_sparse"]["recall_at"]["10"] = 0.0
         reject(lambda: validate_receipt(forged_quality), "forged replay quality")
+        failure_output = root / "failure.json"
+        if failure_receipt("EVALUATION_FAILED", "synthetic post-inference failure", [{"path": "fake", "verified": True}], failure_output, 2, True) != 2 \
+                or load_json(failure_output)["model"]["loaded"] is not True:
+            raise SystemExit("self-test lost model-loaded state in failure receipt")
         output = root / "invalid.json"
         reject(lambda: publish_receipt({"execution_status": COMPLETED, "decision": "INVALID", "quality": {}}, output), "invalid decision publication")
         if output.exists():
