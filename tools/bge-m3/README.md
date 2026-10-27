@@ -55,10 +55,16 @@ calibrated threshold is registered. The only research decisions are
 `GO_TO_LARGER_EVALUATION`, `NO_GO`, and `INSUFFICIENT_EVIDENCE`, derived from
 the preregistered policy after a complete qualified evaluation. Receipt
 admission revalidates the complete quality schema, frozen input evidence,
-verified/loaded artifacts and the policy-derived decision; an authored empty
-quality object or forged GO/NO-GO is rejected. Sparse products and accumulated
-scores must remain finite, and malformed qrels are reported as controlled
-evidence failures rather than uncaught type errors.
+verified/loaded artifacts and the policy-derived decision. Completed
+`INSUFFICIENT_EVIDENCE` is valid when the replayed cohort or cutoff is
+insufficient; it is not the same as a failed execution. A completed receipt
+also carries a replay bundle of the frozen corpus identities, queries, qrels
+and ranked hits. Admission reloads those files, checks their SHA-256 values and
+recomputes both arms' metrics before accepting any decision. An authored empty
+quality object, forged verdict or metric aggregate is rejected. Sparse products
+and accumulated scores must remain finite, malformed qrels are reported as
+controlled evidence failures rather than uncaught type errors, and post-model
+errors produce a non-zero diagnostic failure receipt when publication succeeds.
 
 Model caches, receipts, generated embeddings and evaluation data stay outside
 Git. Install ML dependencies only in an isolated research environment.

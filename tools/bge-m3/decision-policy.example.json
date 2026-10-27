@@ -9,7 +9,7 @@
   "no_go_ndcg_at_10_delta": -0.05,
   "registration_manifest": {
     "repository": "LimiNode/agent-memory-cpp",
-    "commit": "be3c80c1c635b92b21cee6a37963526d32ea88fd",
+    "commit": "7e3159355650b0b9d97d605a8b44fa7ec4c6c5a9",
     "path": "tools/bge-m3/decision-policy.example.json",
     "policy_sha256": "5977F0192BF1643DEA04B0E53F10193C5BFF9261AE236697CC8CC0BBCAB27387"
   }

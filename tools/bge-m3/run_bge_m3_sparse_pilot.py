@@ -12,6 +12,7 @@ import os
 import platform
 import re
 import statistics
+import subprocess
 import tempfile
 import time
 from collections import defaultdict
@@ -27,6 +28,7 @@ DECISIONS = {"GO_TO_LARGER_EVALUATION", "NO_GO", "INSUFFICIENT_EVIDENCE"}
 COMPLETED = "EVALUATION_COMPLETED"
 TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
 TOKEN_ID_RE = re.compile(r"0|[1-9][0-9]*")
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 REQUIRED_ARTIFACTS: dict[str, tuple[int, str]] = {
     "pytorch_model.bin": (2271145830, "B5E0CE3470ABF5EF3831AA1BD5553B486803E83251590AB7FF35A117CF6AAD38"),
@@ -334,7 +336,7 @@ def metrics(rows: list[dict[str, Any]], qrels: dict[str, dict[str, int]], arm: s
     }
 
 
-def validate_policy(policy: dict[str, Any]) -> None:
+def validate_policy(policy: dict[str, Any], repository_root: Path | None = None) -> None:
     required = {
         "schema_version", "revision", "registered_before_evaluation",
         "minimum_judged_queries_per_language", "minimum_recall_at_10_delta",
@@ -362,6 +364,30 @@ def validate_policy(policy: dict[str, Any]) -> None:
     unsigned = {key: value for key, value in policy.items() if key != "registration_manifest"}
     if sha256_json(unsigned) != registration["policy_sha256"].upper():
         raise EvidenceError("decision policy registration digest does not match policy contents")
+    if repository_root is None:
+        return
+    registered_path = registration["path"]
+    if Path(registered_path).is_absolute() or ".." in Path(registered_path).parts \
+            or Path(registered_path).as_posix() != registered_path:
+        raise EvidenceError("decision policy registration path is not repository-relative")
+    object_name = f"{registration['commit']}:{registered_path}"
+    try:
+        subprocess.run(
+            ["git", "-C", str(repository_root), "cat-file", "-e", f"{registration['commit']}^{{commit}}"],
+            check=True, capture_output=True, text=True,
+        )
+        registered_file = subprocess.run(
+            ["git", "-C", str(repository_root), "show", object_name],
+            check=True, capture_output=True, text=True,
+        ).stdout
+        registered_value = json.loads(registered_file)
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+        raise EvidenceError("decision policy registration Git object/path cannot be verified") from exc
+    if not isinstance(registered_value, dict):
+        raise EvidenceError("registered decision policy is not a JSON object")
+    registered_unsigned = {key: value for key, value in registered_value.items() if key != "registration_manifest"}
+    if sha256_json(registered_unsigned) != sha256_json(unsigned):
+        raise EvidenceError("decision policy differs from the registered Git policy body")
 
 
 def decide(quality: dict[str, Any], policy: dict[str, Any], limit: int) -> str:
@@ -435,6 +461,73 @@ def validate_quality(quality: Any, limit: int) -> None:
                 raise EvidenceError(f"{arm_name} {language} slice counts are invalid")
 
 
+def _quality_matches(actual: Any, expected: Any) -> bool:
+    if isinstance(actual, dict) and isinstance(expected, dict):
+        return set(actual) == set(expected) and all(_quality_matches(actual[key], expected[key]) for key in actual)
+    if isinstance(actual, list) and isinstance(expected, list):
+        return len(actual) == len(expected) and all(_quality_matches(left, right) for left, right in zip(actual, expected))
+    if isinstance(actual, (int, float)) and isinstance(expected, (int, float)) \
+            and not isinstance(actual, bool) and not isinstance(expected, bool):
+        return math.isclose(float(actual), float(expected), rel_tol=1e-12, abs_tol=1e-12)
+    return actual == expected
+
+
+def validate_replay_evidence(receipt: dict[str, Any], quality: dict[str, Any], limit: int) -> None:
+    inputs = receipt["inputs"]
+    replay = receipt.get("evidence_replay")
+    required = {"corpus_ids", "queries", "qrels", "rows"}
+    if not isinstance(replay, dict) or set(replay) != required:
+        raise EvidenceError("completed evaluation receipt lacks replayable evidence bundle")
+    paths = {field: Path(inputs[f"{field}_path"]) for field in ("corpus", "queries", "qrels")}
+    try:
+        source_values = {field: load_json(path) for field, path in paths.items()}
+        source_hashes = {field: sha256_file(path) for field, path in paths.items()}
+    except (EvidenceError, OSError) as exc:
+        raise EvidenceError("replay inputs are unavailable") from exc
+    for field in ("corpus", "queries", "qrels"):
+        if source_hashes[field] != inputs[f"{field}_sha256"]:
+            raise EvidenceError(f"{field} replay input hash does not match receipt")
+    if replay["queries"] != source_values["queries"].get("queries") \
+            or replay["qrels"] != source_values["qrels"].get("qrels"):
+        raise EvidenceError("replay bundle does not match frozen query/qrel inputs")
+    documents, query_rows, qrels, _ = validate_data(
+        source_values["corpus"], source_values["queries"], source_values["qrels"]
+    )
+    document_ids = [row["id"] for row in documents]
+    if replay["corpus_ids"] != document_ids:
+        raise EvidenceError("replay bundle does not match frozen corpus identities")
+    rows = replay["rows"]
+    if not isinstance(rows, list) or len(rows) != len(query_rows):
+        raise EvidenceError("replay row cardinality does not match frozen queries")
+    query_ids = [row["id"] for row in query_rows]
+    if [row.get("query_id") for row in rows if isinstance(row, dict)] != query_ids:
+        raise EvidenceError("replay row identities do not match frozen queries")
+    document_set = set(document_ids)
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != {"query_id", "language", "answer_mode", "sparse_hits", "bm25_hits"}:
+            raise EvidenceError("replay row schema is invalid")
+        if row["language"] not in LANGUAGES or row["answer_mode"] not in {"judged", "no_answer"}:
+            raise EvidenceError("replay row query metadata is invalid")
+        if not isinstance(row["sparse_hits"], list) or not isinstance(row["bm25_hits"], list):
+            raise EvidenceError("replay ranked hits are invalid")
+        for hits in (row["sparse_hits"], row["bm25_hits"]):
+            seen: set[str] = set()
+            for hit in hits:
+                if not isinstance(hit, dict) or set(hit) != {"doc_id", "score"} \
+                        or not isinstance(hit["doc_id"], str) or hit["doc_id"] not in document_set \
+                        or hit["doc_id"] in seen or isinstance(hit["score"], bool) \
+                        or not isinstance(hit["score"], (int, float)) or not math.isfinite(float(hit["score"])) \
+                        or hit["score"] < 0.0:
+                    raise EvidenceError("replay ranked hit is invalid")
+                seen.add(hit["doc_id"])
+    expected = {
+        "bge_m3_sparse": metrics(rows, qrels, "sparse", limit),
+        "bm25": metrics(rows, qrels, "bm25", limit),
+    }
+    if not _quality_matches(quality, expected):
+        raise EvidenceError("receipt quality does not match replayed ranked hits and qrels")
+
+
 def validate_receipt(receipt: dict[str, Any]) -> None:
     if receipt.get("decision") not in DECISIONS:
         raise EvidenceError("receipt decision is invalid")
@@ -445,8 +538,6 @@ def validate_receipt(receipt: dict[str, Any]) -> None:
         if receipt["decision"] != "INSUFFICIENT_EVIDENCE":
             raise EvidenceError("incomplete execution cannot publish GO or NO_GO")
         return
-    if receipt["decision"] == "INSUFFICIENT_EVIDENCE":
-        raise EvidenceError("completed evaluation must produce a policy-derived GO or NO_GO")
     model = receipt.get("model")
     if not isinstance(model, dict) or model.get("loaded") is not True:
         raise EvidenceError("completed evaluation receipt lacks loaded-model evidence")
@@ -462,12 +553,13 @@ def validate_receipt(receipt: dict[str, Any]) -> None:
             or policy_record["sha256"] != sha256_json(policy_record["policy"]):
         raise EvidenceError("completed evaluation receipt lacks bound decision policy evidence")
     policy = policy_record["policy"]
-    validate_policy(policy)
+    validate_policy(policy, REPOSITORY_ROOT)
     if policy_record.get("revision") != policy.get("revision"):
         raise EvidenceError("receipt decision policy revision mismatch")
     inputs = receipt.get("inputs")
     if not isinstance(inputs, dict) or not all(isinstance(inputs.get(field), str) and inputs[field] for field in (
-        "corpus_revision", "queries_revision", "qrels_revision", "corpus_sha256", "queries_sha256", "qrels_sha256"
+        "corpus_revision", "queries_revision", "qrels_revision", "corpus_sha256", "queries_sha256", "qrels_sha256",
+        "corpus_path", "queries_path", "qrels_path",
     )) or not isinstance(inputs.get("judgment_provenance"), dict):
         raise EvidenceError("completed evaluation receipt lacks frozen input evidence")
     limit = receipt.get("retrieval_limit")
@@ -475,6 +567,7 @@ def validate_receipt(receipt: dict[str, Any]) -> None:
         raise EvidenceError("completed evaluation receipt retrieval limit is invalid")
     quality = receipt.get("quality")
     validate_quality(quality, limit)
+    validate_replay_evidence(receipt, quality, limit)
     if receipt["decision"] != decide(quality, policy, limit):
         raise EvidenceError("receipt decision does not match validated quality and policy")
 
@@ -523,7 +616,8 @@ def package_version(name: str) -> str | None:
         return None
 
 
-def run(args: argparse.Namespace) -> int:
+def _run(args: argparse.Namespace) -> int:
+    args._model_loaded = False
     verification_started = time.perf_counter_ns()
     inventory = artifact_inventory(args.artifact_dir)
     artifact_verification_ms = (time.perf_counter_ns() - verification_started) / 1_000_000.0
@@ -537,7 +631,7 @@ def run(args: argparse.Namespace) -> int:
         corpus_value, queries_value, qrels_value = load_json(args.corpus), load_json(args.queries), load_json(args.qrels)
         documents, query_rows, qrels, judgment_provenance = validate_data(corpus_value, queries_value, qrels_value)
         policy = load_json(args.decision_policy)
-        validate_policy(policy)
+        validate_policy(policy, REPOSITORY_ROOT)
         total_text_bytes = sum(len(row["text"].encode("utf-8")) for row in documents + query_rows)
         if len(documents) > args.max_documents or len(query_rows) > args.max_queries \
                 or total_text_bytes > args.max_total_text_bytes:
@@ -551,6 +645,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         model_load_started = time.perf_counter_ns()
         model = BGEM3FlagModel(str(args.artifact_dir), use_fp16=False, devices=args.device)
+        args._model_loaded = True
         model_load_ms = (time.perf_counter_ns() - model_load_started) / 1_000_000.0
         tokenizer = getattr(model, "tokenizer", None)
         vocabulary_size = len(tokenizer) if tokenizer is not None else 0
@@ -642,11 +737,17 @@ def run(args: argparse.Namespace) -> int:
             "corpus_revision": corpus_value["revision"], "corpus_sha256": sha256_file(args.corpus),
             "queries_revision": queries_value["revision"], "queries_sha256": sha256_file(args.queries),
             "qrels_revision": qrels_value["revision"], "qrels_sha256": sha256_file(args.qrels),
+            "corpus_path": str(args.corpus.resolve()), "queries_path": str(args.queries.resolve()),
+            "qrels_path": str(args.qrels.resolve()),
             "judgment_provenance": judgment_provenance,
         },
         "scorer_parity_pairs": parity_count,
         "quality": quality,
         "retrieval_limit": args.limit,
+        "evidence_replay": {
+            "corpus_ids": [row["id"] for row in documents],
+            "queries": queries_value["queries"], "qrels": qrels_value["qrels"], "rows": rows,
+        },
         "timing": {
             "artifact_verification_ms": artifact_verification_ms, "model_loading_ms": model_load_ms,
             "document_encoding_ms": document_encoding_ms, "query_batch_encoding_ms": query_encoding_ms,
@@ -666,6 +767,17 @@ def run(args: argparse.Namespace) -> int:
     publish_receipt(receipt, args.output)
     print(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
+
+
+def run(args: argparse.Namespace) -> int:
+    try:
+        return _run(args)
+    except (EvidenceError, TypeError, ValueError, OverflowError, ZeroDivisionError) as exc:
+        inventory = artifact_inventory(args.artifact_dir)
+        return failure_receipt(
+            "EVALUATION_FAILED", str(exc), inventory, args.output, 2,
+            model_loaded=bool(getattr(args, "_model_loaded", False)),
+        )
 
 
 def self_test() -> int:
@@ -772,8 +884,84 @@ def self_test() -> int:
     reject(lambda: sparse_score(overflow, overflow), "overflowing sparse score")
     malformed_qrel_identity = json.loads(json.dumps(qrels)); malformed_qrel_identity["qrels"][0]["query_id"] = []
     reject(lambda: validate_data(corpus, queries, malformed_qrel_identity), "malformed qrel identity")
+    registered_policy = load_json(REPOSITORY_ROOT / "tools/bge-m3/decision-policy.example.json")
+    validate_policy(registered_policy, REPOSITORY_ROOT)
+    forged_commit = json.loads(json.dumps(registered_policy)); forged_commit["registration_manifest"]["commit"] = "0" * 40
+    reject(lambda: validate_policy(forged_commit, REPOSITORY_ROOT), "unresolvable policy commit")
+    forged_path = json.loads(json.dumps(registered_policy)); forged_path["registration_manifest"]["path"] = "tools/bge-m3/missing-policy.json"
+    reject(lambda: validate_policy(forged_path, REPOSITORY_ROOT), "unresolvable policy path")
+    forged_digest = json.loads(json.dumps(registered_policy)); forged_digest["registration_manifest"]["policy_sha256"] = "0" * 64
+    reject(lambda: validate_policy(forged_digest, REPOSITORY_ROOT), "forged policy body digest")
     with tempfile.TemporaryDirectory(prefix="bge-m3-self-test-") as directory:
-        output = Path(directory) / "receipt.json"
+        root = Path(directory)
+        corpus_path, queries_path, qrels_path = root / "corpus.json", root / "queries.json", root / "qrels.json"
+        corpus_path.write_text(json.dumps(corpus, ensure_ascii=False), encoding="utf-8")
+        evaluation_queries = {"revision": "q-e2e", "queries": []}
+        evaluation_qrels = {"revision": "r-e2e", "judgment_provenance": qrels["judgment_provenance"], "qrels": []}
+        query_document = {"en": "de", "ru": "dr", "code": "dc"}
+        for language in ("en", "ru", "code"):
+            for index in range(5):
+                query_id = f"q-{language}-{index}"
+                evaluation_queries["queries"].append({"id": query_id, "text": language, "language": language, "answer_mode": "judged"})
+                evaluation_qrels["qrels"].append({"query_id": query_id, "doc_id": query_document[language], "grade": 1})
+        evaluation_queries["queries"].append({"id": "q-none", "text": "none", "language": "en", "answer_mode": "no_answer"})
+        queries, qrels = evaluation_queries, evaluation_qrels
+        queries_path.write_text(json.dumps(queries, ensure_ascii=False), encoding="utf-8")
+        qrels_path.write_text(json.dumps(qrels, ensure_ascii=False), encoding="utf-8")
+
+        def e2e_receipt(rows: list[dict[str, Any]], limit: int) -> dict[str, Any]:
+            _, _, replay_qrels, provenance = validate_data(corpus, queries, qrels)
+            quality = {
+                "bge_m3_sparse": metrics(rows, replay_qrels, "sparse", limit),
+                "bm25": metrics(rows, replay_qrels, "bm25", limit),
+            }
+            return {
+                "execution_status": COMPLETED,
+                "decision": decide(quality, registered_policy, limit),
+                "decision_policy": {
+                    "revision": registered_policy["revision"],
+                    "sha256": sha256_json(registered_policy),
+                    "policy": registered_policy,
+                },
+                "model": {"repository": MODEL_REPOSITORY, "revision": MODEL_REVISION, "loaded": True},
+                "artifacts": [{"path": "fake-model", "verified": True, "loaded": True}],
+                "inputs": {
+                    "corpus_revision": corpus["revision"], "queries_revision": queries["revision"],
+                    "qrels_revision": qrels["revision"], "corpus_sha256": sha256_file(corpus_path),
+                    "queries_sha256": sha256_file(queries_path), "qrels_sha256": sha256_file(qrels_path),
+                    "corpus_path": str(corpus_path), "queries_path": str(queries_path),
+                    "qrels_path": str(qrels_path), "judgment_provenance": provenance,
+                },
+                "retrieval_limit": limit,
+                "quality": quality,
+                "evidence_replay": {
+                    "corpus_ids": [row["id"] for row in corpus["documents"]],
+                    "queries": queries["queries"], "qrels": qrels["qrels"], "rows": rows,
+                },
+            }
+
+        good_rows, bad_rows = [], []
+        for query in queries["queries"]:
+            if query["answer_mode"] == "no_answer":
+                good_rows.append({"query_id": query["id"], "language": query["language"], "answer_mode": query["answer_mode"], "sparse_hits": [], "bm25_hits": []})
+                bad_rows.append(json.loads(json.dumps(good_rows[-1])))
+                continue
+            relevant = query_document[query["language"]]
+            wrong = next(document_id for document_id in query_document.values() if document_id != relevant)
+            good_rows.append({"query_id": query["id"], "language": query["language"], "answer_mode": query["answer_mode"], "sparse_hits": [{"doc_id": relevant, "score": 1.0}], "bm25_hits": [{"doc_id": wrong, "score": 1.0}]})
+            bad_rows.append({"query_id": query["id"], "language": query["language"], "answer_mode": query["answer_mode"], "sparse_hits": [{"doc_id": wrong, "score": 1.0}], "bm25_hits": [{"doc_id": relevant, "score": 1.0}]})
+        expected_decisions = ((good_rows, 10, "GO_TO_LARGER_EVALUATION"), (bad_rows, 10, "NO_GO"), (good_rows, 5, "INSUFFICIENT_EVIDENCE"))
+        for index, (rows, limit, expected_decision) in enumerate(expected_decisions):
+            output = root / f"receipt-{index}.json"
+            receipt = e2e_receipt(rows, limit)
+            if receipt["decision"] != expected_decision:
+                raise SystemExit(f"self-test expected {expected_decision}, got {receipt['decision']}")
+            publish_receipt(receipt, output)
+            validate_receipt(load_json(output))
+        forged_quality = e2e_receipt(good_rows, 10)
+        forged_quality["quality"]["bge_m3_sparse"]["recall_at"]["10"] = 0.0
+        reject(lambda: validate_receipt(forged_quality), "forged replay quality")
+        output = root / "invalid.json"
         reject(lambda: publish_receipt({"execution_status": COMPLETED, "decision": "INVALID", "quality": {}}, output), "invalid decision publication")
         if output.exists():
             raise SystemExit("self-test published an invalid receipt")

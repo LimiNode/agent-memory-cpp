@@ -35,10 +35,12 @@ at least one no-answer query is required. No-answer queries must have no qrels.
 
 The input files and policy are hashed in the receipt. The policy also carries
 an explicit registration manifest binding its source repository, commit, path
-and digest of the policy body; `registered_before_evaluation: true` by itself
-is not sufficient. The example policy is frozen in the repository before any
-future evaluation; changing thresholds is a new policy revision, not a
-post-hoc reinterpretation of results.
+and digest of the policy body. Admission resolves that commit/path through the
+local immutable Git object database and compares the registered policy body
+with the submitted body; `registered_before_evaluation: true` by itself is not
+sufficient. The example policy is frozen in the repository before any future
+evaluation; changing thresholds is a new policy revision, not a post-hoc
+reinterpretation of results.
 
 ## Scoring and measurement contract
 
@@ -60,11 +62,16 @@ MRR is explicitly cut off at the configured limit. Non-empty results for
 no-answer queries are a diagnostic, not calibrated abstention accuracy.
 
 The only decisions are `GO_TO_LARGER_EVALUATION`, `NO_GO`, and
-`INSUFFICIENT_EVIDENCE`. Receipt admission revalidates policy, complete
-quality metrics, frozen inputs, loaded artifacts and the derived decision; an
-empty quality object, forged verdict, non-finite sparse score or malformed
-qrel identity is rejected. Routine CI runs 17 dependency-free negative controls
+`INSUFFICIENT_EVIDENCE`. A completed receipt may legitimately carry
+`INSUFFICIENT_EVIDENCE` when the qualified cohort or retrieval cutoff is
+insufficient; execution failures remain separate non-completed statuses.
+Completed receipt admission reloads the frozen corpus, queries and qrels from
+the paths bound by their SHA-256 values, validates the ranked-hit replay bundle,
+recomputes both arms' metrics and then checks the policy-derived decision. An
+empty quality object, forged verdict, metric-only tampering, non-finite sparse
+score or malformed qrel identity is rejected. Routine CI runs 21 dependency-free negative controls
 covering scoring, zero overlap and ties, token/weight schema, short and long
 inference output, identity/qrels/language completeness, corrupt artifact
-evidence, insufficient top-K coverage, false GO/NO-GO receipts, and fail-closed
+evidence, insufficient top-K coverage, false GO/NO-GO receipts, invalid policy
+registration, completed decision states, replay tampering and fail-closed
 receipt publication. Full model inference remains an external research run.
