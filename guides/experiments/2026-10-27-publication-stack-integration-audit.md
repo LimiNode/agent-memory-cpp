@@ -79,3 +79,29 @@ but its historical base, flat-v2 O(N) validation cost, and the newly integrated
 segmented adapter make an automatic merge unsafe. This note records the
 evidence and boundaries; it does not authorize a merge or a storage/backend
 activation.
+
+## Reproducible preflight receipt (agent-reported local evidence)
+
+The following evidence was produced in a disposable detached worktree. It is
+replayable from the immutable SHAs below, but it was not independently run by
+GitHub CI and is therefore not an integration approval.
+
+```text
+base: be3c80c1c635b92b21cee6a37963526d32ea88fd
+historical_merge_base: 1e2806d21bc36fa6baeca536aaccec0bf535502c
+target: e3766ab1896b9642c92ed33553b6dff8749864bf
+strategy: git rev-list --reverse historical_merge_base..target | git cherry-pick
+conflict_policy: stop, record unmerged paths, cherry-pick --abort
+configure: cmake -S . -B tmp/build-restack-preflight -G Ninja -DCMAKE_BUILD_TYPE=Release -DAGENT_MEMORY_ENABLE_MDBX=ON -DAGENT_MEMORY_MDBX_DEPS_MODE=BUNDLED -DAGENT_MEMORY_BUILD_TESTS=ON -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+coordinator_tests: ctest --test-dir tmp/build-restack-preflight --output-on-failure -R 'agent_memory_mdbx_publication_(coordinator|read_scope|write_scope)_test' => 3/3 PASS
+segmented_tests: ctest --test-dir tmp/build-restack-preflight --output-on-failure -R 'agent_memory_mdbx_(segmented_lexical_index_conformance|incremental_segmented_lexical_index)_test' => 2/2 PASS
+```
+
+Ordered source commits replayed (25):
+
+`aeb4cc19 b7fff700 be4c11f5 00ef298c 45c870c4 38c7473e e64630ab 05a070c5 18548d1f 4323d693 88f88b18 3d51b4a2 a7a43fa8 84cba2ab bcf66f21 5ce3fb05 a235f714 64037159 7fc8f7ab c919b64a e9ea4707 dd78c722 0749147a 1e2b4e05 e3766ab1`.
+
+All 25 cherry-picks applied without conflicts in the temporary replay. The
+worktree and temporary commits were removed afterward. This receipt does not
+replace exact-head CI after any authorized restack; each affected PR and the
+final combined head still require new CI.
