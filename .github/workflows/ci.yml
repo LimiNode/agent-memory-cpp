@@ -96,7 +96,6 @@ jobs:
                 ;;
               tools/bge-m3/*)
                 research=true
-                full=true
                 ;;
               CMakeLists.txt|cmake/*|*.cmake|CMakePresets.json|CMakeSettings.json)
                 all=true
@@ -120,7 +119,6 @@ jobs:
               research=true
               docs=true
               dbi=true
-              full=true
             fi
           }
 
@@ -165,14 +163,14 @@ jobs:
           assert_route "README.md" false false false true false
           assert_route "src/agent_memory/infrastructure/mdbx.hpp" true true false false false
           assert_route "src/agent_memory/infrastructure/mdbx/MdbxStorageContext.cpp" true true false false false
-          assert_route "CMakeLists.txt" true true true true true true
-          assert_route "cmake/AgentMemoryOptions.cmake" true true true true true true
+          assert_route "CMakeLists.txt" true true true true true
+          assert_route "cmake/AgentMemoryOptions.cmake" true true true true true
           assert_route "src/agent_memory/index/FlatBinarySignatureIndex.cpp" true false true false false
           assert_route "tests/index/binary_signature_test.cpp" true false true false false
           assert_route "tools/agent-memory-bench/run-native-mdbx-batch-sweep.py" false false true false false
           assert_route "tools/lexical-research/run_cpp_lexical_parity.py" false false true false false
-          assert_route "tools/bge-m3/run_bge_m3_sparse_pilot.py" false false true false false true
-          assert_route "unknown/path" true true true true true true
+          assert_route "tools/bge-m3/run_bge_m3_sparse_pilot.py" false false true false false
+          assert_route "unknown/path" true true true true true
 
           # Regression assertions must not influence the real change set.
           core=false
@@ -1047,6 +1045,24 @@ jobs:
           tools/lexical-research/fixtures/persistent_lexical_oracle_v1.json
           --self-test
 
+  bge-m3-sparse-pilot:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: BGE-M3 sparse pilot self-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run BGE-M3 sparse pilot self-test
+        run: python tools/bge-m3/run_bge_m3_sparse_pilot.py --self-test
+
   ci-gate:
     name: CI gate
     if: always()
@@ -1063,6 +1079,7 @@ jobs:
       - ann-cascade
       - lexical-parity
       - persistent-lexical-oracle
+      - bge-m3-sparse-pilot
       - research-full
     runs-on: ubuntu-latest
     steps:
@@ -1085,6 +1102,7 @@ jobs:
           ANN_RESULT: ${{ needs.ann-cascade.result }}
           PARITY_RESULT: ${{ needs.lexical-parity.result }}
           ORACLE_RESULT: ${{ needs.persistent-lexical-oracle.result }}
+          BGE_RESULT: ${{ needs.bge-m3-sparse-pilot.result }}
           FULL_RESULT: ${{ needs.research-full.result }}
         shell: bash
         run: |
@@ -1117,6 +1135,7 @@ jobs:
           check_required "$RESEARCH_REQUIRED" "$ANN_RESULT" "ANN cascade"
           check_required "$RESEARCH_REQUIRED" "$PARITY_RESULT" "C++ lexical parity"
           check_required "$RESEARCH_REQUIRED" "$ORACLE_RESULT" "persistent lexical oracle"
+          check_required "$RESEARCH_REQUIRED" "$BGE_RESULT" "BGE-M3 sparse pilot self-test"
           check_required "$FULL_REQUIRED" "$FULL_RESULT" "full research CTest"
 
           exit "$failed"
