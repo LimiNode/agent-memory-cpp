@@ -94,6 +94,10 @@ jobs:
               tools/benchmarks/*|tools/agent-memory-bench/*|tools/lexical-research/*|tools/requirements-tools.txt|external/simdcomp/*)
                 research=true
                 ;;
+              tools/bge-m3/*)
+                research=true
+                full=true
+                ;;
               CMakeLists.txt|cmake/*|*.cmake|CMakePresets.json|CMakeSettings.json)
                 all=true
                 ;;
@@ -126,6 +130,7 @@ jobs:
             local expected_research="$4"
             local expected_docs="$5"
             local expected_dbi="$6"
+            local expected_full="${7:-false}"
 
             core=false
             storage=false
@@ -140,8 +145,8 @@ jobs:
                || "$storage" != "$expected_storage" \
                || "$research" != "$expected_research" \
                || "$docs" != "$expected_docs" \
-               || "$dbi" != "$expected_dbi" ]]; then
-              echo "classifier regression failed for $path: core=$core storage=$storage research=$research docs=$docs dbi=$dbi"
+               || "$dbi" != "$expected_dbi" || "$full" != "$expected_full" ]]; then
+              echo "classifier regression failed for $path: core=$core storage=$storage research=$research docs=$docs dbi=$dbi full=$full"
               exit 1
             fi
           }
@@ -164,6 +169,7 @@ jobs:
           assert_route "tests/index/binary_signature_test.cpp" true false true false false
           assert_route "tools/agent-memory-bench/run-native-mdbx-batch-sweep.py" false false true false false
           assert_route "tools/lexical-research/run_cpp_lexical_parity.py" false false true false false
+          assert_route "tools/bge-m3/run_bge_m3_sparse_pilot.py" false false true false false true
           assert_route "unknown/path" true true true true true
 
           # Regression assertions must not influence the real change set.
