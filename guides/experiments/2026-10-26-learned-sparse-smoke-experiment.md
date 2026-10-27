@@ -2,7 +2,12 @@
 
 **Date:** 2026-10-26
 **Status:** `DIRECTIONAL_SMOKE_ONLY` — no model promotion and no production recommendation
-**Base:** `main@1e2806d21bc36fa6baeca536aaccec0bf535502c`
+**Base:** `main@be3c80c1c635b92b21cee6a37963526d32ea88fd`
+
+The earlier smoke implementation was originally prepared against
+`main@1e2806d21bc36fa6baeca536aaccec0bf535502c`; that historical base is
+retained only as provenance. The corrective pass was rebased onto the current
+`main` before the final CI run.
 **Scope:** read-only research runner, frozen fixture, and CI self-test; no C++ API, MDBX schema, or required ML dependency
 
 ## Question and boundary
