@@ -34,10 +34,13 @@ corpora than the isolated sparse fixture used by PR #559?
 - Raw artifact: `2026-10-27-seg-v2-qualification.raw.tsv`; its SHA-256 and
   receipt are recorded in the adjacent JSON file.
 - Current canonical-LF artifact digests (recompute after any receipt edit):
-  raw `c5a181ac1c102e7ceebb7d14ac10c54a840a5ce513cb36328dad043fb275b2be`,
-  receipt `74de1fa5d91ab0490882c953f9d5de661cd58a12b3c6d53978d0a9e0f23fde2c`.
-  CI replay `40559183012` verified these bytes from its clean checkout on
-  commit `e86a93f5`.
+  raw `ddd474f0aa3e25dc9d8cf656e0ec39ca8af28cf8a10e343dd381f8cf6db4d5c1`,
+  receipt `81d732cb0d152c30f611102878dc209652137f2403ad2bb9f28e841200ca4b52`.
+  These artifacts use schema version 3 and record explicit configuration,
+  provenance, terminal status, and stop evidence. Empty raw output is valid
+  only for an explicitly `PARTIAL`/`FAILED` diagnostic receipt whose cases
+  all stopped before producing measurements. Exact-head CI replay is required
+  for this corrective pass and is recorded in the PR after push.
 
 The benchmark checks final active-unit count, non-empty token statistics,
 reopen stability (including direct token-to-ID dictionary equality within a
@@ -54,16 +57,16 @@ directional local measurements, not cross-machine performance claims.
 
 | Workload / units | Backend | write | snapshot | reopen snapshot | point update | DB bytes | update range rows | decoded postings |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| shared-hot / 512 | flat-v2 | 1,074.72 | 1.998 | 2.189 | 3.557 | 16,777,216 | 0 | 0 |
-| shared-hot / 512 | seg-v2 | 2,225.68 | 5.374 | 5.979 | 6.981 | 16,777,216 | 16 | 1,024 |
-| isolated-sparse / 512 | flat-v2 | 2,220.51 | 3.789 | 3.680 | 7.623 | 16,777,216 | 0 | 0 |
-| isolated-sparse / 512 | seg-v2 | 6,794.90 | 15.883 | 17.100 | 16.710 | 16,777,216 | 4 | 2 |
-| long-document / 512 | flat-v2 | 11,985.30 | 15.926 | 14.928 | 77.449 | 16,777,216 | 0 | 0 |
-| long-document / 512 | seg-v2 | 5,482.49 | 19.062 | 20.034 | 7.333 | 16,777,216 | 16 | 1,024 |
-| inactive-history / 512 | flat-v2 | 3,401.00 | 2.864 | 3.071 | 4.124 | 16,777,216 | 0 | 0 |
-| inactive-history / 512 | seg-v2 | 8,685.44 | 11.230 | 11.863 | 6.995 | 16,777,216 | 12 | 514 |
-| no-op / 512 (per operation) | flat-v2 | 2,509.37 | 2.601 | 2.771 | 2.900 | 16,777,216 | 0 | 0 |
-| no-op / 512 (per operation) | seg-v2 | 5,691.23 | 7.753 | 7.579 | 0.154 | 16,777,216 | 0 | 0 |
+| shared-hot / 512 | flat-v2 | 1,102.20 | 2.063 | 2.020 | 3.545 | 16,777,216 | 0 | 0 |
+| shared-hot / 512 | seg-v2 | 1,793.65 | 5.384 | 6.105 | 6.042 | 16,777,216 | 16 | 1,024 |
+| isolated-sparse / 512 | flat-v2 | 1,756.93 | 3.656 | 4.330 | 5.729 | 16,777,216 | 0 | 0 |
+| isolated-sparse / 512 | seg-v2 | 3,106.47 | 16.973 | 16.384 | 10.659 | 16,777,216 | 4 | 2 |
+| long-document / 512 | flat-v2 | 10,147.70 | 16.517 | 16.117 | 34.776 | 16,777,216 | 0 | 0 |
+| long-document / 512 | seg-v2 | 2,014.12 | 19.503 | 20.784 | 7.835 | 16,777,216 | 16 | 1,024 |
+| inactive-history / 512 | flat-v2 | 1,477.76 | 3.228 | 3.187 | 4.094 | 16,777,216 | 0 | 0 |
+| inactive-history / 512 | seg-v2 | 2,421.22 | 14.303 | 12.166 | 5.058 | 16,777,216 | 12 | 514 |
+| no-op / 512 (per operation) | flat-v2 | 1,342.44 | 2.657 | 2.860 | 2.977 | 16,777,216 | 0 | 0 |
+| no-op / 512 (per operation) | seg-v2 | 2,275.85 | 8.396 | 8.276 | 0.152 | 16,777,216 | 0 | 0 |
 
 The segmented point update remains bounded for the isolated workload: decoded
 postings stay at 2 and range rows at 4 at both executed scales. The expanded
@@ -78,6 +81,11 @@ is the per-operation value. Historical preparation is reported separately from
 initial ingestion. Numerical TokenId parity is reported as a diagnostic: IDs
 are stable within each backend and across reopen, but allocation order is not a
 cross-backend contract.
+
+The update timer starts only after all deterministic replacement, insertion,
+and expected-state inputs have been prepared. Oracle mutation, restoration of
+the final logical corpus, and validation remain outside the backend mutation
+interval.
 
 ## Interpretation and decision gate
 

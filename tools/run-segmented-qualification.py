@@ -197,6 +197,12 @@ def run(args: argparse.Namespace) -> int:
         "workloads": list(WORKLOADS), "backends": sorted(requested_backends),
         "raw": {"path": args.output.name, "rows": len(rows), "sha256": sha256(args.output)},
         "corpora": manifests, "p50": p50,
+        "configuration": {
+            "max_units": args.max_units,
+            "long_document_tokens": args.long_document_tokens,
+            "inactive_history": args.inactive_history,
+            "timeout_seconds": args.timeout_seconds,
+        },
         "matrix": {"scales": scales, "executed_scales": executed_scales,
                    "controlled_stops": stopped_scales, "workloads": list(WORKLOADS),
                    "backends": sorted(requested_backends),
@@ -209,8 +215,15 @@ def run(args: argparse.Namespace) -> int:
             "physical_write_amplification": "unavailable: MDBX does not expose physical I/O counters",
             "process_memory_high_water": "unavailable: runner does not sample process RSS",
         },
-        "provenance": {"corpus_kind": "synthetic deterministic UTF-8 corpus",
+        "provenance": {"family": "segmented_lexical_performance_qualification_v1",
+                       "corpus_kind": "synthetic deterministic UTF-8 corpus",
                        "generator": args.generator.name, "seed": args.seed,
+                       "configuration": {
+                           "max_units": args.max_units,
+                           "long_document_tokens": args.long_document_tokens,
+                           "inactive_history": args.inactive_history,
+                           "timeout_seconds": args.timeout_seconds,
+                       },
                        "build_configuration": "caller supplied benchmark binary",
                        "case_identity": "(scale, workload, backend, repeat)",
                        "terminal_outcomes": ["COMPLETED", "SKIPPED_BY_CONFIG_LIMIT",
@@ -219,7 +232,7 @@ def run(args: argparse.Namespace) -> int:
     }
     args.receipt.parent.mkdir(parents=True, exist_ok=True)
     write_lf(args.receipt, json.dumps(receipt, indent=2, ensure_ascii=False) + "\n")
-    return 0
+    return 1 if failed else 0
 
 
 def timeout_self_test(fixture_binary: Path | None = None) -> int:

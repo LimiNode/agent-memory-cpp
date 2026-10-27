@@ -533,67 +533,63 @@ void run_durable(
             diagnostics = {};
         }
         db_bytes_before_update = database_bytes(path);
-        update_started = Clock::now();
         const auto original = unit(0, workload, corpus);
+        const FlatLexicalExpectedState original_expected{
+            KnowledgeUnitId{1}, 1, 1,
+            ProjectionVersionRef{1, 1, 1, "benchmark-v1"}};
+        std::optional<FlatLexicalUnitInput> replacement;
+        std::optional<FlatLexicalExpectedState> replacement_expected;
+        std::optional<FlatLexicalUnitInput> inserted;
         if(workload == "unique+anchor" || workload == "shared-hot"
             || workload == "long-document" || workload == "inactive-history") {
-            auto replacement = original;
+            replacement = original;
             const std::uint64_t next_revision = workload == "inactive-history"
                 ? inactive_history_count + 2U : 2U;
             const std::uint64_t expected_revision = next_revision - 1U;
-            replacement.resource_generation = next_revision;
-            replacement.unit_revision = next_revision;
-            replacement.projection_version = ProjectionVersionRef{
+            replacement->resource_generation = next_revision;
+            replacement->unit_revision = next_revision;
+            replacement->projection_version = ProjectionVersionRef{
                 next_revision, next_revision, 1, "benchmark-replacement"};
-            replacement.normalized_tokens.push_back("point-update");
-            index->upsert(
-                replacement,
-                FlatLexicalExpectedState{
-                    KnowledgeUnitId{1}, expected_revision, expected_revision,
-                    ProjectionVersionRef{expected_revision, expected_revision, 1,
-                        expected_revision == 1U ? "benchmark-v1" : "inactive-history"}});
-            update_finished = Clock::now();
-            oracle.upsert(replacement, FlatLexicalExpectedState{
+            replacement->normalized_tokens.push_back("point-update");
+            replacement_expected = FlatLexicalExpectedState{
                 KnowledgeUnitId{1}, expected_revision, expected_revision,
                 ProjectionVersionRef{expected_revision, expected_revision, 1,
-                    expected_revision == 1U ? "benchmark-v1" : "inactive-history"}});
+                    expected_revision == 1U ? "benchmark-v1" : "inactive-history"}};
         } else if(workload == "isolated-sparse-replacement") {
-            auto replacement = original;
-            replacement.resource_generation = 2;
-            replacement.unit_revision = 2;
-            replacement.projection_version = ProjectionVersionRef{2, 2, 1, "benchmark-v2"};
-            replacement.normalized_tokens = {
+            replacement = original;
+            replacement->resource_generation = 2;
+            replacement->unit_revision = 2;
+            replacement->projection_version = ProjectionVersionRef{2, 2, 1, "benchmark-v2"};
+            replacement->normalized_tokens = {
                 "sp-0", "sr"};
-            index->upsert(
-                replacement,
-                FlatLexicalExpectedState{
+            replacement_expected = FlatLexicalExpectedState{
                     KnowledgeUnitId{1}, 1, 1,
-                    ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+                    ProjectionVersionRef{1, 1, 1, "benchmark-v1"}};
+        } else if(workload != "zipf-like" && workload != "small-delete"
+            && workload != "no-op") {
+            inserted = unit(units, workload, corpus);
+        }
+        update_started = Clock::now();
+        if(replacement) {
+            index->upsert(*replacement, *replacement_expected);
             update_finished = Clock::now();
-            oracle.upsert(replacement, FlatLexicalExpectedState{
-                KnowledgeUnitId{1}, 1, 1,
-                ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+            oracle.upsert(*replacement, *replacement_expected);
         } else if(workload == "zipf-like" || workload == "small-delete") {
             static_cast<void>(index->erase(KnowledgeUnitId{1}));
             update_finished = Clock::now();
             static_cast<void>(oracle.erase(KnowledgeUnitId{1}));
         } else if(workload == "no-op") {
             for(std::size_t iteration = 0; iteration < 16U; ++iteration) {
-                index->upsert(original, FlatLexicalExpectedState{
-                    KnowledgeUnitId{1}, 1, 1,
-                    ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+                index->upsert(original, original_expected);
             }
             update_finished = Clock::now();
             for(std::size_t iteration = 0; iteration < 16U; ++iteration) {
-                oracle.upsert(original, FlatLexicalExpectedState{
-                    KnowledgeUnitId{1}, 1, 1,
-                    ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+                oracle.upsert(original, original_expected);
             }
         } else {
-            auto inserted = unit(units, workload, corpus);
-            index->upsert(inserted);
+            index->upsert(*inserted);
             update_finished = Clock::now();
-            oracle.upsert(inserted);
+            oracle.upsert(*inserted);
         }
         if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
             update_diagnostics = diagnostics;
