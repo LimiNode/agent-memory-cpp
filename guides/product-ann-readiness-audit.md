@@ -1,7 +1,7 @@
 # Product and ANN readiness audit
 
-Status: reviewable architecture audit, 2026-10-28  
-Baseline: `origin/main` at `be3c80c1c635b92b21cee6a37963526d32ea88fd`  
+Status: reviewable architecture audit, 2026-10-28
+Baseline: `origin/main` at `be3c80c1c635b92b21cee6a37963526d32ea88fd`
 Scope: documentation and release planning only. This note does not activate
 `seg-v2`, add an ANN backend, change the coordinator, or change a DBI.
 
@@ -275,4 +275,3 @@ This PR does not:
 - claim multimedia, TSV/CSV, graph, temporal or bi-temporal product support;
 - replace the exact lexical/vector oracle with an approximate backend;
 - treat benchmark smoke tests as product readiness evidence.
-
