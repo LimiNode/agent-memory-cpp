@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
 import importlib.metadata
 import json
@@ -136,7 +135,8 @@ def validate_data(
     mapped: dict[str, dict[str, int]] = {query_id: {} for query_id in query_ids}
     for row in qrel_rows:
         query_id, doc_id, grade = row.get("query_id"), row.get("doc_id"), row.get("grade")
-        if query_id not in query_set or doc_id not in document_set or isinstance(grade, bool) \
+        if not isinstance(query_id, str) or not isinstance(doc_id, str) \
+                or query_id not in query_set or doc_id not in document_set or isinstance(grade, bool) \
                 or not isinstance(grade, int) or grade < 0:
             raise EvidenceError("qrel identity or grade is invalid")
         if doc_id in mapped[query_id]:
@@ -196,7 +196,15 @@ def normalize_inference_output(output: Any, expected_count: int, label: str, voc
 
 
 def sparse_score(query_weights: dict[int, float], document_weights: dict[int, float]) -> float:
-    return sum(weight * document_weights.get(token, 0.0) for token, weight in query_weights.items())
+    total = 0.0
+    for token, weight in query_weights.items():
+        product = weight * document_weights.get(token, 0.0)
+        if not math.isfinite(product):
+            raise EvidenceError("sparse score product is not finite")
+        total += product
+        if not math.isfinite(total):
+            raise EvidenceError("sparse score is not finite")
+    return total
 
 
 def build_postings(documents: list[dict[str, Any]], weights: list[dict[int, float]]) -> dict[int, list[tuple[str, float]]]:
@@ -215,11 +223,18 @@ def score_candidates(postings: dict[int, list[tuple[str, float]]], query_weights
     scores: dict[str, float] = defaultdict(float)
     for token, query_weight in query_weights.items():
         for document_id, document_weight in postings.get(token, []):
-            scores[document_id] += query_weight * document_weight
+            product = query_weight * document_weight
+            if not math.isfinite(product):
+                raise EvidenceError("sparse score product is not finite")
+            scores[document_id] += product
+            if not math.isfinite(scores[document_id]):
+                raise EvidenceError("sparse score is not finite")
     return dict(scores)
 
 
 def rank_scores(scores: dict[str, float], limit: int) -> list[dict[str, Any]]:
+    if any(not isinstance(score, (int, float)) or not math.isfinite(float(score)) for score in scores.values()):
+        raise EvidenceError("ranking received a non-finite sparse score")
     return [
         {"doc_id": document_id, "score": score}
         for document_id, score in sorted(
@@ -324,7 +339,7 @@ def validate_policy(policy: dict[str, Any]) -> None:
         "schema_version", "revision", "registered_before_evaluation",
         "minimum_judged_queries_per_language", "minimum_recall_at_10_delta",
         "minimum_ndcg_at_10_delta", "no_go_recall_at_10_delta",
-        "no_go_ndcg_at_10_delta",
+        "no_go_ndcg_at_10_delta", "registration_manifest",
     }
     if set(policy) != required or policy["schema_version"] != 1 \
             or policy["registered_before_evaluation"] is not True \
@@ -334,9 +349,19 @@ def validate_policy(policy: dict[str, Any]) -> None:
             or not isinstance(policy["minimum_judged_queries_per_language"], int) \
             or policy["minimum_judged_queries_per_language"] <= 0:
         raise EvidenceError("decision policy cohort threshold is invalid")
-    for field in required - {"schema_version", "revision", "registered_before_evaluation", "minimum_judged_queries_per_language"}:
+    for field in required - {"schema_version", "revision", "registered_before_evaluation", "minimum_judged_queries_per_language", "registration_manifest"}:
         if isinstance(policy[field], bool) or not isinstance(policy[field], (int, float)) or not math.isfinite(float(policy[field])):
             raise EvidenceError(f"decision policy {field} is invalid")
+    registration = policy["registration_manifest"]
+    if not isinstance(registration, dict) or set(registration) != {"repository", "commit", "path", "policy_sha256"} \
+            or not all(isinstance(registration.get(field), str) and registration[field] for field in registration):
+        raise EvidenceError("decision policy registration manifest is invalid")
+    if not re.fullmatch(r"[0-9a-fA-F]{40,64}", registration["commit"]) \
+            or not re.fullmatch(r"[0-9A-Fa-f]{64}", registration["policy_sha256"]):
+        raise EvidenceError("decision policy registration identity is invalid")
+    unsigned = {key: value for key, value in policy.items() if key != "registration_manifest"}
+    if sha256_json(unsigned) != registration["policy_sha256"].upper():
+        raise EvidenceError("decision policy registration digest does not match policy contents")
 
 
 def decide(quality: dict[str, Any], policy: dict[str, Any], limit: int) -> str:
@@ -356,22 +381,108 @@ def decide(quality: dict[str, Any], policy: dict[str, Any], limit: int) -> str:
     return "INSUFFICIENT_EVIDENCE"
 
 
+def validate_quality(quality: Any, limit: int) -> None:
+    if not isinstance(quality, dict) or set(quality) != {"bge_m3_sparse", "bm25"}:
+        raise EvidenceError("completed evaluation receipt quality schema is incomplete")
+    for arm_name, arm in quality.items():
+        if not isinstance(arm, dict) or not isinstance(arm.get("recall_at"), dict) \
+                or not isinstance(arm.get("slice_counts"), dict):
+            raise EvidenceError(f"{arm_name} quality schema is incomplete")
+        required_fields = {
+            "query_count", "judged_query_count", "positive_relevant_document_count",
+            "mrr_at_limit", "no_answer_nonempty_hit_rate_diagnostic", "abstention_accuracy",
+            "abstention_note", "recall_at", "ndcg_at_10", "slice_counts",
+        }
+        if not required_fields.issubset(arm):
+            raise EvidenceError(f"{arm_name} quality schema is incomplete")
+        recall = arm["recall_at"]
+        if set(recall) != {"1", "5", "10", "50"}:
+            raise EvidenceError(f"{arm_name} recall schema is incomplete")
+        for value in recall.values():
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)) or not 0.0 <= float(value) <= 1.0):
+                raise EvidenceError(f"{arm_name} recall value is invalid")
+        if limit >= 10 and (recall["10"] is None or arm.get("ndcg_at_10") is None):
+            raise EvidenceError(f"{arm_name} lacks required top-10 quality evidence")
+        for field in ("ndcg_at_10", "mrr_at_limit"):
+            value = arm.get(field)
+            if value is None:
+                if field == "mrr_at_limit":
+                    raise EvidenceError(f"{arm_name} quality is missing {field}")
+            elif isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)) or not 0.0 <= float(value) <= 1.0:
+                raise EvidenceError(f"{arm_name} {field} is invalid")
+        for field in ("query_count", "judged_query_count", "positive_relevant_document_count"):
+            value = arm[field]
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise EvidenceError(f"{arm_name} {field} is invalid")
+        diagnostic = arm["no_answer_nonempty_hit_rate_diagnostic"]
+        if isinstance(diagnostic, bool) or not isinstance(diagnostic, (int, float)) \
+                or not math.isfinite(float(diagnostic)) or not 0.0 <= float(diagnostic) <= 1.0:
+            raise EvidenceError(f"{arm_name} no-answer diagnostic is invalid")
+        if arm["abstention_accuracy"] is not None:
+            abstention = arm["abstention_accuracy"]
+            if isinstance(abstention, bool) or not isinstance(abstention, (int, float)) \
+                    or not math.isfinite(float(abstention)) or not 0.0 <= float(abstention) <= 1.0:
+                raise EvidenceError(f"{arm_name} abstention accuracy is invalid")
+        if not isinstance(arm["abstention_note"], str) or not arm["abstention_note"]:
+            raise EvidenceError(f"{arm_name} abstention note is invalid")
+        if set(arm["slice_counts"]) != LANGUAGES:
+            raise EvidenceError(f"{arm_name} language slice evidence is incomplete")
+        for language, counts in arm["slice_counts"].items():
+            if not isinstance(counts, dict) or any(
+                isinstance(counts.get(field), bool) or not isinstance(counts.get(field), int) or counts[field] < 0
+                for field in ("positive_query_count", "positive_relevant_document_count")
+            ):
+                raise EvidenceError(f"{arm_name} {language} slice counts are invalid")
+
+
 def validate_receipt(receipt: dict[str, Any]) -> None:
     if receipt.get("decision") not in DECISIONS:
         raise EvidenceError("receipt decision is invalid")
     status = receipt.get("execution_status")
     if not isinstance(status, str):
         raise EvidenceError("receipt execution status is missing")
-    if status != COMPLETED and receipt["decision"] != "INSUFFICIENT_EVIDENCE":
-        raise EvidenceError("incomplete execution cannot publish GO or NO_GO")
-    if status == COMPLETED and not isinstance(receipt.get("quality"), dict):
-        raise EvidenceError("completed evaluation receipt misses quality evidence")
+    if status != COMPLETED:
+        if receipt["decision"] != "INSUFFICIENT_EVIDENCE":
+            raise EvidenceError("incomplete execution cannot publish GO or NO_GO")
+        return
+    if receipt["decision"] == "INSUFFICIENT_EVIDENCE":
+        raise EvidenceError("completed evaluation must produce a policy-derived GO or NO_GO")
+    model = receipt.get("model")
+    if not isinstance(model, dict) or model.get("loaded") is not True:
+        raise EvidenceError("completed evaluation receipt lacks loaded-model evidence")
+    artifacts = receipt.get("artifacts")
+    if not isinstance(artifacts, list) or not artifacts or any(
+        not isinstance(row, dict) or row.get("verified") is not True or row.get("loaded") is not True
+        for row in artifacts
+    ):
+        raise EvidenceError("completed evaluation receipt lacks verified artifact evidence")
+    policy_record = receipt.get("decision_policy")
+    if not isinstance(policy_record, dict) or not isinstance(policy_record.get("policy"), dict) \
+            or not isinstance(policy_record.get("sha256"), str) \
+            or policy_record["sha256"] != sha256_json(policy_record["policy"]):
+        raise EvidenceError("completed evaluation receipt lacks bound decision policy evidence")
+    policy = policy_record["policy"]
+    validate_policy(policy)
+    if policy_record.get("revision") != policy.get("revision"):
+        raise EvidenceError("receipt decision policy revision mismatch")
+    inputs = receipt.get("inputs")
+    if not isinstance(inputs, dict) or not all(isinstance(inputs.get(field), str) and inputs[field] for field in (
+        "corpus_revision", "queries_revision", "qrels_revision", "corpus_sha256", "queries_sha256", "qrels_sha256"
+    )) or not isinstance(inputs.get("judgment_provenance"), dict):
+        raise EvidenceError("completed evaluation receipt lacks frozen input evidence")
+    limit = receipt.get("retrieval_limit")
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+        raise EvidenceError("completed evaluation receipt retrieval limit is invalid")
+    quality = receipt.get("quality")
+    validate_quality(quality, limit)
+    if receipt["decision"] != decide(quality, policy, limit):
+        raise EvidenceError("receipt decision does not match validated quality and policy")
 
 
 def publish_receipt(receipt: dict[str, Any], output: Path) -> None:
     validate_receipt(receipt)
     output.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    payload = json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n"
     descriptor, temporary = tempfile.mkstemp(prefix=output.name + ".", suffix=".tmp", dir=output.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
@@ -385,12 +496,19 @@ def publish_receipt(receipt: dict[str, Any], output: Path) -> None:
         raise
 
 
-def failure_receipt(status: str, reason: str, inventory: list[dict[str, Any]], output: Path, exit_code: int) -> int:
+def failure_receipt(
+    status: str,
+    reason: str,
+    inventory: list[dict[str, Any]],
+    output: Path,
+    exit_code: int,
+    model_loaded: bool = False,
+) -> int:
     receipt = {
         "execution_status": status,
         "decision": "INSUFFICIENT_EVIDENCE",
         "reason": reason,
-        "model": {"repository": MODEL_REPOSITORY, "revision": MODEL_REVISION, "loaded": False},
+        "model": {"repository": MODEL_REPOSITORY, "revision": MODEL_REVISION, "loaded": model_loaded},
         "artifacts": inventory,
     }
     publish_receipt(receipt, output)
@@ -472,7 +590,7 @@ def run(args: argparse.Namespace) -> int:
         if parity_count == 0:
             raise EvidenceError("no inference scorer parity pair was checked")
     except (EvidenceError, TypeError, ValueError) as exc:
-        return failure_receipt("SCORER_PARITY_FAILED", str(exc), inventory, args.output, 2)
+        return failure_receipt("SCORER_PARITY_FAILED", str(exc), inventory, args.output, 2, model_loaded=True)
     sparse_build_started = time.perf_counter_ns()
     postings = build_postings(documents, document_weights)
     sparse_build_ms = (time.perf_counter_ns() - sparse_build_started) / 1_000_000.0
@@ -505,7 +623,7 @@ def run(args: argparse.Namespace) -> int:
     receipt = {
         "execution_status": COMPLETED,
         "decision": decision,
-        "decision_policy": {"revision": policy["revision"], "sha256": sha256_json(policy)},
+        "decision_policy": {"revision": policy["revision"], "sha256": sha256_json(policy), "policy": policy},
         "model": {
             "repository": MODEL_REPOSITORY, "revision": MODEL_REVISION, "loaded": True,
             "tokenizer_vocabulary_size": vocabulary_size, "device": args.device,
@@ -528,6 +646,7 @@ def run(args: argparse.Namespace) -> int:
         },
         "scorer_parity_pairs": parity_count,
         "quality": quality,
+        "retrieval_limit": args.limit,
         "timing": {
             "artifact_verification_ms": artifact_verification_ms, "model_loading_ms": model_load_ms,
             "document_encoding_ms": document_encoding_ms, "query_batch_encoding_ms": query_encoding_ms,
@@ -632,15 +751,27 @@ def self_test() -> int:
         "minimum_ndcg_at_10_delta": 0.0, "no_go_recall_at_10_delta": -0.1,
         "no_go_ndcg_at_10_delta": -0.1,
     }
+    policy["registration_manifest"] = {
+        "repository": "LimiNode/agent-memory-cpp",
+        "commit": "0123456789abcdef0123456789abcdef01234567",
+        "path": "tools/bge-m3/decision-policy.example.json",
+        "policy_sha256": sha256_json(policy),
+    }
     slices = {language: {"positive_query_count": 1, "positive_relevant_document_count": 1} for language in LANGUAGES}
     quality = {
-        "bge_m3_sparse": {"recall_at": {"10": 1.0}, "ndcg_at_10": 1.0, "slice_counts": slices},
-        "bm25": {"recall_at": {"10": 0.5}, "ndcg_at_10": 0.5, "slice_counts": slices},
+        "bge_m3_sparse": {"query_count": 4, "judged_query_count": 3, "positive_relevant_document_count": 3, "recall_at": {"1": 1.0, "5": 1.0, "10": 1.0, "50": 1.0}, "ndcg_at_10": 1.0, "mrr_at_limit": 1.0, "no_answer_nonempty_hit_rate_diagnostic": 0.0, "abstention_accuracy": None, "abstention_note": "UNAVAILABLE", "slice_counts": slices},
+        "bm25": {"query_count": 4, "judged_query_count": 3, "positive_relevant_document_count": 3, "recall_at": {"1": 0.5, "5": 0.5, "10": 0.5, "50": 0.5}, "ndcg_at_10": 0.5, "mrr_at_limit": 0.5, "no_answer_nonempty_hit_rate_diagnostic": 0.0, "abstention_accuracy": None, "abstention_note": "UNAVAILABLE", "slice_counts": slices},
     }
     if decide(quality, policy, 10) != "GO_TO_LARGER_EVALUATION" or decide(quality, policy, 5) != "INSUFFICIENT_EVIDENCE":
         raise SystemExit("self-test decision policy or top-k coverage differs")
     reject(lambda: validate_receipt({"execution_status": "MODEL_INFERENCE_FAILED", "decision": "GO_TO_LARGER_EVALUATION"}), "false GO receipt")
     reject(lambda: validate_receipt({"execution_status": "SCORER_PARITY_FAILED", "decision": "NO_GO"}), "false NO_GO receipt")
+    reject(lambda: validate_receipt({"execution_status": COMPLETED, "decision": "GO_TO_LARGER_EVALUATION", "quality": {}}), "empty completed GO receipt")
+    reject(lambda: validate_receipt({"execution_status": COMPLETED, "decision": "NO_GO", "quality": {}}), "empty completed NO_GO receipt")
+    overflow = {1: 1.0e200}
+    reject(lambda: sparse_score(overflow, overflow), "overflowing sparse score")
+    malformed_qrel_identity = json.loads(json.dumps(qrels)); malformed_qrel_identity["qrels"][0]["query_id"] = []
+    reject(lambda: validate_data(corpus, queries, malformed_qrel_identity), "malformed qrel identity")
     with tempfile.TemporaryDirectory(prefix="bge-m3-self-test-") as directory:
         output = Path(directory) / "receipt.json"
         reject(lambda: publish_receipt({"execution_status": COMPLETED, "decision": "INVALID", "quality": {}}, output), "invalid decision publication")

@@ -33,9 +33,12 @@ unique query/document integer grades, and independent human-judgment
 provenance. All three `en`/`ru`/`code` slices need a positive judged query, and
 at least one no-answer query is required. No-answer queries must have no qrels.
 
-The input files and policy are hashed in the receipt. The example policy is
-frozen in the repository before any future evaluation; changing thresholds is
-a new policy revision, not a post-hoc reinterpretation of results.
+The input files and policy are hashed in the receipt. The policy also carries
+an explicit registration manifest binding its source repository, commit, path
+and digest of the policy body; `registered_before_evaluation: true` by itself
+is not sufficient. The example policy is frozen in the repository before any
+future evaluation; changing thresholds is a new policy revision, not a
+post-hoc reinterpretation of results.
 
 ## Scoring and measurement contract
 
@@ -57,7 +60,10 @@ MRR is explicitly cut off at the configured limit. Non-empty results for
 no-answer queries are a diagnostic, not calibrated abstention accuracy.
 
 The only decisions are `GO_TO_LARGER_EVALUATION`, `NO_GO`, and
-`INSUFFICIENT_EVIDENCE`. Routine CI runs 13 dependency-free negative controls
+`INSUFFICIENT_EVIDENCE`. Receipt admission revalidates policy, complete
+quality metrics, frozen inputs, loaded artifacts and the derived decision; an
+empty quality object, forged verdict, non-finite sparse score or malformed
+qrel identity is rejected. Routine CI runs 17 dependency-free negative controls
 covering scoring, zero overlap and ties, token/weight schema, short and long
 inference output, identity/qrels/language completeness, corrupt artifact
 evidence, insufficient top-K coverage, false GO/NO-GO receipts, and fail-closed

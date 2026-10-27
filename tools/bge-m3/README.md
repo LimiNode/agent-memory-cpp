@@ -7,7 +7,10 @@ backend.
 The runner verifies every BGE-M3 artifact against revision
 `5617a9f61b028005a4858fdac845db406aefb181`, then requires frozen corpus,
 query and independently judged qrels files plus a decision policy committed
-before the evaluation. Missing evidence produces `INSUFFICIENT_EVIDENCE`.
+before the evaluation. The policy carries a registration manifest containing
+the source revision, path and digest of its policy body; a Boolean flag alone
+is not accepted as preregistration evidence. Missing evidence produces
+`INSUFFICIENT_EVIDENCE`.
 Artifact, dependency, inference and scorer failures retain a distinct
 `execution_status` and return a non-zero exit code.
 
@@ -50,7 +53,12 @@ latency remains unavailable while encoding is measured only as one batch.
 `no_answer_nonempty_hit_rate_diagnostic` is not abstention accuracy: no
 calibrated threshold is registered. The only research decisions are
 `GO_TO_LARGER_EVALUATION`, `NO_GO`, and `INSUFFICIENT_EVIDENCE`, derived from
-the preregistered policy after a complete qualified evaluation.
+the preregistered policy after a complete qualified evaluation. Receipt
+admission revalidates the complete quality schema, frozen input evidence,
+verified/loaded artifacts and the policy-derived decision; an authored empty
+quality object or forged GO/NO-GO is rejected. Sparse products and accumulated
+scores must remain finite, and malformed qrels are reported as controlled
+evidence failures rather than uncaught type errors.
 
 Model caches, receipts, generated embeddings and evaluation data stay outside
 Git. Install ML dependencies only in an isolated research environment.
