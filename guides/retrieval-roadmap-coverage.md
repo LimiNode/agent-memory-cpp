@@ -1,5 +1,11 @@
 # Retrieval Roadmap Coverage
 
+For the broader product-readiness, ANN extensibility, and technical-preview
+audit at the current `main` baseline, see
+[`product-ann-readiness-audit.md`](product-ann-readiness-audit.md). This table
+remains the capability inventory; the audit adds source-level evidence and
+release acceptance gates without changing milestone ownership.
+
 This is the documentation audit for the current repository state. `Implemented`
 means exercised code exists; `Contract only` means a public or storage contract
 exists without the complete backend; `Docs/tests only` means the idea is
