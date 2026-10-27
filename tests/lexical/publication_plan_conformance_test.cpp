@@ -36,7 +36,9 @@ namespace {
         return PublicationEvidence{
             ResourceId{resource},
             generation,
+            DocumentId{std::string{resource} + "-document"},
             generation,
+            KnowledgeUnitId{unit_revision},
             unit_revision,
             ProjectionVersionRef{
                 unit_revision,
@@ -44,8 +46,8 @@ namespace {
                 generation,
                 "original-v1"
             },
+            "projection-payload-v1",
             ResourceManifestSchema{"resource-manifest-v6", 6},
-            generation,
             ResourceManifestState::Active,
             6,
             digest

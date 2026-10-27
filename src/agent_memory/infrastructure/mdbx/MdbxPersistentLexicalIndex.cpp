@@ -596,6 +596,10 @@ MdbxPersistentLexicalIndex::MdbxPersistentLexicalIndex(
 
 MdbxPersistentLexicalIndex::~MdbxPersistentLexicalIndex() = default;
 
+const MdbxStorageContext& MdbxPersistentLexicalIndex::context() const noexcept {
+    return *m_impl->context;
+}
+
 const LexicalIndexDescriptor& MdbxPersistentLexicalIndex::descriptor() const noexcept {
     return m_impl->descriptor;
 }

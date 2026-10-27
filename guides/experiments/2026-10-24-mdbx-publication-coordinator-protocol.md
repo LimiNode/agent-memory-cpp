@@ -2,9 +2,9 @@
 
 **Date:** 2026-10-24
 
-**Status:** proposed design and conformance protocol
-**Scope:** documentation only; no production coordinator or new public API is
-introduced by this document.
+**Status:** bounded implementation and conformance protocol
+**Scope:** the coordinator/read-scope implementation covers one shared MDBX
+context and evidence-validated publications. It is not a global writer lock.
 
 ## Purpose and evidence baseline
 
@@ -101,6 +101,25 @@ still exist, recovery fails closed. A reader that observes a coordinated scope
 without a valid active frontier reports `Unavailable` (or the explicitly
 weaker `NonLinearizable` contract where policy allows it), never a fabricated
 `Exact` result.
+
+The bounded implementation now enforces the part that can be proven locally:
+`Complete` receipts require one participant for each authoritative family and
+validate the rows written through the coordinator transaction; pinned readers
+also validate the durable schema/profile/fencing metadata. This does not
+quiesce arbitrary legacy writers that hold the same MDBX context. An
+independent post-commit mutation is therefore detected by the read-side
+evidence checks and downgrades completion, but it is not prevented globally.
+Production activation still requires an external quiescence/registration gate
+for every writer before advertising the coordinated profile.
+
+The bounded MDBX reader therefore reports
+`MdbxPublicationReadCompletion::TargetExact`, not the scope-wide route `Exact`
+defined later in this protocol. `TargetExact` checks the latest receipt, its
+per-publication receipt, durable resource binding, frontier, canonical/unit,
+the receipt-selected projection revision, target lexical membership, and
+manifest evidence in one pinned transaction. Historical projection revisions
+and unrelated lexical units may coexist. Complete token-partition coverage and
+scope-wide legacy-writer exclusion remain unproved.
 
 ## Target publication protocol
 
@@ -253,6 +272,23 @@ declare the result `NonLinearizable` (or return `Unavailable` when no safe
 result can be formed). It must not describe a sequence of independent
 `find()` calls as a shared snapshot.
 
+### Current flat-v2 cost boundary
+
+`TargetExact` is bounded semantically to the receipt-selected target; it is not
+a promise of target-local computational cost. The current flat-v2 lexical
+adapter implements `read_in_transaction()` by reading the complete persisted
+lexical state and rebuilding the in-memory index before selecting the target.
+The write-side lexical validator uses the same path. Both validation paths
+therefore have expected O(N) materialization cost in the size of the complete
+flat-v2 index, even though the evidence claim concerns only one target.
+
+The statement that the target classifier adds no scope-wide authority scan
+must be read in that semantic sense. It does not remove the full-index
+materialization performed by the storage adapter. This cost must be measured
+and qualified before production activation; `TargetExact` alone supplies no
+performance guarantee, and the experimental seg-v2 work does not change the
+flat-v2 result recorded here.
+
 ### Independent completion and consistency axes
 
 Route completeness and read consistency are independent dimensions. The
@@ -334,28 +370,27 @@ publication.
   `ExactLexicalIndex`/BM25 oracle contracts.
 - Explicit `Exact`/`Partial`/`Unavailable` completion concepts in the retrieval
   roadmap.
+- Coordinator-owned metadata, authoritative participants, durable receipts,
+  evidence-validated complete publications, and a closed six-family pinned
+  `TargetExact` read scope for one receipt-selected target in the shared MDBX
+  context.
 
 ### Not yet available
 
-- A caller-owned writable transaction accepted by every participating store.
-- One coordinator-owned commit covering canonical/unit, `Original`, lexical,
-  statistics, snapshot, and manifest rows.
-- A durable scope-wide publication sequence and active-frontier record.
 - A scope-bound coordinated-profile marker, quiesced activation, and legacy
-  writer rejection path.
-- An in-transaction sequence allocator/CAS that prevents two stale plans from
-  publishing the same frontier value.
-- A pinned read-frontier API spanning all required DBIs.
-- Atomic staging promotion, replay records, and crash fault injection for the
-  combined boundary.
+  writer rejection path (the external activation gate remains outstanding).
+- Scope-wide exact completion and complete query-token-partition authority;
+  the current reader intentionally stops at target-level exactness.
+- Full crash/fault-injection coverage for every participant boundary and
+  production recovery orchestration around orphaned staging.
 - Proof that the current independent importer transactions are linearizable;
   they are not claimed to be.
 
-## Proposed backend-specific ownership shape (design only)
+## Implemented backend-specific ownership shape
 
-The first implementation should introduce an internal, backend-specific
-transaction participant boundary rather than expose a generic transaction type
-in the public storage contracts. The design should provide:
+The implementation uses an internal, backend-specific transaction participant
+boundary rather than exposing a generic transaction type in the public storage
+contracts:
 
 - a coordinator-owned write scope created from `MdbxStorageContext`;
 - a scope/profile admission check that rejects legacy writers after coordinated
@@ -393,8 +428,8 @@ transaction-owning for non-coordinated callers.
 
 This protocol does not:
 
-- implement a coordinator, change existing C++ APIs, or add MDBX DBIs;
-- make the current importer sequence atomic by documentation alone;
+- provide global quiescence for every legacy writer or make independent
+  importer calls atomic by documentation alone;
 - turn the lexical index into canonical authority;
 - define a distributed transaction, replication protocol, or multi-environment
   consensus mechanism;

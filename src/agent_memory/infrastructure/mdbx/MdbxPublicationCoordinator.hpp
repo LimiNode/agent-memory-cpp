@@ -42,6 +42,9 @@ public:
     MdbxPublicationCoordinator(MdbxPublicationCoordinator&&) noexcept;
     MdbxPublicationCoordinator& operator=(MdbxPublicationCoordinator&&) noexcept;
 
+    /// Returns the storage context that owns coordinator metadata.
+    [[nodiscard]] const MdbxStorageContext& context() const noexcept;
+
     [[nodiscard]] PublicationAdmissionResult admit_profile(
         PublicationProfileIdentity profile,
         PublicationFencingIdentity fencing
@@ -51,14 +54,17 @@ public:
         PublicationFencingIdentity fencing
     );
 
-    [[nodiscard]] PublicationOutcome publish(const PublicationPlan& plan);
+    /// \brief Advances only coordinator metadata for an explicitly weaker profile.
+    ///
+    /// This path never claims a complete publication and is intended for
+    /// migration/recovery tooling, not for authoritative data publication.
+    [[nodiscard]] PublicationOutcome publish_metadata_only(const PublicationPlan& plan);
 
     /// \brief Publishes metadata and supplied authoritative participants atomically.
     ///
     /// Participants must belong to this context and must not own, commit, abort,
-    /// or retain the transaction. An empty vector preserves the experimental
-    /// metadata-only PR-B behavior; production profiles must provide the
-    /// canonical, unit and manifest participants.
+    /// or retain the transaction. All five authoritative roles are required;
+    /// use `publish_metadata_only()` for an explicitly weaker metadata path.
     [[nodiscard]] PublicationOutcome publish(
         const PublicationPlan& plan,
         const std::vector<MdbxPublicationParticipant*>& participants
@@ -69,12 +75,42 @@ public:
         const mdbxc::Transaction& transaction
     ) const;
 
+    /// \brief Checks that schema, profile and fencing metadata are complete.
+    ///
+    /// Read-side admission must fail closed when any coordinator prerequisite
+    /// is absent or malformed, even if a stale frontier/receipt remains.
+    [[nodiscard]] bool metadata_valid_in_transaction(
+        const mdbxc::Transaction& transaction
+    ) const noexcept;
+
+    [[nodiscard]] std::optional<PublicationReceipt> receipt_in_transaction(
+        const std::string& publication_id,
+        const mdbxc::Transaction& transaction
+    ) const;
+
+    /// \brief Returns the receipt that advanced the current committed frontier.
+    [[nodiscard]] std::optional<PublicationReceipt> latest_receipt_in_transaction(
+        const mdbxc::Transaction& transaction
+    ) const;
+
+    /// \brief Reads the durable resource binding from the supplied transaction.
+    [[nodiscard]] std::optional<PublicationEvidence> binding_in_transaction(
+        const ResourceId& resource_id,
+        const mdbxc::Transaction& transaction
+    ) const;
+
     [[nodiscard]] std::optional<PublicationReceipt> receipt(
         const std::string& publication_id
     ) const;
 
 private:
     class Impl;
+
+    [[nodiscard]] PublicationOutcome publish_impl(
+        const PublicationPlan& plan,
+        const std::vector<MdbxPublicationParticipant*>& participants,
+        bool allow_metadata_only
+    );
 
     std::unique_ptr<Impl> m_impl;
 };

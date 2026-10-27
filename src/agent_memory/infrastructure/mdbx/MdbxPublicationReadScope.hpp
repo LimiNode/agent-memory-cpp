@@ -13,6 +13,7 @@
 #include "MdbxPublicationWriteScope.hpp"
 #include "MdbxResourceManifestStorage.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <thread>
@@ -21,13 +22,20 @@
 namespace agent_memory {
 
 enum class MdbxPublicationReadCompletion : std::uint8_t {
-    Exact,
+    /// \brief Exact evidence for one receipt-selected resource/unit/projection target.
+    ///
+    /// Historical projection revisions and unrelated lexical units may coexist.
+    /// This result does not claim a complete scope-wide snapshot or exclusion of
+    /// legacy writers outside the coordinator transaction.
+    TargetExact,
     Partial,
     Unavailable
 };
 
 struct MdbxPublicationReadObservation final {
     PublicationScopeFrontier frontier;
+    bool coordinator_metadata_valid = false;
+    std::optional<PublicationReceipt> receipt;
     std::optional<CanonicalDocumentRevision> canonical;
     std::optional<KnowledgeUnitEnvelope> unit;
     std::vector<SearchProjection> projections;
@@ -58,7 +66,14 @@ public:
     MdbxPublicationReadScope& operator=(MdbxPublicationReadScope&&) = delete;
     ~MdbxPublicationReadScope() noexcept;
 
+    /// \brief Reads one admitted authoritative family in the pinned transaction.
+    ///
+    /// Only the six concrete final participant types declared below are
+    /// admitted. Unknown and duplicate families are rejected before callbacks.
     void read(MdbxPublicationReadParticipant& participant);
+
+    /// \brief Completes a target read after every required family was observed.
+    /// \throws std::logic_error when a required family is missing.
     void finish();
     [[nodiscard]] bool active() const noexcept;
     [[nodiscard]] const MdbxPublicationReadObservation& observation() const noexcept;
@@ -72,6 +87,7 @@ private:
     std::unique_ptr<mdbxc::Transaction> m_transaction;
     std::thread::id m_owner_thread;
     MdbxPublicationReadObservation m_observation;
+    std::uint8_t m_read_families = 0;
     bool m_active = true;
 };
 

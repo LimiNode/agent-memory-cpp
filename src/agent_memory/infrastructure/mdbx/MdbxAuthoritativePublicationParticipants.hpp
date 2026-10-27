@@ -33,12 +33,19 @@ public:
 
     [[nodiscard]] const MdbxStorageContext& context() const noexcept override;
     void apply(const mdbxc::Transaction& transaction) override;
+    void reset_after_abort() noexcept override;
+    [[nodiscard]] bool validates(
+        const PublicationPlan& plan,
+        const mdbxc::Transaction& transaction
+    ) const;
 
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
     MdbxCanonicalContentStore* m_store;
+    DocumentId m_document_id;
     std::optional<CanonicalDocumentRevision> m_initial;
     std::optional<CanonicalEditRequest> m_request;
+    bool m_applied = false;
 };
 
 /// \brief Applies knowledge-unit envelope writes without owning the transaction.
@@ -52,11 +59,18 @@ public:
 
     [[nodiscard]] const MdbxStorageContext& context() const noexcept override;
     void apply(const mdbxc::Transaction& transaction) override;
+    void reset_after_abort() noexcept override;
+    [[nodiscard]] bool validates(
+        const PublicationPlan& plan,
+        const mdbxc::Transaction& transaction
+    ) const;
 
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
     MdbxKnowledgeUnitStore* m_store;
     std::vector<KnowledgeUnitCreateRequest> m_requests;
+    std::vector<KnowledgeUnitEnvelope> m_result;
+    bool m_applied = false;
 };
 
 /// \brief Applies one manifest binding update without owning the transaction.
@@ -71,12 +85,18 @@ public:
 
     [[nodiscard]] const MdbxStorageContext& context() const noexcept override;
     void apply(const mdbxc::Transaction& transaction) override;
+    void reset_after_abort() noexcept override;
+    [[nodiscard]] bool validates(
+        const PublicationPlan& plan,
+        const mdbxc::Transaction& transaction
+    ) const;
 
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
     MdbxResourceManifestStorage* m_store;
     ResourceManifest m_manifest;
     std::optional<ResourceManifest> m_expected;
+    bool m_applied = false;
 };
 
 } // namespace agent_memory

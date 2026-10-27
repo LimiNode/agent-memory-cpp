@@ -555,6 +555,11 @@ namespace agent_memory {
             return m_manifests.erase(resource_id.value());
         }
 
+    public:
+        [[nodiscard]] const MdbxStorageContext& context() const noexcept {
+            return *m_context;
+        }
+
     private:
         std::string m_table_prefix;
         std::shared_ptr<MdbxStorageContext> m_context;
@@ -574,6 +579,10 @@ namespace agent_memory {
         : m_impl(std::make_unique<Impl>(std::move(options))) {}
 
     MdbxResourceManifestStorage::~MdbxResourceManifestStorage() = default;
+
+    const MdbxStorageContext& MdbxResourceManifestStorage::context() const noexcept {
+        return m_impl->context();
+    }
 
     MdbxResourceManifestStorage::MdbxResourceManifestStorage(
         MdbxResourceManifestStorage&& other

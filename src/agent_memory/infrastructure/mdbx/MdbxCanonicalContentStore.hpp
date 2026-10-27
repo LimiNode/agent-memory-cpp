@@ -95,6 +95,9 @@ class MdbxCanonicalContentStore final : public ICanonicalContentStore,
     MdbxCanonicalContentStore(const MdbxCanonicalContentStore&) = delete;
     MdbxCanonicalContentStore& operator=(const MdbxCanonicalContentStore&) = delete;
 
+    /// Returns the storage context that owns this store's tables.
+    [[nodiscard]] const MdbxStorageContext& context() const noexcept;
+
     /// \copydoc ICanonicalContentEditor::create_document
     bool create_document(CanonicalDocumentRevision initial) override;
     /// \brief Creates a document only while the durable publication guard matches.

@@ -7,6 +7,8 @@
 
 #include "MdbxStorageContext.hpp"
 
+#include <agent_memory/lexical/PublicationPlan.hpp>
+
 #include <memory>
 #include <thread>
 
@@ -29,6 +31,13 @@ public:
     [[nodiscard]] virtual const MdbxStorageContext& context() const noexcept = 0;
 
     virtual void apply(const mdbxc::Transaction& transaction) = 0;
+
+    /// \brief Clears transient prepare state after the coordinator aborts.
+    ///
+    /// Implementations retain their immutable operation payloads so a caller
+    /// can retry the same prepared participant after a rolled-back attempt.
+    virtual void reset_after_abort() noexcept {}
+
 };
 
 /// \brief Owns one thread-bound writable transaction for a publication.

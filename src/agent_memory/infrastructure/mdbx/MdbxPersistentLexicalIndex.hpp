@@ -102,6 +102,9 @@ public:
     MdbxPersistentLexicalIndex(const MdbxPersistentLexicalIndex&) = delete;
     MdbxPersistentLexicalIndex& operator=(const MdbxPersistentLexicalIndex&) = delete;
 
+    /// Returns the storage context that owns this index's tables.
+    [[nodiscard]] const MdbxStorageContext& context() const noexcept;
+
     [[nodiscard]] const LexicalIndexDescriptor& descriptor() const noexcept;
     [[nodiscard]] LexicalActiveSnapshot active_snapshot() const;
     [[nodiscard]] LexicalPublicationSequence publication_sequence() const;
