@@ -120,6 +120,7 @@ jobs:
               research=true
               docs=true
               dbi=true
+              full=true
             fi
           }
 
@@ -163,14 +164,14 @@ jobs:
           assert_route "README.md" false false false true false
           assert_route "src/agent_memory/infrastructure/mdbx.hpp" true true false false false
           assert_route "src/agent_memory/infrastructure/mdbx/MdbxStorageContext.cpp" true true false false false
-          assert_route "CMakeLists.txt" true true true true true
-          assert_route "cmake/AgentMemoryOptions.cmake" true true true true true
+          assert_route "CMakeLists.txt" true true true true true true
+          assert_route "cmake/AgentMemoryOptions.cmake" true true true true true true
           assert_route "src/agent_memory/index/FlatBinarySignatureIndex.cpp" true false true false false
           assert_route "tests/index/binary_signature_test.cpp" true false true false false
           assert_route "tools/agent-memory-bench/run-native-mdbx-batch-sweep.py" false false true false false
           assert_route "tools/lexical-research/run_cpp_lexical_parity.py" false false true false false
           assert_route "tools/bge-m3/run_bge_m3_sparse_pilot.py" false false true false false true
-          assert_route "unknown/path" true true true true true
+          assert_route "unknown/path" true true true true true true
 
           # Regression assertions must not influence the real change set.
           core=false
