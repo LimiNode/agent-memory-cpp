@@ -139,6 +139,7 @@ jobs:
             docs=false
             dbi=false
             all=false
+            full=false
             route_path "$path"
             finalize_flags
 
