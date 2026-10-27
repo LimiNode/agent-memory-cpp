@@ -2,42 +2,63 @@
 
 **Status:** `INSUFFICIENT_EVIDENCE`
 
-This Draft PR adds an executable, optional pilot runner. It does not add a
-production writer, C++ model runtime, MDBX layout, or required ML dependency.
+This Draft PR adds an executable optional pilot. It does not add a production
+writer, C++ model runtime, MDBX layout, migration, or required ML dependency.
 
 ## Current execution
 
 The exact BGE-M3 companion files were downloaded at revision
 `5617a9f61b028005a4858fdac845db406aefb181` into an ignored local cache. The
-existing checkpoint is retained outside Git. The runner verifies file sizes and
-SHA-256 values before any model load.
+checkpoint remains outside Git. The runner verifies sizes and SHA-256 values
+before model construction.
 
-The run intentionally stops before inference because no permission-compatible
-English/Russian/code corpus, frozen query set, or independently judged qrels
-has been supplied. No ranking, quality, or latency number is reported.
+No permission-compatible English/Russian/code corpus, frozen query set, or
+independently judged qrels has been supplied. The run therefore stops before
+inference and reports no ranking, quality, or latency result. Verified files
+are not marked loaded unless model construction and qualified inference both
+succeed.
+
+The corrective runner distinguishes missing evidence, artifact failure,
+dependency failure, inference failure, scorer-parity failure, and completed
+evaluation. Only completed evaluation may apply the preregistered decision
+policy. An underpowered cohort remains `INSUFFICIENT_EVIDENCE`; it is not
+silently converted to `NO_GO`.
 
 ## Required data contract
 
 `corpus.json` contains a revision and `documents[]` with unique `id`, `text`,
-and `language` (`en`, `ru`, or `code`). `queries.json` contains a revision and
-`queries[]` with unique `id`, `text`, `language`, and `answer_mode` (`judged`
-or `no_answer`). `qrels.json` contains a revision and unique
-`query_id`/`doc_id`/non-negative integer `grade` judgments. No-answer queries
-must have no qrels; judged queries must have at least one qrel. The files must
-be frozen and their receipt hashes retained outside Git.
+and `language`. `queries.json` contains a revision and `queries[]` with unique
+`id`, `text`, `language`, and `answer_mode`. `qrels.json` contains a revision,
+unique query/document integer grades, and independent human-judgment
+provenance. All three `en`/`ru`/`code` slices need a positive judged query, and
+at least one no-answer query is required. No-answer queries must have no qrels.
+
+The input files and policy are hashed in the receipt. The example policy is
+frozen in the repository before any future evaluation; changing thresholds is
+a new policy revision, not a post-hoc reinterpretation of results.
 
 ## Scoring and measurement contract
 
-The runner calls the official BGE-M3 sparse interface for both documents and
-queries. It builds a weighted posting index from document token IDs, computes
-query-weight × document-weight scores, and checks a bounded sample against
-FlagEmbedding's `compute_lexical_matching_score`. BM25 is computed on the same
-documents, queries, qrels, cutoff, and deterministic tie rule.
+The runner rejects truncated or expanded inference output, out-of-vocabulary
+token IDs, duplicate IDs, empty sparse maps and invalid weights before
+indexing. One posting kernel computes query-weight × document-weight scores and
+is checked against FlagEmbedding's `compute_lexical_matching_score`. BM25 uses
+the same corpus, queries, qrels and cutoff, with document statistics built once.
 
-Artifact loading, document encoding, query encoding, index construction,
-posting traversal/scoring, ranking/materialization, and end-to-end query work
-are separate phases. Small samples are labelled `directional`; query samples
-are observations over the frozen query set, not independent repeated queries.
+Artifact verification, model loading, document encoding, batched query
+encoding, sparse/BM25 index construction, posting traversal, ranking,
+post-encoding retrieval and BM25 query time are separate phases. Actual
+end-to-end per-query latency is unavailable until query encoding is measured
+per query. Samples are directional observations over the frozen query set, not
+independent repeated queries.
 
-The only permitted decision values are `GO_TO_LARGER_EVALUATION`, `NO_GO`, and
-`INSUFFICIENT_EVIDENCE`. This current run is the last value.
+Recall@50 and nDCG@10 are emitted only when the retrieval depth supports them.
+MRR is explicitly cut off at the configured limit. Non-empty results for
+no-answer queries are a diagnostic, not calibrated abstention accuracy.
+
+The only decisions are `GO_TO_LARGER_EVALUATION`, `NO_GO`, and
+`INSUFFICIENT_EVIDENCE`. Routine CI runs 13 dependency-free negative controls
+covering scoring, zero overlap and ties, token/weight schema, short and long
+inference output, identity/qrels/language completeness, corrupt artifact
+evidence, insufficient top-K coverage, false GO/NO-GO receipts, and fail-closed
+receipt publication. Full model inference remains an external research run.

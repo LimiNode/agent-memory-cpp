@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "revision": "bge-m3-sparse-pilot-policy-v1",
+  "registered_before_evaluation": true,
+  "minimum_judged_queries_per_language": 5,
+  "minimum_recall_at_10_delta": 0.02,
+  "minimum_ndcg_at_10_delta": 0.0,
+  "no_go_recall_at_10_delta": -0.05,
+  "no_go_ndcg_at_10_delta": -0.05
+}
