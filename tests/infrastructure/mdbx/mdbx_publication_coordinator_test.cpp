@@ -507,7 +507,7 @@ int main() {
         MdbxManifestPublicationParticipant target_manifest_participant{
             context,
             manifests,
-            target_manifest_input,
+            publication_manifest(ResourceManifestPayloadVersion::V1),
             target_manifest
         };
         const auto no_partial_publication = [&](const std::string& publication_id) {
@@ -590,6 +590,31 @@ int main() {
             ).code != PublicationOutcomeCode::BindingMismatch
             || !no_partial_publication("publication-manifest-mismatch")) {
             return fail("unrelated manifest write must not validate an existing target row");
+        }
+
+        auto mismatched_manifest_input = publication_manifest(
+            ResourceManifestPayloadVersion::V1
+        );
+        ++mismatched_manifest_input.revision.content_hash;
+        MdbxManifestPublicationParticipant mismatched_manifest_participant{
+            context,
+            manifests,
+            std::move(mismatched_manifest_input),
+            target_manifest
+        };
+        const auto manifest_evidence_mismatch_plan = plan_for(
+            scope, profile, next_fencing,
+            "publication-manifest-evidence-mismatch", 1, 6
+        );
+        if(coordinator.publish(
+                manifest_evidence_mismatch_plan,
+                {&retry_canonical, &unit_participant, &projection_participant,
+                 &lexical_participant, &mismatched_manifest_participant}
+            ).code != PublicationOutcomeCode::BindingMismatch
+            || !no_partial_publication("publication-manifest-evidence-mismatch")) {
+            return fail(
+                "prepared manifest evidence mismatch must roll back"
+            );
         }
 
         auto unrelated_projection = target_projection;

@@ -272,6 +272,23 @@ declare the result `NonLinearizable` (or return `Unavailable` when no safe
 result can be formed). It must not describe a sequence of independent
 `find()` calls as a shared snapshot.
 
+### Current flat-v2 cost boundary
+
+`TargetExact` is bounded semantically to the receipt-selected target; it is not
+a promise of target-local computational cost. The current flat-v2 lexical
+adapter implements `read_in_transaction()` by reading the complete persisted
+lexical state and rebuilding the in-memory index before selecting the target.
+The write-side lexical validator uses the same path. Both validation paths
+therefore have expected O(N) materialization cost in the size of the complete
+flat-v2 index, even though the evidence claim concerns only one target.
+
+The statement that the target classifier adds no scope-wide authority scan
+must be read in that semantic sense. It does not remove the full-index
+materialization performed by the storage adapter. This cost must be measured
+and qualified before production activation; `TargetExact` alone supplies no
+performance guarantee, and the experimental seg-v2 work does not change the
+flat-v2 result recorded here.
+
 ### Independent completion and consistency axes
 
 Route completeness and read consistency are independent dimensions. The

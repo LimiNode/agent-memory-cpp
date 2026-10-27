@@ -74,6 +74,10 @@ bool manifest_operation_matches_target(
     const ResourceManifest& manifest,
     const PublicationPlan& plan
 ) {
+    // Resource-manifest storage always writes the current V6 wire shape, even
+    // when a caller supplies an older in-memory payload version. Compare the
+    // prepared operation using the version that will be observed after the
+    // transactional write.
     auto materialized = manifest;
     materialized.payload_version = static_cast<ResourceManifestPayloadVersion>(
         plan.target_evidence.manifest_payload_version
@@ -238,8 +242,7 @@ bool MdbxManifestPublicationParticipant::validates(
         plan.target_evidence.resource_id, transaction
     );
     return current
-        && manifest_matches_target(*current, plan)
-        && manifest_operation_matches_target(m_manifest, plan);
+        && manifest_matches_target(*current, plan);
 }
 
 } // namespace agent_memory

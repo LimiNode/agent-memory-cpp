@@ -63,12 +63,23 @@ rather than treating an arbitrary MDBX exception as proof.
 
 The corrective pass adds no class hierarchy or registry. It adds only point
 lookups for durable binding/per-publication receipt, a six-bit read-family
-admission mask, and executable counterexamples. The read path performs no
-scope-wide scan. The public surface changed by renaming
+admission mask, and executable counterexamples. The target classifier adds no
+scope-wide authority scan, but both read-side and write-side lexical validation
+call flat-v2 `read_in_transaction()`, which reconstructs the complete index.
+Their expected materialization cost is therefore O(N) in the complete flat-v2
+index, not O(1) in the selected target. The public surface changed by renaming
 `MdbxPublicationReadCompletion::Exact` to `TargetExact` and adding
 `MdbxPublicationCoordinator::binding_in_transaction` plus the shared
 `same_publication_evidence` comparison. Existing historical projection rows and
 unrelated lexical units remain explicitly outside the target guarantee.
+
+Manifest writes also have an explicit compatibility boundary. The storage
+serializer always emits the current V6 wire shape, so participant validation
+normalizes a prepared V1-V6 in-memory value to the plan's V6 identity before
+comparing its digest. Persisted read-back is then compared directly with the
+target evidence. The regression accepts this deliberate V1-to-V6
+normalization, while a same-resource prepared value with a different binding
+digest fails closed and leaves no partial publication.
 
 Known debt is the missing external writer-registration/quiescence gate and the
 absence of a persisted lexical content digest. Both are intentionally recorded

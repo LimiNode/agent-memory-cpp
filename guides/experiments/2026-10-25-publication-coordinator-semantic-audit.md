@@ -88,11 +88,15 @@ counterexamples:
   wire compatibility contracts).
 
 The durable checks add two coordinator point lookups (per-publication receipt
-and resource binding). They add no storage-family scan. The target classifier
-does not call the whole-frontier lexical validator: it scans only for the
+and resource binding). They add no storage-family authority scan. The target
+classifier does not request scope-wide exactness: it checks only the
 receipt-selected target membership, while descriptor/snapshot structure is
-checked independently. This prevents unrelated lexical units from being
-silently promoted into a claim of scope-wide completeness.
+checked independently. The current flat-v2 adapter nevertheless implements
+that check by reconstructing the complete lexical index through
+`read_in_transaction()`. Read-side and write-side lexical validation therefore
+have expected O(N) materialization cost in the complete flat-v2 index. This
+prevents unrelated lexical units from being silently promoted into a claim of
+scope-wide completeness, but it is not a bounded-cost result.
 
 The audit intentionally records zero speculative deletions rather than
 replacing one abstraction with a larger generic framework. Further reduction
@@ -174,3 +178,12 @@ new coordinator abstraction:
 
 These checks preserve the bounded semantics above: they do not establish
 scope-wide lexical completeness or global legacy-writer exclusion.
+
+The maintenance follow-up also makes manifest wire normalization explicit.
+`MdbxResourceManifestStorage` serializes every accepted in-memory V1-V6
+manifest using the current V6 wire format. The write participant therefore
+normalizes the prepared payload version to the target V6 identity exactly once,
+then separately verifies the persisted read-back. A focused regression accepts
+the intended V1-to-V6 normalization and rejects a same-resource prepared
+manifest whose binding digest differs from the plan; rollback preserves the
+prior manifest and publication frontier.
