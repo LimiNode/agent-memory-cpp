@@ -304,6 +304,9 @@ manager. The production admission path now checks every decoded physical
 identity field and the authoritative partition witness before a mutation can
 rewrite a row. Old contributions are checked against the persisted unit row,
 including multiplicity, resource identity and the complete projection version.
+During snapshot admission, orphan partition metadata is checked against one
+precomputed set of dictionary token IDs, so the validation is O(V log V) for V
+historical metadata entries rather than a nested O(V^2) dictionary scan.
 
 The benchmark runner separates initial ingestion, one point operation, snapshot
 materialization and reopen diagnostics. The operation is selected by workload:
@@ -315,7 +318,7 @@ counter so the final snapshot remains comparable across backends.
 
 The matched Release isolated-control receipt uses five repeats at 128, 512 and
 2,048 units. In the latest rerun, seg-v2 visited four range rows, decoded two
-postings, touched three token partitions and decoded 1,374 bytes at every
+postings, touched three token partitions and decoded 1,438 bytes at every
 corpus size (p50 update time 6.30, 7.26 and 9.52 ms respectively). The earlier
 6.96/8.12/8.21 ms observation remains historical evidence in the preceding
 receipt commit. This is the

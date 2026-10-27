@@ -64,21 +64,21 @@
       "point_update_ms": 6.3036,
       "update_range_rows_visited": 4,
       "update_decoded_postings": 2,
-      "update_bytes_decoded": 1374,
+      "update_bytes_decoded": 1438,
       "update_touched_tokens": 3
     },
     "512": {
       "point_update_ms": 7.2585,
       "update_range_rows_visited": 4,
       "update_decoded_postings": 2,
-      "update_bytes_decoded": 1374,
+      "update_bytes_decoded": 1438,
       "update_touched_tokens": 3
     },
     "2048": {
       "point_update_ms": 9.519,
       "update_range_rows_visited": 4,
       "update_decoded_postings": 2,
-      "update_bytes_decoded": 1374,
+      "update_bytes_decoded": 1438,
       "update_touched_tokens": 3
     }
   },

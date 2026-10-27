@@ -406,6 +406,27 @@ void test_incremental_partition_metadata_admission(
         partition_meta_key(scope, *token_id));
     require(reactivated_meta != inactive_meta,
         "partition generation did not advance on reactivation");
+
+    constexpr std::uint64_t historical_token_count = 64U;
+    for(std::uint64_t id = 10U; id < 10U + historical_token_count; ++id) {
+        segmented.upsert(unit(
+            scope, id, 1, {"historical-" + std::to_string(id)}));
+        require(segmented.erase(KnowledgeUnitId{id}),
+            "historical inactive token erase failed");
+    }
+    mdbxc::KeyValueTable<std::string, std::string> table(
+        context->connection(), "agent_memory_lexical_posting_segments");
+    auto orphan_txn = context->connection()->transaction(
+        mdbxc::TransactionMode::WRITABLE);
+    table.insert_or_assign(
+        partition_meta_key(scope, TokenId{999999U}),
+        partition_meta_value(scope, TokenId{999999U}, 1U), orphan_txn);
+    orphan_txn.commit();
+    bool orphan_metadata_rejected = false;
+    try { static_cast<void>(segmented.read_snapshot()); }
+    catch(const std::runtime_error&) { orphan_metadata_rejected = true; }
+    require(orphan_metadata_rejected,
+        "orphan metadata was accepted with many historical inactive tokens");
 }
 
 std::string v2_prefix(const ScopeId& scope) {

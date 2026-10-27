@@ -581,13 +581,12 @@ void validate_incremental_derived_rows(
                 "incremental segmented inactive partition is still published");
         }
     }
+    std::set<TokenId> dictionary_token_ids;
+    for(const auto& entry : state.dictionary) {
+        dictionary_token_ids.insert(entry.second);
+    }
     for(const auto& entry : state.partition_generations) {
-        const auto known = std::any_of(
-            state.dictionary.begin(), state.dictionary.end(),
-            [&entry](const auto& dictionary_entry) {
-                return dictionary_entry.second == entry.first;
-            });
-        if(!known) {
+        if(dictionary_token_ids.find(entry.first) == dictionary_token_ids.end()) {
             throw std::runtime_error(
                 "incremental segmented orphan partition metadata");
         }
