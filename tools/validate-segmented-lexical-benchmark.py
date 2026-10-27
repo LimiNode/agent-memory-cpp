@@ -58,6 +58,10 @@ WORKLOADS = (
     "isolated-sparse-replacement",
     "zipf-like",
     "mixed-utf8",
+    "long-document",
+    "small-insert",
+    "small-delete",
+    "inactive-history",
     "no-op",
 )
 

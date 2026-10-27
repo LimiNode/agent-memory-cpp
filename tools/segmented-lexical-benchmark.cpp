@@ -9,8 +9,13 @@
 #include <array>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
+#include <optional>
+#include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -22,6 +27,65 @@ namespace {
 
 using namespace agent_memory;
 using Clock = std::chrono::steady_clock;
+
+struct Corpus final {
+    std::map<std::pair<std::string, std::size_t>, std::vector<std::string>> rows;
+
+    static Corpus load(const std::filesystem::path& path) {
+        std::ifstream input(path, std::ios::binary);
+        if(!input) throw std::runtime_error("cannot open benchmark corpus: " + path.string());
+        Corpus corpus;
+        std::string line;
+        std::size_t line_number = 0;
+        while(std::getline(input, line)) {
+            ++line_number;
+            if(line.empty() || line[0] == '#') continue;
+            std::istringstream fields(line);
+            std::string workload;
+            std::string index_text;
+            std::string tokens_text;
+            if(!std::getline(fields, workload, '\t')
+                || !std::getline(fields, index_text, '\t')
+                || !std::getline(fields, tokens_text)) {
+                throw std::runtime_error("malformed benchmark corpus line "
+                    + std::to_string(line_number));
+            }
+            std::size_t index = 0;
+            try { index = std::stoull(index_text); }
+            catch(const std::exception&) {
+                throw std::runtime_error("invalid benchmark corpus index at line "
+                    + std::to_string(line_number));
+            }
+            std::vector<std::string> tokens;
+            std::size_t begin = 0;
+            while(begin <= tokens_text.size()) {
+                const auto separator = tokens_text.find('\x1f', begin);
+                const auto end = separator == std::string::npos
+                    ? tokens_text.size() : separator;
+                if(end == begin) throw std::runtime_error(
+                    "empty benchmark corpus token at line " + std::to_string(line_number));
+                tokens.emplace_back(tokens_text.substr(begin, end - begin));
+                if(separator == std::string::npos) break;
+                begin = separator + 1U;
+            }
+            const auto key = std::make_pair(workload, index);
+            if(!corpus.rows.emplace(key, std::move(tokens)).second) {
+                throw std::runtime_error("duplicate benchmark corpus row at line "
+                    + std::to_string(line_number));
+            }
+        }
+        if(corpus.rows.empty()) throw std::runtime_error("benchmark corpus is empty");
+        return corpus;
+    }
+
+    const std::vector<std::string>* find(
+        const std::string& workload,
+        const std::size_t index
+    ) const {
+        const auto found = rows.find(std::make_pair(workload, index));
+        return found == rows.end() ? nullptr : &found->second;
+    }
+};
 
 LexicalIndexDescriptor descriptor(
     const std::uint32_t layout = kLexicalSegmentLayoutVersion
@@ -45,10 +109,19 @@ LexicalIndexDescriptor descriptor(
 
 FlatLexicalUnitInput unit(
     const std::size_t index,
-    const std::string& workload
+    const std::string& workload,
+    const Corpus* corpus = nullptr
 ) {
     std::vector<std::string> tokens;
-    if(workload == "unique+anchor") {
+    if(corpus != nullptr) {
+        const auto* corpus_tokens = corpus->find(workload, index);
+        if(corpus_tokens != nullptr) tokens = *corpus_tokens;
+    }
+    if(tokens.empty() && corpus != nullptr) {
+        throw std::runtime_error("benchmark corpus row is missing for " + workload
+            + "/" + std::to_string(index));
+    }
+    if(tokens.empty() && workload == "unique+anchor") {
         tokens = {"token-" + std::to_string(index), "anchor"};
     } else if(workload == "shared-hot") {
         tokens = {"shared-hot", "shared-hot", "anchor"};
@@ -64,6 +137,17 @@ FlatLexicalUnitInput unit(
             : rank < 88U ? 3U : rank < 95U ? 4U : 5U;
         tokens = {"zipf-" + std::to_string(bucket), "anchor"};
         if(index % 3U == 0) tokens.push_back("shared-hot");
+    } else if(workload == "long-document") {
+        tokens.assign(256U, "long-shared");
+        tokens.push_back("anchor");
+    } else if(workload == "small-insert") {
+        tokens = {"insert-" + std::to_string(index), "insert-anchor"};
+    } else if(workload == "small-delete") {
+        tokens = {"delete-" + std::to_string(index), "delete-anchor"};
+    } else if(workload == "inactive-history") {
+        tokens = {"history-" + std::to_string(index), "history-anchor"};
+    } else if(workload == "no-op") {
+        tokens = {"anchor", "no-op", "stable-" + std::to_string(index % 32U)};
     } else {
         tokens = {"токен-" + std::to_string(index), "code::v1", "anchor"};
     }
@@ -81,6 +165,96 @@ FlatLexicalUnitInput unit(
 
 double milliseconds(const Clock::duration duration) {
     return std::chrono::duration<double, std::milli>(duration).count();
+}
+
+bool same_version(
+    const ProjectionVersionRef& lhs,
+    const ProjectionVersionRef& rhs
+) {
+    return lhs.unit_revision_at_build == rhs.unit_revision_at_build
+        && lhs.projection_revision == rhs.projection_revision
+        && lhs.derivation_generation == rhs.derivation_generation
+        && lhs.derivation_fingerprint == rhs.derivation_fingerprint;
+}
+
+void require_logical_match(
+    const FlatLexicalIndex& expected,
+    const FlatLexicalIndex& actual,
+    const std::size_t units
+) {
+    const auto expected_collection = expected.collection_stats();
+    const auto actual_collection = actual.collection_stats();
+    if(expected_collection.unit_count != actual_collection.unit_count
+        || expected_collection.total_token_count != actual_collection.total_token_count) {
+        throw std::runtime_error("benchmark collection statistics differ from oracle");
+    }
+    const auto expected_dictionary = expected.token_dictionary_for_storage();
+    const auto actual_dictionary = actual.token_dictionary_for_storage();
+    if(expected_dictionary.size() != actual_dictionary.size()) {
+        throw std::runtime_error("benchmark token dictionary size differs from oracle");
+    }
+    for(const auto& expected_entry : expected_dictionary) {
+        const auto actual_token_id = actual.find_token_id(expected_entry.first);
+        if(!actual_token_id) {
+            throw std::runtime_error("benchmark token dictionary differs from oracle");
+        }
+        const auto expected_stats = expected.find_token_stats(expected_entry.second);
+        const auto actual_stats = actual.find_token_stats(*actual_token_id);
+        if(expected_stats.has_value() != actual_stats.has_value()) {
+            throw std::runtime_error("benchmark token activity differs from oracle");
+        }
+        if(expected_stats && (expected_stats->document_frequency != actual_stats->document_frequency
+            || expected_stats->collection_frequency != actual_stats->collection_frequency)) {
+            throw std::runtime_error("benchmark DF/CF differs from oracle");
+        }
+        const auto expected_postings = expected.postings(expected_entry.second);
+        const auto actual_postings = actual.postings(*actual_token_id);
+        if(expected_postings.size() != actual_postings.size()) {
+            throw std::runtime_error("benchmark posting count differs from oracle");
+        }
+        for(std::size_t posting = 0; posting < expected_postings.size(); ++posting) {
+            const auto& lhs = expected_postings[posting];
+            const auto& rhs = actual_postings[posting];
+            if(lhs.unit_id != rhs.unit_id || lhs.resource_id != rhs.resource_id
+                || lhs.resource_generation != rhs.resource_generation
+                || !same_version(lhs.projection_version, rhs.projection_version)
+                || lhs.term_frequency != rhs.term_frequency) {
+                throw std::runtime_error("benchmark postings differ from oracle");
+            }
+        }
+    }
+    for(std::size_t index = 0; index < units; ++index) {
+        const KnowledgeUnitId unit_id{static_cast<std::uint64_t>(index + 1U)};
+        const auto expected_stats = expected.find_unit_stats(unit_id);
+        const auto actual_stats = actual.find_unit_stats(unit_id);
+        if(!expected_stats || !actual_stats
+            || expected_stats->resource_id != actual_stats->resource_id
+            || expected_stats->resource_generation != actual_stats->resource_generation
+            || expected_stats->unit_revision != actual_stats->unit_revision
+            || !same_version(expected_stats->projection_version, actual_stats->projection_version)
+            || expected_stats->token_count != actual_stats->token_count
+            || expected_stats->unique_token_count != actual_stats->unique_token_count) {
+            throw std::runtime_error("benchmark unit revisions differ from oracle");
+        }
+    }
+}
+
+template<typename IndexT>
+void require_expected_state_conflict(
+    IndexT& index,
+    FlatLexicalUnitInput input
+) {
+    input.resource_generation = 99;
+    input.unit_revision = 99;
+    input.projection_version = ProjectionVersionRef{99, 99, 1, "conflict-probe"};
+    try {
+        index.upsert(std::move(input), FlatLexicalExpectedState{
+            KnowledgeUnitId{1}, 999, 999,
+            ProjectionVersionRef{999, 999, 1, "stale"}});
+    } catch(const std::runtime_error&) {
+        return;
+    }
+    throw std::runtime_error("benchmark backend accepted stale expected state");
 }
 
 std::uintmax_t database_bytes(const std::filesystem::path& path) {
@@ -137,31 +311,51 @@ void print_header() {
 void run_flat_reference(
     const std::string& workload,
     const std::size_t units,
-    const std::size_t repeat
+    const std::size_t repeat,
+    const Corpus* corpus
 ) {
     FlatLexicalIndex index{descriptor()};
     const auto started = Clock::now();
     for(std::size_t index_value = 0; index_value < units; ++index_value) {
-        index.upsert(unit(index_value, workload));
+        index.upsert(unit(index_value, workload, corpus));
     }
     const auto write_done = Clock::now();
-    const auto probe_token = workload == "isolated-sparse-replacement"
-        ? "sp-0" : "anchor";
+    const auto probe_token = unit(0, workload, corpus).normalized_tokens.front();
     const auto probe = index.find_token_id(probe_token);
     if(!probe) throw std::runtime_error("benchmark probe token missing");
     static_cast<void>(index.postings(*probe));
     const auto read_done = Clock::now();
+    if(workload == "inactive-history") {
+        for(std::uint64_t revision = 2; revision <= 65; ++revision) {
+            auto historical = unit(0, workload, corpus);
+            historical.resource_generation = revision;
+            historical.unit_revision = revision;
+            historical.projection_version = ProjectionVersionRef{
+                revision, revision, 1, "inactive-history"};
+            historical.normalized_tokens.push_back(
+                "inactive-" + std::to_string(revision));
+            index.upsert(historical, FlatLexicalExpectedState{
+                KnowledgeUnitId{1}, revision - 1U, revision - 1U,
+                ProjectionVersionRef{revision - 1U, revision - 1U, 1,
+                    revision == 2U ? "benchmark-v1" : "inactive-history"}});
+        }
+    }
     const auto update_started = Clock::now();
-    const auto original = unit(0, workload);
-    if(workload == "unique+anchor" || workload == "shared-hot") {
+    const auto original = unit(0, workload, corpus);
+    if(workload == "unique+anchor" || workload == "shared-hot"
+        || workload == "long-document" || workload == "inactive-history") {
         auto replacement = original;
-        replacement.resource_generation = 2;
-        replacement.unit_revision = 2;
-        replacement.projection_version = ProjectionVersionRef{2, 2, 1, "benchmark-v2"};
+        const std::uint64_t next_revision = workload == "inactive-history" ? 66U : 2U;
+        const std::uint64_t expected_revision = next_revision - 1U;
+        replacement.resource_generation = next_revision;
+        replacement.unit_revision = next_revision;
+        replacement.projection_version = ProjectionVersionRef{
+            next_revision, next_revision, 1, "benchmark-replacement"};
         replacement.normalized_tokens.push_back("point-update");
         index.upsert(replacement, FlatLexicalExpectedState{
-            KnowledgeUnitId{1}, 1, 1,
-            ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+            KnowledgeUnitId{1}, expected_revision, expected_revision,
+            ProjectionVersionRef{expected_revision, expected_revision, 1,
+                expected_revision == 1U ? "benchmark-v1" : "inactive-history"}});
     } else if(workload == "isolated-sparse-replacement") {
         auto replacement = original;
         replacement.resource_generation = 2;
@@ -171,22 +365,28 @@ void run_flat_reference(
         index.upsert(replacement, FlatLexicalExpectedState{
             KnowledgeUnitId{1}, 1, 1,
             ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
-    } else if(workload == "zipf-like") {
+    } else if(workload == "zipf-like" || workload == "small-delete") {
         static_cast<void>(index.erase(KnowledgeUnitId{1}));
     } else if(workload == "no-op") {
-        index.upsert(original, FlatLexicalExpectedState{
-            KnowledgeUnitId{1}, 1, 1,
-            ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+        for(std::size_t iteration = 0; iteration < 16U; ++iteration) {
+            index.upsert(original, FlatLexicalExpectedState{
+                KnowledgeUnitId{1}, 1, 1,
+                ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+        }
     } else {
-        index.upsert(unit(units, workload));
+        index.upsert(unit(units, workload, corpus));
     }
     const auto update_done = Clock::now();
-    if(workload == "zipf-like") {
+    if(workload == "zipf-like" || workload == "small-delete") {
         index.upsert(original);
-    } else if(workload == "mixed-utf8") {
+    } else if(workload == "mixed-utf8" || workload == "small-insert") {
         static_cast<void>(index.erase(
             KnowledgeUnitId{static_cast<std::uint64_t>(units + 1U)}));
     }
+    if(index.collection_stats().unit_count != units) {
+        throw std::runtime_error("flat reference final unit count mismatch");
+    }
+    require_expected_state_conflict(index, unit(0, workload, corpus));
     std::cout << "flat-reference\t" << workload << '\t' << units << '\t' << repeat
               << "\t0\t0\t" << milliseconds(write_done - started)
               << '\t' << milliseconds(read_done - write_done)
@@ -208,7 +408,8 @@ void run_durable(
     const std::size_t repeat,
     const std::filesystem::path& path,
     OptionsT options,
-    const bool diagnostics_enabled
+    const bool diagnostics_enabled,
+    const Corpus* corpus
 ) {
     const auto remove_database_file = [](const std::filesystem::path& target) {
         std::error_code error;
@@ -250,30 +451,60 @@ void run_durable(
     MdbxSegmentedLexicalIndexDiagnostics update_diagnostics;
     MdbxSegmentedLexicalIndexDiagnostics snapshot_diagnostics;
     MdbxSegmentedLexicalIndexDiagnostics reopen_diagnostics;
+    FlatLexicalIndex oracle{descriptor()};
     {
         write_started = Clock::now();
         for(std::size_t index_value = 0; index_value < units; ++index_value) {
-            index->upsert(unit(index_value, workload));
+            index->upsert(unit(index_value, workload, corpus));
         }
         write_finished = Clock::now();
+        for(std::size_t index_value = 0; index_value < units; ++index_value) {
+            oracle.upsert(unit(index_value, workload, corpus));
+        }
+        if(workload == "inactive-history") {
+            for(std::uint64_t revision = 2; revision <= 65; ++revision) {
+                auto historical = unit(0, workload, corpus);
+                historical.resource_generation = revision;
+                historical.unit_revision = revision;
+                historical.projection_version = ProjectionVersionRef{
+                    revision, revision, 1, "inactive-history"};
+                historical.normalized_tokens.push_back(
+                    "inactive-" + std::to_string(revision));
+                const FlatLexicalExpectedState expected{
+                    KnowledgeUnitId{1}, revision - 1U, revision - 1U,
+                    ProjectionVersionRef{revision - 1U, revision - 1U, 1,
+                        revision == 2U ? "benchmark-v1" : "inactive-history"}};
+                index->upsert(historical, expected);
+                oracle.upsert(historical, expected);
+            }
+        }
         if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
             initial_diagnostics = diagnostics;
             diagnostics = {};
         }
         db_bytes_before_update = database_bytes(path);
         update_started = Clock::now();
-        const auto original = unit(0, workload);
-        if(workload == "unique+anchor" || workload == "shared-hot") {
+        const auto original = unit(0, workload, corpus);
+        if(workload == "unique+anchor" || workload == "shared-hot"
+            || workload == "long-document" || workload == "inactive-history") {
             auto replacement = original;
-            replacement.resource_generation = 2;
-            replacement.unit_revision = 2;
-            replacement.projection_version = ProjectionVersionRef{2, 2, 1, "benchmark-v2"};
+            const std::uint64_t next_revision = workload == "inactive-history" ? 66U : 2U;
+            const std::uint64_t expected_revision = next_revision - 1U;
+            replacement.resource_generation = next_revision;
+            replacement.unit_revision = next_revision;
+            replacement.projection_version = ProjectionVersionRef{
+                next_revision, next_revision, 1, "benchmark-replacement"};
             replacement.normalized_tokens.push_back("point-update");
             index->upsert(
                 replacement,
                 FlatLexicalExpectedState{
-                    KnowledgeUnitId{1}, 1, 1,
-                    ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+                    KnowledgeUnitId{1}, expected_revision, expected_revision,
+                    ProjectionVersionRef{expected_revision, expected_revision, 1,
+                        expected_revision == 1U ? "benchmark-v1" : "inactive-history"}});
+            oracle.upsert(replacement, FlatLexicalExpectedState{
+                KnowledgeUnitId{1}, expected_revision, expected_revision,
+                ProjectionVersionRef{expected_revision, expected_revision, 1,
+                    expected_revision == 1U ? "benchmark-v1" : "inactive-history"}});
         } else if(workload == "isolated-sparse-replacement") {
             auto replacement = original;
             replacement.resource_generation = 2;
@@ -286,17 +517,25 @@ void run_durable(
                 FlatLexicalExpectedState{
                     KnowledgeUnitId{1}, 1, 1,
                     ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
-        } else if(workload == "zipf-like") {
+            oracle.upsert(replacement, FlatLexicalExpectedState{
+                KnowledgeUnitId{1}, 1, 1,
+                ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+        } else if(workload == "zipf-like" || workload == "small-delete") {
             static_cast<void>(index->erase(KnowledgeUnitId{1}));
+            static_cast<void>(oracle.erase(KnowledgeUnitId{1}));
         } else if(workload == "no-op") {
-            index->upsert(
-                original,
-                FlatLexicalExpectedState{
+            for(std::size_t iteration = 0; iteration < 16U; ++iteration) {
+                index->upsert(original, FlatLexicalExpectedState{
                     KnowledgeUnitId{1}, 1, 1,
                     ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+                oracle.upsert(original, FlatLexicalExpectedState{
+                    KnowledgeUnitId{1}, 1, 1,
+                    ProjectionVersionRef{1, 1, 1, "benchmark-v1"}});
+            }
         } else {
-            auto inserted = unit(units, workload);
+            auto inserted = unit(units, workload, corpus);
             index->upsert(inserted);
+            oracle.upsert(inserted);
         }
         update_finished = Clock::now();
         if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
@@ -306,18 +545,20 @@ void run_durable(
         db_bytes_after_update = database_bytes(path);
         // Restore the logical corpus before snapshot/reopen so every backend has
         // the same final state while the measured operation remains isolated.
-        if(workload == "zipf-like") {
+        if(workload == "zipf-like" || workload == "small-delete") {
             index->upsert(original);
-        } else if(workload != "unique+anchor" && workload != "shared-hot"
-            && workload != "isolated-sparse-replacement" && workload != "no-op") {
+            oracle.upsert(original);
+        } else if(workload == "mixed-utf8" || workload == "small-insert") {
             static_cast<void>(index->erase(
+                KnowledgeUnitId{static_cast<std::uint64_t>(units + 1U)}));
+            static_cast<void>(oracle.erase(
                 KnowledgeUnitId{static_cast<std::uint64_t>(units + 1U)}));
         }
         snapshot_started = Clock::now();
         {
             const auto snapshot = index->read_snapshot();
-            const auto probe_token = workload == "isolated-sparse-replacement"
-                ? "sp-0" : "anchor";
+            require_logical_match(oracle, snapshot.index, units);
+            const auto probe_token = unit(0, workload, corpus).normalized_tokens.front();
             const auto probe = snapshot.index.find_token_id(probe_token);
             if(!probe) throw std::runtime_error("benchmark probe token missing");
             static_cast<void>(snapshot.index.postings(*probe));
@@ -358,8 +599,13 @@ void run_durable(
     const auto reopen_snapshot_started = Clock::now();
     {
         const auto reopened_snapshot = reopened.read_snapshot();
+        require_logical_match(oracle, reopened_snapshot.index, units);
         active_units = reopened_snapshot.index.collection_stats().unit_count;
         total_tokens = reopened_snapshot.index.collection_stats().total_token_count;
+    }
+    require_expected_state_conflict(reopened, unit(0, workload, corpus));
+    if(active_units != units || total_tokens == 0U) {
+        throw std::runtime_error("durable benchmark final logical state mismatch");
     }
     const auto reopen_snapshot_done = Clock::now();
     if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
@@ -428,39 +674,57 @@ int main(int argc, char** argv) {
     const bool diagnostics_enabled = argc > 4
         ? std::stoull(argv[4]) != 0U
         : true;
-    const std::string workload_filter = argc > 5 ? argv[5] : "";
+    const std::string workload_filter_argument = argc > 5 ? argv[5] : "";
+    const std::string workload_filter = workload_filter_argument == "-"
+        || workload_filter_argument == "all" ? "" : workload_filter_argument;
+    const auto corpus = argc > 6 && std::string_view{argv[6]}.size() != 0U
+        ? std::optional<Corpus>{Corpus::load(argv[6])} : std::nullopt;
+    const auto* corpus_ptr = corpus ? &*corpus : nullptr;
+    std::set<std::string> backend_filter;
+    if(argc > 7 && std::string_view{argv[7]}.size() != 0U) {
+        std::istringstream values(argv[7]);
+        std::string value;
+        while(std::getline(values, value, ',')) backend_filter.insert(value);
+    }
+    const auto backend_enabled = [&backend_filter](const std::string& value) {
+        return backend_filter.empty() || backend_filter.count(value) != 0U;
+    };
     print_header();
     for(const std::string workload : {
         "unique+anchor", "shared-hot", "isolated-sparse-replacement",
-        "zipf-like", "mixed-utf8", "no-op"}) {
+        "zipf-like", "mixed-utf8", "long-document", "small-insert",
+        "small-delete", "inactive-history", "no-op"}) {
         if(!workload_filter.empty() && workload != workload_filter) continue;
         for(std::size_t repeat = 0; repeat < repeats; ++repeat) {
-            run_flat_reference(workload, units, repeat);
-            {
+            if(backend_enabled("flat-reference")) {
+                run_flat_reference(workload, units, repeat, corpus_ptr);
+            }
+            if(backend_enabled("flat-v2")) {
                 MdbxPersistentLexicalIndexOptions options;
                 options.path = (base.string() + "-flat-v2");
                 options.descriptor = descriptor();
                 run_durable<MdbxPersistentLexicalIndex>(
                     "flat-v2", workload, units, repeat,
-                    options.path, options, diagnostics_enabled);
+                    options.path, options, diagnostics_enabled, corpus_ptr);
             }
-            if(workload != "isolated-sparse-replacement") {
+            if(backend_enabled("segmented-v1")
+                && workload != "isolated-sparse-replacement") {
                 MdbxSegmentedLexicalIndexOptions options;
                 options.path = (base.string() + "-segmented-v1");
                 options.descriptor = descriptor();
                 options.encoding_limits.max_postings_per_segment = 128;
                 run_durable<MdbxSegmentedLexicalIndex>(
                     "segmented-v1", workload, units, repeat,
-                    options.path, options, diagnostics_enabled);
+                    options.path, options, diagnostics_enabled, corpus_ptr);
             }
-            {
+            if(backend_enabled("segmented-v2")) {
                 MdbxSegmentedLexicalIndexOptions options;
                 options.path = (base.string() + "-segmented-v2");
                 options.descriptor = descriptor(kLexicalIncrementalSegmentLayoutVersion);
                 options.encoding_limits.max_postings_per_segment = 128;
                 run_durable<MdbxSegmentedLexicalIndex>(
                     "segmented-v2", workload, units, repeat,
-                    options.path, options, diagnostics_enabled);
+                    options.path, options, diagnostics_enabled, corpus_ptr);
             }
         }
     }
