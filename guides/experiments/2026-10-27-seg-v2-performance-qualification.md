@@ -1,6 +1,6 @@
 # 2026-10-27 `flat-v2` / `seg-v2` performance qualification
 
-Status: `HARNESS_PENDING_CI_REPLAY / PERFORMANCE_INCONCLUSIVE / PRODUCTION_ACTIVATION_BLOCKED`.
+Status: `HARNESS_ACCEPTED / PERFORMANCE_INCONCLUSIVE / PRODUCTION_ACTIVATION_BLOCKED`.
 This is a separate research
 PR after the experimental `seg-v2` adapter was integrated; it does not change
 the production default or coordinator activation.
@@ -36,8 +36,8 @@ corpora than the isolated sparse fixture used by PR #559?
 - Current canonical-LF artifact digests (recompute after any receipt edit):
   raw `c5a181ac1c102e7ceebb7d14ac10c54a840a5ce513cb36328dad043fb275b2be`,
   receipt `74de1fa5d91ab0490882c953f9d5de661cd58a12b3c6d53978d0a9e0f23fde2c`.
-  The CI replay gate must verify these bytes from its clean checkout before the
-  status can become `HARNESS_ACCEPTED`.
+  CI replay `40559183012` verified these bytes from its clean checkout on
+  commit `e86a93f5`.
 
 The benchmark checks final active-unit count, non-empty token statistics,
 reopen stability (including direct token-to-ID dictionary equality within a
