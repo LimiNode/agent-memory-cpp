@@ -523,15 +523,20 @@ int main() {
                 ResourceId{"resource-1"}, read
             );
             read.commit();
-            return coordinator.frontier().sequence.value() == 1
-                && !coordinator.receipt(publication_id)
+            const auto frontier_unchanged = coordinator.frontier().sequence.value() == 1;
+            const auto receipt_absent = !coordinator.receipt(publication_id);
+            const auto unrelated_manifest_absent = !manifests.find_manifest(
+                ResourceId{"resource-2"}
+            );
+            return frontier_unchanged
+                && receipt_absent
                 && !binding
                 && document
                 && document->revision == 0
                 && unit_rows.size() == 1
                 && projection_rows.size() == 1
                 && lexical.read_snapshot().index.size() == 0
-                && !manifests.find_manifest(ResourceId{"resource-2"});
+                && unrelated_manifest_absent;
         };
         const auto apply_failure_plan = plan_for(
             scope, profile, next_fencing, "publication-apply-failure", 1, 6
