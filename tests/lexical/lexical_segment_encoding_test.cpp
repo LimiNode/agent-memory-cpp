@@ -191,7 +191,7 @@ int test_negative_encoding_admission() {
         return fail("unknown encoding version must fail closed");
     }
     auto unsupported_layout = encoded.bytes;
-    write_u32(unsupported_layout, 8, 2);
+    write_u32(unsupported_layout, 8, 999);
     if(agent_memory::decode_lexical_segment_row(unsupported_layout).status
         != agent_memory::LexicalSegmentEncodingStatus::UnsupportedLayoutVersion) {
         return fail("unknown layout version must fail closed");
@@ -221,7 +221,7 @@ int test_negative_encoding_admission() {
         return fail("invalid posting must not encode");
     }
     invalid_row = row;
-    invalid_row.key.posting_layout_version = 2;
+    invalid_row.key.posting_layout_version = 999;
     if(agent_memory::encode_lexical_segment_row(invalid_row).status
         != agent_memory::LexicalSegmentEncodingStatus::UnsupportedLayoutVersion) {
         return fail("unknown layout must not encode");
