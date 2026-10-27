@@ -1,6 +1,7 @@
 # 2026-10-27 `flat-v2` / `seg-v2` performance qualification
 
-Status: `INCONCLUSIVE` for production selection. This is a separate research
+Status: `HARNESS_ACCEPTED / PERFORMANCE_INCONCLUSIVE / PRODUCTION_ACTIVATION_BLOCKED`.
+This is a separate research
 PR after the experimental `seg-v2` adapter was integrated; it does not change
 the production default or coordinator activation.
 
@@ -13,12 +14,14 @@ corpora than the isolated sparse fixture used by PR #559?
 ## Setup
 
 - Target: `main` after PR #559, branch `feat/seg-v2-performance-qualification`.
-- Runner: `tools/run-segmented-qualification.py`.
+- Runner: `tools/run-segmented-qualification.py`; each workload runs in an
+  isolated subprocess with a 120-second runtime budget.
 - Corpus generator: `tools/generate-segmented-qualification-corpus.py`.
 - Corpus kind: synthetic deterministic UTF-8; it is not a production knowledge
   corpus and must not be presented as one.
 - Seed: `12648430`; workloads: `unique+anchor`, `shared-hot`,
-  `isolated-sparse-replacement`, `zipf-like`, `mixed-utf8`, and `no-op`.
+  `isolated-sparse-replacement`, `zipf-like`, `mixed-utf8`, `long-document`,
+  `small-insert`, `small-delete`, `inactive-history`, and `no-op`.
 - Requested scales: 128, 512, 2048, 8192, 32768 units. The local run executed
   128/512 with three repeats and recorded 2048/8192/32768 as controlled stops
   because the expanded inactive-history workload exceeded the local time
@@ -41,18 +44,16 @@ directional local measurements, not cross-machine performance claims.
 
 | Workload / units | Backend | write | snapshot | reopen snapshot | point update | DB bytes | update range rows | decoded postings |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| shared-hot / 128 | flat-v2 | 116.013 | 0.682 | 1.258 | 1.351 | 65,536 | 0 | 0 |
-| shared-hot / 128 | seg-v2 | 221.318 | 1.480 | 1.773 | 2.201 | 16,777,216 | 4 | 256 |
-| shared-hot / 512 | flat-v2 | 941.249 | 2.471 | 4.529 | 3.032 | 16,777,216 | 0 | 0 |
-| shared-hot / 512 | seg-v2 | 1,746.08 | 5.542 | 5.771 | 6.117 | 16,777,216 | 16 | 1,024 |
-| isolated-sparse / 128 | flat-v2 | 148.796 | 1.266 | 2.250 | 1.767 | 65,536 | 0 | 0 |
-| isolated-sparse / 128 | seg-v2 | 725.168 | 4.235 | 4.760 | 6.127 | 16,777,216 | 4 | 2 |
-| isolated-sparse / 512 | flat-v2 | 1,516.72 | 5.593 | 8.896 | 5.434 | 16,777,216 | 0 | 0 |
-| isolated-sparse / 512 | seg-v2 | 3,125.34 | 16.869 | 17.627 | 11.169 | 16,777,216 | 4 | 2 |
-| long-document / 512 | flat-v2 | 9,335.35 | 18.146 | 31.218 | 40.075 | 16,777,216 | 0 | 0 |
-| long-document / 512 | seg-v2 | 2,036.56 | 18.702 | 15.063 | 6.779 | 16,777,216 | 16 | 1,024 |
-| inactive-history / 512 | flat-v2 | 1,240.1 | 3.754 | 7.141 | 4.218 | 16,777,216 | 0 | 0 |
-| inactive-history / 512 | seg-v2 | 2,237.2 | 11.223 | 11.352 | 4.814 | 16,777,216 | 12 | 514 |
+| shared-hot / 512 | flat-v2 | 995.208 | 2.060 | 1.884 | 3.332 | 16,777,216 | 0 | 0 |
+| shared-hot / 512 | seg-v2 | 1,808.01 | 5.095 | 5.440 | 5.911 | 16,777,216 | 16 | 1,024 |
+| isolated-sparse / 512 | flat-v2 | 1,464.83 | 3.540 | 3.554 | 5.481 | 16,777,216 | 0 | 0 |
+| isolated-sparse / 512 | seg-v2 | 3,226.66 | 17.036 | 16.596 | 10.628 | 16,777,216 | 4 | 2 |
+| long-document / 512 | flat-v2 | 8,887.03 | 14.648 | 14.016 | 33.188 | 16,777,216 | 0 | 0 |
+| long-document / 512 | seg-v2 | 1,997.50 | 17.944 | 14.970 | 7.259 | 16,777,216 | 16 | 1,024 |
+| inactive-history / 512 | flat-v2 | 1,386.85 | 2.862 | 2.892 | 4.337 | 16,777,216 | 0 | 0 |
+| inactive-history / 512 | seg-v2 | 2,316.29 | 11.226 | 10.804 | 4.908 | 16,777,216 | 12 | 514 |
+| no-op / 512 (per operation) | flat-v2 | 1,260.76 | 2.550 | 2.795 | 45.089 | 16,777,216 | 0 | 0 |
+| no-op / 512 (per operation) | seg-v2 | 2,201.05 | 7.863 | 7.911 | 2.292 | 16,777,216 | 0 | 0 |
 
 The segmented point update remains bounded for the isolated workload: decoded
 postings stay at 2 and range rows at 4 at both executed scales. The expanded
@@ -60,6 +61,13 @@ long-document case shows a useful point-update advantage at 512 units, while
 shared-hot and inactive-history remain slower than flat-v2. The same run shows
 a snapshot/reopen and fixed-environment footprint trade-off, so there is no
 uniform backend winner.
+
+Snapshot timings exclude oracle validation, probe reads, and stale-state
+checks. The no-op row reports a 16-operation batch separately; `point update`
+is the per-operation value. Historical preparation is reported separately from
+initial ingestion. Numerical TokenId parity is reported as a diagnostic: IDs
+are stable within each backend and across reopen, but allocation order is not a
+cross-backend contract.
 
 ## Interpretation and decision gate
 
@@ -80,6 +88,8 @@ described as physical I/O equivalence.
 - The corpus is synthetic and deterministic; real technical documents and
   multilingual knowledge units remain untested.
 - 8192 and 32768 were controlled stops, not successful measurements.
+- 2048 was also recorded as `SKIPPED_BY_CONFIG_LIMIT` in the receipt; this is a
+  configuration stop, not evidence of a runtime timeout.
 - Three repeats are useful for smoke qualification but do not establish stable
   machine-independent timing. A future pilot must record hardware, MDBX
   configuration, cache order, warm-up policy, and more repeats.

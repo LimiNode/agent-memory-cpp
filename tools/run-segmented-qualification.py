@@ -24,6 +24,8 @@ P50_FIELDS = (
     "db_bytes", "db_bytes_before_update", "db_bytes_after_update",
     "update_range_rows_visited", "update_decoded_postings",
     "live_rows_observed", "live_value_bytes_observed",
+    "snapshot_validation_ms", "probe_read_ms", "reopen_validation_ms",
+    "stale_state_ms", "no_op_batch_ms", "historical_preparation_ms",
 )
 
 
@@ -37,18 +39,36 @@ def run(args: argparse.Namespace) -> int:
         raise SystemExit("scales must contain positive integers")
     rows: list[dict[str, str]] = []
     manifests: list[dict[str, object]] = []
-    controlled_stops: list[int] = []
+    requested_backends = tuple(value for value in args.backends.split(",") if value)
+    allowed_backends = {"flat-reference", "flat-v2", "segmented-v2", "segmented-v1"}
+    if not requested_backends or len(set(requested_backends)) != len(requested_backends):
+        raise SystemExit("--backends must contain unique names")
+    if set(requested_backends) - allowed_backends:
+        raise SystemExit("--backends contains an unknown backend")
+    stop_cases: list[dict[str, object]] = []
     with tempfile.TemporaryDirectory(prefix="segmented-qualification-") as directory:
         root = Path(directory)
         for units in scales:
             if units > args.max_units:
-                controlled_stops.append(units)
+                for workload in WORKLOADS:
+                    for backend in requested_backends:
+                        if backend == "segmented-v1" and workload == "isolated-sparse-replacement":
+                            continue
+                        for repeat in range(args.repeats):
+                            stop_cases.append({
+                                "scale": units, "workload": workload, "backend": backend,
+                                "repeat": repeat, "status": "SKIPPED_BY_CONFIG_LIMIT",
+                                "reason": "units_exceed_max_units", "budget_seconds": None,
+                                "elapsed_seconds": 0.0, "terminated": False,
+                                "cleanup": "not_started", "usable_evidence": False,
+                            })
                 continue
             corpus = root / f"corpus-{units}.tsv"
             manifest = root / f"corpus-{units}.manifest.json"
             subprocess.run([
                 sys.executable, str(args.generator), "--units", str(units), "--seed", str(args.seed),
                 "--long-document-tokens", str(args.long_document_tokens),
+                "--inactive-token-history", str(args.inactive_history),
                 "--output", str(corpus), "--manifest", str(manifest),
             ], check=True)
             manifest_value = json.loads(manifest.read_text(encoding="utf-8"))
@@ -60,16 +80,42 @@ def run(args: argparse.Namespace) -> int:
                 raise SystemExit(f"corpus manifest SHA-256 mismatch for {units}")
             manifest_value["path"] = corpus.name
             manifests.append(manifest_value)
-            command = [
-                str(args.binary), str(units), str(args.repeats),
-                str(root / f"benchmark-{units}"), "1", "-", str(corpus), args.backends,
-            ]
-            completed = subprocess.run(command, check=False, capture_output=True, text=True)
-            if completed.returncode != 0:
-                raise SystemExit(
-                    f"benchmark failed for {units} units (exit {completed.returncode})\n"
-                    f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}")
-            parsed = list(csv.DictReader(completed.stdout.splitlines(), delimiter="\t"))
+            parsed = []
+            for workload in WORKLOADS:
+                command = [
+                    str(args.binary), str(units), str(args.repeats),
+                    str(root / f"benchmark-{units}-{workload}"), "1", workload,
+                    str(corpus), args.backends, str(args.inactive_history),
+                ]
+                started = __import__("time").monotonic()
+                try:
+                    completed = subprocess.run(
+                        command, check=False, capture_output=True, text=True,
+                        timeout=args.timeout_seconds)
+                except subprocess.TimeoutExpired as error:
+                    elapsed = __import__("time").monotonic() - started
+                    for backend in requested_backends:
+                        if backend == "segmented-v1" and workload == "isolated-sparse-replacement":
+                            continue
+                        for repeat in range(args.repeats):
+                            stop_cases.append({
+                                "scale": units, "workload": workload, "backend": backend,
+                                "repeat": repeat, "status": "STOPPED_BY_RUNTIME_BUDGET",
+                                "reason": "subprocess_timeout", "budget_seconds": args.timeout_seconds,
+                                "elapsed_seconds": elapsed, "terminated": True,
+                                "cleanup": "subprocess.run_timeout", "usable_evidence": False,
+                            })
+                    continue
+                elapsed = __import__("time").monotonic() - started
+                if completed.returncode != 0:
+                    raise SystemExit(
+                        f"benchmark failed for {units}/{workload} (exit {completed.returncode})\n"
+                        f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}")
+                current = list(csv.DictReader(completed.stdout.splitlines(), delimiter="\t"))
+                if current:
+                    for row in current:
+                        row["runner_elapsed_seconds"] = f"{elapsed:.6f}"
+                    parsed.extend(current)
             if not parsed:
                 raise SystemExit(f"benchmark emitted no rows for {units}")
             header = list(parsed[0])
@@ -82,7 +128,10 @@ def run(args: argparse.Namespace) -> int:
     expected_fields = {"backend", "workload", "units", "repeat", *P50_FIELDS}
     if not expected_fields.issubset(header):
         raise SystemExit(f"qualification rows miss fields: {sorted(expected_fields - set(header))}")
-    expected_backends = {row["backend"] for row in rows}
+    expected_backends = set(requested_backends)
+    actual_backends = {row["backend"] for row in rows}
+    if actual_backends != expected_backends:
+        raise SystemExit("benchmark output backend set differs from requested backends")
     expected_keys = set()
     for units in [value for value in scales if value <= args.max_units]:
         for workload in WORKLOADS:
@@ -124,12 +173,13 @@ def run(args: argparse.Namespace) -> int:
     receipt = {
         "schema_version": 2,
         "family": "segmented_lexical_performance_qualification_v1",
-        "status": "EXECUTED",
+        "status": "PARTIAL" if stop_cases else "COMPLETED",
         "seed": args.seed,
         "repeats": args.repeats,
+        "requested_backends": list(requested_backends),
         "scales": scales,
         "executed_scales": [manifest["units"] for manifest in manifests],
-        "controlled_stops": controlled_stops,
+        "controlled_stops": sorted({int(case["scale"]) for case in stop_cases}),
         "workloads": list(WORKLOADS),
         "backends": sorted(expected_backends),
         "raw": {"path": args.output.name, "rows": len(rows), "sha256": sha256(args.output)},
@@ -138,11 +188,13 @@ def run(args: argparse.Namespace) -> int:
         "matrix": {
             "scales": scales,
             "executed_scales": [manifest["units"] for manifest in manifests],
-            "controlled_stops": controlled_stops,
+            "controlled_stops": sorted({int(case["scale"]) for case in stop_cases}),
             "workloads": list(WORKLOADS),
             "backends": sorted(expected_backends),
             "repeats": args.repeats,
+            "requested_backends": list(requested_backends),
         },
+        "stops": stop_cases,
         "amplification": {
             "logical_update_range_rows_visited": "p50 from raw TSV",
             "logical_update_decoded_postings": "p50 from raw TSV",
@@ -174,6 +226,8 @@ def main() -> int:
     parser.add_argument("--backends", default="flat-reference,flat-v2,segmented-v2")
     parser.add_argument("--seed", type=int, default=12648430)
     parser.add_argument("--long-document-tokens", type=int, default=64)
+    parser.add_argument("--inactive-history", type=int, default=64)
+    parser.add_argument("--timeout-seconds", type=float, default=120.0)
     args = parser.parse_args()
     return run(args)
 

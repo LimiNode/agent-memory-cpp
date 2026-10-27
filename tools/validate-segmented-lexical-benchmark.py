@@ -51,6 +51,19 @@ HEADER = [
     "update_decoded_postings",
     "db_bytes_before_update",
     "db_bytes_after_update",
+    "snapshot_validation_ms",
+    "probe_read_ms",
+    "reopen_validation_ms",
+    "stale_state_ms",
+    "no_op_batch_ms",
+    "no_op_operation_count",
+    "historical_preparation_ms",
+    "inactive_history_count",
+    "operation_type",
+    "operation_count",
+    "snapshot_scope",
+    "reopen_snapshot_scope",
+    "token_id_parity",
 ]
 WORKLOADS = (
     "unique+anchor",
@@ -162,6 +175,19 @@ def check(rows: list[dict[str, str]], telemetry: bool, workload: str | None) -> 
                         fail("isolated sparse replacement decoded unrelated postings")
                     if as_int(row, "update_range_rows_visited") > 4:
                         fail("isolated sparse replacement visited unrelated range rows")
+            if row["snapshot_scope"] not in ("logical_lookup", "durable_read_snapshot"):
+                fail("unknown snapshot scope")
+            if row["reopen_snapshot_scope"] not in ("not_applicable", "durable_read_snapshot"):
+                fail("unknown reopen snapshot scope")
+            if row["token_id_parity"] not in ("true", "false"):
+                fail("invalid token-id parity marker")
+            for field in ("no_op_operation_count", "inactive_history_count", "operation_count"):
+                if as_int(row, field) < 0:
+                    fail(f"invalid discrete counter {field}")
+            if as_float(row, "historical_preparation_ms") < 0.0:
+                fail("negative historical preparation timing")
+            if row["workload"] == "no-op" and as_int(row, "no_op_operation_count") != 16:
+                fail("no-op workload must report 16 operations")
         else:
             for field in (
                 "diagnostic_scans", "live_rows_observed", "live_value_bytes_observed",

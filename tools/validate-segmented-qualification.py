@@ -19,11 +19,18 @@ P50_FIELDS = (
     "db_bytes", "db_bytes_before_update", "db_bytes_after_update",
     "update_range_rows_visited", "update_decoded_postings",
     "live_rows_observed", "live_value_bytes_observed",
+    "snapshot_validation_ms", "probe_read_ms", "reopen_validation_ms",
+    "stale_state_ms", "no_op_batch_ms", "historical_preparation_ms",
 )
-NUMERIC_FIELDS = P50_FIELDS + (
-    "environment_ms", "adapter_init_ms", "write_diagnostic_ms", "close_ms",
-    "reopen_ms", "reopen_diagnostic_ms", "active_units", "total_tokens",
-    "diagnostic_scans", "observed_live_key_value_bytes", "point_reads",
+INT_FIELDS = (
+    "units", "repeat", "db_bytes", "db_bytes_before_update", "db_bytes_after_update",
+    "update_range_rows_visited", "update_decoded_postings", "live_rows_observed",
+    "live_value_bytes_observed", "no_op_operation_count", "inactive_history_count",
+    "operation_count", "active_units", "total_tokens", "diagnostic_scans",
+)
+FLOAT_FIELDS = ("runner_elapsed_seconds", "environment_ms", "adapter_init_ms",
+    "write_diagnostic_ms", "close_ms", "reopen_ms", "reopen_diagnostic_ms",
+    "observed_live_key_value_bytes", "point_reads",
     "range_rows_visited", "kv_inserts_or_assigns", "kv_deletes", "bytes_decoded",
     "bytes_encoded", "touched_tokens", "decoded_postings",
     "update_point_reads", "update_kv_inserts_or_assigns", "update_kv_deletes",
@@ -36,10 +43,14 @@ def fail(message: str) -> None:
 
 
 def load_rows(raw: bytes) -> list[dict[str, str]]:
-    rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8")), delimiter="\t"))
+    reader = csv.DictReader(io.StringIO(raw.decode("utf-8")), delimiter="\t")
+    if reader.fieldnames is None or len(reader.fieldnames) != len(set(reader.fieldnames)):
+        fail("qualification TSV has duplicate columns")
+    rows = list(reader)
     if not rows:
         fail("qualification TSV is empty")
-    required = {"backend", "workload", "units", "repeat", *NUMERIC_FIELDS}
+    required = {"backend", "workload", "operation_type", "snapshot_scope",
+                "reopen_snapshot_scope", "token_id_parity", *INT_FIELDS, *FLOAT_FIELDS}
     missing = required - set(rows[0])
     if missing:
         fail(f"qualification TSV misses columns: {sorted(missing)}")
@@ -50,9 +61,12 @@ def load_rows(raw: bytes) -> list[dict[str, str]]:
             fail(f"duplicate qualification row: {key}")
         keys.add(key)
         try:
-            if int(row["units"]) <= 0 or int(row["repeat"]) < 0:
-                raise ValueError("negative units/repeat")
-            for field in NUMERIC_FIELDS:
+            for field in INT_FIELDS:
+                if str(int(row[field])) != row[field] or int(row[field]) < 0:
+                    raise ValueError(f"invalid integer {field}")
+            if int(row["units"]) <= 0:
+                raise ValueError("non-positive units")
+            for field in FLOAT_FIELDS:
                 value = float(row[field])
                 if not math.isfinite(value) or value < 0:
                     raise ValueError(f"invalid {field}")
@@ -83,6 +97,9 @@ def validate(raw_path: pathlib.Path, receipt_path: pathlib.Path) -> None:
         fail("receipt scale/control-stop partition is invalid")
     workloads = tuple(matrix.get("workloads", []))
     backends = tuple(matrix.get("backends", []))
+    requested_backends = tuple(matrix.get("requested_backends", backends))
+    if not requested_backends or set(backends) != set(requested_backends):
+        fail("receipt backend set does not match requested backend set")
     expected = {
         (backend, workload, str(units), str(repeat))
         for backend in backends for workload in workloads
@@ -93,6 +110,28 @@ def validate(raw_path: pathlib.Path, receipt_path: pathlib.Path) -> None:
               for row in rows}
     if actual != expected:
         fail("qualification TSV does not cover the declared matrix exactly")
+    stops = receipt.get("stops", [])
+    stop_keys = set()
+    for stop in stops:
+        required_stop = {"scale", "workload", "backend", "repeat", "status",
+                         "reason", "budget_seconds", "elapsed_seconds",
+                         "terminated", "cleanup", "usable_evidence"}
+        if not required_stop.issubset(stop):
+            fail("stop receipt is incomplete")
+        key = (stop["backend"], stop["workload"], str(stop["scale"]), str(stop["repeat"]))
+        if key in actual or key in stop_keys:
+            fail("stop receipt duplicates a benchmark case")
+        stop_keys.add(key)
+        if stop["status"] == "SKIPPED_BY_CONFIG_LIMIT":
+            if stop["terminated"] or stop["usable_evidence"] or stop["elapsed_seconds"] != 0.0:
+                fail("config-limited stop has execution evidence")
+        elif stop["status"] == "STOPPED_BY_RUNTIME_BUDGET":
+            if not stop["terminated"] or not stop["usable_evidence"] is False:
+                fail("runtime stop lacks termination/evidence disposition")
+            if not isinstance(stop["budget_seconds"], (int, float)):
+                fail("runtime stop lacks a numeric budget")
+        else:
+            fail(f"unknown stop status: {stop['status']}")
     by_case: dict[tuple[str, str, str], list[dict[str, str]]] = {}
     for row in rows:
         case = (row["workload"], row["units"], row["repeat"])
@@ -132,9 +171,12 @@ def validate(raw_path: pathlib.Path, receipt_path: pathlib.Path) -> None:
 
 
 def self_test() -> int:
-    fields = ["backend", "workload", "units", "repeat", *NUMERIC_FIELDS]
+    fields = list(dict.fromkeys(["backend", "workload", "operation_type", "snapshot_scope",
+              "reopen_snapshot_scope", "token_id_parity", *INT_FIELDS, *FLOAT_FIELDS, *P50_FIELDS]))
     row = {field: "0" for field in fields}
-    row.update({"backend": "flat-v2", "workload": "no-op", "units": "1", "repeat": "0",
+    row.update({"backend": "flat-v2", "workload": "no-op", "operation_type": "no-op",
+                "snapshot_scope": "durable_read_snapshot", "reopen_snapshot_scope": "durable_read_snapshot",
+                "token_id_parity": "true", "units": "1", "repeat": "0",
                 "active_units": "1", "total_tokens": "1"})
     stream = io.StringIO()
     writer = csv.DictWriter(stream, fieldnames=fields, delimiter="\t")
