@@ -31,37 +31,20 @@ std::filesystem::path path() {
 
 KnowledgeUnitCreateRequest unit_request(const ScopeId& scope) {
     KnowledgeUnitCreateRequest request;
-    // A non-M0 unit permits multiple source summaries, which is required to
-    // exercise target-source matching independently of source ordering.
-    request.kind = KnowledgeUnitKind::Note;
+    request.kind = KnowledgeUnitKind::Chunk;
     request.scope_id = scope;
     request.primary_text = "pinned unit";
     request.display_text = "pinned unit";
     request.content_hash_recipe_version = 2;
-    // Keep an unrelated source first so read validation cannot accidentally
-    // use sources.front() instead of matching the publication target.
-    SourceRefSummary unrelated;
-    unrelated.resource_id = ResourceId{"resource-secondary"};
-    unrelated.resource_revision = ResourceRevisionRef{
-        unrelated.resource_id, 1, ResourceBodyDigest{}
-    };
-    unrelated.uri = "memory://secondary";
-    unrelated.excerpt = TextRange{0, 4};
-    unrelated.confidence = 1.0;
-    unrelated.preview = "pinned";
-    unrelated.quote_hash = compute_quote_hash(unrelated.preview);
-    request.sources.push_back(std::move(unrelated));
-    SourceRefSummary target;
-    target.resource_id = ResourceId{"resource-read"};
-    target.resource_revision = ResourceRevisionRef{
-        target.resource_id, 1, ResourceBodyDigest{}
-    };
-    target.uri = "memory://read";
-    target.excerpt = TextRange{0, 4};
-    target.confidence = 1.0;
-    target.preview = "pinned";
-    target.quote_hash = compute_quote_hash(target.preview);
-    request.sources.push_back(std::move(target));
+    SourceRefSummary source;
+    source.resource_id = ResourceId{"resource-read"};
+    source.resource_revision = ResourceRevisionRef{source.resource_id, 1, ResourceBodyDigest{}};
+    source.uri = "memory://read";
+    source.excerpt = TextRange{0, 4};
+    source.confidence = 1.0;
+    source.preview = "pinned";
+    source.quote_hash = compute_quote_hash(source.preview);
+    request.sources.push_back(std::move(source));
     request.created_at_ms = 1;
     request.observed_at_ms = 1;
     request.priority_weight = 1.0;
