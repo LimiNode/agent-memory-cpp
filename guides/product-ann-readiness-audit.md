@@ -1,9 +1,14 @@
 # Product and ANN readiness audit
 
-Status: reviewable architecture audit, 2026-10-28
+Status: immutable architecture snapshot, 2026-10-28
 Baseline: `origin/main` at `be3c80c1c635b92b21cee6a37963526d32ea88fd`
 Scope: documentation and release planning only. This note does not activate
 `seg-v2`, add an ANN backend, change the coordinator, or change a DBI.
+
+`milestones.md` remains the normative requirements authority and
+`retrieval-roadmap-coverage.md` remains the live implementation-status
+reference. This dated audit is not a third status registry and must not be
+updated as a parallel capability ledger after its baseline changes.
 
 This audit reconciles the normative milestone table with the implementation
 that is actually built by the default library and the optional MDBX profile.
@@ -145,7 +150,7 @@ benchmark with the reproducible contract in `milestones.md`.
 
 | Priority | Evidence | Likely cost | Measurement to add |
 |---|---|---|---|
-| 1 | `ProjectionAwareLexicalRetriever.cpp` scans `scan_by_scope()` and then calls `IKnowledgeUnitStore::find()` while materializing hits | O(units) candidate validation and repeated envelope copies | candidate count, unit lookups, bytes decoded, p50/p95 by scope size |
+| 1 | `ProjectionAwareLexicalRetriever::retrieve()` scans the scope, reads envelopes/manifests/projections, validates freshness, tokenizes every admitted projection, constructs and fills a temporary `ExactLexicalIndex`, searches it, then repeats stale-result checks and materialization | Per-query work scales with admitted units, total indexed tokens, manifest/projection reads and transient allocations; index construction may dominate the final lexical query | stage times for scan, manifest reads, projection reads/freshness, tokenization, index construction, lexical search and final hydration; units/tokens/bytes/allocations at 128/512/2048/8192 units |
 | 2 | `MdbxDurableLexicalDocumentMemory.cpp` calls `rebuild_scope()` after an intervening scope generation | Full-scope rebuild on cross-instance publication | affected units, rebuild bytes, write/read amplification, recovery latency |
 | 3 | MDBX stores serialize complete `Document`, `DocumentChunk`, and `KnowledgeUnitEnvelope` values on read/write | allocation and encode/decode cost on hot hydration paths | encoded bytes, allocations, decode time, map pages touched |
 | 4 | `IVectorIndex::find/search` and `IBinarySignatureIndex::find/search` return records/results by value, including `Metadata` | result materialization and copies dominate small candidate sets | candidate bytes, metadata copy time, RSS and top-k construction time |
@@ -155,6 +160,13 @@ The existing segmented-index measurements are useful for their isolated
 workload, but they do not measure these product-path costs. No optimization
 should be accepted from a microbenchmark that omits source revision, scope,
 reopen and citation hydration.
+
+The first measurement should compare the current per-query reconstruction with
+the existing persistent lexical path under the same admitted sources, scope,
+freshness state, query set and failure semantics. Each corpus size must declare
+the scan, projection-byte and candidate budgets. The benchmark must separate
+index reconstruction from freshness enforcement before proposing a retriever
+rewrite.
 
 ## 4. Minimal ANN adapter and conformance proposal
 
@@ -172,6 +184,8 @@ CandidateRef {
     ProjectionKind projection;
     uint64_t unit_revision;
     uint64_t projection_generation;
+    uint64_t index_generation;
+    IndexSpaceDescriptor space;
     backend-local locator;
 }
 ```
@@ -181,19 +195,29 @@ the current M0 import profile it is obtained from the manifest binding
 `knowledge_unit:<numeric-id>` and the active `Original` projection. A future
 ChunkId adapter may store a durable `(ChunkId, KnowledgeUnitId, revision)`
 binding, but it must not infer one from numeric values or array positions.
+`IndexSpaceDescriptor` identifies the model/artifact fingerprint, dimension,
+metric or binary-code identity, and owning scope. It may be stored once in the
+generation descriptor instead of duplicated in each record, but every
+candidate must resolve unambiguously to it and to the active index generation.
 
 ### Required adapter behavior
 
-- validate model/metric/bit-width or projection descriptor at open and query;
-- apply scope and hard access filters before candidate creation and again before
-  hydration;
+- validate the model/artifact fingerprint, dimension, metric/bit-width,
+  projection descriptor, scope and active index generation at open and query;
+- preserve effective top-K semantics for scope and hard access constraints.
+  A backend may use a scope-partitioned index, a native prefilter, an exact
+  eligible-candidate constraint, or bounded overfetch with explicitly limited
+  completeness guarantees. Post-filtering an unauthorized global top-K is not
+  equivalent to an authorized top-K;
 - compare active unit and projection generations before accepting a hit;
 - reject stale/deleted candidates rather than silently returning them;
 - support delete, rebuild and reopen with the canonical store as source of
   truth;
 - expose backend work diagnostics separately from final relevance scores;
-- fall back to exact lexical/vector retrieval when the derived index is absent,
-  stale or unavailable.
+- use exact fallback only when it is bounded and applies the same scope/access
+  policy. If neither the backend nor that fallback can establish the required
+  result semantics within budget, return an explicit `Partial`/`Unavailable`
+  outcome or refuse the query; never label an incomplete list as complete.
 
 ### Conformance suite
 
@@ -201,14 +225,15 @@ One parameterized suite should run against `ExactVectorIndex`,
 `FlatBinarySignatureIndex`, each future ANN adapter, and an external derived
 index shim:
 
-1. identity/model descriptor and incompatible-query rejection;
+1. model/index-space descriptor, scope, active generation and incompatible-query rejection;
 2. scope and hard-filter isolation;
 3. active-generation acceptance;
 4. stale-generation rejection after update;
 5. delete/tombstone behavior;
 6. rebuild from canonical storage;
 7. close/reopen parity;
-8. missing-index fallback and deterministic tie ordering;
+8. authorization-equivalent bounded fallback, explicit incomplete-result
+   outcome, and deterministic tie ordering;
 9. candidate diagnostics versus final score accounting;
 10. source citation hydration with `Partial`/`Unavailable` status.
 
@@ -244,11 +269,11 @@ batching policy, coordinator integration, migrations, or production activation.
 | Evidence discipline | raw/receipt hashes, hardware/build flags, cache procedure and limitations | Normative contract exists; every new claim must publish it |
 | Release notes | explicit M0 subset, optional MDBX, non-goals and known gaps | Not yet consolidated into a technical-preview note |
 
-## 7. Documentation reconciliation and status registry
+## 7. Documentation reconciliation and authority
 
-The minimal correction is a single authoritative status registry, not another
-roadmap hierarchy. `milestones.md` remains the scope resolver; this audit and
-`retrieval-roadmap-coverage.md` describe evidence at the current baseline.
+No additional status registry is introduced. `milestones.md` remains the scope
+resolver, `retrieval-roadmap-coverage.md` remains the live implementation
+inventory, and this document is a dated evidence snapshot for one baseline.
 
 The following statements must be kept aligned in future PRs:
 
