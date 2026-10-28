@@ -82,6 +82,15 @@ Required capabilities:
 `BasicLexicalRag()` is the default factory. `BasicHybridRag(IEmbedder&)` or an
 equivalent explicit opt-in is required for dense vectors.
 
+An optional M1a compact-vector preview may add a descriptor-bound FP32-free
+scorer (for example INT8, LSQ, TQ or another validated format) without making
+FP32 mandatory or changing M0. Its release gate is separate from the research
+closure: codec quality/native parity, persisted bytes, reopen/update/crash
+behavior, stale/access admission and rollback must all be demonstrated. The
+historical THQ/R4/compact-code studies are research evidence; they do not
+select a production default by themselves. See
+[`derived-representations-and-codecs.md`](derived-representations-and-codecs.md).
+
 ### M1b - Structured Knowledge
 
 Goal: add curated knowledge objects and single-axis temporal validity without

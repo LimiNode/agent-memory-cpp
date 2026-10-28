@@ -20,6 +20,8 @@ hierarchy. The owning contracts remain:
 - [`compaction-roadmap.md`](compaction-roadmap.md) for host-scheduled derived
   materialization jobs;
 - [`milestones.md`](milestones.md) for milestone scope.
+- [`derived-representations-and-codecs.md`](derived-representations-and-codecs.md)
+  for codec-neutral aspects, retention and compact-vector readiness.
 
 ## Decision
 
@@ -89,12 +91,14 @@ required, summarized or useful to read next?"
 - a `Summarizes` navigation edge is backed by derivation lineage when it makes
   an ancestry claim.
 
-Both use one canonical Relation occurrence with `GraphEdgeId` equal to the
-Relation unit's durable global identity. Derivation edges are stored with the
-existing `RelationClass::TechnicalLineage`; source/evidence links use the
-existing `RelationClass::Evidence`; semantic links use
-`RelationClass::Semantic`; and replacement links use
-`RelationClass::Supersession`. No new class or edge enum is introduced.
+The generic derivation/publication record is authoritative and does not
+require a graph capability. A Relation occurrence is an optional materialized
+view over that record. When present, it has `GraphEdgeId` equal to the Relation
+unit's durable global identity. Derivation views use the existing
+`RelationClass::TechnicalLineage`; source/evidence links use the existing
+`RelationClass::Evidence`; semantic links use `RelationClass::Semantic`; and
+replacement links use `RelationClass::Supersession`. No new class or edge enum
+is introduced.
 
 These classes are separate traversal channels. A semantic query reads only
 the explicitly allowed semantic classes by default. Technical lineage,
@@ -157,14 +161,18 @@ input_units:  [(scope, unit_id, revision), ...]   # canonical byte order
 input_sources:[(SourceRevisionId, EvidenceAnchorId), ...]
 ```
 
-The Relation's GraphEdge points from the output unit identity to one direct
-input identity. A single `DerivationPublication` therefore owns one output
-record and one-to-many Relation occurrences, each with a stable occurrence
-identity and the same publication generation. The publication digest covers
-the ordered input list, source anchors, recipe/producer fingerprints and
-output revision. Serialization uses fixed field order, explicit integer
-endianness and length-delimited byte strings; unknown trailing fields are
-rejected for this proposal rather than silently ignored.
+The Relation's GraphEdge, when materialized, points from the output unit
+identity to one direct input identity. A single `DerivationPublication`
+therefore owns one output record and one-to-many Relation occurrences, each
+with a stable occurrence identity and the same publication generation. The
+complete ordered input list is stored once in the publication manifest;
+occurrences carry only their own input binding, occurrence digest and
+publication identity. This avoids copying an N-input list into each of N
+records. The publication digest covers the ordered input list, source anchors,
+recipe/producer fingerprints and output revision. Serialization uses fixed
+field order, explicit integer endianness and length-delimited byte strings;
+unknown trailing fields are rejected for this proposal rather than silently
+ignored.
 
 Resolution is scope-qualified and revision-qualified. A reader first resolves
 the retained unit/source revision and then its body or evidence anchor. If the
@@ -217,6 +225,24 @@ but not cross-database or cross-process coordination, lease arbitration,
 long-running orchestration or automatic retry scheduling. Those guarantees
 belong to a future publication coordinator; the coordinator stack is not
 assumed to be integrated by this document.
+
+### Generic aspects without graph materialization
+
+An aspect projection such as `example/actor` or `example/relationships` may
+publish a versioned text, structured payload or embedding-backed projection
+using the generic publication manifest alone. It need not create a semantic
+Relation or an adjacency row. If a caller later asks for evidence drill-down,
+the implementation can materialize explicitly permitted technical-lineage or
+evidence Relation views from the same manifest. The manifest remains the only
+authority, so rebuilding or deleting a view cannot change provenance.
+
+The same manifest carries a bounded `dependency_frontier_witness`: a digest of
+direct input revisions and the committed witnesses of derived inputs. A reader
+checks this witness and the current source frontier for the requested route,
+following only the declared dependency frontier. If any epoch or witness
+mismatches, the read is `Stale` even when reverse invalidation is incomplete;
+there is no full-corpus scan per query. Writers fence publication against the
+captured frontier epoch before committing a new generation.
 
 No new DBI follows from this logical shape. The first implementation must try
 the existing Relation unit plus `graph_edges_by_src`/`graph_edges_by_dst` and
@@ -307,6 +333,15 @@ it returns `Unavailable`/`Partial` without leaking the summary or upstream
 metadata. A redacted representation is a separate publication with its own
 provenance, disclosure policy and explicit admission rule, not an implicit
 fallback.
+
+The same admission fence applies to every candidate-producing path: lexical
+postings, dense/ANN indexes, metadata filters, semantic relations and future
+hybrid fusion. An index row may be staged, stale or unauthorized; its presence
+never publishes derived text. Before a hit can produce a snippet or ContextPack
+block, the reader validates the committed publication generation, frontier
+witness, representation/index version and effective authorization. Failed
+checks are dropped with an explicit diagnostic rather than repaired by
+substituting a newer unit revision.
 
 Flat retrieval remains available when a hierarchy is missing, stale or over
 budget. Hierarchical traversal cannot silently consume the flat route's
