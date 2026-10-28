@@ -104,29 +104,44 @@ the witness and read-time fence remain authoritative.
 Every retrieval path applies three distinct boundaries before returning derived
 text, snippets or ContextPack material:
 
-1. **Candidate-pool admission** resolves scope, model/aspect descriptor,
-   metric and allowed index generation before any candidate is read. Indexes
-   are scope-isolated and a pool cannot contain records from another scope or
-   an incompatible representation space.
+1. **Candidate-pool admission** first validates the host-issued
+   `RetrievalAccessContext`, resolves the exact requested and authorized
+   scopes, and applies the policy-derived candidate constraint for access,
+   lifecycle, status, jurisdiction and trust before candidate creation or
+   top-K selection. It then resolves model/aspect descriptor, metric and
+   allowed index generation. Indexes are scope-isolated and a pool cannot
+   contain records from another scope, policy domain or incompatible
+   representation space. Reuse the existing `AccessPolicy`,
+   `RetrievalAccessContext` and `ExternalCandidateConstraint` contracts; do not
+   pass raw grants or principals into an untrusted backend.
 2. **Safe scoring** runs lexical, SIMD, packed or ANN scoring only over that
    admitted pool. Scores are not evidence and diagnostics expose only bounded
    counts, descriptor identities and redacted rejection reasons. Scores from
    incompatible aspect/model spaces are never fused without an explicit
    compatible policy.
-3. **Final publication admission** validates unit revision, committed
-   publication generation, frontier witness, lifecycle and effective
-   authorization (including required upstream dependencies), plus the
-   projection/index and codec descriptor. Only then may text, locators or
-   ContextPack material be materialized.
+3. **Final publication admission** revalidates the authoritative policy and
+   publication state: unit revision, committed publication generation,
+   frontier witness, lifecycle and effective authorization (including required
+   upstream dependencies), plus the projection/index and codec descriptor.
+   Only then may text, locators or ContextPack material be materialized.
 
 Lexical, dense, ANN, metadata-filter and future hybrid indexes may contain
 staged, stale or unauthorized candidates. Their presence is not publication
-authority. A candidate that fails final admission is dropped with an explicit
-diagnostic (`Stale`, `Unavailable`, `Partial` or `Unauthorized`) and cannot
-leak through a snippet, locator or route trace. Per-byte authorization is not
-required during SIMD scoring; the scope-isolated pool and mandatory final
-admission provide the boundary. Flat original retrieval remains an independent
-fallback.
+authority. A candidate that fails pre-candidate policy admission is excluded
+before ranking; a candidate that fails final admission is dropped with an
+explicit diagnostic (`Stale`, `Unavailable`, `Partial` or `Unauthorized`) and
+cannot leak through a snippet, locator or route trace. Per-byte authorization
+is not required during SIMD scoring; the policy-derived eligible pool and
+mandatory final admission provide the boundary. An external index that cannot
+enforce the exact eligible-candidate constraint is unavailable for the
+policy-aware route. Flat original retrieval remains an independent fallback.
+
+The conformance negative case has ten nearest unrestricted records denied by
+the current policy and one allowed relevant record just outside that set.
+Candidate-pool admission must exclude the denied records before top-K, so the
+allowed record can be returned. A post-ranking filter that reports an ordinary
+miss is incorrect. The trace exposes neither denied identities, scores,
+locators nor sensitive policy claims.
 
 ## Aspect, representation and recipe identity
 
@@ -195,6 +210,27 @@ its own proof. Existing rows remain historical until retention permits reclaim:
 | tokenizer/template | stale for current search | new preprocessing descriptor |
 | vector codec/codebook | historical codec remains readable if supported | new physical encoding and index generations; logical representation is unchanged |
 | omitted text becomes required | unchanged | `RebuildUnavailable` unless exact source/recipe exists |
+
+### Lossy-codec migration prerequisites
+
+Changing a codec does not imply that an accurate input vector is still
+available. Migration chooses the following path explicitly:
+
+| Retained material | Permitted migration |
+|---|---|
+| persisted FP32 embedding | encode the new codec without invoking the embedder |
+| persisted lossless vector representation | restore the exact vector, then encode |
+| exact embedding-input text | run the same immutable model/version and encode the result |
+| exactly regenerable projection/text | prove byte-equivalent regeneration, then embed and encode |
+| lossy code only | no exact migration; only an explicitly labelled degraded/research transcode with separate quality evidence |
+
+The last path must never decode an approximate code and call it the original
+embedding. If neither an exact vector nor a reproducible embedding input is
+retained, migration fails with `RebuildUnavailable` (or an equivalent typed
+outcome). This applies equally to `RetainPlain`, `RetainCompressed`,
+`OmitRegenerable` and `Omit`: omission is an explicit trade-off against future
+re-embedding, not a promise that one lossy code can regenerate another without
+additional error.
 
 ## Codec-neutral vector contract
 

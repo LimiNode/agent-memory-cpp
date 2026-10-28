@@ -275,10 +275,13 @@ fail-closed outcome rather than treating two old digests as proof of freshness.
 The conformance fixture reopens the database after the interrupted job and
 asserts both outcomes.
 
-No new DBI follows from this logical shape. The first implementation must try
-the existing Relation unit plus `graph_edges_by_src`/`graph_edges_by_dst` and
-update the DBI manifest, budget and migration rules only if a measured access
-pattern proves an additional physical index necessary.
+No new DBI follows from this logical shape. The first implementation starts
+with the canonical manifest/provenance substrate and the existing unit and
+projection facilities; it must remain graph-free when the graph capability is
+disabled. Relation units plus `graph_edges_by_src`/`graph_edges_by_dst` may be
+added only as an optional materialized view. Update the DBI manifest, budget
+and migration rules only if a measured access pattern proves an additional
+physical index necessary.
 
 ## Multi-level example
 
