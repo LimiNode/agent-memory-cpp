@@ -2,7 +2,7 @@
 
 **Status:** `INSUFFICIENT_EVIDENCE`
 
-This Draft PR adds an executable optional pilot. It does not add a production
+This PR adds an executable optional pilot. It does not add a production
 writer, C++ model runtime, MDBX layout, migration, or required ML dependency.
 
 ## Current execution
@@ -77,7 +77,8 @@ inference output, identity/qrels/language completeness, corrupt artifact
 evidence, insufficient top-K coverage, false GO/NO-GO receipts, invalid policy
 registration, completed decision states, replay tampering and fail-closed
 receipt publication, plus 10 replay-identity, ranking-depth/order/tie,
-duplicate-copy and execution-status controls (32 total). Full model inference remains an
+duplicate-copy and execution-status controls and 4 frozen-input metadata
+controls (36 total). Full model inference remains an
 external research run.
 
 Qualified replay establishes frozen input hashes, ranked-hit/query identity,

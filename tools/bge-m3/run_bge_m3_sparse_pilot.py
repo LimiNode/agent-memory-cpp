@@ -498,6 +498,15 @@ def validate_replay_evidence(receipt: dict[str, Any], quality: dict[str, Any], l
     for field in ("corpus", "queries", "qrels"):
         if source_hashes[field] != inputs[f"{field}_sha256"]:
             raise EvidenceError(f"{field} replay input hash does not match receipt")
+    expected_metadata = {
+        "corpus_revision": source_values["corpus"].get("revision"),
+        "queries_revision": source_values["queries"].get("revision"),
+        "qrels_revision": source_values["qrels"].get("revision"),
+        "judgment_provenance": source_values["qrels"].get("judgment_provenance"),
+    }
+    for field, expected_value in expected_metadata.items():
+        if inputs[field] != expected_value:
+            raise EvidenceError(f"receipt {field} does not match frozen input metadata")
     if replay["queries"] != source_values["queries"].get("queries") \
             or replay["qrels"] != source_values["qrels"].get("qrels"):
         raise EvidenceError("replay bundle does not match frozen query/qrel inputs")
@@ -1086,6 +1095,16 @@ def self_test() -> int:
             lambda: validate_receipt({"execution_status": "UNKNOWN_FAILURE", "decision": "INSUFFICIENT_EVIDENCE"}),
             "unknown execution status",
         )
+
+        for metadata_field, forged_value in (
+            ("corpus_revision", "forged-corpus-revision"),
+            ("queries_revision", "forged-queries-revision"),
+            ("qrels_revision", "forged-qrels-revision"),
+            ("judgment_provenance", {"kind": "forged", "revision": "forged"}),
+        ):
+            forged_metadata = e2e_receipt(good_rows, 10)
+            forged_metadata["inputs"][metadata_field] = forged_value
+            reject(lambda receipt=forged_metadata: validate_receipt(receipt), f"forged {metadata_field}")
 
         forged_quality = e2e_receipt(good_rows, 10)
         forged_quality["quality"]["bge_m3_sparse"]["recall_at"]["10"] = 0.0
