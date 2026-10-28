@@ -1410,7 +1410,7 @@ enum class DerivedRecordKind : uint32_t {
 | Component / Payload | DBI имя | Open when |
 |---|---|---|
 | KnowledgeUnitEnvelope | `knowledge_units` | always |
-| KnowledgeUnit by kind | `knowledge_units_by_kind` | always (`KeyValueTable`; key = `(ScopeId, KnowledgeUnitKind)`, value = ordered serialized `UnitId[]`) |
+| KnowledgeUnit by kind | `knowledge_units_by_kind` | always (`KeyValueTable`; key = `(ScopeId, KnowledgeUnitKind, IndexSequence)`, value = one `UnitId` per append-only entry) |
 | UsageStatsComponent | `unit_components` (tag=UsageStats) | UsageStats=true |
 | SpeakerComponent | `unit_components` (tag=Speaker) | SpeakerAttribution=true |
 | TemporalComponent | `unit_components` (tag=Temporal) | TemporalValidity=true |
@@ -1437,16 +1437,44 @@ enum class DerivedRecordKind : uint32_t {
 | Full SourceRef vector | `source_refs` | `enable_full_source_refs=true` (M1) |
 | SearchProjections | `unit_projections` | indexed retrieval (always для BasicRag+) |
 
-The M0 key-value representation preserves observable insertion order and the
-ordered `UnitId[]` survives close/reopen. Native `DUPSORT`, `DUPFIXED`, and
-`INTEGERDUP` layouts are future benchmark or migration candidates only; they
-are not part of the production M0 layout.
+The M0 key-value representation preserves observable insertion order by storing
+one append-only entry per unit under a monotonic `IndexSequence`; the range
+survives close/reopen and avoids rewriting the entire index value for each
+insert. Existing serialized `UnitId[]` values are migrated lazily on the first
+write to a scope/kind. Native `DUPSORT`, `DUPFIXED`, and `INTEGERDUP` layouts
+remain future benchmark or migration candidates; they are not part of the
+production M0 layout.
+
+### By-kind index v1 to v2 upgrade policy
+
+The v2 writer records its activation in the `knowledge_units` metadata key
+`@knowledge_units_by_kind_schema_version` (`"2"`). A missing marker (or an
+explicit `"1"`) denotes a legacy-compatible environment. The v2 store can
+read a legacy group and upgrades that one scope/kind in a single writable
+transaction; the marker and all replacement entries commit together. An
+aborted transaction therefore leaves the legacy list intact. The marker is an
+environment-level admission marker, so untouched legacy groups remain readable
+until their first v2 write; they are not treated as mixed format.
+
+This is a quiesced/offline upgrade, not a rolling-upgrade contract. A v1
+binary must not write the environment after the v2 marker or append-only
+entries have been published: v1 does not understand those entries and can
+silently omit them from scans. Stop old writers before the first v2 write and
+keep them stopped until all processes use v2. The v2 admission checks reject an
+unsupported marker, v2 entries without the marker, and a legacy key coexisting
+with v2 entries in the same scope/kind group; mixed-format state is fail-closed
+rather than silently reordered or deduplicated.
 
 Operational components живут в единой `unit_components` DBI через
 `TypeDiscriminatedTable` (из `mdbx-containers-extension-tz.md`) with physical
 key `(ComponentKind, UnitId)`. The tag is part of the key, so several
 components for the same unit cannot overwrite each other. Per-kind payloads —
 отдельные таблицы для изоляции schema и быстрого scan по kind.
+
+Admission only probes the first v2 key with a bounded cursor walk; it does not
+materialize the group's range on each append. Readers open one read-only MDBX
+transaction for both the marker and the by-kind range, so format validation is
+performed against one snapshot.
 
 ### 8.2. Capability-aware DBI Creation
 

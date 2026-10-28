@@ -2,11 +2,18 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+#include <mdbx_containers/KeyValueTable.hpp>
+
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <iomanip>
+#include <limits>
+#include <locale>
 #include <stdexcept>
 #include <string>
+#include <sstream>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -127,11 +134,593 @@ namespace {
         return envelope;
     }
 
+    std::string encode_legacy_index(const std::vector<std::uint64_t>& ids) {
+        std::string payload;
+        const auto append = [&payload](std::string_view value) {
+            payload += std::to_string(value.size());
+            payload.push_back(':');
+            payload.append(value.data(), value.size());
+        };
+        append(std::to_string(ids.size()));
+        for(const auto id : ids) append(std::to_string(id));
+        return payload;
+    }
+
+    std::string legacy_index_key(
+        std::string_view scope,
+        std::string_view kind
+    ) {
+        std::string key;
+        const auto append = [&key](std::string_view value) {
+            key += std::to_string(value.size());
+            key.push_back(':');
+            key.append(value.data(), value.size());
+        };
+        append(scope);
+        append(kind);
+        return key;
+    }
+
+    std::string serialize_legacy_envelope(
+        const agent_memory::KnowledgeUnitEnvelope& envelope
+    ) {
+        std::string payload;
+        const auto append = [&payload](std::string_view value) {
+            payload += std::to_string(value.size());
+            payload.push_back(':');
+            payload.append(value.data(), value.size());
+        };
+        const auto append_uint = [&append](std::uint64_t value) {
+            append(std::to_string(value));
+        };
+        const auto append_int = [&append](std::int64_t value) {
+            append(std::to_string(value));
+        };
+        const auto append_bytes = [&append](const std::uint8_t* bytes, std::size_t size) {
+            append(std::string_view{reinterpret_cast<const char*>(bytes), size});
+        };
+        append("agent_memory.knowledge_unit.v1");
+        append_uint(envelope.id.value());
+        append(agent_memory::to_string(envelope.kind));
+        append(envelope.scope_id.value());
+        append(envelope.primary_text);
+        append(envelope.display_text);
+        append("active");
+        append_uint(envelope.sources.size());
+        for(const auto& source : envelope.sources) {
+            append(source.resource_id.value());
+            append("revision_bound");
+            append("1");
+            append(source.resource_revision->resource_id.value());
+            append_uint(source.resource_revision->generation);
+            append("sha256");
+            append_bytes(
+                source.resource_revision->body_digest.bytes.data(),
+                source.resource_revision->body_digest.bytes.size()
+            );
+            append(source.uri);
+            append_uint(source.excerpt.offset);
+            append_uint(source.excerpt.length);
+            append_bytes(source.quote_hash.data(), source.quote_hash.size());
+            std::ostringstream confidence;
+            confidence.imbue(std::locale::classic());
+            confidence << std::setprecision(std::numeric_limits<double>::max_digits10)
+                       << source.confidence;
+            append(confidence.str());
+            append("original");
+            append(source.observed_at_ms ? "1" : "0");
+            if(source.observed_at_ms) append_uint(*source.observed_at_ms);
+            append(source.preview);
+        }
+        append_int(envelope.created_at_ms);
+        append_int(envelope.updated_at_ms);
+        append_int(envelope.observed_at_ms);
+        append_uint(envelope.revision);
+        append_bytes(envelope.content_hash.bytes.data(), envelope.content_hash.bytes.size());
+        append_uint(envelope.content_hash_recipe_version);
+        std::ostringstream priority;
+        priority.imbue(std::locale::classic());
+        priority << std::setprecision(std::numeric_limits<double>::max_digits10)
+                 << envelope.priority_weight;
+        append(priority.str());
+        append_uint(envelope.supersedes.size());
+        for(const auto id : envelope.supersedes) append_uint(id.value());
+        append(envelope.superseded_by ? "1" : "0");
+        if(envelope.superseded_by) append_uint(envelope.superseded_by->value());
+        append(envelope.derived_from ? "1" : "0");
+        if(envelope.derived_from) append_uint(envelope.derived_from->value());
+        return payload;
+    }
+
+    std::string legacy_content_key(const agent_memory::KnowledgeUnitEnvelope& envelope) {
+        std::string key;
+        const auto append = [&key](std::string_view value) {
+            key += std::to_string(value.size());
+            key.push_back(':');
+            key.append(value.data(), value.size());
+        };
+        append(agent_memory::to_string(envelope.kind));
+        append(envelope.scope_id.value());
+        append(std::string_view{
+            reinterpret_cast<const char*>(envelope.content_hash.bytes.data()),
+            envelope.content_hash.bytes.size()
+        });
+        return key;
+    }
+
+void run_bounded_batch_checks() {
+     using namespace agent_memory;
+     const auto path = test_path();
+     std::error_code error;
+     std::filesystem::remove(path, error);
+
+     {
+     MdbxKnowledgeUnitStore store({path.string(), "agent_memory_batch", false});
+     bool rejected_empty = false;
+     try { (void)store.create_or_get_units({}); }
+     catch(const std::invalid_argument&) { rejected_empty = true; }
+     expect(rejected_empty, "empty knowledge-unit batch was accepted");
+     std::vector<KnowledgeUnitCreateRequest> initial;
+     initial.push_back(make_request("tenant-batch", 0x41, "batch-1"));
+     initial.push_back(make_request("tenant-batch", 0x42, "batch-2"));
+     initial.push_back(make_request("tenant-batch", 0x43, "batch-3"));
+     const auto first_batch = store.create_or_get_units(std::move(initial));
+     expect(first_batch.size() == 3, "batch must return one envelope per request");
+     expect(first_batch[0].id.value() == 1 && first_batch[1].id.value() == 2 &&
+                first_batch[2].id.value() == 3,
+            "batch allocator must assign monotonic ids");
+     expect(store.scan_by_scope_and_kind(
+                ScopeId{"tenant-batch"}, KnowledgeUnitKind::Chunk
+            ).size() == 3,
+            "batch must publish every index entry");
+
+     std::vector<KnowledgeUnitCreateRequest> deduplicated;
+     deduplicated.push_back(make_request("tenant-batch", 0x42, "ignored"));
+     deduplicated.push_back(make_request("tenant-batch", 0x44, "batch-4"));
+     const auto replay_batch = store.create_or_get_units(std::move(deduplicated));
+     expect(replay_batch.size() == 2 && replay_batch[0].id.value() == 2 &&
+                replay_batch[0].display_text == "batch-2" &&
+                replay_batch[1].id.value() == 4,
+            "batch must preserve content-key deduplication and order");
+
+     std::vector<KnowledgeUnitCreateRequest> invalid_batch;
+     invalid_batch.push_back(make_request("tenant-batch", 0x45, "must rollback"));
+     auto invalid_request = make_request("tenant-batch", 0x46, "invalid");
+     invalid_request.sources.clear();
+     invalid_batch.push_back(std::move(invalid_request));
+     bool rejected_invalid_batch = false;
+     try { (void)store.create_or_get_units(std::move(invalid_batch)); }
+     catch(const std::invalid_argument&) { rejected_invalid_batch = true; }
+     expect(rejected_invalid_batch, "invalid batch request was accepted");
+     expect(!store.find_by_content_key(KnowledgeUnitKey{
+                KnowledgeUnitKind::Chunk, ScopeId{"tenant-batch"},
+                make_request("tenant-batch", 0x45, "must rollback").content_hash.value()
+            }),
+            "failed batch left a partial content-key mapping");
+     const auto after_rollback = store.create_or_get_unit(
+         make_request("tenant-batch", 0x47, "after rollback")
+     );
+     expect(after_rollback.id.value() == 5,
+            "failed batch advanced the monotonic allocator");
+
+     std::vector<KnowledgeUnitCreateRequest> intra_batch_duplicates;
+     intra_batch_duplicates.push_back(make_request("tenant-batch", 0x48, "first"));
+     intra_batch_duplicates.push_back(make_request("tenant-batch", 0x48, "ignored"));
+     const auto intra_batch_result = store.create_or_get_units(
+         std::move(intra_batch_duplicates)
+     );
+     expect(intra_batch_result.size() == 2 &&
+                intra_batch_result[0].id == intra_batch_result[1].id &&
+                intra_batch_result[0].display_text == "first",
+            "identical content keys in one batch must deduplicate");
+     expect(store.scan_by_scope_and_kind(
+                ScopeId{"tenant-batch"}, KnowledgeUnitKind::Chunk
+            ).size() == 6,
+            "intra-batch deduplication must leave one index entry");
+
+     std::vector<KnowledgeUnitCreateRequest> bounded;
+     bounded.reserve(kMdbxKnowledgeUnitMaxBatchSize);
+     for(std::size_t index = 0; index < kMdbxKnowledgeUnitMaxBatchSize; ++index) {
+         bounded.push_back(make_request(
+             "tenant-batch-same-scope",
+             static_cast<std::uint8_t>(index),
+             "bounded-" + std::to_string(index)
+         ));
+     }
+     const auto bounded_result = store.create_or_get_units(std::move(bounded));
+     expect(bounded_result.size() == kMdbxKnowledgeUnitMaxBatchSize,
+            "maximum bounded batch size was not accepted");
+     expect(store.scan_by_scope_and_kind(
+                ScopeId{"tenant-batch-same-scope"}, KnowledgeUnitKind::Chunk
+            ).size() == kMdbxKnowledgeUnitMaxBatchSize,
+            "maximum batch must preserve one scope's by-kind order");
+     auto oversized = make_request("tenant-oversized-0", 0xa0, "oversized");
+     std::vector<KnowledgeUnitCreateRequest> oversized_batch;
+     oversized_batch.resize(kMdbxKnowledgeUnitMaxBatchSize + 1, oversized);
+     bool rejected_oversized = false;
+     try { (void)store.create_or_get_units(std::move(oversized_batch)); }
+     catch(const std::invalid_argument&) { rejected_oversized = true; }
+     expect(rejected_oversized, "oversized knowledge-unit batch was accepted");
+     }
+
+     const auto guarded_path = test_path();
+     std::filesystem::remove(guarded_path, error);
+     auto context = MdbxStorageContext::open(guarded_path.string());
+     {
+         mdbxc::KeyValueTable<std::string, std::string> tokens(
+             context->connection(), "agent_memory_resource_import_fencing_tokens"
+         );
+         tokens.insert_or_assign("resource:batch", "token-v1");
+     }
+     {
+     MdbxKnowledgeUnitStoreOptions guarded_options;
+     guarded_options.context = context;
+     guarded_options.table_prefix = "agent_memory_batch_guarded";
+     guarded_options.publication_token_guard_table_name =
+         "agent_memory_resource_import_fencing_tokens";
+     MdbxKnowledgeUnitStore guarded_store{std::move(guarded_options)};
+     std::vector<KnowledgeUnitCreateRequest> guarded_requests;
+     guarded_requests.push_back(make_request_for_source(
+         "tenant-guarded", ResourceId{"resource:batch"}, 1, 0xb1, "guarded-1"
+     ));
+     guarded_requests.push_back(make_request_for_source(
+         "tenant-guarded", ResourceId{"resource:batch"}, 2, 0xb2, "guarded-2"
+     ));
+     const auto guarded_result = guarded_store.create_or_get_units_guarded(
+         std::move(guarded_requests),
+         MdbxKnowledgeUnitPublicationGuard{
+             "agent_memory_resource_import_fencing_tokens", "resource:batch", "token-v1"
+         }
+     );
+     expect(guarded_result.size() == 2,
+            "guarded batch did not publish all envelopes");
+     {
+         mdbxc::KeyValueTable<std::string, std::string> tokens(
+             context->connection(), "agent_memory_resource_import_fencing_tokens"
+         );
+         auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+         tokens.insert_or_assign("resource:batch", "token-v2", txn);
+         txn.commit();
+     }
+     std::vector<KnowledgeUnitCreateRequest> stale_requests;
+     stale_requests.push_back(make_request_for_source(
+         "tenant-guarded", ResourceId{"resource:batch"}, 3, 0xb3, "stale-1"
+     ));
+     stale_requests.push_back(make_request_for_source(
+         "tenant-guarded", ResourceId{"resource:batch"}, 4, 0xb4, "stale-2"
+     ));
+     bool rejected_stale = false;
+     try {
+         (void)guarded_store.create_or_get_units_guarded(
+             std::move(stale_requests),
+             MdbxKnowledgeUnitPublicationGuard{
+                 "agent_memory_resource_import_fencing_tokens", "resource:batch", "token-v1"
+             }
+         );
+     } catch(const std::runtime_error& error_value) {
+         rejected_stale = std::string_view{error_value.what()}.find(
+             "knowledge-unit publication fence rejected"
+         ) != std::string_view::npos;
+     }
+     expect(rejected_stale, "guarded batch accepted a stale durable token");
+     expect(guarded_store.scan_by_scope(ScopeId{"tenant-guarded"}).size() == 2,
+            "stale guarded batch partially published envelopes");
+     std::vector<KnowledgeUnitCreateRequest> cross_resource_requests;
+     cross_resource_requests.push_back(make_request_for_source(
+         "tenant-guarded", ResourceId{"resource:batch"}, 5, 0xb5, "cross-a"
+     ));
+     cross_resource_requests.push_back(make_request_for_source(
+         "tenant-guarded", ResourceId{"resource:other"}, 1, 0xb6, "cross-b"
+     ));
+     bool rejected_cross_resource = false;
+     try {
+         (void)guarded_store.create_or_get_units_guarded(
+             std::move(cross_resource_requests),
+             MdbxKnowledgeUnitPublicationGuard{
+                 "agent_memory_resource_import_fencing_tokens", "resource:batch", "token-v2"
+             }
+         );
+     } catch(const std::invalid_argument& error_value) {
+         rejected_cross_resource = std::string_view{error_value.what()}.find(
+             "does not match the source resource"
+         ) != std::string_view::npos;
+     }
+     expect(rejected_cross_resource,
+            "guarded batch accepted a request for a different resource");
+     expect(guarded_store.scan_by_scope(ScopeId{"tenant-guarded"}).size() == 2,
+            "cross-resource guarded batch partially published envelopes");
+     }
+     context.reset();
+     expect(std::filesystem::remove(guarded_path, error) ||
+                !std::filesystem::exists(guarded_path),
+            "guarded batch test database could not be removed");
+     std::filesystem::remove(path, error);
+ }
+
 } // namespace
 
 int main() {
+     run_bounded_batch_checks();
+    {
+        const auto legacy_path = test_path();
+        std::error_code legacy_error;
+        std::filesystem::remove(legacy_path, legacy_error);
+        const auto legacy_first = make_envelope(
+            "legacy-scope", 0x51, 10, "legacy first"
+        );
+        const auto legacy_second = make_envelope(
+            "legacy-scope", 0x52, 100, "legacy second"
+        );
+        {
+            auto context = agent_memory::MdbxStorageContext::open(
+                legacy_path.string(), false, agent_memory::kDefaultMdbxMaxDbs
+            );
+            mdbxc::KeyValueTable<std::string, std::string> legacy_units(
+                context->connection(), "agent_memory_legacy_knowledge_units"
+            );
+            mdbxc::KeyValueTable<std::string, std::string> legacy_content_keys(
+                context->connection(), "agent_memory_legacy_content_key_to_unit_id"
+            );
+            mdbxc::KeyValueTable<std::string, std::string> legacy_index(
+                context->connection(), "agent_memory_legacy_knowledge_units_by_kind"
+            );
+            legacy_units.insert_or_assign(
+                std::to_string(legacy_first.id.value()),
+                serialize_legacy_envelope(legacy_first)
+            );
+            legacy_units.insert_or_assign(
+                std::to_string(legacy_second.id.value()),
+                serialize_legacy_envelope(legacy_second)
+            );
+            legacy_units.insert_or_assign("@next_id", "101");
+            legacy_content_keys.insert_or_assign(
+                legacy_content_key(legacy_first), std::to_string(legacy_first.id.value())
+            );
+            legacy_content_keys.insert_or_assign(
+                legacy_content_key(legacy_second), std::to_string(legacy_second.id.value())
+            );
+            legacy_index.insert_or_assign(
+                legacy_index_key("legacy-scope", "chunk"),
+                encode_legacy_index({10, 100})
+            );
+        }
+        {
+        agent_memory::MdbxKnowledgeUnitStore migrated({
+            legacy_path.string(), "agent_memory_legacy", false
+        });
+        expect(migrated.scan_by_scope_and_kind(
+                   agent_memory::ScopeId{"legacy-scope"},
+                   agent_memory::KnowledgeUnitKind::Chunk
+               ) == std::vector<agent_memory::KnowledgeUnitId>{
+                   agent_memory::KnowledgeUnitId{10},
+                   agent_memory::KnowledgeUnitId{100}
+               }, "legacy serialized index must remain readable");
+        const auto restored_first = migrated.find(legacy_first.id);
+        expect(restored_first && restored_first->primary_text == legacy_first.primary_text,
+               "legacy envelope must deserialize from the real fixture");
+        const auto restored_key = migrated.find_by_content_key({
+            legacy_first.kind, legacy_first.scope_id, legacy_first.content_hash
+        });
+        expect(restored_key && *restored_key == legacy_first.id,
+               "legacy content-key mapping must survive upgrade");
+        const auto duplicate = migrated.create_or_get_unit(
+            make_request("legacy-scope", 0x51, "duplicate legacy")
+        );
+        expect(duplicate.id == legacy_first.id,
+               "legacy content-key deduplication must return the original id");
+        expect(migrated.scan_by_scope_and_kind(
+                   agent_memory::ScopeId{"legacy-scope"},
+                   agent_memory::KnowledgeUnitKind::Chunk
+               ) == std::vector<agent_memory::KnowledgeUnitId>{
+                   agent_memory::KnowledgeUnitId{10},
+                   agent_memory::KnowledgeUnitId{100}
+               }, "legacy deduplication must not append a duplicate index entry");
+        const auto migrated_unit = migrated.create_or_get_unit(
+            make_request("legacy-scope", 0x53, "migrated")
+        );
+        expect(migrated_unit.id.value() == 101,
+               "legacy allocator frontier must be preserved during migration");
+        expect(migrated.scan_by_scope_and_kind(
+                   agent_memory::ScopeId{"legacy-scope"},
+                   agent_memory::KnowledgeUnitKind::Chunk
+               ) == std::vector<agent_memory::KnowledgeUnitId>{
+                   agent_memory::KnowledgeUnitId{10},
+                   agent_memory::KnowledgeUnitId{100},
+                   agent_memory::KnowledgeUnitId{101}
+               }, "legacy index must migrate before appending new entries");
+        expect(migrated.erase(migrated_unit.id),
+               "migrated index entry must be erasable");
+        expect(migrated.scan_by_scope_and_kind(
+                   agent_memory::ScopeId{"legacy-scope"},
+                   agent_memory::KnowledgeUnitKind::Chunk
+               ) == std::vector<agent_memory::KnowledgeUnitId>{
+                   agent_memory::KnowledgeUnitId{10},
+                   agent_memory::KnowledgeUnitId{100}
+               }, "migrated index erase must preserve remaining order");
+        }
+        {
+            auto context = agent_memory::MdbxStorageContext::open(
+                legacy_path.string(), false, agent_memory::kDefaultMdbxMaxDbs
+            );
+            mdbxc::KeyValueTable<std::string, std::string> untouched_index(
+                context->connection(), "agent_memory_legacy_knowledge_units_by_kind"
+            );
+            untouched_index.insert_or_assign(
+                legacy_index_key("untouched-scope", "chunk"),
+                encode_legacy_index({10})
+            );
+        }
+        {
+            agent_memory::MdbxKnowledgeUnitStore v2_reader({
+                legacy_path.string(), "agent_memory_legacy", false
+            });
+            expect(v2_reader.scan_by_scope_and_kind(
+                       agent_memory::ScopeId{"untouched-scope"},
+                       agent_memory::KnowledgeUnitKind::Chunk
+                   ) == std::vector<agent_memory::KnowledgeUnitId>{
+                       agent_memory::KnowledgeUnitId{10}
+                   }, "untouched legacy group must remain readable after v2 activation");
+        }
+        const auto rollback_path = test_path();
+        {
+            auto context = agent_memory::MdbxStorageContext::open(
+                rollback_path.string(), false, agent_memory::kDefaultMdbxMaxDbs
+            );
+            mdbxc::KeyValueTable<std::string, std::string> units(
+                context->connection(), "agent_memory_rollback_knowledge_units"
+            );
+            mdbxc::KeyValueTable<std::string, std::string> index(
+                context->connection(), "agent_memory_rollback_knowledge_units_by_kind"
+            );
+            index.insert_or_assign(
+                legacy_index_key("rollback-scope", "chunk"),
+                encode_legacy_index({10})
+            );
+            auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            index.erase(legacy_index_key("rollback-scope", "chunk"), txn);
+            index.insert_or_assign(
+                legacy_index_key("rollback-scope", "chunk") + std::string(8, '\0'),
+                "10",
+                txn
+            );
+            units.insert_or_assign("@knowledge_units_by_kind_schema_version", "2", txn);
+        }
+        {
+            agent_memory::MdbxKnowledgeUnitStore rollback_check({
+                rollback_path.string(), "agent_memory_rollback", false
+            });
+            expect(rollback_check.scan_by_scope_and_kind(
+                       agent_memory::ScopeId{"rollback-scope"},
+                       agent_memory::KnowledgeUnitKind::Chunk
+                   ) == std::vector<agent_memory::KnowledgeUnitId>{
+                       agent_memory::KnowledgeUnitId{10}
+                   }, "aborted index migration must leave the legacy index intact");
+        }
+        std::filesystem::remove(rollback_path, legacy_error);
+        {
+            auto context = agent_memory::MdbxStorageContext::open(
+                legacy_path.string(), false, agent_memory::kDefaultMdbxMaxDbs
+            );
+            mdbxc::KeyValueTable<std::string, std::string> mixed_index(
+                context->connection(), "agent_memory_legacy_knowledge_units_by_kind"
+            );
+            mixed_index.insert_or_assign(
+                legacy_index_key("legacy-scope", "chunk"),
+                encode_legacy_index({10})
+            );
+        }
+        {
+            agent_memory::MdbxKnowledgeUnitStore mixed_check({
+                legacy_path.string(), "agent_memory_legacy", false
+            });
+            bool rejected_mixed_format = false;
+            try {
+                (void)mixed_check.scan_by_scope_and_kind(
+                    agent_memory::ScopeId{"legacy-scope"},
+                    agent_memory::KnowledgeUnitKind::Chunk
+                );
+            } catch(const std::runtime_error&) {
+                rejected_mixed_format = true;
+            }
+            expect(rejected_mixed_format,
+                   "v2 marker with a legacy key must fail closed");
+        }
+        {
+            auto context = agent_memory::MdbxStorageContext::open(
+                legacy_path.string(), false, agent_memory::kDefaultMdbxMaxDbs
+            );
+            mdbxc::KeyValueTable<std::string, std::string> mixed_index(
+                context->connection(), "agent_memory_legacy_knowledge_units_by_kind"
+            );
+            mixed_index.erase(legacy_index_key("legacy-scope", "chunk"));
+        }
+        std::filesystem::remove(legacy_path, legacy_error);
+    }
+
     const auto path = test_path();
     std::error_code error;
+    {
+        const auto snapshot_path = test_path();
+        std::error_code snapshot_error;
+        std::filesystem::remove(snapshot_path, snapshot_error);
+        {
+            auto context = agent_memory::MdbxStorageContext::open(
+                snapshot_path.string(), false, agent_memory::kDefaultMdbxMaxDbs
+            );
+            mdbxc::KeyValueTable<std::string, std::string> units(
+                context->connection(), "agent_memory_snapshot_knowledge_units"
+            );
+            mdbxc::KeyValueTable<std::string, std::string> index(
+                context->connection(), "agent_memory_snapshot_knowledge_units_by_kind"
+            );
+            units.insert_or_assign("@knowledge_units_by_kind_schema_version", "1");
+            index.insert_or_assign(
+                legacy_index_key("snapshot-scope", "chunk"),
+                encode_legacy_index({10})
+            );
+        }
+        {
+        auto reader_context = agent_memory::MdbxStorageContext::open(
+            snapshot_path.string(), false, agent_memory::kDefaultMdbxMaxDbs
+        );
+        mdbxc::KeyValueTable<std::string, std::string> reader_units(
+            reader_context->connection(), "agent_memory_snapshot_knowledge_units"
+        );
+        mdbxc::KeyValueTable<std::string, std::string> reader_index(
+            reader_context->connection(), "agent_memory_snapshot_knowledge_units_by_kind"
+        );
+        const auto reader_txn = reader_context->connection()->transaction(
+            mdbxc::TransactionMode::READ_ONLY
+        );
+        const auto marker_before = reader_units.find(
+            "@knowledge_units_by_kind_schema_version", reader_txn
+        );
+        {
+            std::thread writer([&reader_context] {
+                mdbxc::KeyValueTable<std::string, std::string> writer_units(
+                    reader_context->connection(), "agent_memory_snapshot_knowledge_units"
+                );
+                mdbxc::KeyValueTable<std::string, std::string> writer_index(
+                    reader_context->connection(),
+                    "agent_memory_snapshot_knowledge_units_by_kind"
+                );
+                auto writer_txn = reader_context->connection()->transaction(
+                    mdbxc::TransactionMode::WRITABLE
+                );
+                writer_index.erase(
+                    legacy_index_key("snapshot-scope", "chunk"), writer_txn
+                );
+                writer_index.insert_or_assign(
+                    legacy_index_key("snapshot-scope", "chunk") + std::string(8, '\0'),
+                    "10",
+                    writer_txn
+                );
+                writer_units.insert_or_assign(
+                    "@knowledge_units_by_kind_schema_version", "2", writer_txn
+                );
+                writer_txn.commit();
+            });
+            writer.join();
+        }
+        const auto marker_after = reader_units.find(
+            "@knowledge_units_by_kind_schema_version", reader_txn
+        );
+        const auto snapshot_entries = reader_index.range<std::vector>(
+            legacy_index_key("snapshot-scope", "chunk"),
+            legacy_index_key("snapshot-scope", "chunk") + std::string(8, '\xff'),
+            reader_txn
+        );
+        expect(marker_before && marker_after && *marker_before == "1" &&
+                   *marker_after == "1",
+               "read-only snapshot must keep the schema marker stable");
+        expect(snapshot_entries.size() == 1 && snapshot_entries.front().first ==
+                   legacy_index_key("snapshot-scope", "chunk"),
+               "read-only snapshot must keep the legacy index view stable");
+        reader_context.reset();
+        }
+        std::filesystem::remove(snapshot_path, snapshot_error);
+    }
+
     std::filesystem::remove(path, error);
 
     agent_memory::KnowledgeUnitId first_id;

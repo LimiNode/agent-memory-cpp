@@ -1,4 +1,6 @@
 #include "MdbxResourceImporter.hpp"
+#include "MdbxKnowledgeUnitStore.hpp"
+#include <agent_memory/retrieval/OriginalProjection.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 
@@ -13,14 +15,25 @@
 #include <mutex>
 #include <random>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace agent_memory {
 namespace {
 
 constexpr std::string_view kIntentVersionV3 =
     "agent_memory.resource_import_intent.v3";
+constexpr std::string_view kIntentVersionV4 =
+    "agent_memory.resource_import_intent.v4";
+constexpr std::string_view kFencingSchemaVersion =
+    "agent_memory.resource_import_fencing.v1";
+constexpr std::string_view kFencingSchemaKey = "schema";
+constexpr std::string_view kFencingTokenTableSuffix = "resource_import_fencing_tokens";
 constexpr char kSeparator = '\x1f';
+constexpr std::size_t kMaxRawChunkPreviewBytes = 256;
+
+std::string fencing_token(std::string_view serialized_intent);
 
 void append_size(std::string& out, std::size_t value) {
     out += std::to_string(value);
@@ -185,6 +198,8 @@ private:
 
 struct PendingImport final {
     ObservedResource resource;
+    ResourceImportPublicationProfile publication_profile =
+        ResourceImportPublicationProfile::LexicalOnly;
     std::string owner_id;
     std::uint64_t fencing_epoch = 0;
     std::uint64_t lease_expires_at_ms = 0;
@@ -193,6 +208,7 @@ struct PendingImport final {
 struct ClaimedImport final {
     PendingImport operation;
     std::string payload;
+    std::string token;
     bool created = false;
 };
 
@@ -248,14 +264,128 @@ std::uint64_t parse_decimal_u64(std::string_view text, std::string_view field) {
     return value;
 }
 
-std::string table_name(std::string prefix, std::string_view suffix) {
+std::string sanitize_table_prefix(std::string prefix) {
     if(prefix.empty()) prefix = "agent_memory";
     for(auto& c : prefix) {
         if(!std::isalnum(static_cast<unsigned char>(c))) c = '_';
     }
+    return prefix;
+}
+
+std::string table_name(std::string prefix, std::string_view suffix) {
+    prefix = sanitize_table_prefix(std::move(prefix));
     prefix.push_back('_');
     prefix.append(suffix.data(), suffix.size());
     return prefix;
+}
+
+void preflight_fencing_schema(
+    const std::shared_ptr<MdbxStorageContext>& context,
+    std::string_view table_prefix
+) {
+    mdbxc::KeyValueTable<std::string, std::string> marker(
+        context->connection(),
+        table_name(std::string{table_prefix}, "resource_import_fencing_schema")
+    );
+    mdbxc::KeyValueTable<std::string, std::string> intents(
+        context->connection(),
+        table_name(std::string{table_prefix}, "resource_import_intents")
+    );
+    mdbxc::KeyValueTable<std::string, std::string> tokens(
+        context->connection(),
+        table_name(std::string{table_prefix}, kFencingTokenTableSuffix)
+    );
+    const auto validate_snapshot = [&](const mdbxc::Transaction& txn,
+                                       bool allow_missing_marker) {
+        const auto stored_marker = marker.find(std::string{kFencingSchemaKey}, txn);
+        std::vector<std::pair<std::string, std::string>> existing_intents;
+        std::vector<std::pair<std::string, std::string>> existing_tokens;
+        intents.load(existing_intents, txn);
+        tokens.load(existing_tokens, txn);
+        if(!stored_marker) {
+            if(!allow_missing_marker || !existing_intents.empty() ||
+               !existing_tokens.empty()) {
+                throw std::runtime_error(
+                    "resource import fencing schema requires a quiesced offline upgrade"
+                );
+            }
+            return false;
+        }
+        if(*stored_marker != kFencingSchemaVersion) {
+            throw std::runtime_error("unsupported resource import fencing schema marker");
+        }
+        for(const auto& item : existing_intents) {
+            const auto token = tokens.find(item.first, txn);
+            if(!token || *token != fencing_token(item.second)) {
+                throw std::runtime_error(
+                    "resource import fencing token is missing or does not match intent"
+                );
+            }
+        }
+        std::unordered_set<std::string> intent_keys;
+        intent_keys.reserve(existing_intents.size());
+        for(const auto& intent : existing_intents) {
+            intent_keys.insert(intent.first);
+        }
+        for(const auto& item : existing_tokens) {
+            if(intent_keys.find(item.first) == intent_keys.end()) {
+                throw std::runtime_error("resource import fencing token is orphaned");
+            }
+        }
+        return true;
+    };
+
+    auto read_txn = context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+    const auto initialized = validate_snapshot(read_txn, true);
+    read_txn.rollback();
+    if(initialized) return;
+
+    // A writable recheck closes the first-open TOCTOU window: only one
+    // concurrent opener can install the marker, and it must still observe an
+    // empty intent/token set.
+    auto init_txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    const auto stored_marker = marker.find(std::string{kFencingSchemaKey}, init_txn);
+    if(stored_marker) {
+        static_cast<void>(validate_snapshot(init_txn, false));
+        init_txn.commit();
+        return;
+    }
+    std::vector<std::pair<std::string, std::string>> existing_intents;
+    std::vector<std::pair<std::string, std::string>> existing_tokens;
+    intents.load(existing_intents, init_txn);
+    tokens.load(existing_tokens, init_txn);
+    if(!existing_intents.empty() || !existing_tokens.empty()) {
+        init_txn.rollback();
+        throw std::runtime_error(
+            "resource import fencing schema requires a quiesced offline upgrade"
+        );
+    }
+    marker.insert_or_assign(
+        std::string{kFencingSchemaKey},
+        std::string{kFencingSchemaVersion}, init_txn
+    );
+    init_txn.commit();
+}
+
+std::string publication_schema_id(
+    ResourceImportPublicationProfile profile,
+    std::string_view table_prefix
+) {
+    if(profile == ResourceImportPublicationProfile::LexicalOnly) {
+        return "agent_memory.m0_resource_importer";
+    }
+    if(profile == ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections) {
+        return "agent_memory.m0_resource_importer.raw_chunks_original@" +
+            sanitize_table_prefix(std::string{table_prefix});
+    }
+    return "agent_memory.m0_resource_importer.raw_chunks@" +
+        sanitize_table_prefix(std::string{table_prefix});
+}
+
+bool is_valid_publication_profile(ResourceImportPublicationProfile profile) {
+    return profile == ResourceImportPublicationProfile::LexicalOnly ||
+        profile == ResourceImportPublicationProfile::LexicalWithRawChunks ||
+        profile == ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
 }
 
 void validate_resource(const ObservedResource& resource) {
@@ -328,7 +458,15 @@ void validate_resource(const ObservedResource& resource) {
 std::string serialize_intent(const PendingImport& pending) {
     const auto& resource = pending.resource;
     std::string payload;
-    append_string(payload, kIntentVersionV3);
+    append_string(payload, kIntentVersionV4);
+    append_string(
+        payload,
+        pending.publication_profile == ResourceImportPublicationProfile::LexicalOnly
+            ? "lexical_only"
+            : pending.publication_profile == ResourceImportPublicationProfile::LexicalWithRawChunks
+                ? "lexical_with_raw_chunks"
+                : "lexical_with_raw_and_original_projections"
+    );
     append_string(payload, pending.owner_id);
     append_string(payload, std::to_string(pending.fencing_epoch));
     append_string(payload, std::to_string(pending.lease_expires_at_ms));
@@ -353,13 +491,39 @@ std::string serialize_intent(const PendingImport& pending) {
     return payload;
 }
 
+std::string fencing_token(std::string_view serialized_intent) {
+    Sha256 sha;
+    static constexpr std::string_view domain = "agent-memory-fencing-token-v1\\0";
+    sha.update(domain);
+    sha.update(serialized_intent);
+    const auto digest = sha.digest();
+    return std::string{
+        reinterpret_cast<const char*>(digest.data()),
+        digest.size()
+    };
+}
+
 PendingImport deserialize_intent(std::string_view payload) {
     Reader reader{payload};
     const auto version = reader.string();
-    if(version != kIntentVersionV3) {
+    if(version != kIntentVersionV3 && version != kIntentVersionV4) {
         throw std::runtime_error("unsupported resource import intent version");
     }
     PendingImport pending;
+    if(version == kIntentVersionV4) {
+        const auto profile = reader.string();
+        if(profile == "lexical_only") {
+            pending.publication_profile = ResourceImportPublicationProfile::LexicalOnly;
+        } else if(profile == "lexical_with_raw_chunks") {
+            pending.publication_profile =
+                ResourceImportPublicationProfile::LexicalWithRawChunks;
+        } else if(profile == "lexical_with_raw_and_original_projections") {
+            pending.publication_profile =
+                ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
+        } else {
+            throw std::runtime_error("resource import intent has an invalid publication profile");
+        }
+    }
     pending.owner_id = reader.string();
     pending.fencing_epoch = reader.u64();
     pending.lease_expires_at_ms = reader.u64();
@@ -425,6 +589,43 @@ ResourceBodyDigest body_digest(std::string_view body) {
     return digest;
 }
 
+std::size_t utf8_code_point_width(std::string_view text, std::size_t offset) {
+    const auto lead = static_cast<unsigned char>(text[offset]);
+    if(lead <= 0x7fU) return 1;
+    if(lead <= 0xdfU) return 2;
+    if(lead <= 0xefU) return 3;
+    return 4;
+}
+
+std::size_t bounded_utf8_prefix(std::string_view text, std::size_t maximum) {
+    std::size_t length = 0;
+    while(length < text.size()) {
+        const auto width = utf8_code_point_width(text, length);
+        if(length + width > maximum) break;
+        length += width;
+    }
+    return length;
+}
+
+std::vector<TextRange> split_utf8_ranges(
+    std::string_view text,
+    std::size_t maximum
+) {
+    std::vector<TextRange> ranges;
+    for(std::size_t offset = 0; offset < text.size();) {
+        const auto length = bounded_utf8_prefix(text.substr(offset), maximum);
+        if(length == 0) {
+            throw std::runtime_error("UTF-8 chunk limit is too small for a code point");
+        }
+        ranges.push_back(TextRange{
+            static_cast<std::uint64_t>(offset),
+            static_cast<std::uint64_t>(length)
+        });
+        offset += length;
+    }
+    return ranges;
+}
+
 std::uint64_t content_hint(std::string_view body) {
     std::uint64_t value = 1469598103934665603ULL;
     for(const auto byte : body) {
@@ -437,7 +638,10 @@ std::uint64_t content_hint(std::string_view body) {
 ResourceManifest make_manifest(
     const ObservedResource& resource,
     std::uint64_t generation,
-    const ResourceBodyDigest& digest
+    const ResourceBodyDigest& digest,
+    const std::vector<KnowledgeUnitId>& raw_units,
+    ResourceImportPublicationProfile profile,
+    std::string_view table_prefix
 ) {
     const auto document = document_id(resource);
     const auto chunk = chunk_id(resource);
@@ -455,8 +659,25 @@ ResourceManifest make_manifest(
         DerivedRecordRef{DerivedRecordKind::Document, ChunkId{}, document.value(), 0},
         DerivedRecordRef{DerivedRecordKind::Chunk, chunk, std::string{}, 0}
     };
+    for(std::size_t index = 0; index < raw_units.size(); ++index) {
+        manifest.records.push_back(DerivedRecordRef{
+            DerivedRecordKind::Custom,
+            ChunkId{},
+            "knowledge_unit:" + std::to_string(raw_units[index].value()),
+            static_cast<std::uint32_t>(index)
+        });
+        if(profile == ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections) {
+            manifest.records.push_back(DerivedRecordRef{
+                DerivedRecordKind::Custom,
+                ChunkId{},
+                "original_projection:" + std::to_string(raw_units[index].value()),
+                static_cast<std::uint32_t>(index)
+            });
+        }
+    }
     manifest.schema = ResourceManifestSchema{
-        "agent_memory.m0_resource_importer", 1
+        publication_schema_id(profile, table_prefix),
+        1
     };
     return manifest;
 }
@@ -493,6 +714,16 @@ bool same_import_request(
         );
 }
 
+bool manifest_has_raw_bindings(const ResourceManifest& manifest) {
+    for(const auto& record : manifest.records) {
+        if(record.kind == DerivedRecordKind::Custom &&
+           record.key.rfind("knowledge_unit:", 0) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 class MdbxResourceImporter::Impl final {
@@ -504,6 +735,7 @@ public:
                                           options.relative_to_exe,
                                           options.max_dbs))
         , m_lexical([&] {
+            preflight_fencing_schema(m_context, options.table_prefix);
             MdbxDurableLexicalDocumentMemoryOptions lexical_options;
             lexical_options.table_prefix = options.table_prefix;
             lexical_options.context = m_context;
@@ -516,17 +748,64 @@ public:
             manifest_options.max_dbs = options.max_dbs;
             manifest_options.publication_guard_table_name =
                 table_name(options.table_prefix, "resource_import_intents");
+            manifest_options.publication_token_guard_table_name =
+                table_name(options.table_prefix, "resource_import_fencing_tokens");
             return manifest_options;
         }())
         , m_intent_table_name(table_name(options.table_prefix, "resource_import_intents"))
+        , m_token_table_name(
+              table_name(options.table_prefix, "resource_import_fencing_tokens")
+          )
         , m_intents(m_context->connection(), m_intent_table_name)
+        , m_tokens(
+              m_context->connection(),
+              table_name(options.table_prefix, "resource_import_fencing_tokens")
+          )
         , m_bindings(m_context->connection(), table_name(options.table_prefix, "resource_import_bindings"))
         , m_epochs(m_context->connection(), table_name(options.table_prefix, "resource_import_epochs"))
         , m_lease_ms(options.ownership_lease_ms)
+        , m_publication_profile(options.publication_profile)
+        , m_table_prefix(sanitize_table_prefix(options.table_prefix))
+        , m_max_raw_body_bytes(options.max_raw_body_bytes)
+        , m_max_raw_chunks(options.max_raw_chunks)
+        , m_raw_chunk_batch_size(options.raw_chunk_batch_size)
         , m_clock(options.clock_ms ? std::move(options.clock_ms) : system_clock_ms)
-        , m_fault_injector(std::move(options.fault_injector)) {
+        , m_fault_injector(std::move(options.fault_injector))
+        , m_diagnostics(std::move(options.diagnostics)) {
+        if(!is_valid_publication_profile(m_publication_profile)) {
+            throw std::invalid_argument("resource importer has an unknown publication profile");
+        }
         if(m_lease_ms == 0) {
             throw std::invalid_argument("resource importer ownership lease must be positive");
+        }
+        if(m_publication_profile != ResourceImportPublicationProfile::LexicalOnly) {
+            if(m_max_raw_body_bytes == 0 || m_max_raw_chunks == 0 ||
+               m_max_raw_chunks > (std::numeric_limits<std::uint32_t>::max)() ||
+               m_raw_chunk_batch_size == 0 ||
+               m_raw_chunk_batch_size > kMdbxKnowledgeUnitMaxBatchSize) {
+                throw std::invalid_argument(
+                    "raw publication admission and batch limits are invalid"
+                );
+            }
+            MdbxKnowledgeUnitStoreOptions store_options;
+            store_options.table_prefix = options.table_prefix;
+            store_options.max_dbs = options.max_dbs;
+            store_options.context = m_context;
+            store_options.publication_token_guard_table_name =
+                table_name(options.table_prefix, "resource_import_fencing_tokens");
+            m_knowledge_unit_store = std::make_shared<MdbxKnowledgeUnitStore>(
+                std::move(store_options)
+            );
+            if(m_publication_profile ==
+               ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections) {
+                MdbxProjectionStoreOptions projection_options;
+                projection_options.table_prefix = options.table_prefix;
+                projection_options.max_dbs = options.max_dbs;
+                projection_options.context = m_context;
+                m_projection_store = std::make_shared<MdbxProjectionStore>(
+                    std::move(projection_options)
+                );
+            }
         }
         m_owner_id = make_owner_id();
         recover_pending();
@@ -534,9 +813,14 @@ public:
 
     ResourceImportResult import(ObservedResource resource) {
         validate_resource(resource);
+        validate_admission(resource);
         std::lock_guard<std::mutex> lock(m_mutex);
-        ensure_manifest_compatibility(resource);
+        ensure_manifest_compatibility(resource, m_publication_profile);
         auto claim = claim_import(resource);
+        ensure_profile_compatibility(
+            claim.operation.publication_profile,
+            m_publication_profile
+        );
         if(!same_import_request(claim.operation.resource, resource)) {
             if(claim.operation.owner_id == m_owner_id ||
                claim.operation.lease_expires_at_ms > now_ms()) {
@@ -550,7 +834,8 @@ public:
             static_cast<void>(complete(
                 recovered.operation,
                 false,
-                recovered.payload
+                recovered.payload,
+                recovered.token
             ));
             claim = claim_import(resource);
             if(!same_import_request(claim.operation.resource, resource)) {
@@ -568,12 +853,12 @@ public:
                 claim.payload,
                 std::move(claim.operation)
             );
-            return complete(claim.operation, true, claim.payload);
+            return complete(claim.operation, true, claim.payload, claim.token);
         }
         if(claim.created) {
             inject(ResourceImporterFaultPoint::AfterIntent);
         }
-        return complete(claim.operation, true, claim.payload);
+        return complete(claim.operation, true, claim.payload, claim.token);
     }
 
     std::optional<ResourceManifest> find_manifest(const ResourceId& id) const {
@@ -622,14 +907,54 @@ private:
         if(m_fault_injector) m_fault_injector(point);
     }
 
+    void validate_admission(const ObservedResource& resource) const {
+        if(m_publication_profile == ResourceImportPublicationProfile::LexicalOnly) {
+            return;
+        }
+        if(resource.utf8_body.size() > m_max_raw_body_bytes) {
+            throw std::invalid_argument("resource body exceeds the raw publication byte limit");
+        }
+        const auto ranges = split_utf8_ranges(
+            resource.utf8_body,
+            kMdbxResourceImporterRawChunkBytes
+        );
+        if(ranges.size() > m_max_raw_chunks) {
+            throw std::invalid_argument("resource exceeds the raw publication chunk limit");
+        }
+    }
+
+    static void ensure_profile_compatibility(
+        ResourceImportPublicationProfile required,
+        ResourceImportPublicationProfile configured
+    ) {
+        if(required != configured) {
+            throw std::runtime_error(
+                "resource import publication profile mismatch; explicit migration is required"
+            );
+        }
+    }
+
     ResourceImportResult complete(
         const PendingImport& pending,
         bool inject_faults,
-        const std::string& expected_payload
+        const std::string& expected_payload,
+        const std::string& expected_token
     ) {
-        const auto expected_manifest = ensure_manifest_compatibility(pending.resource);
-        assert_ownership(pending.resource.resource_id.value(), expected_payload);
+        ensure_profile_compatibility(
+            pending.publication_profile,
+            m_publication_profile
+        );
+        // Admission is part of the execution contract, not merely an
+        // admission-time hint. A recovery executor with tighter limits must
+        // fail closed before rewriting lexical data or creating raw units.
+        validate_admission(pending.resource);
+        const auto expected_manifest = ensure_manifest_compatibility(
+            pending.resource,
+            pending.publication_profile
+        );
+        assert_ownership(pending.resource.resource_id.value(), expected_token);
         if(inject_faults) inject(ResourceImporterFaultPoint::BeforeLexicalPublication);
+        const auto lexical_started = std::chrono::steady_clock::now();
         const auto generation = m_lexical.upsert_text_guarded(
             pending.resource.scope_id,
             pending.resource.resource_id,
@@ -638,31 +963,161 @@ private:
             DurableLexicalPublicationGuard{
                 m_intent_table_name,
                 pending.resource.resource_id.value(),
-                expected_payload
+                expected_payload,
+                m_token_table_name,
+                expected_token
             }
+        );
+        record_duration(
+            m_diagnostics ? &m_diagnostics->lexical_ns : nullptr,
+            lexical_started
         );
         if(inject_faults) inject(ResourceImporterFaultPoint::AfterLexicalPublication);
         if(inject_faults) inject(ResourceImporterFaultPoint::BeforeManifestPublication);
         const auto digest = body_digest(pending.resource.utf8_body);
-        const auto manifest = make_manifest(pending.resource, generation, digest);
-        ensure_manifest_compatibility(pending.resource, manifest.revision, digest);
-        assert_ownership(pending.resource.resource_id.value(), expected_payload);
+        std::vector<KnowledgeUnitId> raw_units;
+        if(m_knowledge_unit_store) {
+            const auto ranges = split_utf8_ranges(
+                pending.resource.utf8_body,
+                kMdbxResourceImporterRawChunkBytes
+            );
+            raw_units.reserve(ranges.size());
+            for(std::size_t batch_begin = 0; batch_begin < ranges.size();
+                batch_begin += m_raw_chunk_batch_size) {
+                const auto batch_end = std::min(
+                    ranges.size(), batch_begin + m_raw_chunk_batch_size
+                );
+                // Fencing is checked before and after every durable batch.
+                // A lease takeover may leave an idempotent staging batch, but
+                // the stale executor must never continue toward publication.
+                assert_ownership(
+                    pending.resource.resource_id.value(),
+                    expected_token
+                );
+                std::vector<KnowledgeUnitCreateRequest> requests;
+                requests.reserve(batch_end - batch_begin);
+                for(std::size_t index = batch_begin; index < batch_end; ++index) {
+                    const auto range = ranges[index];
+                    const auto chunk = pending.resource.utf8_body.substr(
+                        static_cast<std::size_t>(range.offset),
+                        static_cast<std::size_t>(range.length)
+                    );
+                    const auto preview_length = bounded_utf8_prefix(
+                        chunk,
+                        kMaxRawChunkPreviewBytes
+                    );
+                    if(preview_length == 0) {
+                        throw std::runtime_error("raw Chunk preview is empty");
+                    }
+                    SourceRefSummary source;
+                    source.resource_id = pending.resource.resource_id;
+                    source.reference_mode = SourceReferenceMode::RevisionBoundQuote;
+                    source.resource_revision = ResourceRevisionRef{
+                        pending.resource.resource_id,
+                        generation,
+                        digest
+                    };
+                    source.uri = pending.resource.source_uri;
+                    source.excerpt = range;
+                    source.preview.assign(chunk.data(), preview_length);
+                    source.quote_hash = compute_quote_hash(source.preview);
+                    source.confidence = 1.0;
+                    source.text_origin = pending.resource.text_origin;
+
+                    KnowledgeUnitCreateRequest request;
+                    request.kind = KnowledgeUnitKind::Chunk;
+                    request.scope_id = pending.resource.scope_id;
+                    request.primary_text = std::string{chunk};
+                    request.display_text = request.primary_text;
+                    request.sources = {std::move(source)};
+                    requests.push_back(std::move(request));
+                }
+                const auto raw_started = std::chrono::steady_clock::now();
+                const auto envelopes = m_knowledge_unit_store->create_or_get_units_guarded(
+                    std::move(requests),
+                    MdbxKnowledgeUnitPublicationGuard{
+                        m_token_table_name,
+                        pending.resource.resource_id.value(),
+                        expected_token
+                    }
+                );
+                record_duration(
+                    m_diagnostics ? &m_diagnostics->raw_unit_store_ns : nullptr,
+                    raw_started
+                );
+                if(m_diagnostics) ++m_diagnostics->raw_store_calls;
+                if(envelopes.size() != batch_end - batch_begin) {
+                    throw std::runtime_error("raw publication returned an incomplete batch");
+                }
+                for(const auto& envelope : envelopes) {
+                    if(envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active) {
+                        throw std::runtime_error(
+                            "raw publication matched a non-active historical Chunk"
+                        );
+                    }
+                    raw_units.push_back(envelope.id);
+                    if(m_projection_store) {
+                        // Projections are durable staging rows. The manifest
+                        // below is the sole publication boundary, so an
+                        // interrupted run can leave rows that recovery
+                        // replays idempotently without making them visible.
+                        // Projection revision follows the persisted envelope
+                        // revision. Mutable envelope updates therefore create
+                        // a new immutable projection key instead of trying to
+                        // overwrite an older projection with a new freshness
+                        // token.
+                        m_projection_store->put(make_original_projection(
+                            envelope, envelope.revision
+                        ));
+                    }
+                }
+                assert_ownership(pending.resource.resource_id.value(), expected_token);
+                if(inject_faults) {
+                    // A fault after this point models interruption after the
+                    // whole durable batch, not after an individual envelope.
+                    inject(ResourceImporterFaultPoint::AfterRawUnitPublication);
+                }
+            }
+        }
+        const auto manifest = make_manifest(
+            pending.resource,
+            generation,
+            digest,
+            raw_units,
+            pending.publication_profile,
+            m_table_prefix
+        );
+        ensure_manifest_compatibility(
+            pending.resource,
+            manifest.revision,
+            digest,
+            pending.publication_profile
+        );
+        assert_ownership(pending.resource.resource_id.value(), expected_token);
+        const auto manifest_started = std::chrono::steady_clock::now();
         m_manifests.upsert_manifest_if_unchanged_guarded(
             manifest,
             expected_manifest,
             MdbxManifestPublicationGuard{
                 m_intent_table_name,
                 pending.resource.resource_id.value(),
-                expected_payload
+                expected_payload,
+                m_token_table_name,
+                expected_token
             }
         );
+        record_duration(
+            m_diagnostics ? &m_diagnostics->manifest_ns : nullptr,
+            manifest_started
+        );
         if(inject_faults) inject(ResourceImporterFaultPoint::AfterManifestPublication);
-        release_expected(pending.resource.resource_id.value(), expected_payload);
+        release_expected(pending.resource.resource_id.value(), expected_token);
         return ResourceImportResult{
             pending.resource.resource_id,
             manifest.revision,
             document_id(pending.resource),
-            chunk_id(pending.resource)
+            chunk_id(pending.resource),
+            std::move(raw_units)
         };
     }
 
@@ -677,9 +1132,21 @@ private:
             if(operation.lease_expires_at_ms > now_ms()) {
                 continue;
             }
-            ensure_manifest_compatibility(operation.resource);
+            ensure_profile_compatibility(
+                operation.publication_profile,
+                m_publication_profile
+            );
+            ensure_manifest_compatibility(
+                operation.resource,
+                operation.publication_profile
+            );
             const auto takeover = takeover_pending(item.first, item.second, operation);
-            complete(takeover.operation, false, takeover.payload);
+            complete(
+                takeover.operation,
+                false,
+                takeover.payload,
+                takeover.token
+            );
         }
     }
 
@@ -689,16 +1156,37 @@ private:
         const auto existing_payload = m_intents.find(key, txn);
         if(existing_payload) {
             auto existing = deserialize_intent(*existing_payload);
+            const auto stored_token = m_tokens.find(key, txn);
+            if(!stored_token || *stored_token != fencing_token(*existing_payload)) {
+                txn.rollback();
+                throw std::runtime_error(
+                    "resource import fencing token is missing or does not match intent"
+                );
+            }
             if(existing.owner_id == m_owner_id &&
                same_import_request(existing.resource, resource)) {
                 existing.lease_expires_at_ms = lease_deadline(now_ms(), m_lease_ms);
                 auto renewed_payload = serialize_intent(existing);
+                const auto renewed_token = fencing_token(renewed_payload);
                 m_intents.insert_or_assign(key, renewed_payload, txn);
+                m_tokens.insert_or_assign(key, renewed_token, txn);
                 txn.commit();
-                return {std::move(existing), std::move(renewed_payload), false};
+                return {
+                    std::move(existing),
+                    std::move(renewed_payload),
+                    std::move(renewed_token),
+                    false
+                };
+            }
+            const auto token = m_tokens.find(key, txn);
+            if(!token || *token != fencing_token(*existing_payload)) {
+                txn.rollback();
+                throw std::runtime_error(
+                    "resource import fencing token is missing or does not match intent"
+                );
             }
             txn.commit();
-            return {std::move(existing), *existing_payload, false};
+            return {std::move(existing), *existing_payload, *token, false};
         }
 
         const auto binding = m_bindings.find(key, txn);
@@ -709,6 +1197,7 @@ private:
         const auto epoch = next_epoch(key, txn);
         PendingImport claimed{
             resource,
+            m_publication_profile,
             m_owner_id,
             epoch,
             lease_deadline(now_ms(), m_lease_ms)
@@ -724,8 +1213,10 @@ private:
             txn.rollback();
             throw std::runtime_error("resource import intent was concurrently created");
         }
+        const auto token = fencing_token(payload);
+        m_tokens.insert_or_assign(key, token, txn);
         txn.commit();
-        return {std::move(claimed), std::move(payload), true};
+        return {std::move(claimed), std::move(payload), std::move(token), true};
     }
 
     ClaimedImport takeover_pending(
@@ -738,6 +1229,13 @@ private:
         if(!existing || *existing != expected_payload) {
             txn.rollback();
             throw std::runtime_error("resource import intent changed during recovery");
+        }
+        const auto stored_token = m_tokens.find(key, txn);
+        if(!stored_token || *stored_token != fencing_token(*existing)) {
+            txn.rollback();
+            throw std::runtime_error(
+                "resource import fencing token is missing or does not match intent"
+            );
         }
         if(operation.lease_expires_at_ms > now_ms()) {
             txn.rollback();
@@ -759,9 +1257,11 @@ private:
         operation.fencing_epoch = next_epoch(key, txn);
         operation.lease_expires_at_ms = lease_deadline(now_ms(), m_lease_ms);
         const auto replacement = serialize_intent(operation);
+        const auto token = fencing_token(replacement);
         m_intents.insert_or_assign(key, replacement, txn);
+        m_tokens.insert_or_assign(key, token, txn);
         txn.commit();
-        return {std::move(operation), replacement, false};
+        return {std::move(operation), replacement, token, false};
     }
 
     std::uint64_t next_epoch(
@@ -785,32 +1285,103 @@ private:
     }
 
     void assert_ownership(const std::string& key, const std::string& payload) const {
-        const auto current = m_intents.find(key);
-        if(!current || *current != payload) {
+        std::optional<std::string> current;
+        if(!m_diagnostics) {
+            auto txn = m_context->connection()->transaction(
+                mdbxc::TransactionMode::READ_ONLY
+            );
+            current = m_tokens.find(key, txn);
+            txn.commit();
+            if(!current || *current != payload) {
+                throw std::runtime_error("resource import executor was fenced out");
+            }
+            return;
+        }
+        const auto total_started = std::chrono::steady_clock::now();
+        const auto lookup_started = std::chrono::steady_clock::now();
+        auto txn = m_context->connection()->transaction(
+            mdbxc::TransactionMode::READ_ONLY
+        );
+        current = m_tokens.find(key, txn);
+        txn.commit();
+        const auto lookup_finished = std::chrono::steady_clock::now();
+        const auto compare_started = lookup_finished;
+        const bool matches = current && *current == payload;
+        const auto compare_finished = std::chrono::steady_clock::now();
+        ++m_diagnostics->ownership_lookup_attempts;
+        ++m_diagnostics->ownership_checks;
+        if(current) {
+            ++m_diagnostics->ownership_payload_materializations;
+            m_diagnostics->ownership_payload_bytes += current->size();
+        }
+        record_duration(
+            &m_diagnostics->ownership_lookup_ns,
+            lookup_started,
+            lookup_finished
+        );
+        record_duration(
+            &m_diagnostics->ownership_compare_ns,
+            compare_started,
+            compare_finished
+        );
+        record_duration(
+            &m_diagnostics->ownership_total_ns,
+            total_started,
+            compare_finished
+        );
+        if(!matches) {
             throw std::runtime_error("resource import executor was fenced out");
         }
     }
 
-    void release_expected(const std::string& key, const std::string& payload) {
+    static void record_duration(
+        std::atomic<std::uint64_t>* destination,
+        std::chrono::steady_clock::time_point started
+    ) {
+        record_duration(destination, started, std::chrono::steady_clock::now());
+    }
+
+    static void record_duration(
+        std::atomic<std::uint64_t>* destination,
+        std::chrono::steady_clock::time_point started,
+        std::chrono::steady_clock::time_point finished
+    ) {
+        if(destination) {
+            *destination += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    finished - started
+                ).count()
+            );
+        }
+    }
+
+    void release_expected(const std::string& key, const std::string& token) {
         auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
         const auto existing = m_intents.find(key, txn);
         if(!existing) {
             txn.rollback();
             throw std::runtime_error("resource import intent disappeared before release");
         }
-        if(*existing != payload) {
+        const auto existing_token = m_tokens.find(key, txn);
+        if(!existing_token || *existing_token != token ||
+           *existing_token != fencing_token(*existing)) {
             txn.rollback();
-            throw std::runtime_error("resource import intent payload changed during publication");
+            throw std::runtime_error("resource import fencing token changed during publication");
         }
         if(!m_intents.erase(key, txn)) {
             txn.rollback();
             throw std::runtime_error("resource import intent could not be released");
         }
+        if(!m_tokens.erase(key, txn)) {
+            txn.rollback();
+            throw std::runtime_error("resource import fencing token could not be released");
+        }
         txn.commit();
     }
 
     std::optional<ResourceManifest> ensure_manifest_compatibility(
-        const ObservedResource& resource
+        const ObservedResource& resource,
+        ResourceImportPublicationProfile profile
     ) const {
         const auto existing = m_manifests.find_manifest(resource.resource_id);
         if(!existing) return std::nullopt;
@@ -820,7 +1391,14 @@ private:
                 "export and explicitly migrate it before importing"
             );
         }
-        if(existing->schema.schema_id != "agent_memory.m0_resource_importer" ||
+        if(profile == ResourceImportPublicationProfile::LexicalOnly &&
+           manifest_has_raw_bindings(*existing)) {
+            throw std::runtime_error(
+                "raw publication manifest cannot be downgraded to lexical-only"
+            );
+        }
+        const auto expected_schema = publication_schema_id(profile, m_table_prefix);
+        if(existing->schema.schema_id != expected_schema ||
            existing->schema.schema_version != 1) {
             throw std::runtime_error(
                 "resource manifest belongs to a foreign schema and cannot be overwritten"
@@ -848,7 +1426,8 @@ private:
     void ensure_manifest_compatibility(
         const ObservedResource& resource,
         const ResourceRevision& revision,
-        const ResourceBodyDigest& digest
+        const ResourceBodyDigest& digest,
+        ResourceImportPublicationProfile profile
     ) const {
         const auto existing = m_manifests.find_manifest(resource.resource_id);
         if(!existing) return;
@@ -858,7 +1437,14 @@ private:
                 "export and explicitly migrate it before importing"
             );
         }
-        if(existing->schema.schema_id != "agent_memory.m0_resource_importer" ||
+        if(profile == ResourceImportPublicationProfile::LexicalOnly &&
+           manifest_has_raw_bindings(*existing)) {
+            throw std::runtime_error(
+                "raw publication manifest cannot be downgraded to lexical-only"
+            );
+        }
+        const auto expected_schema = publication_schema_id(profile, m_table_prefix);
+        if(existing->schema.schema_id != expected_schema ||
            existing->schema.schema_version != 1) {
             throw std::runtime_error(
                 "resource manifest belongs to a foreign schema and cannot be overwritten"
@@ -883,16 +1469,85 @@ private:
     std::shared_ptr<MdbxStorageContext> m_context;
     MdbxDurableLexicalDocumentMemory m_lexical;
     MdbxResourceManifestStorage m_manifests;
+    std::shared_ptr<MdbxKnowledgeUnitStore> m_knowledge_unit_store;
+    std::shared_ptr<MdbxProjectionStore> m_projection_store;
     std::string m_intent_table_name;
+    std::string m_token_table_name;
     mdbxc::KeyValueTable<std::string, std::string> m_intents;
+    mdbxc::KeyValueTable<std::string, std::string> m_tokens;
     mdbxc::KeyValueTable<std::string, std::string> m_bindings;
     mdbxc::KeyValueTable<std::string, std::string> m_epochs;
     std::uint64_t m_lease_ms;
+    ResourceImportPublicationProfile m_publication_profile;
+    std::string m_table_prefix;
+    std::size_t m_max_raw_body_bytes;
+    std::size_t m_max_raw_chunks;
+    std::size_t m_raw_chunk_batch_size;
     std::function<std::uint64_t()> m_clock;
     std::function<void(ResourceImporterFaultPoint)> m_fault_injector;
+    std::shared_ptr<MdbxResourceImporterDiagnostics> m_diagnostics;
     std::string m_owner_id;
     mutable std::mutex m_mutex;
 };
+
+void MdbxResourceImporter::migrate_legacy_fencing_state(
+    const std::shared_ptr<MdbxStorageContext>& context,
+    std::string_view table_prefix
+) {
+    if(!context) {
+        throw std::invalid_argument("legacy fencing migration requires a storage context");
+    }
+    mdbxc::KeyValueTable<std::string, std::string> marker(
+        context->connection(),
+        table_name(std::string{table_prefix}, "resource_import_fencing_schema")
+    );
+    mdbxc::KeyValueTable<std::string, std::string> intents(
+        context->connection(),
+        table_name(std::string{table_prefix}, "resource_import_intents")
+    );
+    mdbxc::KeyValueTable<std::string, std::string> tokens(
+        context->connection(),
+        table_name(std::string{table_prefix}, kFencingTokenTableSuffix)
+    );
+    auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    const auto stored_marker = marker.find(std::string{kFencingSchemaKey}, txn);
+    if(stored_marker && *stored_marker != kFencingSchemaVersion) {
+        txn.rollback();
+        throw std::runtime_error("unsupported resource import fencing schema marker");
+    }
+    std::vector<std::pair<std::string, std::string>> existing_intents;
+    std::vector<std::pair<std::string, std::string>> existing_tokens;
+    intents.load(existing_intents, txn);
+    tokens.load(existing_tokens, txn);
+    for(const auto& item : existing_intents) {
+        // Parsing is intentional: only legacy v3/v4 intent envelopes are
+        // eligible for this narrow administrative migration.
+        static_cast<void>(deserialize_intent(item.second));
+        const auto expected = fencing_token(item.second);
+        const auto existing = tokens.find(item.first, txn);
+        if(existing && *existing != expected) {
+            txn.rollback();
+            throw std::runtime_error(
+                "resource import fencing token is missing or does not match intent"
+            );
+        }
+        if(!existing) tokens.insert_or_assign(item.first, expected, txn);
+    }
+    for(const auto& item : existing_tokens) {
+        if(!intents.find(item.first, txn)) {
+            txn.rollback();
+            throw std::runtime_error("resource import fencing token is orphaned");
+        }
+    }
+    if(!stored_marker) {
+        marker.insert_or_assign(
+            std::string{kFencingSchemaKey},
+            std::string{kFencingSchemaVersion},
+            txn
+        );
+    }
+    txn.commit();
+}
 
 MdbxResourceImporter::MdbxResourceImporter(MdbxResourceImporterOptions options)
     : m_impl(std::make_unique<Impl>(std::move(options))) {}

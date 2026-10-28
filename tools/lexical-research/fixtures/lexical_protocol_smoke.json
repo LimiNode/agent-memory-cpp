@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "dataset_name": "lexical_protocol_smoke_v1",
+  "tokenizer": "code_aware_fixture_v1",
+  "corpus": [
+    {"id": "d1", "scope": "default", "text": "ExactLexicalIndex uses BM25 scoring and StandardTokenizer for C++ identifiers."},
+    {"id": "d2", "scope": "default", "text": "WAND skips non competitive postings and preserves exact top K results."},
+    {"id": "d3", "scope": "default", "text": "Индекс памяти хранит источник и поколение ресурса для повторной индексации."},
+    {"id": "d4", "scope": "default", "text": "Phrase and proximity queries use token positions for technical search."},
+    {"id": "d5", "scope": "default", "text": "The durable importer publishes a canonical UTF-8 revision."}
+  ],
+  "queries": [
+    {"id": "q_exact_identifier", "query_class": "exact_identifier", "answer_mode": "judged", "text": "ExactLexicalIndex"},
+    {"id": "q_code_path", "query_class": "code_path", "answer_mode": "judged", "text": "StandardTokenizer C++ identifiers"},
+    {"id": "q_russian", "query_class": "russian_morphology", "answer_mode": "judged", "text": "индексация ресурса"},
+    {"id": "q_no_answer", "query_class": "no_answer", "answer_mode": "no_answer", "text": "quantum bananas"},
+    {"id": "q_empty", "query_class": "empty_query", "answer_mode": "no_answer", "text": ""}
+  ],
+  "qrels": [
+    {"query_id": "q_exact_identifier", "doc_id": "d1", "grade": 2},
+    {"query_id": "q_code_path", "doc_id": "d1", "grade": 2},
+    {"query_id": "q_russian", "doc_id": "d3", "grade": 2}
+  ],
+  "expected_top_ids": {
+    "q_exact_identifier": ["d1"],
+    "q_code_path": ["d1"],
+    "q_russian": ["d3"],
+    "q_no_answer": [],
+    "q_empty": []
+  }
+}

@@ -34,6 +34,7 @@ add_library(agent_memory STATIC
     src/agent_memory/domain/Metadata.cpp
     src/agent_memory/domain/MetadataFilter.cpp
     src/agent_memory/domain/Resource.cpp
+    src/agent_memory/domain/SearchProjection.cpp
     src/agent_memory/domain/SourceKind.cpp
     src/agent_memory/embedding/embedding_types.cpp
     src/agent_memory/embedding/enums.cpp
@@ -67,6 +68,8 @@ add_library(agent_memory STATIC
     src/agent_memory/index/VectorSimilarityComputer.cpp
     src/agent_memory/index/VectorIndex.cpp
     src/agent_memory/lexical/ExactLexicalIndex.cpp
+    src/agent_memory/lexical/FlatLexicalIndex.cpp
+    src/agent_memory/lexical/LexicalSegmentEncoding.cpp
     src/agent_memory/lexical/IChunkEnricher.cpp
     src/agent_memory/lexical/ILexicalIndex.cpp
     src/agent_memory/lexical/IQueryAnalyzer.cpp
@@ -75,6 +78,7 @@ add_library(agent_memory STATIC
     src/agent_memory/lexical/ITokenizer.cpp
     src/agent_memory/lexical/KeywordOverlapIndex.cpp
     src/agent_memory/lexical/Lexical.cpp
+    src/agent_memory/lexical/PersistentLexicalIndex.cpp
     src/agent_memory/lexical/StandardTokenizer.cpp
     src/agent_memory/lexical/TokenDictionary.cpp
     src/agent_memory/lexical/Tokenizer.cpp
@@ -83,13 +87,16 @@ add_library(agent_memory STATIC
     src/agent_memory/retrieval/BowVectorRetriever.cpp
     src/agent_memory/retrieval/BruteForceTopKIndex.cpp
     src/agent_memory/retrieval/ExactLexicalRetriever.cpp
+    src/agent_memory/retrieval/ProjectionAwareLexicalRetriever.cpp
     src/agent_memory/retrieval/HybridRetrievalEngine.cpp
+    src/agent_memory/retrieval/OriginalProjection.cpp
     src/agent_memory/retrieval/IRetrievalEngine.cpp
     src/agent_memory/retrieval/IRetriever.cpp
     src/agent_memory/retrieval/Retrieval.cpp
     src/agent_memory/storage/IDocumentStorage.cpp
     src/agent_memory/storage/CanonicalContentStore.cpp
     src/agent_memory/storage/IKnowledgeUnitStore.cpp
+    src/agent_memory/storage/IProjectionStore.cpp
     src/agent_memory/storage/IResourceIndexRecordOwnerStorage.cpp
     src/agent_memory/storage/IResourceManifestStorage.cpp
 )
@@ -128,11 +135,14 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxStorageContext.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentRouter.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxProjectionStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxFederatedCanonicalReader.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceIndexRecordOwnerStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxWorkspaceStorageRegistry.cpp
             src/agent_memory/infrastructure/mdbx/MdbxDurableLexicalDocumentMemory.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxPersistentLexicalIndex.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxSegmentedLexicalIndex.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceImporter.cpp
             src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.cpp
     )
@@ -165,6 +175,18 @@ endif()
 
 if(AGENT_MEMORY_BUILD_BENCHMARKS)
     add_subdirectory(tools/agent-memory-bench)
+    if(AGENT_MEMORY_ENABLE_MDBX)
+        add_executable(agent_memory_segmented_lexical_benchmark
+            tools/segmented-lexical-benchmark.cpp
+        )
+        target_link_libraries(agent_memory_segmented_lexical_benchmark
+            PRIVATE agent_memory::agent_memory
+                    ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET}
+        )
+        target_compile_features(agent_memory_segmented_lexical_benchmark
+            PRIVATE cxx_std_17
+        )
+    endif()
 endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
@@ -2194,5 +2216,22 @@ if(AGENT_MEMORY_BUILD_TESTS)
         )
     endif() # Python3_Interpreter_FOUND
     endif() # AGENT_MEMORY_BUILD_RESEARCH_TESTS
+    if(AGENT_MEMORY_BUILD_BENCHMARKS AND AGENT_MEMORY_ENABLE_MDBX)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(
+            NAME agent_memory_segmented_lexical_benchmark_contract
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate-segmented-lexical-benchmark.py
+                    --binary $<TARGET_FILE:agent_memory_segmented_lexical_benchmark>
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_segmented_lexical_benchmark_receipt_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/summarize-segmented-lexical-benchmark.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+    endif()
     add_subdirectory(tests)
 endif()

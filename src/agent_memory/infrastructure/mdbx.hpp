@@ -13,7 +13,9 @@
 #include "mdbx/MdbxStorageContext.hpp"
 #include "mdbx/MdbxWorkspaceStorageRegistry.hpp"
 #include "mdbx/MdbxDurableLexicalDocumentMemory.hpp"
+#include "mdbx/MdbxPersistentLexicalIndex.hpp"
 #include "mdbx/MdbxResourceImporter.hpp"
 #include "mdbx/MdbxKnowledgeUnitStore.hpp"
+#include "mdbx/MdbxProjectionStore.hpp"
 
 #endif

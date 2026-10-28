@@ -1753,8 +1753,9 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 - Создать `KnowledgeUnitEnvelope` struct (lean hot-path envelope, ~18 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, content_hash, content_hash_recipe_version, lineage fields, priority_weight).
 - The standalone M0 store opens the three identity/index DBIs
   `knowledge_units`, `content_key_to_unit_id`, and `knowledge_units_by_kind`;
-  the latter is a key-value table whose value is an ordered serialized
-  `UnitId[]`, not a native DUPSORT table. Full profile-driven DBI creation and
+  the latter is a key-value table with append-only `(ScopeId, Kind,
+  IndexSequence) -> UnitId` entries, not a native DUPSORT table. Existing
+  serialized `UnitId[]` values migrate lazily on first write. Full profile-driven DBI creation and
   `schema_info` orchestration belong to `MemoryStack::open()` and remain
   follow-up work.
 - Envelope serialization is implemented by the versioned M0 custom

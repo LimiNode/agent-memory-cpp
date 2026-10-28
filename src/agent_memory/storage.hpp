@@ -12,5 +12,6 @@
 #include "storage/IResourceIndexRecordOwnerStorage.hpp"
 #include "storage/IResourceManifestStorage.hpp"
 #include "storage/IKnowledgeUnitStore.hpp"
+#include "storage/IProjectionStore.hpp"
 
 #endif

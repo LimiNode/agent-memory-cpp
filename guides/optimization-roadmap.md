@@ -2336,8 +2336,10 @@ add projection-aware benchmarks.
     test that asserts atomicity (no half-committed secondary index).
 17. MDBX-backed `KnowledgeUnitStore` with `(scope_id, unit_id)` and
     `knowledge_units_by_kind` reverse index. Each kind has a kind-specific
-    layout. The store ships with a `compact_index()` pass that rebuilds the
-    reverse index from the primary table.
+    layout. M0 uses append-only `(scope_id, kind, index_sequence) -> unit_id`
+    entries to avoid rewriting a serialized list on every insert; legacy lists
+    migrate lazily on first write. The store ships with a `compact_index()`
+    pass that rebuilds the reverse index from the primary table.
 18. MDBX-backed `FactStore`, `QAKnowledgeBase`, `GraphStore`, and
     `TemporalIndex`. Each one is a thin shim over its in-memory baseline that
     uses the cross-table transaction pattern from step 16. Each store ships

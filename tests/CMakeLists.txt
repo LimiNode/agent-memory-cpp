@@ -96,6 +96,15 @@ target_link_libraries(agent_memory_knowledge_unit_test
 
 add_test(NAME agent_memory_knowledge_unit_test COMMAND agent_memory_knowledge_unit_test)
 
+add_executable(agent_memory_search_projection_test
+    domain/search_projection_test.cpp
+)
+target_link_libraries(agent_memory_search_projection_test
+    PRIVATE
+        agent_memory::agent_memory
+)
+add_test(NAME agent_memory_search_projection_test COMMAND agent_memory_search_projection_test)
+
 add_executable(agent_memory_resource_manifest_test
     domain/resource_manifest_test.cpp
 )
@@ -415,6 +424,20 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/retrieval
 )
 
+add_executable(agent_memory_projection_aware_lexical_retriever_test
+    retrieval/projection_aware_lexical_retriever_test.cpp
+)
+
+target_link_libraries(agent_memory_projection_aware_lexical_retriever_test
+    PRIVATE
+        agent_memory::agent_memory
+)
+
+add_test(
+    NAME agent_memory_projection_aware_lexical_retriever_test
+    COMMAND agent_memory_projection_aware_lexical_retriever_test
+)
+
 add_executable(agent_memory_resource_indexer_test
     ingestion/resource_indexer_test.cpp
 )
@@ -448,6 +471,41 @@ target_link_libraries(agent_memory_standard_tokenizer_test
 
 add_test(NAME agent_memory_standard_tokenizer_test COMMAND agent_memory_standard_tokenizer_test)
 
+add_executable(agent_memory_lexical_parity_export
+    ../tools/lexical-research/cpp_lexical_parity_export.cpp
+)
+
+target_link_libraries(agent_memory_lexical_parity_export
+    PRIVATE
+        agent_memory::agent_memory
+)
+
+add_test(
+    NAME agent_memory_lexical_parity_export_smoke
+    COMMAND agent_memory_lexical_parity_export
+)
+
+if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
+    add_test(
+        NAME agent_memory_cpp_lexical_parity_self_test
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/../tools/lexical-research/run_cpp_lexical_parity.py
+                --cpp-exporter $<TARGET_FILE:agent_memory_lexical_parity_export>
+                --golden ${CMAKE_CURRENT_SOURCE_DIR}/../tools/lexical-research/fixtures/cpp_tokenizer_golden.json
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+    )
+
+    add_test(
+        NAME agent_memory_cpp_lexical_parity_mutation_self_test
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/../tools/lexical-research/run_cpp_lexical_parity.py
+                --cpp-exporter $<TARGET_FILE:agent_memory_lexical_parity_export>
+                --golden ${CMAKE_CURRENT_SOURCE_DIR}/../tools/lexical-research/fixtures/cpp_tokenizer_golden.json
+                --mutation-self-test-only
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+    )
+endif()
+
 add_executable(agent_memory_lexical_value_types_test
     lexical/lexical_value_types_test.cpp
 )
@@ -458,6 +516,45 @@ target_link_libraries(agent_memory_lexical_value_types_test
 )
 
 add_test(NAME agent_memory_lexical_value_types_test COMMAND agent_memory_lexical_value_types_test)
+
+add_executable(agent_memory_persistent_lexical_index_contract_test
+    lexical/persistent_lexical_index_contract_test.cpp
+)
+
+target_link_libraries(agent_memory_persistent_lexical_index_contract_test
+    PRIVATE
+        agent_memory::agent_memory
+)
+
+add_test(
+    NAME agent_memory_persistent_lexical_index_contract_test
+    COMMAND agent_memory_persistent_lexical_index_contract_test
+)
+
+add_executable(agent_memory_flat_lexical_index_test
+    lexical/flat_lexical_index_test.cpp
+)
+
+target_link_libraries(agent_memory_flat_lexical_index_test
+    PRIVATE
+        agent_memory::agent_memory
+)
+
+add_test(NAME agent_memory_flat_lexical_index_test COMMAND agent_memory_flat_lexical_index_test)
+
+add_executable(agent_memory_lexical_segment_encoding_test
+    lexical/lexical_segment_encoding_test.cpp
+)
+
+target_link_libraries(agent_memory_lexical_segment_encoding_test
+    PRIVATE
+        agent_memory::agent_memory
+)
+
+add_test(
+    NAME agent_memory_lexical_segment_encoding_test
+    COMMAND agent_memory_lexical_segment_encoding_test
+)
 
 add_executable(agent_memory_token_dictionary_contract_test
     lexical/token_dictionary_contract_test.cpp
@@ -647,6 +744,50 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         COMMAND agent_memory_mdbx_durable_lexical_document_memory_test
     )
 
+    add_executable(agent_memory_mdbx_persistent_lexical_index_test
+        infrastructure/mdbx/mdbx_persistent_lexical_index_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_persistent_lexical_index_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_persistent_lexical_index_test
+        COMMAND agent_memory_mdbx_persistent_lexical_index_test
+    )
+
+    add_executable(agent_memory_mdbx_segmented_lexical_index_test
+        infrastructure/mdbx/mdbx_segmented_lexical_index_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_segmented_lexical_index_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_segmented_lexical_index_test
+        COMMAND agent_memory_mdbx_segmented_lexical_index_test
+    )
+
+    add_executable(agent_memory_mdbx_segmented_lexical_index_conformance_test
+        infrastructure/mdbx/mdbx_segmented_lexical_index_conformance_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_segmented_lexical_index_conformance_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_segmented_lexical_index_conformance_test
+        COMMAND agent_memory_mdbx_segmented_lexical_index_conformance_test
+    )
+
+    add_executable(agent_memory_mdbx_incremental_segmented_lexical_index_test
+        infrastructure/mdbx/mdbx_incremental_segmented_lexical_index_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_incremental_segmented_lexical_index_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_incremental_segmented_lexical_index_test
+        COMMAND agent_memory_mdbx_incremental_segmented_lexical_index_test
+    )
+
     add_executable(agent_memory_mdbx_resource_importer_test
         infrastructure/mdbx/mdbx_resource_importer_test.cpp
     )
@@ -667,5 +808,31 @@ if(AGENT_MEMORY_ENABLE_MDBX)
     add_test(
         NAME agent_memory_mdbx_knowledge_unit_store_test
         COMMAND agent_memory_mdbx_knowledge_unit_store_test
+    )
+
+    add_executable(agent_memory_mdbx_projection_store_test
+        infrastructure/mdbx/mdbx_projection_store_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_projection_store_test
+        PRIVATE
+            agent_memory::agent_memory
+            mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_projection_store_test
+        COMMAND agent_memory_mdbx_projection_store_test
+    )
+
+    add_executable(agent_memory_mdbx_projection_aware_lexical_retriever_test
+        infrastructure/mdbx/mdbx_projection_aware_lexical_retriever_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_projection_aware_lexical_retriever_test
+        PRIVATE
+            agent_memory::agent_memory
+            mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_projection_aware_lexical_retriever_test
+        COMMAND agent_memory_mdbx_projection_aware_lexical_retriever_test
     )
 endif()

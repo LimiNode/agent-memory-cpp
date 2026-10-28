@@ -426,6 +426,17 @@ namespace agent_memory {
                             m_connection,
                             options.publication_guard_table_name
                         )
+              ),
+              m_publication_token_guard_table_name(
+                  options.publication_token_guard_table_name
+              ),
+              m_publication_token_guard_table(
+                  options.publication_token_guard_table_name.empty()
+                      ? nullptr
+                      : std::make_unique<mdbxc::KeyValueTable<std::string, std::string>>(
+                            m_connection,
+                            options.publication_token_guard_table_name
+                        )
               ) {}
 
         void upsert_manifest(ResourceManifest manifest) {
@@ -459,9 +470,29 @@ namespace agent_memory {
                     );
                 }
                 const auto current_guard = m_publication_guard_table->find(guard->key, txn);
-                if(!current_guard || *current_guard != guard->expected_value) {
+                if(!current_guard ||
+                   (guard->expected_token.empty() && *current_guard != guard->expected_value)) {
                     txn.rollback();
                     throw std::runtime_error("manifest publication fence rejected the update");
+                }
+                if(!guard->expected_token.empty()) {
+                    if(!m_publication_token_guard_table ||
+                       guard->token_table_name != m_publication_token_guard_table_name) {
+                        txn.rollback();
+                        throw std::invalid_argument(
+                            "manifest publication token table is not configured"
+                        );
+                    }
+                    const auto token = m_publication_token_guard_table->find(
+                        guard->key,
+                        txn
+                    );
+                    if(!token || *token != guard->expected_token) {
+                        txn.rollback();
+                        throw std::runtime_error(
+                            "manifest publication fence rejected the token"
+                        );
+                    }
                 }
             }
             const auto current = m_manifests.find(key, txn);
@@ -478,8 +509,12 @@ namespace agent_memory {
         [[nodiscard]] std::optional<ResourceManifest> find_manifest(
             const ResourceId& resource_id
         ) const {
-            const auto payload = m_manifests.find(resource_id.value());
+            auto txn = m_context->connection()->transaction(
+                mdbxc::TransactionMode::READ_ONLY
+            );
+            const auto payload = m_manifests.find(resource_id.value(), txn);
             if(!payload) {
+                txn.commit();
                 return std::nullopt;
             }
             auto manifest = deserialize_manifest(*payload);
@@ -488,6 +523,7 @@ namespace agent_memory {
                     "Resource manifest key does not match payload resource id"
                 );
             }
+            txn.commit();
             return manifest;
         }
 
@@ -503,6 +539,9 @@ namespace agent_memory {
         std::string m_publication_guard_table_name;
         std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>>
             m_publication_guard_table;
+        std::string m_publication_token_guard_table_name;
+        std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>>
+            m_publication_token_guard_table;
     };
 
     MdbxResourceManifestStorage::MdbxResourceManifestStorage(

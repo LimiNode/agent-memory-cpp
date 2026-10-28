@@ -1,5 +1,11 @@
 # Retrieval Roadmap Coverage
 
+For the broader product-readiness, ANN extensibility, and technical-preview
+audit at the current `main` baseline, see
+[`product-ann-readiness-audit.md`](product-ann-readiness-audit.md). This table
+remains the capability inventory; the audit adds source-level evidence and
+release acceptance gates without changing milestone ownership.
+
 This is the documentation audit for the current repository state. `Implemented`
 means exercised code exists; `Contract only` means a public or storage contract
 exists without the complete backend; `Docs/tests only` means the idea is
@@ -10,14 +16,15 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | Core domain primitives | `milestones.md`, `architecture.md` | Implemented | broader payload coverage | finish M0 fixtures |
 | Multi-context topology / workspace routing | `storage-backend-integration-roadmap.md`, `federated-retrieval-roadmap.md` | Implemented (R0 canonical MDBX slice) | cross-context publication/reconciliation and per-context frontier execution remain out of scope; no relocation or federation path is implemented | extend the same fail-closed placement contract to the next domain store |
 | Storage / MDBX | `mdbx-containers-extension-tz.md` | Contract only | full profile and crash matrix | storage foundation PR |
-| Resource manifests / reindex | `resource-reindexing.md`, `m0-implementation-gap-audit.md` | Implemented (lexical-first preparatory slice) | multi-chunk importer integration, locator-backed `ChunkPayload` hydration, full `source_refs`, general projection lifecycle and full reindex/compaction protocol remain unimplemented | complete the next bounded M0 manifest/reindex fixture |
+| Resource manifests / reindex | `resource-reindexing.md`, `m0-implementation-gap-audit.md` | Implemented (lexical-first + raw Chunk + manifest-aware Original publication profiles) | locator-backed `ChunkPayload` hydration, full `source_refs`, general projection lifecycle and full reindex/compaction protocol remain unimplemented | add bounded projection-aware lexical retrieval fixture |
 | Canonical text / in-memory read, materialize and edit | `canonical-content-storage-roadmap.md` | Implemented | durable persistence, compressed body and segment/section integration are outside this implemented subset; the exercised path is the in-memory reference backend and its canonical-content test suite | preserve the semantic conformance cases in [CanonicalContentStore](../src/agent_memory/storage/CanonicalContentStore.hpp) and [canonical-content tests](../tests/domain/canonical_content_test.cpp) |
 | Host-facing revision-bound document access/edit | `canonical-content-storage-roadmap.md`, `product-path.md` | Contract only | durable host adapter, line/materialization conformance fixture and source-note binding remain unimplemented | add revision-bound read/edit, conflict/NoChange and reopen fixture |
 | Canonical body binding / durable MDBX store | `canonical-content-storage-roadmap.md`, `mdbx-containers-extension-tz.md` | Implemented (C1 raw/plain subset) | framed codecs (C2), segment/section integration, crash/recovery matrix and targeted invalidation integration | complete C2 physical re-encoding and the remaining conformance gates |
 | Typed multimodal result / source hydration | `knowledge-base-roadmap.md`, `artifact-provenance-roadmap.md`, `multimodal-binary-retrieval-roadmap.md` | Contract only | host materialization adapter and per-modality hydration/conformance fixtures remain unimplemented | add text/image/audio/video revision-and-locator fixture |
-| Knowledge units | `knowledge-units-roadmap.md`, `m0-implementation-gap-audit.md` | Implemented (M0 durable Chunk envelope subset) | supersedence lineage, non-Chunk payload stores and full lifecycle policy remain unimplemented | add supersede/lineage and payload-specific M0 fixtures |
+| Knowledge units | `knowledge-units-roadmap.md`, `m0-implementation-gap-audit.md` | Implemented (M0 durable Chunk envelope + importer binding subset) | supersedence lineage, non-Chunk payload stores and full lifecycle policy remain unimplemented | add supersede/lineage and payload-specific M0 fixtures |
 | Payload contracts/views | `knowledge-base-roadmap.md` | Contract only | all payload DBIs | one payload family at a time |
-| Search projections | `lexical-search-roadmap.md` | Contract only | generation-aware publisher | projection lifecycle gate |
+| Search projections | `lexical-search-roadmap.md`, `projection-aware-lexical-retrieval.md` | Implemented (revision-aware Original M0 slice, manifest-aware publication, bounded projection-aware lexical retrieval) | locator-backed full-body hydration, persistent postings, projection-aware index lifecycle and reclamation | add batched candidate reader and projection-to-lexical retrieval benchmark |
+| Tabular / TSV-CSV structured retrieval | `structured-data-retrieval-roadmap.md`, `artifact-provenance-roadmap.md` | Roadmap only | dialect-aware parser, canonical table representation, stable row/cell locators, structured indexes, table discovery and targeted invalidation remain unimplemented | define the S0 tabular fixture and run the table-level versus row/column projection bake-off |
 | Lexical retrieval | `lexical-search-roadmap.md`, `m0-implementation-gap-audit.md` | Implemented (durable lexical importer slice) | BM25F/product-wide projection lifecycle, traces and non-text modalities remain unimplemented | add the next bounded lexical projection/retrieval fixture |
 | Dense retrieval | `embedding.md`, `optimization-roadmap.md` | Contract only | embedder adapter and exact index path | exact dense MVP |
 | ExactVectorIndex | `optimization-roadmap.md` | Docs/tests only | canonical library integration | oracle benchmark |
@@ -45,6 +52,9 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | Evaluation / benchmarks | `evaluation-roadmap.md` | Docs/tests only | unified runner | exact-oracle harness |
 | Source trust / provenance | `source-trust-roadmap.md`, `artifact-provenance-roadmap.md` | Contract only | propagation in all payloads | lineage fixture |
 | Diagnostics / explainability | `retrieval-explainability-roadmap.md` | Roadmap only | stable explain payload | lexical explain MVP |
+| Session extraction / derived memory projection | `memory-lifecycle-governance-roadmap.md` AM-24 | Contract only | source-frontier receipts, idempotent extraction and derived summary/fact fixtures remain unimplemented | add session extraction projection fixture |
+| Cross-kind Context Composition | `knowledge-base-roadmap.md` | Contract only | shared-frontier multi-lane retrieval and deterministic fusion fixture remain unimplemented | run flat, single-lane and composed context comparison |
+| Context-Pack positional robustness | `evaluation-roadmap.md` | Docs/tests only | position/order/fill fixture with exact protected probes remains unimplemented | run held-out positional robustness gate |
 
 The table is deliberately conservative. A green unit test for a contract does
 not promote an unimplemented backend to `Implemented`.

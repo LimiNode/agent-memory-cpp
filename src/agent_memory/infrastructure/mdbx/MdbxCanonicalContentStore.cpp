@@ -564,6 +564,15 @@ class MdbxCanonicalContentStore::Impl final {
                         context->connection(),
                         options.publication_guard_table_name
                     )
+          ),
+          publication_token_guard_table_name(options.publication_token_guard_table_name),
+          publication_token_guard_table(
+              options.publication_token_guard_table_name.empty()
+                  ? nullptr
+                  : std::make_unique<mdbxc::KeyValueTable<std::string, std::string>>(
+                        context->connection(),
+                        options.publication_token_guard_table_name
+                    )
           ) {}
 
     struct Loaded {
@@ -654,12 +663,28 @@ class MdbxCanonicalContentStore::Impl final {
         if(!publication_guard_table || guard.table_name != publication_guard_table_name) {
             throw std::invalid_argument("canonical publication guard table is not configured");
         }
-        const auto current = publication_guard_table->find(guard.key, txn);
-        if(!current) {
-            throw std::runtime_error("canonical publication fence rejected: key missing");
+        if(guard.expected_token.empty()) {
+            const auto current = publication_guard_table->find(guard.key, txn);
+            if(!current) {
+                throw std::runtime_error("canonical publication fence rejected: key missing");
+            }
+            if(*current != guard.expected_value) {
+                throw std::runtime_error("canonical publication fence rejected: value changed");
+            }
         }
-        if(*current != guard.expected_value) {
-            throw std::runtime_error("canonical publication fence rejected: value changed");
+        if(!guard.expected_token.empty()) {
+            if(!publication_token_guard_table ||
+               guard.token_table_name != publication_token_guard_table_name) {
+                throw std::invalid_argument(
+                    "canonical publication token table is not configured"
+                );
+            }
+            const auto token = publication_token_guard_table->find(guard.key, txn);
+            if(!token || *token != guard.expected_token) {
+                throw std::runtime_error(
+                    "canonical publication fence rejected: token changed"
+                );
+            }
         }
         return true;
     }
@@ -673,6 +698,9 @@ class MdbxCanonicalContentStore::Impl final {
     mdbxc::KeyValueTable<std::string, std::string> ledgers;   ///< Historical block-ID ledgers.
     std::string publication_guard_table_name;
     std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> publication_guard_table;
+    std::string publication_token_guard_table_name;
+    std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>>
+        publication_token_guard_table;
 };
 
 MdbxCanonicalContentStore::MdbxCanonicalContentStore(MdbxCanonicalContentStoreOptions options)
@@ -721,15 +749,21 @@ std::optional<CanonicalDocumentRevision>
 MdbxCanonicalContentStore::read_current(const DocumentId& id) const {
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
     const auto head = m_impl->heads.find(id.value(), txn);
-    if (!head)
+    if (!head) {
+        txn.commit();
         return std::nullopt;
-    return m_impl->read_revision(id, parse_u64(*head, "head revision"), txn);
+    }
+    auto result = m_impl->read_revision(id, parse_u64(*head, "head revision"), txn);
+    txn.commit();
+    return result;
 }
 
 std::optional<CanonicalDocumentRevision>
 MdbxCanonicalContentStore::read_revision(const DocumentId& id, std::uint64_t rev) const {
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-    return m_impl->read_revision(id, rev, txn);
+    auto result = m_impl->read_revision(id, rev, txn);
+    txn.commit();
+    return result;
 }
 
 std::optional<ContentBlock> MdbxCanonicalContentStore::read_block(

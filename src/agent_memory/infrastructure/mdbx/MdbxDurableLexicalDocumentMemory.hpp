@@ -62,6 +62,8 @@ struct DurableLexicalPublicationGuard final {
     std::string table_name;
     std::string key;
     std::string expected_value;
+    std::string token_table_name;
+    std::string expected_token;
 };
 
 /// \brief Small deterministic M0 path from durable text to lexical retrieval.

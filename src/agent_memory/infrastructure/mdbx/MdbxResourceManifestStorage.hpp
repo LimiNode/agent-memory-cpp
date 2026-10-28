@@ -29,14 +29,18 @@ namespace agent_memory {
         std::shared_ptr<MdbxStorageContext> context;
         /// Optional pre-opened table used by guarded manifest publication.
         std::string publication_guard_table_name;
+        /// Optional compact fencing-token table used by guarded publication.
+        std::string publication_token_guard_table_name;
     };
 
     /// \brief Durable compare token checked in the manifest write transaction.
-    struct MdbxManifestPublicationGuard final {
-        std::string table_name;
-        std::string key;
-        std::string expected_value;
-    };
+struct MdbxManifestPublicationGuard final {
+    std::string table_name;
+    std::string key;
+    std::string expected_value;
+    std::string token_table_name;
+    std::string expected_token;
+};
 
     /// \brief MDBX-backed implementation of `IResourceManifestStorage`.
     class MdbxResourceManifestStorage final : public IResourceManifestStorage {

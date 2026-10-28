@@ -715,6 +715,109 @@ remain reachable for evidence, export and reproducibility. Fixtures must cover
 same bytes with changed chunk policy, changed processor, and a retained old
 anchor; none may silently acquire a new `SegmentId` or locator.
 
+### 3.7 Tabular representations
+
+Delimited text such as TSV and CSV is retained as a structured representation
+when its rows and columns carry the source meaning. It is not required to pass
+through ordinary prose chunking. The representation is revision-bound and keeps
+the original values even when a parser proposes typed interpretations:
+
+```cpp
+struct TabularColumn {
+    std::string id;
+    std::string name;
+    std::optional<std::string> declared_type;
+    std::optional<std::string> inferred_type;
+    std::optional<std::string> unit;
+};
+
+struct TabularRepresentation {
+    RepresentationId id;
+    SourceRevisionId source_revision_id;
+    ArtifactId source_artifact_id;
+    BlobDigest original_bytes_digest;
+    BlobDigest normalized_utf8_digest;
+    std::string source_encoding;
+    bool normalized_utf8 = false;
+    std::string dialect;             // tsv, csv, or a registered dialect id
+    bool has_header = true;
+    std::vector<TabularColumn> columns;
+    std::vector<std::string> primary_key_columns;
+    std::string parser_id;
+    std::string parser_version;
+    BlobDigest schema_digest;
+    TypedMetadata metadata;
+};
+
+struct TableSemanticProjection {
+    RepresentationId table_representation_id;
+    SourceRevisionId source_revision_id;
+    KnowledgeUnitId search_unit_id;
+    std::string title;
+    std::string purpose;
+    std::string schema_summary;
+    std::vector<std::string> example_values;
+    std::string derivation_fingerprint;
+};
+```
+
+`TableSemanticProjection` is a logical derived representation, not a second
+identity or indexing system. When materialized for retrieval, the adapter must
+bind it to a stable `KnowledgeUnitId` allocated through the existing unit-store
+contract and emit an ordinary `SearchProjection` for that unit. Its
+`ProjectionVersionRef` carries unit revision, projection revision, generation
+and derivation fingerprint; it does not pretend that a table
+`RepresentationId` is a `KnowledgeUnitId`. The table representation and source
+revision remain in the derivation provenance. Model, codec and index identity
+belong to a separate versioned index descriptor owned by the consuming index,
+not to an overloaded fingerprint. Multi-model and ANN indexes consume those
+ordinary projection records and their descriptors; they do not assign a new
+tabular identity scheme.
+
+The parser records delimiter, quoting/escaping, newline, encoding and empty
+value policy. Automatic type detection is advisory: an ambiguous value or an
+identifier with leading zeroes remains available as its original string and is
+never silently coerced. A supplied schema wins over inference after validation;
+schema drift creates a new representation revision.
+
+`TabularRowRef` and `TableCellLocator` bind exact row/cell evidence to the
+source revision and representation, a stable source primary key when present,
+a revision-local ordinal and an optional byte span. A row ordinal is a locator
+aid, not a durable identity. Sorting or filtering must not make a cited row
+resolve to a different source revision. If no source primary key exists, the
+importer must allocate a revision-bound row identity and retain the mapping in
+the representation. A cell locator is valid only in the context of the
+matching `EvidenceAnchor`/`RepresentationId` and `SourceRevisionId`; a
+`table_id` string alone never authorizes resolution after a re-sort or source
+update. Composite primary keys are ordered tuples of the declared
+`primary_key_columns`, encoded canonically with length-delimited column values;
+when no stable key exists, the row identity remains explicitly
+revision-bound.
+
+The canonical table stores schema and values; `TableSemanticProjection` is
+derived search evidence. Table-level semantic/lexical discovery is the default.
+Optional row or column projections are justified only for substantive textual
+fields or by a measured recall gap, and they remain rebuildable derived
+indexes. Exact predicates, numeric ranges, joins and aggregates execute over
+the structured representation and return row/cell locators; an embedding never
+becomes the authority for a value.
+
+Tabular reads are bounded and streamable. A reader may expose a schema, a
+filtered row iterator and exact cell hydration without materializing the whole
+file. A changed source revision produces targeted invalidation of canonical
+rows, structured indexes and only the semantic projections whose input
+frontier intersects the change. Full-table rebuilds are an explicit maintenance
+operation, not an implicit consequence of one changed row.
+
+The original artifact bytes and any normalized UTF-8 view are separate
+representations. `original_bytes_digest` and byte spans refer to the source
+encoding; `normalized_utf8_digest` and normalized offsets refer to the derived
+UTF-8 view. A parser must record the encoding decision and coordinate system,
+and must never present a normalized offset as an original-byte citation.
+
+This profile is roadmap-only. It does not claim that TSV/CSV ingestion,
+structured indexing or table projections are implemented by the current core.
+
 ## 4. Typed Locators And Evidence Anchors
 
 `TextRange` is sufficient only for UTF-8 text. The public provenance contract
@@ -769,6 +872,27 @@ struct SpreadsheetLocator {
     std::string cell_range;
 };
 
+/// A revision-bound address inside a delimited table representation.
+struct TableCellLocator {
+    std::string table_id;
+    RepresentationId representation_id;
+    SourceRevisionId source_revision_id;
+    std::string column_id;
+    std::string row_key;
+    std::uint64_t row_ordinal = 0;
+    std::optional<TextRange> source_span;
+};
+
+/// A row identity that remains addressable after a later table sort.
+struct TabularRowRef {
+    std::string table_id;
+    RepresentationId representation_id;
+    std::string row_key;
+    std::uint64_t row_ordinal = 0;
+    SourceRevisionId source_revision_id;
+    std::optional<TextRange> source_span;
+};
+
 struct WholeArtifactLocator {};
 
 struct WebLocator {
@@ -779,7 +903,7 @@ struct WebLocator {
 using Locator = std::variant<WholeArtifactLocator, TextLocator,
                              PageRegionLocator, TimeRangeLocator,
                              FrameRegionLocator, ImageRegionLocator, SlideLocator,
-                             SpreadsheetLocator, WebLocator>;
+                             SpreadsheetLocator, TableCellLocator, WebLocator>;
 
 struct AlignmentProvenance {
     std::string processor_id;

@@ -91,7 +91,7 @@ jobs:
                 core=true
                 research=true
                 ;;
-              tools/benchmarks/*|tools/agent-memory-bench/*|tools/requirements-tools.txt|external/simdcomp/*)
+              tools/benchmarks/*|tools/agent-memory-bench/*|tools/lexical-research/*|tools/requirements-tools.txt|external/simdcomp/*)
                 research=true
                 ;;
               CMakeLists.txt|cmake/*|*.cmake|CMakePresets.json|CMakeSettings.json)
@@ -163,6 +163,7 @@ jobs:
           assert_route "src/agent_memory/index/FlatBinarySignatureIndex.cpp" true false true false false
           assert_route "tests/index/binary_signature_test.cpp" true false true false false
           assert_route "tools/agent-memory-bench/run-native-mdbx-batch-sweep.py" false false true false false
+          assert_route "tools/lexical-research/run_cpp_lexical_parity.py" false false true false false
           assert_route "unknown/path" true true true true true
 
           # Regression assertions must not influence the real change set.
@@ -368,10 +369,19 @@ jobs:
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build storage benchmark harness
-        run: cmake --build build-mdbx-benchmark --config Release --target agent-memory-mih-storage-bench agent-memory-native-thq-mdbx-serving agent-memory-mdbx-finalist-harness
+        run: >
+          cmake --build build-mdbx-benchmark --config Release --target
+          agent-memory-mih-storage-bench
+          agent-memory-native-thq-mdbx-serving
+          agent-memory-mdbx-finalist-harness
+          agent_memory_segmented_lexical_benchmark
 
       - name: Test storage benchmark harness
-        run: ctest --test-dir build-mdbx-benchmark --build-config Release --output-on-failure -R "agent_memory_mih_storage|agent_memory_native_thq_mdbx_serving_(lifecycle|integer_key)|agent_memory_native_mdbx_(serving_audit|layout_sweep)(_audit)?_self_test|agent_memory_mdbx_finalist_harness_self_test"
+        run: >
+          ctest --test-dir build-mdbx-benchmark --build-config Release
+          --output-on-failure
+          -R
+          "agent_memory_mih_storage|agent_memory_native_thq_mdbx_serving_(lifecycle|integer_key)|agent_memory_native_mdbx_(serving_audit|layout_sweep)(_audit)?_self_test|agent_memory_mdbx_finalist_harness_self_test|agent_memory_segmented_lexical_benchmark_contract"
 
   native-mih-benchmark:
     if: needs.changes.outputs.research == 'true'
@@ -908,6 +918,63 @@ jobs:
           && python tools/agent-memory-bench/run-neuroute-prototype-binary-metric.py self-test
           && python tools/agent-memory-bench/run-neuroute-prototype-binary-neural.py self-test
 
+  lexical-parity:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: C++ lexical parity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tool dependencies
+        run: python -m pip install -r tools/requirements-tools.txt
+
+      - name: Configure lexical parity harness
+        run: >
+          cmake -S . -B build-lexical-parity
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_ENABLE_MDBX=OFF
+          -DAGENT_MEMORY_ENABLE_JSON=OFF
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=OFF
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
+
+      - name: Build lexical parity exporter
+        run: cmake --build build-lexical-parity --config Release --target agent_memory_lexical_parity_export
+
+      - name: Run lexical parity comparator
+        run: >
+          python tools/lexical-research/run_cpp_lexical_parity.py
+          --cpp-exporter build-lexical-parity/tests/agent_memory_lexical_parity_export
+          --golden tools/lexical-research/fixtures/cpp_tokenizer_golden.json
+          --output artifacts/lexical-parity-receipt.json
+
+      - name: Run lexical parity mutation self-test
+        run: >
+          ctest --test-dir build-lexical-parity
+          --build-config Release
+          --output-on-failure
+          --tests-regex agent_memory_cpp_lexical_parity_mutation_self_test
+
+      - name: Upload lexical parity receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lexical-parity-receipt
+          path: artifacts/lexical-parity-receipt.json
+          if-no-files-found: warn
+
   research-full:
     if: needs.changes.outputs.full == 'true'
     needs: changes
@@ -949,6 +1016,29 @@ jobs:
       - name: Run full research CTest
         run: ctest --test-dir build-research-full --build-config Release --output-on-failure
 
+  persistent-lexical-oracle:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: Persistent lexical oracle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run persistent lexical oracle self-test
+        run: >
+          python tools/lexical-research/validate_persistent_lexical_oracle.py
+          tools/lexical-research/fixtures/persistent_lexical_oracle_v1.json
+          --self-test
+
   ci-gate:
     name: CI gate
     if: always()
@@ -963,6 +1053,8 @@ jobs:
       - thq-faiss-additive-control
       - thq-packed-codec-contract
       - ann-cascade
+      - lexical-parity
+      - persistent-lexical-oracle
       - research-full
     runs-on: ubuntu-latest
     steps:
@@ -983,6 +1075,8 @@ jobs:
           FAISS_RESULT: ${{ needs.thq-faiss-additive-control.result }}
           THQ_RESULT: ${{ needs.thq-packed-codec-contract.result }}
           ANN_RESULT: ${{ needs.ann-cascade.result }}
+          PARITY_RESULT: ${{ needs.lexical-parity.result }}
+          ORACLE_RESULT: ${{ needs.persistent-lexical-oracle.result }}
           FULL_RESULT: ${{ needs.research-full.result }}
         shell: bash
         run: |
@@ -1013,6 +1107,8 @@ jobs:
           check_required "$RESEARCH_REQUIRED" "$FAISS_RESULT" "Faiss control"
           check_required "$RESEARCH_REQUIRED" "$THQ_RESULT" "THQ packed codec"
           check_required "$RESEARCH_REQUIRED" "$ANN_RESULT" "ANN cascade"
+          check_required "$RESEARCH_REQUIRED" "$PARITY_RESULT" "C++ lexical parity"
+          check_required "$RESEARCH_REQUIRED" "$ORACLE_RESULT" "persistent lexical oracle"
           check_required "$FULL_REQUIRED" "$FULL_RESULT" "full research CTest"
 
           exit "$failed"
