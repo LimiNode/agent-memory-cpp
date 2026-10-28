@@ -59,7 +59,9 @@ that it helps.
 - Use `Eigen::Map` for temporary zero-copy views; do not store long-lived maps
   over vectors that may be destroyed or reallocated.
 - Compress text and document payloads before compressing hot vector-search data.
-- Keep full float embeddings available for final reranking.
+- Keep FP32 as an exact reference and supported storage mode; a compact
+  descriptor-bound scorer may perform final reranking without persisted FP32
+  when its metric, parity and quality gates are proven.
 - Treat binary signatures as candidate filters, not as final ranking truth.
 - Measure approximate search quality by recall and latency against an exact
   float baseline.
@@ -410,9 +412,12 @@ Benchmarks before enabling compression by default:
 
 ### Canonical Float Storage
 
-- Keep float32 embeddings as the source of truth for quality-sensitive rerank.
-- Store compressed float vectors only for cold storage, archives, or benchmarked
-  bucket layouts.
+- Keep float32 embeddings as the exact quality reference and one supported
+  storage option. They are not the only valid persisted representation for a
+  compact profile.
+- Store compact vectors only with an immutable codec/model descriptor and a
+  scorer that declares whether it uses lookup-table scoring, bounded decode or
+  exact reconstruction.
 - Do not run hot vector search by decompressing every candidate from a generic
   compressed blob unless a benchmark proves it is faster for the target
   workload.

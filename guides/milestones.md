@@ -82,6 +82,15 @@ Required capabilities:
 `BasicLexicalRag()` is the default factory. `BasicHybridRag(IEmbedder&)` or an
 equivalent explicit opt-in is required for dense vectors.
 
+An optional M1a compact-vector preview may add a descriptor-bound FP32-free
+scorer (for example INT8, LSQ, TQ or another validated format) without making
+FP32 mandatory or changing M0. Its release gate is separate from the research
+closure: codec quality/native parity, persisted bytes, reopen/update/crash
+behavior, stale/access admission and rollback must all be demonstrated. The
+historical THQ/R4/compact-code studies are research evidence; they do not
+select a production default by themselves. See
+[`derived-representations-and-codecs.md`](derived-representations-and-codecs.md).
+
 ### M1b - Structured Knowledge
 
 Goal: add curated knowledge objects and single-axis temporal validity without
@@ -105,6 +114,14 @@ Required capabilities:
 M1b may add domain maps and playbooks as `KnowledgeUnitKind` values, but they
 must be canonical, versioned objects that cite evidence; they are not just
 chunks from source documents.
+
+An optional M1b Linked Knowledge preview profile may stage durable
+`Note`/`Summary`/`Playbook` authoring, revision-qualified multi-input
+derivation, typed Relation publication, reverse lookup and bounded evidence
+drill-down without claiming the rest of M1b complete. Its conformance gates are
+owned by [`linked-derived-knowledge.md`](linked-derived-knowledge.md). M0 does
+not acquire a graph, hierarchy or LLM dependency, and MemWalker/RAPTOR-style
+construction and routing remain later research until benchmark-gated.
 
 The canonical-content contract is shared across domain forms, but this M1b row
 covers only the normalized-text `Document` vertical slice. Conversation /

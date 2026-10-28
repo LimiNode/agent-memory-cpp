@@ -72,9 +72,12 @@ direct shared INT8 -> top-10 over the full corpus
 THQ4 interval-squared -> top-128 -> shared INT8 -> top-10
 ```
 
-The exact FP32 E5 scan remains an offline teacher/reference arm. It is not a
-production rerank and must not be used to claim a deployable FP32-free index.
-For every query set, report qrels nDCG@10 for both decision arms, candidate
-survival and teacher overlap separately, plus total persistent footprint,
-logical bytes/pages, and native latency. A lower teacher overlap is
-acceptable only when product qrels quality remains acceptable.
+The exact FP32 E5 scan remains an offline teacher/reference arm. A separate
+descriptor-bound compact final scorer may claim an FP32-free profile only when
+its native score semantics, fresh quality, persistence, update/recovery and
+whole-footprint gates are independently closed; this note does not select that
+scorer as a production default. For every query set, report qrels nDCG@10 for
+both decision arms, candidate survival and teacher overlap separately, plus
+total persistent footprint, logical bytes/pages, and native latency. A lower
+teacher overlap is acceptable only when product qrels quality remains
+acceptable.

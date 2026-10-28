@@ -395,6 +395,13 @@ auto env = env_builder.build();
 
 `KnowledgeUnitId` — opaque strong-typedef wrapper над `uint64_t`. Используется исключительно как **primary key** для storage layer и для cross-reference между units (anchor, supersedes, derived_from). Аллоцируется **монотонно**, **никогда не reused** после erase.
 
+The envelope's singular optional `derived_from` is the narrow compatibility
+form for one immediate parent. It is not the multi-input derivation contract.
+Summaries, compiled articles and other aggregate outputs bind all exact input
+revisions through Relation-owned derivation records and full provenance, as
+reconciled in [`linked-derived-knowledge.md`](linked-derived-knowledge.md).
+Do not widen every envelope with an unbounded ancestry vector.
+
 Content-addressing (дедупликация, миграция, idempotent upsert) выполняется через **отдельный** `KnowledgeUnitKey` (kind + scope + `ContentHash`). Это разделяет два разных понятия:
 
 - **ID** = local storage/occurrence handle inside one storage environment; an opaque handle for map keys, cross-references and supersedence chains. It is never reused after erase. Monotonic uint64_t.

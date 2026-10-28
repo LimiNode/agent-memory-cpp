@@ -892,6 +892,19 @@ after global-ID remapping. A packed adjacency segment is derived and rebuildable
 it is never the source for edge kind, confidence, causal explanation or
 provenance after restore.
 
+Multi-input derivation and semantic/navigation relations may reuse this
+Relation-owned substrate with different validation rules: derivation binds
+exact input/output revisions and rejects cycles, while semantic/navigation
+relations may be cyclic. The generic derivation/publication manifest is the
+authority; Relation units and graph orientations are optional rebuildable
+views, so an aspect projection can exist without a semantic edge. Bounded
+evidence drill-down, stale propagation and the optional KB-1 Linked Knowledge
+profile are reconciled in
+[`linked-derived-knowledge.md`](linked-derived-knowledge.md) and
+[`derived-representations-and-codecs.md`](derived-representations-and-codecs.md).
+No independent summary-tree graph or authoritative adjacency store is
+introduced.
+
 #### Optional typed relational facts
 
 Future structured-memory profiles may represent a fact as a typed n-ary
