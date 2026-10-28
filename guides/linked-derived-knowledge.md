@@ -151,9 +151,9 @@ Required semantics:
 
 `GraphEdge.from` and `GraphEdge.to` resolve the existing scoped
 `KnowledgeUnitRef` identity and deliberately do not carry a revision. The
-authoritative revision binding lives in the Relation-owned derivation payload
-for the occurrence (and in its canonical provenance record), not in a second
-unit-reference type. For each occurrence the payload stores:
+authoritative revision binding lives in the canonical publication manifest and
+provenance record, not in a Relation occurrence and not in a second
+unit-reference type. For each publication the manifest stores:
 
 ```text
 output:       (scope, unit_id, revision)
@@ -163,8 +163,9 @@ input_sources:[(SourceRevisionId, EvidenceAnchorId), ...]
 
 The Relation's GraphEdge, when materialized, points from the output unit
 identity to one direct input identity. A single `DerivationPublication`
-therefore owns one output record and one-to-many Relation occurrences, each
-with a stable occurrence identity and the same publication generation. The
+therefore owns one output record and may have one-to-many Relation view rows,
+each with a stable occurrence identity and the same publication generation.
+The
 complete ordered input list is stored once in the publication manifest;
 occurrences carry only their own input binding, occurrence digest and
 publication identity. This avoids copying an N-input list into each of N
@@ -172,7 +173,8 @@ records. The publication digest covers the ordered input list, source anchors,
 recipe/producer fingerprints and output revision. Serialization uses fixed
 field order, explicit integer endianness and length-delimited byte strings;
 unknown trailing fields are rejected for this proposal rather than silently
-ignored.
+ignored. The manifest and its exact bindings remain valid when no graph view
+is enabled.
 
 Resolution is scope-qualified and revision-qualified. A reader first resolves
 the retained unit/source revision and then its body or evidence anchor. If the
@@ -190,37 +192,43 @@ For example, the logical record for `Summary S@7` derived from `A@1` and
 LDK1 | scope=kb | output=S:7 | inputs=[A:1,B:4]
      | source_frontier={A:1,B:4} | generation=12
      | recipe=sha256:... | producer=sha256:...
-     | relations=[rel:S->A:g12, rel:S->B:g12]
+     | optional_relations=[rel:S->A:g12, rel:S->B:g12]
 ```
 
 After reopen, the store validates the digest, resolves both retained input
-revisions and checks that both Relation occurrences carry generation 12 before
-returning an active publication. If `A@1` was collected, the same record is
-still available as historical lineage, but body hydration is `Unavailable`;
-`A@2` must not be used as a substitute.
+revisions and checks the publication marker before returning an active
+publication. If a graph view is enabled, its Relation occurrences are checked
+against the manifest generation as a separate view-consistency step; missing
+view rows do not block a graph-free projection. If `A@1` was collected, the
+same manifest is still available as historical lineage, but body hydration is
+`Unavailable`; `A@2` must not be used as a substitute.
 
 ### Atomic multi-input publication
 
-The first KB-1 profile uses a bounded transaction only when the output unit,
-all Relation occurrences, provenance payload and publication marker share one
-MDBX transaction domain. Its state machine is:
+The first KB-1 profile uses a bounded transaction when the output unit,
+canonical manifest, provenance payload and publication marker share one MDBX
+transaction domain. Relation view rows participate in the same transaction
+only when that graph view is enabled. Its state machine is:
 
 1. **Prepared** — freeze the canonical ordered input set and digest, record
    expected cardinality, output identity/revision, source frontier, recipe and
    producer fingerprints, and allocate a new generation.
-2. **Staged** — write the output body, all Relation-owned occurrences and
-   revision-qualified payloads. Staged rows are invisible to active reads.
-3. **Committed** — in one transaction, verify every expected input and relation
-   occurrence, then write the publication marker containing the digest,
+2. **Staged** — write the output body, canonical manifest and
+   revision-qualified provenance. Optional Relation view rows may be staged in
+   parallel. Staged rows are invisible to active reads.
+3. **Committed** — in one transaction, verify every expected input against the
+   manifest, then write the publication marker containing the digest,
    cardinality and generation. This marker is the sole active commit point.
-4. **Visible** — readers in one snapshot admit the output only when the marker
-   is committed and every referenced occurrence resolves. A crash before the
-   marker leaves an unpublished generation that recovery may discard or retry.
+4. **Visible** — readers in one snapshot admit the output when the marker is
+   committed and every manifest input resolves. If a graph view is requested,
+   its rows must additionally match the marker; a crash before the marker
+   leaves an unpublished generation that recovery may discard or retry.
 
 Retries are create-or-validate by `(output revision, input digest, recipe,
-producer)`; they never create duplicate Relation occurrences. A crash after
-commit is idempotent and reopen reconstructs visibility from the marker. A
-single transaction domain gives atomic visibility and snapshot consistency,
+producer)`; they never create duplicate manifest publications. If a graph view
+is enabled, its occurrence identities are also create-or-validate. A crash
+after commit is idempotent and reopen reconstructs visibility from the marker.
+A single transaction domain gives atomic visibility and snapshot consistency,
 but not cross-database or cross-process coordination, lease arbitration,
 long-running orchestration or automatic retry scheduling. Those guarantees
 belong to a future publication coordinator; the coordinator stack is not
@@ -243,6 +251,29 @@ following only the declared dependency frontier. If any epoch or witness
 mismatches, the read is `Stale` even when reverse invalidation is incomplete;
 there is no full-corpus scan per query. Writers fence publication against the
 captured frontier epoch before committing a new generation.
+
+#### Interrupted-invalidation example
+
+Consider `A@1 → L1@1 → L2@1`. Each publication stores the source frontier
+entry for `A` and a witness that includes the committed manifest of its direct
+derived input. When the source catalog publishes `A@2`, it advances the
+authoritative frontier epoch for `A` before any background invalidation job
+runs. A `Current` read of `L2@1` then performs this bounded check:
+
+1. read the source catalog's current `(A, epoch=2, revision=2)` entry;
+2. resolve `L2@1`'s committed manifest and its witness for `L1@1`;
+3. resolve `L1@1`'s committed manifest and compare its recorded `A@1` frontier
+   entry and witness epoch with the source catalog;
+4. reject `L2@1` as `Stale`/`Partial` because the current authority is newer,
+   even though neither L1 nor L2 has been rebuilt and reverse invalidation was
+   interrupted.
+
+An explicit historical read may still open `L2@1` and report its provenance
+from `A@1`, subject to retention and authorization. If a dependency witness or
+current frontier entry is missing, the reader returns an incomplete
+fail-closed outcome rather than treating two old digests as proof of freshness.
+The conformance fixture reopens the database after the interrupted job and
+asserts both outcomes.
 
 No new DBI follows from this logical shape. The first implementation must try
 the existing Relation unit plus `graph_edges_by_src`/`graph_edges_by_dst` and
@@ -336,12 +367,14 @@ fallback.
 
 The same admission fence applies to every candidate-producing path: lexical
 postings, dense/ANN indexes, metadata filters, semantic relations and future
-hybrid fusion. An index row may be staged, stale or unauthorized; its presence
-never publishes derived text. Before a hit can produce a snippet or ContextPack
-block, the reader validates the committed publication generation, frontier
-witness, representation/index version and effective authorization. Failed
-checks are dropped with an explicit diagnostic rather than repaired by
-substituting a newer unit revision.
+hybrid fusion. Candidate-pool admission first isolates scope, model/aspect and
+index generation; scoring then operates only inside that pool. An index row
+may be staged, stale or unauthorized, and its presence never publishes
+derived text. Before a hit can produce a snippet, locator or ContextPack block,
+the reader validates the committed publication generation, frontier witness,
+representation/index version and effective authorization. Failed checks are
+dropped with a redacted diagnostic rather than repaired by substituting a newer
+unit revision.
 
 Flat retrieval remains available when a hierarchy is missing, stale or over
 budget. Hierarchical traversal cannot silently consume the flat route's
@@ -383,7 +416,10 @@ The first conformance fixture must cover:
 
 - one Summary derived from two independent source revisions;
 - a five-input publication that crashes after partial staging and remains
-  invisible until every Relation occurrence is committed;
+  invisible until the canonical manifest is committed; an optional graph view
+  is checked separately for complete occurrence coverage;
+- a graph-free aspect projection that publishes, closes and reopens without
+  creating Relation occurrences;
 - a summary-of-summary chain with at least three levels;
 - one source used by several summaries;
 - a semantic cycle accepted and a derivation cycle rejected;
@@ -399,6 +435,9 @@ The first conformance fixture must cover:
 - identical unit IDs in different scopes resolving independently;
 - an updated source while reverse invalidation is incomplete, with query-time
   stale rejection;
+- the interrupted-invalidation `A@1 → L1@1 → L2@1` case after reopen, proving
+  that the current source frontier rejects stale descendants while an explicit
+  historical read remains available;
 - access denial before derived text, route trace or source locator
   materialization;
 - semantic retrieval never traversing technical lineage unless explicitly

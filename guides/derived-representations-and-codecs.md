@@ -101,22 +101,32 @@ the witness and read-time fence remain authoritative.
 
 ### Reader admission fence
 
-Every retrieval path applies the same admission sequence before returning
-derived text, snippets or ContextPack material:
+Every retrieval path applies three distinct boundaries before returning derived
+text, snippets or ContextPack material:
 
-1. resolve scope, unit revision and representation descriptor;
-2. require a committed publication generation and matching frontier witness;
-3. validate lifecycle and effective authorization, including required upstream
-   dependencies;
-4. validate the index/projection version and codec/model descriptor;
-5. only then materialize text or decode a candidate.
+1. **Candidate-pool admission** resolves scope, model/aspect descriptor,
+   metric and allowed index generation before any candidate is read. Indexes
+   are scope-isolated and a pool cannot contain records from another scope or
+   an incompatible representation space.
+2. **Safe scoring** runs lexical, SIMD, packed or ANN scoring only over that
+   admitted pool. Scores are not evidence and diagnostics expose only bounded
+   counts, descriptor identities and redacted rejection reasons. Scores from
+   incompatible aspect/model spaces are never fused without an explicit
+   compatible policy.
+3. **Final publication admission** validates unit revision, committed
+   publication generation, frontier witness, lifecycle and effective
+   authorization (including required upstream dependencies), plus the
+   projection/index and codec descriptor. Only then may text, locators or
+   ContextPack material be materialized.
 
 Lexical, dense, ANN, metadata-filter and future hybrid indexes may contain
 staged, stale or unauthorized candidates. Their presence is not publication
-authority. A candidate that fails admission is dropped with an explicit
+authority. A candidate that fails final admission is dropped with an explicit
 diagnostic (`Stale`, `Unavailable`, `Partial` or `Unauthorized`) and cannot
-leak through a snippet or route trace. Flat original retrieval remains an
-independent fallback.
+leak through a snippet, locator or route trace. Per-byte authorization is not
+required during SIMD scoring; the scope-isolated pool and mandatory final
+admission provide the boundary. Flat original retrieval remains an independent
+fallback.
 
 ## Aspect, representation and recipe identity
 
@@ -168,16 +178,22 @@ omitted representation records source unit revision, aspect/recipe identity,
 producer/model and tokenizer/preprocessing identity, text digest when present,
 active generation, index freshness identity and the policy reason.
 
-Changing model, recipe, tokenizer or codec creates a new representation
-generation. Existing rows remain historical until retention permits reclaim:
+The logical representation revision, embedding materialization revision, codec
+encoding generation and physical index generation are independent. Changing a
+recipe or model creates a new logical/embedding materialization. Re-encoding
+the same embedding with a different lossless or lossy codec creates a new
+physical encoding generation and, when an index is rebuilt, a new index
+generation; it does not change the `KnowledgeUnit` revision or force extractor
+or LLM work. A lossy scorer is not mathematically equivalent to FP32 without
+its own proof. Existing rows remain historical until retention permits reclaim:
 
 | Change | Existing materialization | New materialization |
 |---|---|---|
-| lossless text codec only | same logical identity/provenance | may reuse content digest after integrity check |
+| lossless text/vector codec only | same logical identity/provenance | new physical encoding generation; may reuse content digest after integrity check |
 | embedding model/version | historical, not mixed | new model descriptor and generation |
 | recipe/schema | historical, not mixed | new recipe/schema identity |
 | tokenizer/template | stale for current search | new preprocessing descriptor |
-| vector codec/codebook | historical codec remains readable if supported | new codec descriptor and migration gate |
+| vector codec/codebook | historical codec remains readable if supported | new physical encoding and index generations; logical representation is unchanged |
 | omitted text becomes required | unchanged | `RebuildUnavailable` unless exact source/recipe exists |
 
 ## Codec-neutral vector contract
