@@ -106,6 +106,14 @@ M1b may add domain maps and playbooks as `KnowledgeUnitKind` values, but they
 must be canonical, versioned objects that cite evidence; they are not just
 chunks from source documents.
 
+An optional M1b Linked Knowledge preview profile may stage durable
+`Note`/`Summary`/`Playbook` authoring, revision-qualified multi-input
+derivation, typed Relation publication, reverse lookup and bounded evidence
+drill-down without claiming the rest of M1b complete. Its conformance gates are
+owned by [`linked-derived-knowledge.md`](linked-derived-knowledge.md). M0 does
+not acquire a graph, hierarchy or LLM dependency, and MemWalker/RAPTOR-style
+construction and routing remain later research until benchmark-gated.
+
 The canonical-content contract is shared across domain forms, but this M1b row
 covers only the normalized-text `Document` vertical slice. Conversation /
 `SessionEventStream` integration is a later M2 profile, and

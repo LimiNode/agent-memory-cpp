@@ -112,6 +112,13 @@ playbooks, adjacent domains, constraints, and high-priority warnings. A
 DomainMap is rebuildable from canonical nodes and graph relations, but
 activation of a new version is explicit.
 
+Concept, Playbook, Summary and DomainMap links share the typed Relation and
+multi-input provenance rules in
+[`linked-derived-knowledge.md`](linked-derived-knowledge.md). A navigation
+projection may reference the same canonical units from several hierarchies;
+it does not copy their text, create independent evidence or replace derivation
+lineage.
+
 ### CapabilityRegistry
 
 A compact registry of what the agent/application can do: tools, playbook
