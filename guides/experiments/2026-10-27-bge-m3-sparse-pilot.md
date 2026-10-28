@@ -66,12 +66,23 @@ The only decisions are `GO_TO_LARGER_EVALUATION`, `NO_GO`, and
 `INSUFFICIENT_EVIDENCE` when the qualified cohort or retrieval cutoff is
 insufficient; execution failures remain separate non-completed statuses.
 Completed receipt admission reloads the frozen corpus, queries and qrels from
-the paths bound by their SHA-256 values, validates the ranked-hit replay bundle,
-recomputes both arms' metrics and then checks the policy-derived decision. An
+the paths bound by their SHA-256 values, binds every replay row to the frozen
+query ID, language and answer mode, and validates depth and deterministic score
+ordering in the sole authoritative ranked-hit bundle. It then recomputes both
+arms' metrics and checks the policy-derived decision. An
 empty quality object, forged verdict, metric-only tampering, non-finite sparse
 score or malformed qrel identity is rejected. Routine CI runs 22 dependency-free negative controls
 covering scoring, zero overlap and ties, token/weight schema, short and long
 inference output, identity/qrels/language completeness, corrupt artifact
 evidence, insufficient top-K coverage, false GO/NO-GO receipts, invalid policy
 registration, completed decision states, replay tampering and fail-closed
-receipt publication. Full model inference remains an external research run.
+receipt publication, plus 10 replay-identity, ranking-depth/order/tie,
+duplicate-copy and execution-status controls (32 total). Full model inference remains an
+external research run.
+
+Qualified replay establishes frozen input hashes, ranked-hit/query identity,
+metric recomputation and the policy verdict. It does not independently establish
+that the declared checkpoint generated the ranked hits. That stronger provenance
+claim requires reproducible model inference or a separately trusted inference
+artifact. The fake encoder exercises runner contracts only and provides no
+evidence of real BGE-M3 retrieval quality.

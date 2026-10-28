@@ -60,11 +60,22 @@ verified/loaded artifacts and the policy-derived decision. Completed
 insufficient; it is not the same as a failed execution. A completed receipt
 also carries a replay bundle of the frozen corpus identities, queries, qrels
 and ranked hits. Admission reloads those files, checks their SHA-256 values and
-recomputes both arms' metrics before accepting any decision. An authored empty
-quality object, forged verdict or metric aggregate is rejected. Sparse products
+binds each ranked row to the frozen query ID, language and answer mode. The
+replay rows are the sole authoritative ranked-result bundle; a second materialized
+result copy is rejected. Hit depth, score order and deterministic document-ID
+tie breaking are validated before both arms' metrics are recomputed. An authored
+empty quality object, forged verdict or metric aggregate is rejected. Sparse products
 and accumulated scores must remain finite, malformed qrels are reported as
 controlled evidence failures rather than uncaught type errors, and post-model
 errors produce a non-zero diagnostic failure receipt when publication succeeds.
+
+Qualified admission proves the identity and hashes of the frozen inputs, the
+shape and query binding of the supplied ranked hits, the metrics derived from
+those hits and qrels, and the policy-derived verdict. Replay alone does not
+independently prove that the declared BGE-M3 checkpoint produced those hits.
+Establishing model-origin provenance requires reproducible inference or a
+separately trusted inference artifact. The dependency-free fake encoder tests
+only runner contracts; it makes no claim about real BGE-M3 quality.
 
 Model caches, receipts, generated embeddings and evaluation data stay outside
 Git. Install ML dependencies only in an isolated research environment.

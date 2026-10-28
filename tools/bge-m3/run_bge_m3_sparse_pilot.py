@@ -26,6 +26,15 @@ MODEL_BASE_URL = f"https://huggingface.co/{MODEL_REPOSITORY}/resolve/{MODEL_REVI
 LANGUAGES = {"en", "ru", "code"}
 DECISIONS = {"GO_TO_LARGER_EVALUATION", "NO_GO", "INSUFFICIENT_EVIDENCE"}
 COMPLETED = "EVALUATION_COMPLETED"
+EXECUTION_STATUSES = {
+    COMPLETED,
+    "ARTIFACT_VERIFICATION_FAILED",
+    "MISSING_EVALUATION_EVIDENCE",
+    "MODEL_DEPENDENCY_UNAVAILABLE",
+    "MODEL_INFERENCE_FAILED",
+    "SCORER_PARITY_FAILED",
+    "EVALUATION_FAILED",
+}
 TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
 TOKEN_ID_RE = re.compile(r"0|[1-9][0-9]*")
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -295,7 +304,7 @@ def bm25_rank(index: dict[str, Any], query: str, limit: int) -> list[dict[str, A
 
 def recall_at_k(hits: list[dict[str, Any]], relevant: dict[str, int], k: int) -> float:
     positives = {doc_id for doc_id, grade in relevant.items() if grade > 0}
-    return len({hit["doc_id"] for hit in hits[:k]} & positives) / len(positives)
+    return len({hit["doc_id"] for hit in hits[:k]} & positives) / len(positives) if positives else 0.0
 
 
 def ndcg_at_k(hits: list[dict[str, Any]], relevant: dict[str, int], k: int) -> float:
@@ -330,7 +339,9 @@ def metrics(rows: list[dict[str, Any]], qrels: dict[str, dict[str, int]], arm: s
         "recall_at": recall,
         "ndcg_at_10": sum(ndcg_at_k(row[f"{arm}_hits"], qrels[row["query_id"]], 10) for row in judged) / len(judged) if limit >= 10 else None,
         "mrr_at_limit": sum(next((1.0 / (index + 1) for index, hit in enumerate(row[f"{arm}_hits"][:limit]) if qrels[row["query_id"]].get(hit["doc_id"], 0) > 0), 0.0) for row in judged) / len(judged),
-        "no_answer_nonempty_hit_rate_diagnostic": sum(bool(row[f"{arm}_hits"]) for row in no_answer) / len(no_answer),
+        "no_answer_nonempty_hit_rate_diagnostic": (
+            sum(bool(row[f"{arm}_hits"]) for row in no_answer) / len(no_answer) if no_answer else 0.0
+        ),
         "abstention_accuracy": None,
         "abstention_note": "UNAVAILABLE: no calibrated score threshold is registered",
     }
@@ -499,9 +510,11 @@ def validate_replay_evidence(receipt: dict[str, Any], quality: dict[str, Any], l
     rows = replay["rows"]
     if not isinstance(rows, list) or len(rows) != len(query_rows):
         raise EvidenceError("replay row cardinality does not match frozen queries")
-    query_ids = [row["id"] for row in query_rows]
-    if [row.get("query_id") for row in rows if isinstance(row, dict)] != query_ids:
-        raise EvidenceError("replay row identities do not match frozen queries")
+    for row, frozen_query in zip(rows, query_rows):
+        if not isinstance(row, dict) or row.get("query_id") != frozen_query["id"] \
+                or row.get("language") != frozen_query["language"] \
+                or row.get("answer_mode") != frozen_query["answer_mode"]:
+            raise EvidenceError("replay row query metadata does not match frozen queries")
     document_set = set(document_ids)
     for row in rows:
         if not isinstance(row, dict) or set(row) != {"query_id", "language", "answer_mode", "sparse_hits", "bm25_hits"}:
@@ -511,7 +524,10 @@ def validate_replay_evidence(receipt: dict[str, Any], quality: dict[str, Any], l
         if not isinstance(row["sparse_hits"], list) or not isinstance(row["bm25_hits"], list):
             raise EvidenceError("replay ranked hits are invalid")
         for hits in (row["sparse_hits"], row["bm25_hits"]):
+            if len(hits) > limit:
+                raise EvidenceError("replay ranked hits exceed retrieval limit")
             seen: set[str] = set()
+            previous: dict[str, Any] | None = None
             for hit in hits:
                 if not isinstance(hit, dict) or set(hit) != {"doc_id", "score"} \
                         or not isinstance(hit["doc_id"], str) or hit["doc_id"] not in document_set \
@@ -519,7 +535,13 @@ def validate_replay_evidence(receipt: dict[str, Any], quality: dict[str, Any], l
                         or not isinstance(hit["score"], (int, float)) or not math.isfinite(float(hit["score"])) \
                         or hit["score"] < 0.0:
                     raise EvidenceError("replay ranked hit is invalid")
+                if previous is not None and (
+                    hit["score"] > previous["score"]
+                    or (hit["score"] == previous["score"] and hit["doc_id"] < previous["doc_id"])
+                ):
+                    raise EvidenceError("replay ranked hits are not deterministically ordered")
                 seen.add(hit["doc_id"])
+                previous = hit
     expected = {
         "bge_m3_sparse": metrics(rows, qrels, "sparse", limit),
         "bm25": metrics(rows, qrels, "bm25", limit),
@@ -532,12 +554,14 @@ def validate_receipt(receipt: dict[str, Any]) -> None:
     if receipt.get("decision") not in DECISIONS:
         raise EvidenceError("receipt decision is invalid")
     status = receipt.get("execution_status")
-    if not isinstance(status, str):
-        raise EvidenceError("receipt execution status is missing")
+    if status not in EXECUTION_STATUSES:
+        raise EvidenceError("receipt execution status is unsupported")
     if status != COMPLETED:
         if receipt["decision"] != "INSUFFICIENT_EVIDENCE":
             raise EvidenceError("incomplete execution cannot publish GO or NO_GO")
         return
+    if "queries" in receipt:
+        raise EvidenceError("completed receipt contains a redundant ranked-result copy")
     model = receipt.get("model")
     if not isinstance(model, dict) or model.get("loaded") is not True:
         raise EvidenceError("completed evaluation receipt lacks loaded-model evidence")
@@ -762,7 +786,6 @@ def _run(args: argparse.Namespace) -> int:
             "sample_count_semantics": "one_observation_per_frozen_query_not_independent_repeats",
             "measured_status": "directional",
         },
-        "queries": rows,
     }
     publish_receipt(receipt, args.output)
     print(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True))
@@ -915,6 +938,7 @@ def self_test() -> int:
         qrels_path.write_text(json.dumps(qrels, ensure_ascii=False), encoding="utf-8")
 
         def e2e_receipt(rows: list[dict[str, Any]], limit: int) -> dict[str, Any]:
+            rows = json.loads(json.dumps(rows))
             _, _, replay_qrels, provenance = validate_data(corpus, queries, qrels)
             quality = {
                 "bge_m3_sparse": metrics(rows, replay_qrels, "sparse", limit),
@@ -993,6 +1017,76 @@ def self_test() -> int:
                 raise SystemExit(f"self-test expected {expected_decision}, got {receipt['decision']}")
             publish_receipt(receipt, output)
             validate_receipt(load_json(output))
+
+        def requalify_mutation(receipt: dict[str, Any]) -> None:
+            _, _, replay_qrels, _ = validate_data(corpus, queries, qrels)
+            rows = receipt["evidence_replay"]["rows"]
+            limit = receipt["retrieval_limit"]
+            receipt["quality"] = {
+                "bge_m3_sparse": metrics(rows, replay_qrels, "sparse", limit),
+                "bm25": metrics(rows, replay_qrels, "bm25", limit),
+            }
+            receipt["decision"] = decide(receipt["quality"], registered_policy, limit)
+
+        forged_language = e2e_receipt(good_rows, 10)
+        forged_language["evidence_replay"]["rows"][0]["language"] = "ru"
+        requalify_mutation(forged_language)
+        reject(lambda: validate_receipt(forged_language), "forged replay language cohort")
+
+        forged_judged_mode = e2e_receipt(good_rows, 10)
+        forged_judged_mode["evidence_replay"]["rows"][0]["answer_mode"] = "no_answer"
+        requalify_mutation(forged_judged_mode)
+        reject(lambda: validate_receipt(forged_judged_mode), "forged judged answer mode")
+
+        forged_no_answer_mode = e2e_receipt(good_rows, 10)
+        forged_no_answer_mode["evidence_replay"]["rows"][-1]["answer_mode"] = "judged"
+        requalify_mutation(forged_no_answer_mode)
+        reject(lambda: validate_receipt(forged_no_answer_mode), "forged no-answer mode")
+
+        reordered_rows = e2e_receipt(good_rows, 10)
+        reordered_rows["evidence_replay"]["rows"][0], reordered_rows["evidence_replay"]["rows"][1] = (
+            reordered_rows["evidence_replay"]["rows"][1], reordered_rows["evidence_replay"]["rows"][0]
+        )
+        requalify_mutation(reordered_rows)
+        reject(lambda: validate_receipt(reordered_rows), "reordered replay rows")
+
+        duplicated_row = e2e_receipt(good_rows, 10)
+        duplicated_row["evidence_replay"]["rows"][1] = json.loads(
+            json.dumps(duplicated_row["evidence_replay"]["rows"][0])
+        )
+        requalify_mutation(duplicated_row)
+        reject(lambda: validate_receipt(duplicated_row), "duplicated replay row")
+
+        redundant_results = e2e_receipt(good_rows, 10)
+        redundant_results["queries"] = json.loads(json.dumps(bad_rows))
+        reject(lambda: validate_receipt(redundant_results), "redundant ranked-result copy")
+
+        unordered_ranking = e2e_receipt(good_rows, 10)
+        unordered_ranking["evidence_replay"]["rows"][0]["sparse_hits"] = [
+            {"doc_id": "de", "score": 0.5}, {"doc_id": "dc", "score": 1.0},
+        ]
+        requalify_mutation(unordered_ranking)
+        reject(lambda: validate_receipt(unordered_ranking), "unordered replay ranking")
+
+        reversed_tie = e2e_receipt(good_rows, 10)
+        reversed_tie["evidence_replay"]["rows"][0]["sparse_hits"] = [
+            {"doc_id": "de", "score": 1.0}, {"doc_id": "dc", "score": 1.0},
+        ]
+        requalify_mutation(reversed_tie)
+        reject(lambda: validate_receipt(reversed_tie), "reversed replay score tie")
+
+        excessive_depth = e2e_receipt(good_rows, 1)
+        excessive_depth["evidence_replay"]["rows"][0]["sparse_hits"].append(
+            {"doc_id": "dc", "score": 0.5}
+        )
+        requalify_mutation(excessive_depth)
+        reject(lambda: validate_receipt(excessive_depth), "replay ranking beyond retrieval limit")
+
+        reject(
+            lambda: validate_receipt({"execution_status": "UNKNOWN_FAILURE", "decision": "INSUFFICIENT_EVIDENCE"}),
+            "unknown execution status",
+        )
+
         forged_quality = e2e_receipt(good_rows, 10)
         forged_quality["quality"]["bge_m3_sparse"]["recall_at"]["10"] = 0.0
         reject(lambda: validate_receipt(forged_quality), "forged replay quality")
