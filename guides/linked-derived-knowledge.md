@@ -355,6 +355,14 @@ rows remain optional views over the manifest and are not required for
 publication or recovery. Body, manifest, frontier, identity, digest and total
 serialized-payload byte budgets are enforced before a row can be admitted.
 
+The conformance gate layered above this storage slice reads the current unit
+revision, lifecycle and revision-bound source digest from `IKnowledgeUnitStore`
+before publishing or admitting a read. Caller-supplied metadata must match that
+authoritative snapshot exactly. A missing, cross-scope or inactive input is
+rejected before derived bytes are returned. The gate is intentionally not a
+cross-store transaction fence; a coordinator that snapshots canonical units and
+publication rows atomically remains a separate capability.
+
 The following states are intentionally distinct:
 
 - **Historical validity** asks whether a retained derivation record still
