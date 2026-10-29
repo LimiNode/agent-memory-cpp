@@ -138,9 +138,41 @@ void validate_request(const DerivedPublicationRequest& request, bool require_bod
     }
 }
 
+bool add_size(std::size_t& total, std::size_t amount) {
+    if(amount > std::numeric_limits<std::size_t>::max() - total) return false;
+    total += amount;
+    return true;
+}
+
+bool add_encoded_string_size(std::size_t& total, std::string_view value) {
+    const auto length_digits = std::to_string(value.size()).size();
+    return add_size(total, length_digits) && add_size(total, 1U) && add_size(total, value.size());
+}
+
+std::size_t estimate_manifest_size(const DerivedPublicationRequest& request) {
+    std::size_t total = 0;
+    if(!add_encoded_string_size(total, kPayloadVersion) ||
+       !add_encoded_string_size(total, request.scope_id.value()) ||
+       !add_encoded_string_size(total, request.publication_id) ||
+       !add_size(total, 8U * 3U) || // kind, output revision and generation
+       !add_encoded_string_size(total, request.dependency_frontier) ||
+       !add_size(total, 32U) || // body digest
+       !add_size(total, 8U)) // input count
+        throw std::invalid_argument("derived publication manifest size overflows");
+    for(const auto& input : request.inputs) {
+        if(!add_size(total, 8U * 3U) || !add_encoded_string_size(total, input.source_digest))
+            throw std::invalid_argument("derived publication manifest size overflows");
+    }
+    if(total > kMaxManifestBytes)
+        throw std::invalid_argument("derived publication manifest exceeds its byte budget");
+    return total;
+}
+
 std::string serialize_manifest(const DerivedPublicationRequest& request,
                                const std::array<std::uint8_t, 32>& body_digest) {
+    const auto estimated_size = estimate_manifest_size(request);
     std::string payload;
+    payload.reserve(estimated_size);
     append_string(payload, kPayloadVersion);
     append_string(payload, request.scope_id.value());
     append_string(payload, request.publication_id);
@@ -156,7 +188,7 @@ std::string serialize_manifest(const DerivedPublicationRequest& request,
         append_u64(payload, input.source_generation);
         append_string(payload, input.source_digest);
     }
-    if(payload.size() > kMaxManifestBytes)
+    if(payload.size() != estimated_size || payload.size() > kMaxManifestBytes)
         throw std::invalid_argument("derived publication manifest exceeds its byte budget");
     return payload;
 }
@@ -316,7 +348,7 @@ DerivedPublicationReadResult MdbxDerivedPublicationStore::read(
         txn.commit();
         if(request.scope_id != access_scope) return {DerivedPublicationReadStatus::ScopeMismatch, std::nullopt};
         if(request.dependency_frontier != current_dependency_frontier || !same_inputs(request.inputs, current_inputs))
-            return {DerivedPublicationReadStatus::Stale, std::nullopt};
+            return {DerivedPublicationReadStatus::StoredMismatch, std::nullopt};
         return {DerivedPublicationReadStatus::StoredMatch, DerivedPublication{request}};
     } catch(const std::exception&) {
         txn.commit();

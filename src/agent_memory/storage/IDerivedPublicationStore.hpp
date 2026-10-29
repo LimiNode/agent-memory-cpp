@@ -45,7 +45,9 @@ namespace agent_memory {
         /// storage match only; it is never an authoritative freshness claim.
         StoredMatch,
         NotFound,
-        Stale,
+        /// Persisted metadata differs from caller-supplied values. This does
+        /// not by itself prove that the canonical source is stale.
+        StoredMismatch,
         ScopeMismatch,
         Unavailable
     };
@@ -55,7 +57,7 @@ namespace agent_memory {
         DerivedPublicationRequest request;
     };
 
-    /// \brief Result that keeps stale and unavailable distinct from absence.
+    /// \brief Result that keeps stored mismatches and unavailable rows distinct from absence.
     struct DerivedPublicationReadResult final {
         DerivedPublicationReadStatus status = DerivedPublicationReadStatus::NotFound;
         std::optional<DerivedPublication> publication;
@@ -73,8 +75,8 @@ namespace agent_memory {
         virtual void publish(DerivedPublicationRequest request) = 0;
 
         /// Reads one publication for an access scope and caller-provided source
-        /// frontier. A mismatched frontier is Stale and a different access
-        /// scope is denied. A matching caller value returns StoredMatch, not
+        /// frontier. A mismatched value is StoredMismatch and a different
+        /// access scope is denied. A matching caller value returns StoredMatch, not
         /// authoritative Active: no trusted frontier provider is consulted by
         /// this storage-only slice. Canonical admission is a future
         /// integration/conformance layer.

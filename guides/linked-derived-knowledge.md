@@ -343,7 +343,8 @@ durable storage only.
 `read()` compares the persisted manifest with caller-provided inputs and a
 caller-provided frontier. A match is reported as `StoredMatch`; it must not be
 interpreted as authoritative `Active` freshness because this slice has no
-trusted frontier provider. A mismatch is `Stale`, while malformed or partial
+trusted frontier provider. A mismatch is `StoredMismatch`—a storage comparison
+result, not proof that the canonical source is stale—while malformed or partial
 rows are `Unavailable`. Canonical existence/lifecycle admission and the real
 stale-derived-to-`Original` retrieval fallback belong to a subsequent
 integration/conformance slice over `KnowledgeUnitStore`.

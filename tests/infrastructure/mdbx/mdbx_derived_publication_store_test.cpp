@@ -116,13 +116,13 @@ int main() {
         stale_inputs[1].unit_revision = 2;
         const auto stale = store.read(
             request.scope_id, request.publication_id, stale_inputs, request.dependency_frontier);
-        expect(stale.status == DerivedPublicationReadStatus::Stale && !stale.publication,
-               "changed source revision was not rejected as stale");
+        expect(stale.status == DerivedPublicationReadStatus::StoredMismatch && !stale.publication,
+               "changed source revision was not reported as a stored mismatch");
 
         const auto stale_frontier = store.read(
             request.scope_id, request.publication_id, request.inputs, "question@2;answer@1");
-        expect(stale_frontier.status == DerivedPublicationReadStatus::Stale,
-               "changed dependency frontier was not rejected as stale");
+        expect(stale_frontier.status == DerivedPublicationReadStatus::StoredMismatch,
+               "changed dependency frontier was not reported as a stored mismatch");
 
         const auto denied = store.read(
             ScopeId{"workspace-b"}, request.publication_id, request.inputs, request.dependency_frontier);
@@ -171,6 +171,16 @@ int main() {
         oversized_digest.inputs.front().source_digest.assign(4096U + 1U, 'x');
         expect_invalid_publish(store, std::move(oversized_digest),
                                "oversized source digest was accepted");
+
+        auto oversized_manifest = fixture_request();
+        oversized_manifest.publication_id = "oversized-manifest";
+        oversized_manifest.inputs.clear();
+        oversized_manifest.inputs.reserve(5000);
+        for(std::uint64_t id = 0; id < 5000; ++id)
+            oversized_manifest.inputs.push_back(
+                {KnowledgeUnitId{1000 + id}, 1, 7, std::string(4096, 'd')});
+        expect_invalid_publish(store, std::move(oversized_manifest),
+                               "oversized manifest was accepted");
 
         auto oversized_id = fixture_request();
         oversized_id.publication_id.assign(257, 'x');
