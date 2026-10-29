@@ -823,6 +823,17 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         COMMAND agent_memory_mdbx_projection_store_test
     )
 
+    add_executable(agent_memory_mdbx_derived_publication_store_test
+        infrastructure/mdbx/mdbx_derived_publication_store_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_derived_publication_store_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_derived_publication_store_test
+        COMMAND agent_memory_mdbx_derived_publication_store_test
+    )
+
     add_executable(agent_memory_mdbx_projection_aware_lexical_retriever_test
         infrastructure/mdbx/mdbx_projection_aware_lexical_retriever_test.cpp
     )

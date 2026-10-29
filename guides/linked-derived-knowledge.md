@@ -331,6 +331,30 @@ relations and provenance through the library contract.
 
 ## Freshness, history and authorization
 
+### Current graph-free publication storage slice
+
+The first graph-free implementation is deliberately a storage slice, not the
+canonical admission coordinator. `MdbxDerivedPublicationStore::publish()`
+atomically persists the body, manifest and active marker and rejects conflicting
+replays, but it does not establish that input revisions exist, are accessible,
+or still match an authoritative source frontier. The marker therefore means
+durable storage only.
+
+`read()` compares the persisted manifest with caller-provided inputs and a
+caller-provided frontier. A match is reported as `StoredMatch`; it must not be
+interpreted as authoritative `Active` freshness because this slice has no
+trusted frontier provider. A mismatch is `StoredMismatch`—a storage comparison
+result, not proof that the canonical source is stale—while malformed or partial
+rows are `Unavailable`. Canonical existence/lifecycle admission and the real
+stale-derived-to-`Original` retrieval fallback belong to a subsequent
+integration/conformance slice over `KnowledgeUnitStore`.
+
+The current local backend is single-scope and uses a backend-local publication
+identity. Inputs do not yet carry federated scope references. Graph `Relation`
+rows remain optional views over the manifest and are not required for
+publication or recovery. Body, manifest, frontier, identity, digest and total
+serialized-payload byte budgets are enforced before a row can be admitted.
+
 The following states are intentionally distinct:
 
 - **Historical validity** asks whether a retained derivation record still
