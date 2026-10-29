@@ -21,6 +21,14 @@ constexpr std::string_view kPayloadVersion = "agent_memory.derived_publication.v
 constexpr std::string_view kKeyPrefix = "derived_publication:";
 constexpr std::uint8_t kActiveMarker = 1;
 constexpr std::uint64_t kMaxInputs = 1'000'000;
+constexpr std::size_t kMaxScopeBytes = 256;
+constexpr std::size_t kMaxPublicationIdBytes = 256;
+constexpr std::size_t kMaxBodyBytes = 16U * 1024U * 1024U;
+constexpr std::size_t kMaxManifestBytes = 16U * 1024U * 1024U;
+constexpr std::size_t kMaxFrontierBytes = 1U * 1024U * 1024U;
+constexpr std::size_t kMaxSourceDigestBytes = 4U * 1024U;
+constexpr std::size_t kMaxMarkerBytes = 256;
+constexpr std::size_t kMaxSerializedBytes = 32U * 1024U * 1024U;
 
 std::string table_name(const std::string& prefix) {
     std::string value = prefix.empty() ? "agent_memory" : prefix;
@@ -71,7 +79,8 @@ std::array<std::uint8_t, 32> read_digest(std::string_view payload, std::size_t& 
     return value;
 }
 
-std::string read_string(std::string_view payload, std::size_t& position) {
+std::string read_string(std::string_view payload, std::size_t& position,
+                        std::size_t max_size, const char* field_name) {
     if(position >= payload.size()) throw std::runtime_error("derived publication payload ended");
     std::size_t size = 0;
     bool digit = false;
@@ -88,6 +97,8 @@ std::string read_string(std::string_view payload, std::size_t& position) {
     ++position;
     if(size > payload.size() - position)
         throw std::runtime_error("derived publication string is truncated");
+    if(size > max_size)
+        throw std::runtime_error(std::string("derived publication ") + field_name + " exceeds its byte budget");
     std::string value{payload.data() + position, size};
     position += size;
     return value;
@@ -114,9 +125,17 @@ void validate_request(const DerivedPublicationRequest& request, bool require_bod
     if(request.scope_id.empty() || request.publication_id.empty() || request.output_revision == 0 ||
        request.generation == 0 || (require_body && request.body.empty()) || !is_valid_projection_kind(request.kind) ||
        request.kind == ProjectionKind::Original || request.inputs.empty() ||
-       request.inputs.size() > kMaxInputs || request.dependency_frontier.empty())
+       request.inputs.size() > kMaxInputs || request.dependency_frontier.empty() ||
+       request.scope_id.value().size() > kMaxScopeBytes ||
+       request.publication_id.size() > kMaxPublicationIdBytes ||
+       request.dependency_frontier.size() > kMaxFrontierBytes ||
+       request.body.size() > kMaxBodyBytes)
         throw std::invalid_argument("invalid derived publication request");
-    for(const auto& input : request.inputs) validate_input(input);
+    for(const auto& input : request.inputs) {
+        validate_input(input);
+        if(input.source_digest.size() > kMaxSourceDigestBytes)
+            throw std::invalid_argument("derived publication source digest exceeds its byte budget");
+    }
 }
 
 std::string serialize_manifest(const DerivedPublicationRequest& request,
@@ -137,24 +156,28 @@ std::string serialize_manifest(const DerivedPublicationRequest& request,
         append_u64(payload, input.source_generation);
         append_string(payload, input.source_digest);
     }
+    if(payload.size() > kMaxManifestBytes)
+        throw std::invalid_argument("derived publication manifest exceeds its byte budget");
     return payload;
 }
 
 DerivedPublicationRequest deserialize_manifest(std::string_view payload,
                                                std::array<std::uint8_t, 32>& body_digest) {
     std::size_t position = 0;
-    if(read_string(payload, position) != kPayloadVersion)
+    if(payload.size() > kMaxManifestBytes)
+        throw std::runtime_error("derived publication manifest exceeds its byte budget");
+    if(read_string(payload, position, kPayloadVersion.size(), "payload version") != kPayloadVersion)
         throw std::runtime_error("unsupported derived publication payload version");
     DerivedPublicationRequest request;
-    request.scope_id = ScopeId{read_string(payload, position)};
-    request.publication_id = read_string(payload, position);
+    request.scope_id = ScopeId{read_string(payload, position, kMaxScopeBytes, "scope")};
+    request.publication_id = read_string(payload, position, kMaxPublicationIdBytes, "publication id");
     const auto raw_kind = read_u64(payload, position);
     if(raw_kind > std::numeric_limits<std::uint16_t>::max())
         throw std::runtime_error("derived publication kind is out of range");
     request.kind = static_cast<ProjectionKind>(static_cast<std::uint16_t>(raw_kind));
     request.output_revision = read_u64(payload, position);
     request.generation = read_u64(payload, position);
-    request.dependency_frontier = read_string(payload, position);
+    request.dependency_frontier = read_string(payload, position, kMaxFrontierBytes, "dependency frontier");
     body_digest = read_digest(payload, position);
     const auto count = read_u64(payload, position);
     if(count == 0 || count > kMaxInputs) throw std::runtime_error("derived publication input list is invalid");
@@ -164,7 +187,7 @@ DerivedPublicationRequest deserialize_manifest(std::string_view payload,
         input.unit_id = KnowledgeUnitId{read_u64(payload, position)};
         input.unit_revision = read_u64(payload, position);
         input.source_generation = read_u64(payload, position);
-        input.source_digest = read_string(payload, position);
+        input.source_digest = read_string(payload, position, kMaxSourceDigestBytes, "source digest");
         validate_input(input);
         request.inputs.push_back(std::move(input));
     }
@@ -185,8 +208,11 @@ std::string serialize_marker(const std::string& manifest, const std::string& bod
 }
 
 void validate_marker(std::string_view payload, std::string_view manifest, std::string_view body) {
+    if(payload.size() > kMaxMarkerBytes || manifest.size() > kMaxManifestBytes || body.size() > kMaxBodyBytes)
+        throw std::runtime_error("derived publication payload exceeds its byte budget");
     std::size_t position = 0;
-    if(read_string(payload, position) != kPayloadVersion || read_u8(payload, position) != kActiveMarker)
+    if(read_string(payload, position, kPayloadVersion.size(), "payload version") != kPayloadVersion ||
+       read_u8(payload, position) != kActiveMarker)
         throw std::runtime_error("derived publication marker is not active");
     if(read_digest(payload, position) != sha256(manifest) || read_digest(payload, position) != sha256(body) ||
        position != payload.size())
@@ -228,6 +254,10 @@ void MdbxDerivedPublicationStore::publish(DerivedPublicationRequest request) {
     const auto manifest_key = field_key(request.publication_id, 'm');
     const auto marker_key = field_key(request.publication_id, 'a');
     const auto marker = serialize_marker(manifest, request.body);
+    if(marker.size() > kMaxMarkerBytes || manifest.size() > kMaxManifestBytes ||
+       request.body.size() > kMaxBodyBytes || manifest.size() > kMaxSerializedBytes - request.body.size() ||
+       marker.size() > kMaxSerializedBytes - request.body.size() - manifest.size())
+        throw std::invalid_argument("derived publication serialized payload exceeds its byte budget");
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
     const auto existing_body = m_impl->table.find(body_key, txn);
     const auto existing_manifest = m_impl->table.find(manifest_key, txn);
@@ -251,7 +281,15 @@ DerivedPublicationReadResult MdbxDerivedPublicationStore::read(
     const std::vector<DerivedPublicationInput>& current_inputs,
     const std::string& current_dependency_frontier
 ) const {
-    if(access_scope.empty() || publication_id.empty()) throw std::invalid_argument("invalid derived publication read identity");
+    if(access_scope.empty() || publication_id.empty() || access_scope.value().size() > kMaxScopeBytes ||
+       publication_id.size() > kMaxPublicationIdBytes || current_dependency_frontier.size() > kMaxFrontierBytes ||
+       current_inputs.size() > kMaxInputs)
+        throw std::invalid_argument("invalid derived publication read identity or byte budget");
+    for(const auto& input : current_inputs) {
+        validate_input(input);
+        if(input.source_digest.size() > kMaxSourceDigestBytes)
+            throw std::invalid_argument("derived publication source digest exceeds its byte budget");
+    }
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
     const auto body = m_impl->table.find(field_key(publication_id, 'b'), txn);
     const auto manifest = m_impl->table.find(field_key(publication_id, 'm'), txn);
@@ -265,6 +303,10 @@ DerivedPublicationReadResult MdbxDerivedPublicationStore::read(
         return {DerivedPublicationReadStatus::Unavailable, std::nullopt};
     }
     try {
+        if(body->size() > kMaxBodyBytes || manifest->size() > kMaxManifestBytes ||
+           marker->size() > kMaxMarkerBytes || body->size() > kMaxSerializedBytes - manifest->size() ||
+           marker->size() > kMaxSerializedBytes - body->size() - manifest->size())
+            throw std::runtime_error("derived publication serialized payload exceeds its byte budget");
         validate_marker(*marker, *manifest, *body);
         std::array<std::uint8_t, 32> body_digest{};
         auto request = deserialize_manifest(*manifest, body_digest);
@@ -275,7 +317,7 @@ DerivedPublicationReadResult MdbxDerivedPublicationStore::read(
         if(request.scope_id != access_scope) return {DerivedPublicationReadStatus::ScopeMismatch, std::nullopt};
         if(request.dependency_frontier != current_dependency_frontier || !same_inputs(request.inputs, current_inputs))
             return {DerivedPublicationReadStatus::Stale, std::nullopt};
-        return {DerivedPublicationReadStatus::Active, DerivedPublication{request}};
+        return {DerivedPublicationReadStatus::StoredMatch, DerivedPublication{request}};
     } catch(const std::exception&) {
         txn.commit();
         return {DerivedPublicationReadStatus::Unavailable, std::nullopt};
