@@ -91,7 +91,7 @@ jobs:
                 core=true
                 research=true
                 ;;
-              tools/benchmarks/*|tools/agent-memory-bench/*|tools/lexical-research/*|tools/requirements-tools.txt|external/simdcomp/*)
+              tools/benchmarks/*|tools/agent-memory-bench/*|tools/lexical-research/*|tools/learned-sparse/*|tools/requirements-tools.txt|external/simdcomp/*)
                 research=true
                 ;;
               CMakeLists.txt|cmake/*|*.cmake|CMakePresets.json|CMakeSettings.json)
@@ -164,6 +164,7 @@ jobs:
           assert_route "tests/index/binary_signature_test.cpp" true false true false false
           assert_route "tools/agent-memory-bench/run-native-mdbx-batch-sweep.py" false false true false false
           assert_route "tools/lexical-research/run_cpp_lexical_parity.py" false false true false false
+          assert_route "tools/learned-sparse/run_weighted_postings_experiment.py" false false true false false
           assert_route "unknown/path" true true true true true
 
           # Regression assertions must not influence the real change set.
@@ -1037,6 +1038,12 @@ jobs:
         run: >
           python tools/lexical-research/validate_persistent_lexical_oracle.py
           tools/lexical-research/fixtures/persistent_lexical_oracle_v1.json
+          --self-test
+
+      - name: Run learned sparse weighted-postings self-test
+        run: >
+          python tools/learned-sparse/run_weighted_postings_experiment.py
+          --manifest tools/learned-sparse/fixtures/learned_sparse_smoke_v1.json
           --self-test
 
   ci-gate:
