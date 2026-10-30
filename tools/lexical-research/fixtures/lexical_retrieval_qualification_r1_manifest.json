@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "protocol": "lexical_retrieval_qualification_r1",
+  "protocol_revision": "2026-10-30",
+  "source_frontier": "fba352ed35791126c1aa0dede6213c5f59d40ccd",
+  "corpus": {
+    "path": "lexical_retrieval_qualification_r1.json",
+    "sha256": "45c159915bef88949ca237d0d23a64fb251583f19a57c83a400c5f61a4c1ac76",
+    "access_policy": "committed_fixture_only"
+  },
+  "query_split": {
+    "name": "r1-split-2026-10-30",
+    "train": "fixture metadata only; no tuning claims",
+    "dev": "fixture metadata only; no tuning claims",
+    "test": "reported quality slice; qrels are frozen"
+  },
+  "tokenizer": {
+    "name": "code_aware_fixture_v1",
+    "revision": "code_aware_fixture_v1",
+    "status": "portable research tokenizer; not C++ byte-parity evidence"
+  },
+  "eligibility_policy": {
+    "canonical_hydration": "only hits whose doc_id and source_revision are present in the canonical snapshot",
+    "stale_revision": "ineligible and counted as a provenance failure",
+    "duplicate_hits": "invalid run",
+    "unjudged_or_incomplete": "excluded from positive quality aggregates and reported separately",
+    "no_answer": "must return no eligible hits to pass the negative control"
+  },
+  "backends": [
+    {
+      "id": "bm25",
+      "kind": "ranking_algorithm",
+      "status": "production_baseline",
+      "scoring": "okapi_bm25",
+      "index": "existing lexical index",
+      "build_update_reopen": "measure with existing C++ lifecycle tests",
+      "notes": "Current default; no change in this PR."
+    },
+    {
+      "id": "flat-v2",
+      "kind": "index_backend",
+      "status": "experimental",
+      "scoring": "okapi_bm25",
+      "index": "flat-v2",
+      "build_update_reopen": "reuse segmented qualification harness",
+      "notes": "Physical backend comparison, not a distinct ranking algorithm."
+    },
+    {
+      "id": "segmented-v2",
+      "kind": "index_backend",
+      "status": "research_only",
+      "scoring": "okapi_bm25",
+      "index": "segmented-v2",
+      "build_update_reopen": "reuse segmented qualification harness",
+      "notes": "PERFORMANCE_INCONCLUSIVE; production activation remains blocked."
+    },
+    {
+      "id": "learned-sparse-weighted-postings",
+      "kind": "ranking_algorithm",
+      "status": "research_only",
+      "scoring": "frozen weighted-postings smoke",
+      "index": "portable fixture artifact",
+      "build_update_reopen": "artifact lifecycle only",
+      "notes": "DIRECTIONAL_SMOKE_ONLY; not evidence of a trained model."
+    },
+    {
+      "id": "bge-m3-pilot",
+      "kind": "ranking_algorithm",
+      "status": "research_only",
+      "scoring": "BGE-M3 sparse pilot",
+      "index": "pilot artifact",
+      "build_update_reopen": "pilot artifact lifecycle only",
+      "notes": "INSUFFICIENT_EVIDENCE without independent qrels and larger corpus."
+    }
+  ],
+  "metrics": {
+    "quality": ["candidate_recall_at_k", "ndcg_at_k", "mrr", "hydrated_recall_at_k", "provenance_correctness", "no_answer_accuracy"],
+    "cost": ["latency_ms_p50", "latency_ms_p95", "latency_ms_p99", "index_build_ms", "update_ms", "reopen_ms", "decoded_bytes", "index_bytes"],
+    "measurement_unit": "one_query_repeat",
+    "timing_semantics": "sample distribution; repeated queries are observations, not independent queries",
+    "tail_claim": "p99 is directional unless an independent stability analysis is added"
+  },
+  "run_receipt": {
+    "schema_version": 1,
+    "required_top_level": ["backend", "backend_revision", "manifest_sha256", "query_split", "candidate_depth", "queries", "timing", "lifecycle"],
+    "required_query_fields": ["query_id", "answer_mode", "hits", "candidate_recall_at", "hydrated_recall_at", "provenance_correctness", "no_answer_correct"],
+    "required_hit_fields": ["doc_id", "score", "source_revision", "eligible", "hydrated"],
+    "required_timing_fields": ["p50", "p95", "p99", "sample_count", "observation_unit", "statistical_status"],
+    "required_lifecycle_fields": ["index_build_ms", "update_ms", "reopen_ms", "decoded_bytes", "index_bytes"]
+  },
+  "required_gates": [
+    "fixture_integrity",
+    "qrels_completeness_report",
+    "candidate_quality_separate_from_hydration",
+    "provenance_and_eligibility",
+    "no_answer_negative_control",
+    "lifecycle_costs_separate_from_query_latency"
+  ]
+}

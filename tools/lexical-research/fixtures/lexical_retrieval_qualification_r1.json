@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "dataset_name": "lexical_retrieval_qualification_r1_v1",
+  "tokenizer": "code_aware_fixture_v1",
+  "source_frontier": {
+    "kind": "repository_snapshot",
+    "revision": "fba352ed35791126c1aa0dede6213c5f59d40ccd",
+    "access_policy": "committed_fixture_only"
+  },
+  "revisions": {
+    "corpus": "r1-corpus-2026-10-30",
+    "qrels": "r1-qrels-2026-10-30",
+    "query_split": "r1-split-2026-10-30",
+    "tokenizer": "code_aware_fixture_v1"
+  },
+  "corpus": [
+    {"id": "d_api_exact", "scope": "api", "language": "en", "source_revision": "api-r7", "text": "ExactLexicalIndex::search returns ChunkId candidates and preserves TokenKind positions for C++ identifiers."},
+    {"id": "d_api_storage", "scope": "api", "language": "en", "source_revision": "api-r7", "text": "MdbxPersistentLexicalIndex reopens a durable index and checks resource generation before hydration."},
+    {"id": "d_api_hard_negative", "scope": "api", "language": "en", "source_revision": "api-r6", "text": "ExactVectorIndex searches embeddings; it does not implement ExactLexicalIndex token postings."},
+    {"id": "d_ru_update", "scope": "guide", "language": "ru", "source_revision": "guide-r3", "text": "Индекс памяти хранит источник и поколение ресурса для повторной индексации обновлённого документа."},
+    {"id": "d_ru_old", "scope": "guide", "language": "ru", "source_revision": "guide-r2", "text": "Старый индекс хранит источник, но не проверяет поколение ресурса при чтении."},
+    {"id": "d_correction", "scope": "incident", "language": "en", "source_revision": "incident-r4", "text": "Correction: stale generation records are ineligible after a resource update; the canonical revision wins."},
+    {"id": "d_contradiction_a", "scope": "incident", "language": "en", "source_revision": "incident-r3", "text": "An earlier report claims publication is atomic across metadata and lexical rows."},
+    {"id": "d_contradiction_b", "scope": "incident", "language": "en", "source_revision": "incident-r4", "text": "The corrected report says independent writes are not an atomic publication proof."},
+    {"id": "d_rare_fact", "scope": "reference", "language": "en", "source_revision": "ref-r1", "text": "Rare fact: the replay receipt uses frontier epoch 17 and the token budget is 4096 bytes."},
+    {"id": "d_morphology", "scope": "guide", "language": "ru", "source_revision": "guide-r3", "text": "Поиск ищет документы, документами и документированный контекст; нормализация вариантов должна быть измерена."},
+    {"id": "d_unrelated", "scope": "misc", "language": "en", "source_revision": "misc-r1", "text": "The weather report discusses rain and a bicycle without memory indexing terms."}
+  ],
+  "queries": [
+    {"id": "q_api_symbol", "split": "train", "query_class": "exact_identifier", "answer_mode": "judged", "text": "ExactLexicalIndex search"},
+    {"id": "q_reopen_generation", "split": "train", "query_class": "api_lifecycle", "answer_mode": "judged", "text": "reopen resource generation hydration"},
+    {"id": "q_russian_update", "split": "dev", "query_class": "russian_morphology", "answer_mode": "judged", "text": "обновлённого ресурса повторной индексации"},
+    {"id": "q_correction", "split": "dev", "query_class": "correction", "answer_mode": "judged", "text": "corrected stale generation canonical revision"},
+    {"id": "q_contradiction", "split": "test", "query_class": "contradictory_sources", "answer_mode": "judged", "text": "not atomic publication proof"},
+    {"id": "q_rare_fact", "split": "test", "query_class": "rare_fact", "answer_mode": "judged", "text": "frontier epoch 17"},
+    {"id": "q_hard_negative", "split": "test", "query_class": "hard_negative", "answer_mode": "judged", "text": "ExactLexicalIndex token postings"},
+    {"id": "q_no_answer", "split": "test", "query_class": "no_answer", "answer_mode": "no_answer", "text": "quantum banana protocol"},
+    {"id": "q_zero_relevant", "split": "test", "query_class": "judged_zero_relevant", "answer_mode": "judged_zero_relevant", "text": "nonexistent frontier epoch"},
+    {"id": "q_unjudged", "split": "test", "query_class": "future_qrels", "answer_mode": "unjudged", "text": "projection-aware retrieval"},
+    {"id": "q_incomplete", "split": "test", "query_class": "partial_qrels", "answer_mode": "incomplete_qrels", "text": "publication metadata"}
+  ],
+  "qrels": [
+    {"query_id": "q_api_symbol", "doc_id": "d_api_exact", "grade": 3},
+    {"query_id": "q_api_symbol", "doc_id": "d_api_hard_negative", "grade": 0},
+    {"query_id": "q_reopen_generation", "doc_id": "d_api_storage", "grade": 3},
+    {"query_id": "q_reopen_generation", "doc_id": "d_correction", "grade": 1},
+    {"query_id": "q_russian_update", "doc_id": "d_ru_update", "grade": 3},
+    {"query_id": "q_russian_update", "doc_id": "d_ru_old", "grade": 1},
+    {"query_id": "q_correction", "doc_id": "d_correction", "grade": 3},
+    {"query_id": "q_correction", "doc_id": "d_api_storage", "grade": 1},
+    {"query_id": "q_contradiction", "doc_id": "d_contradiction_b", "grade": 3},
+    {"query_id": "q_contradiction", "doc_id": "d_contradiction_a", "grade": 1},
+    {"query_id": "q_rare_fact", "doc_id": "d_rare_fact", "grade": 3},
+    {"query_id": "q_hard_negative", "doc_id": "d_api_exact", "grade": 2},
+    {"query_id": "q_hard_negative", "doc_id": "d_api_hard_negative", "grade": 0},
+    {"query_id": "q_zero_relevant", "doc_id": "d_unrelated", "grade": 0},
+    {"query_id": "q_incomplete", "doc_id": "d_api_storage", "grade": 1}
+  ],
+  "expected_top_ids": {
+    "q_api_symbol": ["d_api_exact"],
+    "q_reopen_generation": ["d_api_storage"],
+    "q_russian_update": ["d_ru_update"],
+    "q_correction": ["d_correction"],
+    "q_contradiction": ["d_contradiction_b"],
+    "q_rare_fact": ["d_rare_fact"],
+    "q_no_answer": [],
+    "q_zero_relevant": []
+  }
+}

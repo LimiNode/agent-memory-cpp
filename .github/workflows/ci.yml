@@ -1081,6 +1081,10 @@ jobs:
           python tools/learned-sparse/run_weighted_postings_experiment.py
           --manifest tools/learned-sparse/fixtures/learned_sparse_smoke_v1.json
           --self-test
+      - name: Run lexical retrieval qualification R1 self-test
+        run: >
+          python tools/lexical-research/validate_lexical_retrieval_qualification.py
+          --self-test
 
   ci-gate:
     name: CI gate

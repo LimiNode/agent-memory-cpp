@@ -117,3 +117,23 @@ A top-level `SEPARATE_GATES` status is intentionally not an unconditional
 `PARITY_PASS`. The exporter is a research fixture and does not establish MDBX
 publication lifecycle authority; existing importer/manifest tests remain the
 lifecycle evidence.
+
+## Lexical Retrieval Qualification R1
+
+R1 is a design-only qualification contract that compares the existing BM25
+baseline, flat-v2/seg-v2 physical backends, learned-sparse weighted-postings
+smoke, and BGE-M3 pilot using one frozen mini-corpus. It does not add a
+production algorithm or a second benchmark framework. The manifest and fixture
+are validated, and the BM25 row delegates to this directory's existing
+`run_lexical_protocol.py` runner:
+
+```powershell
+py -3 tools/lexical-research/validate_lexical_retrieval_qualification.py --self-test
+```
+
+See [`guides/experiments/2026-10-30-lexical-retrieval-qualification-r1.md`](../../guides/experiments/2026-10-30-lexical-retrieval-qualification-r1.md)
+for the baseline statuses, frozen provenance, candidate-versus-hydration
+metrics, lifecycle cost fields, and timing limitations. In particular,
+`sample_count` counts query-repeat observations rather than independent
+queries, and p99 remains a directional distribution statistic until a separate
+stability analysis is supplied.
