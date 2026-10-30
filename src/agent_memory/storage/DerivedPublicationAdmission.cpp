@@ -1,16 +1,18 @@
 #include "DerivedPublicationAdmission.hpp"
 
 #include <iomanip>
-#include <limits>
+#include <set>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 namespace agent_memory {
 namespace {
 
-constexpr std::size_t kMaxAdmissionInputs = 1'000'000;
+constexpr std::size_t kMaxAdmissionInputs = 4'096;
 constexpr std::size_t kMaxAdmissionFrontierBytes = 1U * 1024U * 1024U;
+constexpr std::string_view kUnitSnapshotEncoding = "ku-local-v1|";
 
 std::string hex_digest(const ResourceBodyDigest& digest) {
     std::ostringstream stream;
@@ -35,20 +37,40 @@ bool same_inputs(
     return true;
 }
 
+bool append_bounded(std::string& output, std::string_view value) {
+    if(output.size() > kMaxAdmissionFrontierBytes ||
+       value.size() > kMaxAdmissionFrontierBytes - output.size())
+        return false;
+    output.append(value.data(), value.size());
+    return true;
+}
+
+bool append_field(
+    std::string& output,
+    std::string_view name,
+    std::string_view value
+) {
+    const auto size = std::to_string(value.size());
+    return append_bounded(output, name) && append_bounded(output, "=") &&
+        append_bounded(output, size) && append_bounded(output, ":") &&
+        append_bounded(output, value) && append_bounded(output, "|");
+}
+
 DerivedPublicationAdmissionStatus map_frontier_status(
-    DerivedPublicationFrontierStatus status
+    DerivedPublicationUnitSnapshotStatus status
 ) {
     switch(status) {
-    case DerivedPublicationFrontierStatus::MissingInput:
+    case DerivedPublicationUnitSnapshotStatus::MissingInput:
         return DerivedPublicationAdmissionStatus::MissingInput;
-    case DerivedPublicationFrontierStatus::ScopeMismatch:
+    case DerivedPublicationUnitSnapshotStatus::ScopeMismatch:
         return DerivedPublicationAdmissionStatus::ScopeMismatch;
-    case DerivedPublicationFrontierStatus::InactiveInput:
+    case DerivedPublicationUnitSnapshotStatus::InactiveInput:
         return DerivedPublicationAdmissionStatus::InactiveInput;
-    case DerivedPublicationFrontierStatus::Available:
+    case DerivedPublicationUnitSnapshotStatus::InvalidInput:
+        return DerivedPublicationAdmissionStatus::InvalidInput;
+    case DerivedPublicationUnitSnapshotStatus::Available:
         break;
-    case DerivedPublicationFrontierStatus::InvalidInput:
-    case DerivedPublicationFrontierStatus::Unavailable:
+    case DerivedPublicationUnitSnapshotStatus::Unavailable:
         return DerivedPublicationAdmissionStatus::Unavailable;
     }
     return DerivedPublicationAdmissionStatus::Unavailable;
@@ -57,7 +79,7 @@ DerivedPublicationAdmissionStatus map_frontier_status(
 DerivedPublicationAdmissionStatus map_read_status(DerivedPublicationReadStatus status) {
     switch(status) {
     case DerivedPublicationReadStatus::StoredMatch:
-        return DerivedPublicationAdmissionStatus::StoredMatch;
+        return DerivedPublicationAdmissionStatus::KnowledgeUnitLocalMatch;
     case DerivedPublicationReadStatus::StoredMismatch:
         return DerivedPublicationAdmissionStatus::StoredMismatch;
     case DerivedPublicationReadStatus::NotFound:
@@ -72,58 +94,71 @@ DerivedPublicationAdmissionStatus map_read_status(DerivedPublicationReadStatus s
 
 } // namespace
 
-IDerivedPublicationFrontierProvider::~IDerivedPublicationFrontierProvider() = default;
+IDerivedPublicationUnitSnapshotProvider::~IDerivedPublicationUnitSnapshotProvider() = default;
 
-KnowledgeUnitDerivedPublicationFrontierProvider::KnowledgeUnitDerivedPublicationFrontierProvider(
+KnowledgeUnitDerivedPublicationSnapshotProvider::KnowledgeUnitDerivedPublicationSnapshotProvider(
     const IKnowledgeUnitStore& units
 )
     : m_units(&units) {}
 
-DerivedPublicationFrontierResult KnowledgeUnitDerivedPublicationFrontierProvider::snapshot(
+DerivedPublicationUnitSnapshotResult KnowledgeUnitDerivedPublicationSnapshotProvider::snapshot(
     const ScopeId& scope_id,
     const std::vector<KnowledgeUnitId>& unit_ids
 ) const {
     if(scope_id.empty() || unit_ids.empty() || unit_ids.size() > kMaxAdmissionInputs)
-        return {DerivedPublicationFrontierStatus::InvalidInput, std::nullopt};
+        return {DerivedPublicationUnitSnapshotStatus::InvalidInput, std::nullopt};
 
-    DerivedPublicationFrontierSnapshot snapshot;
+    DerivedPublicationUnitSnapshot snapshot;
     snapshot.inputs.reserve(unit_ids.size());
+    snapshot.dependency_frontier.reserve(kUnitSnapshotEncoding.size());
+    if(!append_bounded(snapshot.dependency_frontier, kUnitSnapshotEncoding))
+        return {DerivedPublicationUnitSnapshotStatus::InvalidInput, std::nullopt};
+    std::set<std::uint64_t> seen_ids;
     for(const auto id : unit_ids) {
-        if(id.empty()) return {DerivedPublicationFrontierStatus::InvalidInput, std::nullopt};
-        const auto envelope = m_units->find(id);
-        if(!envelope) return {DerivedPublicationFrontierStatus::MissingInput, std::nullopt};
+        if(id.empty() || !seen_ids.insert(id.value()).second)
+            return {DerivedPublicationUnitSnapshotStatus::InvalidInput, std::nullopt};
+        std::optional<KnowledgeUnitEnvelope> envelope;
+        try {
+            envelope = m_units->find(id);
+        } catch(const std::exception&) {
+            return {DerivedPublicationUnitSnapshotStatus::Unavailable, std::nullopt};
+        }
+        if(!envelope)
+            return {DerivedPublicationUnitSnapshotStatus::MissingInput, std::nullopt};
         if(envelope->scope_id != scope_id)
-            return {DerivedPublicationFrontierStatus::ScopeMismatch, std::nullopt};
+            return {DerivedPublicationUnitSnapshotStatus::ScopeMismatch, std::nullopt};
         if(envelope->lifecycle_state != KnowledgeUnitLifecycleState::Active)
-            return {DerivedPublicationFrontierStatus::InactiveInput, std::nullopt};
+            return {DerivedPublicationUnitSnapshotStatus::InactiveInput, std::nullopt};
         if(envelope->revision == 0 || envelope->sources.size() != 1 ||
            envelope->sources.front().reference_mode != SourceReferenceMode::RevisionBoundQuote ||
            !envelope->sources.front().resource_revision ||
            envelope->sources.front().resource_revision->generation == 0 ||
            envelope->sources.front().resource_revision->body_digest.algorithm !=
                ResourceBodyDigestAlgorithm::Sha256)
-            return {DerivedPublicationFrontierStatus::InvalidInput, std::nullopt};
+            return {DerivedPublicationUnitSnapshotStatus::InvalidInput, std::nullopt};
 
         const auto& source = envelope->sources.front();
         const auto& revision = *source.resource_revision;
         const auto digest = hex_digest(revision.body_digest);
         snapshot.inputs.push_back({id, envelope->revision, revision.generation, digest});
-        const auto entry = "unit:" + std::to_string(id.value()) +
-            "@" + std::to_string(envelope->revision) +
-            ";source:" + revision.resource_id.value() +
-            "@" + std::to_string(revision.generation) + ":" + digest + ";";
-        if(entry.size() > kMaxAdmissionFrontierBytes - snapshot.dependency_frontier.size())
-            return {DerivedPublicationFrontierStatus::InvalidInput, std::nullopt};
-        snapshot.dependency_frontier += entry;
+        const auto unit_id = std::to_string(id.value());
+        const auto unit_revision = std::to_string(envelope->revision);
+        const auto source_generation = std::to_string(revision.generation);
+        if(!append_field(snapshot.dependency_frontier, "unit_id", unit_id) ||
+           !append_field(snapshot.dependency_frontier, "unit_revision", unit_revision) ||
+           !append_field(snapshot.dependency_frontier, "resource_id", revision.resource_id.value()) ||
+           !append_field(snapshot.dependency_frontier, "source_generation", source_generation) ||
+           !append_field(snapshot.dependency_frontier, "source_digest", digest))
+            return {DerivedPublicationUnitSnapshotStatus::InvalidInput, std::nullopt};
     }
-    return {DerivedPublicationFrontierStatus::Available, std::move(snapshot)};
+    return {DerivedPublicationUnitSnapshotStatus::Available, std::move(snapshot)};
 }
 
 DerivedPublicationAdmission::DerivedPublicationAdmission(
     IDerivedPublicationStore& publications,
-    const IDerivedPublicationFrontierProvider& frontier_provider
+    const IDerivedPublicationUnitSnapshotProvider& unit_snapshot_provider
 )
-    : m_publications(&publications), m_frontier_provider(&frontier_provider) {}
+    : m_publications(&publications), m_unit_snapshot_provider(&unit_snapshot_provider) {}
 
 DerivedPublicationAdmissionResult DerivedPublicationAdmission::publish(
     DerivedPublicationRequest request
@@ -131,15 +166,17 @@ DerivedPublicationAdmissionResult DerivedPublicationAdmission::publish(
     std::vector<KnowledgeUnitId> ids;
     ids.reserve(request.inputs.size());
     for(const auto& input : request.inputs) ids.push_back(input.unit_id);
-    const auto frontier = m_frontier_provider->snapshot(request.scope_id, ids);
-    if(frontier.status != DerivedPublicationFrontierStatus::Available)
+    const auto frontier = m_unit_snapshot_provider->snapshot(request.scope_id, ids);
+    if(frontier.status != DerivedPublicationUnitSnapshotStatus::Available)
         return {map_frontier_status(frontier.status), std::nullopt};
-    if(!frontier.snapshot || !same_inputs(request.inputs, frontier.snapshot->inputs) ||
+    if(!frontier.snapshot)
+        return {DerivedPublicationAdmissionStatus::Unavailable, std::nullopt};
+    if(!same_inputs(request.inputs, frontier.snapshot->inputs) ||
        request.dependency_frontier != frontier.snapshot->dependency_frontier)
         return {DerivedPublicationAdmissionStatus::Rejected, std::nullopt};
     try {
         m_publications->publish(std::move(request));
-        return {DerivedPublicationAdmissionStatus::Published, std::nullopt};
+        return {DerivedPublicationAdmissionStatus::PublishedAfterUnitCheck, std::nullopt};
     } catch(const std::invalid_argument&) {
         return {DerivedPublicationAdmissionStatus::Rejected, std::nullopt};
     } catch(const std::exception&) {
@@ -156,10 +193,12 @@ DerivedPublicationAdmissionResult DerivedPublicationAdmission::read(
     std::vector<KnowledgeUnitId> ids;
     ids.reserve(current_inputs.size());
     for(const auto& input : current_inputs) ids.push_back(input.unit_id);
-    const auto frontier = m_frontier_provider->snapshot(access_scope, ids);
-    if(frontier.status != DerivedPublicationFrontierStatus::Available)
+    const auto frontier = m_unit_snapshot_provider->snapshot(access_scope, ids);
+    if(frontier.status != DerivedPublicationUnitSnapshotStatus::Available)
         return {map_frontier_status(frontier.status), std::nullopt};
-    if(!frontier.snapshot || !same_inputs(current_inputs, frontier.snapshot->inputs) ||
+    if(!frontier.snapshot)
+        return {DerivedPublicationAdmissionStatus::Unavailable, std::nullopt};
+    if(!same_inputs(current_inputs, frontier.snapshot->inputs) ||
        current_dependency_frontier != frontier.snapshot->dependency_frontier)
         return {DerivedPublicationAdmissionStatus::StoredMismatch, std::nullopt};
     const auto result = m_publications->read(

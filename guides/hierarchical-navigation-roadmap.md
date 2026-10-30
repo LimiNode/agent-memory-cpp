@@ -7,6 +7,13 @@ bounded map-of-maps traversal.
 Current status: **Docs/tests only**. No production hierarchical navigator is
 claimed.
 
+The implemented graph-free admission preview is only a KnowledgeUnit-local
+consistency check. Its sequential unit reads and stored source references do
+not satisfy this guide's routing-eligibility requirement for a usable current
+source frontier. Until resource-frontier validation and a fenced snapshot are
+implemented, its result cannot activate a DomainMap or supply production route
+hints.
+
 The shared multi-input lineage, typed-relation and optional KB-1 Linked
 Knowledge boundary is reconciled in
 [`linked-derived-knowledge.md`](linked-derived-knowledge.md). This guide owns

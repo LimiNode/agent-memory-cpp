@@ -3,7 +3,7 @@
 #define AGENT_MEMORY_HEADER_STORAGE_DERIVED_PUBLICATION_ADMISSION_HPP_INCLUDED
 
 /// \file DerivedPublicationAdmission.hpp
-/// \brief Authoritative KnowledgeUnit-backed admission for derived publications.
+/// \brief KnowledgeUnit-local admission for derived publications.
 
 #include "IDerivedPublicationStore.hpp"
 #include "IKnowledgeUnitStore.hpp"
@@ -16,12 +16,12 @@
 
 namespace agent_memory {
 
-    struct DerivedPublicationFrontierSnapshot final {
+    struct DerivedPublicationUnitSnapshot final {
         std::vector<DerivedPublicationInput> inputs;
         std::string dependency_frontier;
     };
 
-    enum class DerivedPublicationFrontierStatus : std::uint8_t {
+    enum class DerivedPublicationUnitSnapshotStatus : std::uint8_t {
         Available,
         MissingInput,
         ScopeMismatch,
@@ -30,34 +30,37 @@ namespace agent_memory {
         Unavailable
     };
 
-    struct DerivedPublicationFrontierResult final {
-        DerivedPublicationFrontierStatus status = DerivedPublicationFrontierStatus::Unavailable;
-        std::optional<DerivedPublicationFrontierSnapshot> snapshot;
+    struct DerivedPublicationUnitSnapshotResult final {
+        DerivedPublicationUnitSnapshotStatus status =
+            DerivedPublicationUnitSnapshotStatus::Unavailable;
+        std::optional<DerivedPublicationUnitSnapshot> snapshot;
     };
 
-    /// \brief Trusted current frontier reader backed by canonical unit state.
+    /// \brief Reads current KnowledgeUnit state and its stored source references.
     ///
-    /// The provider derives revisions and source witnesses from the store; it
-    /// never accepts caller-supplied revision metadata as authoritative.
-    class IDerivedPublicationFrontierProvider {
+    /// The provider never accepts caller-supplied unit revision metadata as
+    /// authoritative. Sequential `find()` calls are not a consistent read
+    /// snapshot, and stored `ResourceRevisionRef` values do not prove that the
+    /// referenced Resource revision is still current.
+    class IDerivedPublicationUnitSnapshotProvider {
     public:
-        virtual ~IDerivedPublicationFrontierProvider();
+        virtual ~IDerivedPublicationUnitSnapshotProvider();
 
-        [[nodiscard]] virtual DerivedPublicationFrontierResult snapshot(
+        [[nodiscard]] virtual DerivedPublicationUnitSnapshotResult snapshot(
             const ScopeId& scope_id,
             const std::vector<KnowledgeUnitId>& unit_ids
         ) const = 0;
     };
 
-    /// \brief M0 KnowledgeUnit-backed frontier provider.
-    class KnowledgeUnitDerivedPublicationFrontierProvider final
-        : public IDerivedPublicationFrontierProvider {
+    /// \brief M0 KnowledgeUnit-local snapshot provider.
+    class KnowledgeUnitDerivedPublicationSnapshotProvider final
+        : public IDerivedPublicationUnitSnapshotProvider {
     public:
-        explicit KnowledgeUnitDerivedPublicationFrontierProvider(
+        explicit KnowledgeUnitDerivedPublicationSnapshotProvider(
             const IKnowledgeUnitStore& units
         );
 
-        [[nodiscard]] DerivedPublicationFrontierResult snapshot(
+        [[nodiscard]] DerivedPublicationUnitSnapshotResult snapshot(
             const ScopeId& scope_id,
             const std::vector<KnowledgeUnitId>& unit_ids
         ) const override;
@@ -67,13 +70,14 @@ namespace agent_memory {
     };
 
     enum class DerivedPublicationAdmissionStatus : std::uint8_t {
-        Published,
-        StoredMatch,
+        PublishedAfterUnitCheck,
+        KnowledgeUnitLocalMatch,
         StoredMismatch,
         NotFound,
         ScopeMismatch,
         MissingInput,
         InactiveInput,
+        InvalidInput,
         Rejected,
         Unavailable
     };
@@ -83,16 +87,20 @@ namespace agent_memory {
         std::optional<DerivedPublication> publication;
     };
 
-    /// \brief Validates derived publication metadata against canonical units.
+    /// \brief Validates publication metadata against current KnowledgeUnits.
     ///
-    /// This gate owns the caller-to-authority comparison. It does not claim a
-    /// cross-store atomic commit: a coordinator/fenced transaction remains a
-    /// separate integration capability.
+    /// This gate validates the caller-declared ordered input list against
+    /// sequential current-unit reads. It neither proves that the list is a
+    /// complete causal lineage nor validates current root Resource revisions.
+    /// It also does not claim a consistent multi-unit snapshot or a cross-store
+    /// atomic commit. Those require a later resource-frontier provider and
+    /// coordinator/fenced transaction. Results from this slice must not be used
+    /// as proof of production active freshness.
     class DerivedPublicationAdmission final {
     public:
         DerivedPublicationAdmission(
             IDerivedPublicationStore& publications,
-            const IDerivedPublicationFrontierProvider& frontier_provider
+            const IDerivedPublicationUnitSnapshotProvider& unit_snapshot_provider
         );
 
         [[nodiscard]] DerivedPublicationAdmissionResult publish(
@@ -108,7 +116,7 @@ namespace agent_memory {
 
     private:
         IDerivedPublicationStore* m_publications;
-        const IDerivedPublicationFrontierProvider* m_frontier_provider;
+        const IDerivedPublicationUnitSnapshotProvider* m_unit_snapshot_provider;
     };
 
 } // namespace agent_memory
