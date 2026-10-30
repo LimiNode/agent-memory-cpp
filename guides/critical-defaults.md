@@ -20,6 +20,10 @@ Mandatory rules for AI coding agents working in `agent-memory-cpp`.
   and context assembly. Do not collapse behavior into a single facade.
 - Keep derived records traceable to their source resource when adding ingestion,
   indexes, or mutable memory features.
+- Treat derived representations as optional, versioned projections: preserve
+  the original evidence and its exact revisions, and do not claim a retrieval
+  improvement without matched no-retrieval/chunk/derived arms plus downstream
+  answer, provenance, cost and stale-update checks.
 - Prefer targeted resource reindexing over whole-store rebuilds for source
   updates.
 - Persist source and chunk text as UTF-8 by default. Use UTF-32 only as a

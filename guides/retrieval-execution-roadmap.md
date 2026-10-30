@@ -401,6 +401,31 @@ ordinary branch recall, but it must not label every normal-route miss as
 method, eligible-set coverage, additional candidate work and any remaining
 unknown attribution.
 
+### End-to-end answer utility and representation controls
+
+Retrieval ranking is not the final quality target. A route or derived aspect
+may improve Recall@K while worsening the answer because it loses qualifiers,
+revision order, source boundaries or citation identity. Evaluation therefore
+keeps the canonical evidence and final answer as separate measured stages.
+
+For a new derived representation or fusion route, use a matched control matrix
+with a no-retrieval arm, ordinary fixed/structural chunks, the single proposed
+representation, and a bounded combination. Keep corpus, holdout, answer
+budget, policy frontier and source-hydration rules identical. Record at least:
+
+- final answer correctness and unsupported-claim/hallucination rate;
+- citation and source-revision fidelity;
+- Recall@K/nDCG@K/MRR and final hydrated recall;
+- token, decoded-byte, latency and index/materialization cost;
+- behavior after a source correction, including stale detection and rebuild
+  scope.
+
+No arm becomes a default merely because it wins a small ranking benchmark. A
+hybrid route is an experimental policy until its end-to-end answer utility and
+provenance behavior are better than the appropriate simpler control. The
+canonical source remains independently retrievable even when a derived aspect
+is selected.
+
 ### Compact retrieval keys and MDBX publication
 
 Posting lists and route-local candidate tables may use a compact numeric key for
