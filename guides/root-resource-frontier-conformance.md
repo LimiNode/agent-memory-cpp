@@ -73,6 +73,36 @@ either expose a shared transaction-owner operation in the MDBX adapter or add
 the smallest guarded method to the derived publication adapter; it must not
 invent a runtime coordinator or a new DBI without a demonstrated need.
 
+### Transaction feasibility matrix
+
+The shared `MdbxStorageContext` currently shares a connection, not a transaction
+scope. The public methods below open and commit their own transactions:
+
+| Operation | Current transaction owner | Safe inside a future external snapshot? | Minimum change |
+| --- | --- | --- | --- |
+| `MdbxResourceManifestStorage::find_manifest()` | Adapter-owned read-only transaction | No; it cannot join another read frontier. | Add a transaction-scoped read primitive or a frontier reader owned by the adapter. |
+| `MdbxResourceManifestStorage::upsert_manifest_if_unchanged_guarded()` | Adapter-owned writable transaction; checks one manifest and configured guard/token tables. | No for cross-store publication, yes as a single-root primitive. | Reuse its token comparison inside the one publication write owner. |
+| `MdbxKnowledgeUnitStore::find()` / scans | Adapter-owned read-only transaction per call. | No; sequential calls can observe different commits. | Add a bounded snapshot read operation that accepts the owner transaction. |
+| `MdbxKnowledgeUnitStore::create_or_get_units_guarded()` | One adapter-owned writable transaction; guards a resource token. | No for a derived publication spanning other stores. | Fence direct unit revision high-water values as well as root tokens in the publication write. |
+| `MdbxCanonicalContentStore::read_current()` / `read_revision()` | Adapter-owned read-only transaction per operation. | No; current and historical reads can be split. | Add transaction-scoped canonical reads or make the frontier provider the transaction owner. |
+| `MdbxCanonicalContentStore::commit_guarded()` | Adapter-owned writable transaction with one import guard. | No for a multi-store derived commit. | Reuse the guard check, but perform root, unit and publication writes under one owner. |
+| `MdbxDerivedPublicationStore::read()` / `publish()` | Adapter-owned read/write transaction for storage rows. | No trusted frontier is consulted. | Add a guarded publish/read operation or an adapter-level transaction owner that includes its rows. |
+| `MdbxStorageContext` | Owns or attaches the MDBX connection only. | No by itself. | Do not document a shared context as snapshot compatibility; prove transaction lifetime and thread ownership first. |
+
+Consequently, merely passing one `MdbxStorageContext` to all adapters is not an
+implementation of a consistent frontier. The implementation PR must first
+prove that the selected transaction owner can keep one read transaction alive
+across all participating table reads and one write transaction across root
+token checks, direct unit revision checks and derived publication rows. A unit
+mutable-field update that advances a unit revision must not bypass the fence
+even when its root token is unchanged.
+
+The current DBI budget is not changed by this planning slice. The executable
+fixture uses two uniquely prefixed test-only guard/token tables in an isolated
+temporary MDBX environment; it does not alter `guides/dbi-manifest.yaml` or
+production table names. An implementation PR must show its DBI-slot accounting
+before adding any table.
+
 ## Required conformance scenarios
 
 | Scenario | Required result | Current status |
@@ -100,6 +130,24 @@ revalidation and interrupted-invalidation scenarios are deliberately listed as
 implementation-PR gates. Adding tests that merely call independent `find()`
 operations would falsely claim a guarantee that the current API does not
 provide.
+
+## Proposed read outcome contract
+
+The future public read API must keep historical evidence and current eligibility
+as separate outcomes. These names are design targets, not types added by this
+PR:
+
+| Outcome | Meaning | Required evidence |
+| --- | --- | --- |
+| `Historical` | The retained publication was built from the exact recorded input and root revisions. Current frontier agreement is not required. | All referenced historical unit/resource/canonical evidence is readable under the requested policy. |
+| `Current` | The publication is eligible for a current retrieval result. | One consistent read frontier proves every direct unit revision and root resource is active, current and accessible. |
+| `Stale` | The publication is known to be valid historically but at least one required current revision or fence no longer matches. | The mismatching root/unit identity and expected/observed generations are diagnosable without materializing unauthorized body text. |
+| `Unavailable` | Freshness or historical validity cannot be established, or required evidence is missing/inaccessible. | No derived body, locator or source metadata is returned as if it were current. |
+
+`StoredMatch` remains a storage-only comparison from the #569 slice. It must
+not be promoted to `Current` by an adapter merely because the body and caller
+inputs have matching bytes. A missing retained historical revision is not a
+request to substitute the newer root revision.
 
 ## Acceptance gates for the implementation PR
 
