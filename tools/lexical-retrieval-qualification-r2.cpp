@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -31,6 +32,110 @@ namespace {
 using namespace agent_memory;
 using Clock = std::chrono::steady_clock;
 constexpr double kScoreTolerance = 1e-5;
+constexpr std::string_view kTokenizerRevision = "standard-tokenizer-v1";
+constexpr std::string_view kScorerRevision = "bm25-exact-v1";
+
+std::uint64_t parse_unsigned(std::string_view value, const char* field) {
+    if(value.empty() || value.front() == '+' || value.front() == '-') {
+        throw std::runtime_error(std::string("invalid ") + field);
+    }
+    for(const char character : value) {
+        if(character < '0' || character > '9') {
+            throw std::runtime_error(std::string("invalid ") + field);
+        }
+    }
+    std::size_t consumed = 0;
+    std::uint64_t result = 0;
+    try {
+        result = std::stoull(std::string(value), &consumed, 10);
+    } catch(const std::exception&) {
+        throw std::runtime_error(std::string("invalid ") + field);
+    }
+    if(consumed != value.size()) throw std::runtime_error(std::string("invalid ") + field);
+    return result;
+}
+
+int parse_grade(std::string_view value) {
+    if(value.empty() || value.front() == '+') throw std::runtime_error("invalid qrel grade");
+    const auto begin = value.front() == '-' ? value.begin() + 1 : value.begin();
+    if(begin == value.end()
+        || !std::all_of(begin, value.end(), [](const char character) {
+            return character >= '0' && character <= '9';
+        })) {
+        throw std::runtime_error("invalid qrel grade");
+    }
+    std::size_t consumed = 0;
+    int result = 0;
+    try {
+        result = std::stoi(std::string(value), &consumed, 10);
+    } catch(const std::exception&) {
+        throw std::runtime_error("invalid qrel grade");
+    }
+    if(consumed != value.size() || result < 0) throw std::runtime_error("invalid qrel grade");
+    return result;
+}
+
+std::string fixture_digest(const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    if(!input) throw std::runtime_error("cannot hash fixture: " + path.string());
+    std::uint64_t hash = 14695981039346656037ULL;
+    char value = 0;
+    while(input.get(value)) {
+        hash ^= static_cast<std::uint8_t>(value);
+        hash *= 1099511628211ULL;
+    }
+    std::ostringstream output;
+    output << std::hex << std::setfill('0') << std::setw(16) << hash;
+    return output.str();
+}
+
+class OwnedDatabaseDirectory final {
+public:
+    explicit OwnedDatabaseDirectory(std::filesystem::path parent) {
+        if(parent.empty()) parent = std::filesystem::temp_directory_path();
+        std::error_code error;
+        std::filesystem::create_directories(parent, error);
+        if(error) throw std::runtime_error("cannot create R2 database parent");
+        static std::atomic<std::uint64_t> sequence{0};
+        const auto stamp = Clock::now().time_since_epoch().count();
+        for(std::size_t attempt = 0; attempt < 64; ++attempt) {
+            const auto name = std::string("agent-memory-lexical-r2-")
+                + std::to_string(stamp) + "-" + std::to_string(sequence.fetch_add(1));
+            const auto candidate = parent / name;
+            if(!std::filesystem::create_directory(candidate, error)) {
+                error.clear();
+                continue;
+            }
+            root_ = candidate;
+            sentinel_ = root_ / ".r2-owned-sentinel";
+            std::ofstream marker(sentinel_, std::ios::binary);
+            marker << "agent-memory-lexical-retrieval-r2\n";
+            if(!marker) {
+                std::filesystem::remove_all(root_, error);
+                throw std::runtime_error("cannot create R2 ownership sentinel");
+            }
+            owns_ = true;
+            return;
+        }
+        throw std::runtime_error("cannot reserve unique R2 database directory");
+    }
+
+    ~OwnedDatabaseDirectory() {
+        std::error_code error;
+        if(!owns_ || !std::filesystem::is_regular_file(sentinel_, error)) return;
+        std::filesystem::remove_all(root_, error);
+    }
+
+    [[nodiscard]] std::filesystem::path database(const std::string& name) const {
+        if(!owns_ || name.empty()) throw std::logic_error("R2 database directory is not owned");
+        return root_ / (name + ".mdbx");
+    }
+
+private:
+    std::filesystem::path root_;
+    std::filesystem::path sentinel_;
+    bool owns_ = false;
+};
 
 struct Document final {
     std::uint64_t id = 0;
@@ -81,10 +186,10 @@ std::vector<Document> load_documents(const std::filesystem::path& path) {
             throw std::runtime_error("R2 corpus rows require id/resource/generation/revision/raw:text");
         }
         Document document;
-        document.id = std::stoull(fields[0]);
+        document.id = parse_unsigned(fields[0], "document id");
         document.resource = fields[1];
-        document.generation = std::stoull(fields[2]);
-        document.revision = std::stoull(fields[3]);
+        document.generation = parse_unsigned(fields[2], "resource generation");
+        document.revision = parse_unsigned(fields[3], "document revision");
         document.terms = tokenize(fields[4].substr(4));
         if(document.id == 0 || document.resource.empty() || document.generation == 0
             || document.revision == 0 || document.terms.empty() || !ids.insert(document.id).second) {
@@ -96,7 +201,8 @@ std::vector<Document> load_documents(const std::filesystem::path& path) {
     return documents;
 }
 
-std::vector<Query> load_queries(const std::filesystem::path& path) {
+std::vector<Query> load_queries(const std::filesystem::path& path,
+    const std::set<std::uint64_t>& document_ids) {
     std::ifstream input(path, std::ios::binary);
     if(!input) throw std::runtime_error("cannot open R2 queries: " + path.string());
     std::vector<Query> queries;
@@ -112,7 +218,7 @@ std::vector<Query> load_queries(const std::filesystem::path& path) {
         query.id = fields[0];
         query.mode = fields[1];
         query.terms = tokenize(fields[2].substr(4));
-        if(query.id.empty() || !ids.insert(query.id).second
+        if(query.id.empty() || !ids.insert(query.id).second || query.terms.empty()
             || (query.mode != "judged" && query.mode != "no_answer")) {
             throw std::runtime_error("invalid or duplicate R2 query");
         }
@@ -121,9 +227,10 @@ std::vector<Query> load_queries(const std::filesystem::path& path) {
                 if(judgment.empty()) continue;
                 const auto separator = judgment.find(':');
                 if(separator == std::string::npos) throw std::runtime_error("malformed R2 qrel");
-                const auto id = std::stoull(judgment.substr(0, separator));
-                const auto grade = std::stoi(judgment.substr(separator + 1U));
-                if(id == 0 || grade < 0 || !query.qrels.emplace(id, grade).second) {
+                const auto id = parse_unsigned(judgment.substr(0, separator), "qrel document id");
+                const auto grade = parse_grade(judgment.substr(separator + 1U));
+                if(id == 0 || document_ids.find(id) == document_ids.end()
+                    || !query.qrels.emplace(id, grade).second) {
                     throw std::runtime_error("invalid or duplicate R2 qrel");
                 }
             }
@@ -172,6 +279,11 @@ LexicalDocumentRecord record(const Document& document) {
 struct Hit final {
     std::uint64_t id = 0;
     double score = 0.0;
+};
+
+struct QueryEvidence final {
+    std::string query_id;
+    std::vector<Hit> hits;
 };
 
 bool same_ranking(const std::vector<Hit>& lhs, const std::vector<Hit>& rhs) {
@@ -258,6 +370,8 @@ double recall(const std::vector<Hit>& hits, const Query& query, const std::size_
 
 struct BackendResult final {
     std::string name;
+    std::string revision;
+    std::string query_path;
     bool ranking_parity = true;
     bool score_parity = true;
     double build_ms = 0.0;
@@ -265,6 +379,7 @@ struct BackendResult final {
     double reopen_ms = 0.0;
     std::uintmax_t index_bytes = 0;
     std::vector<double> query_ms;
+    std::vector<QueryEvidence> evidence;
     double recall_at_1 = 0.0;
     double recall_at_5 = 0.0;
     double ndcg_at_10 = 0.0;
@@ -323,8 +438,6 @@ BackendResult run_durable(const std::string& name, const std::filesystem::path& 
     const std::vector<Document>& documents, const std::vector<Query>& queries,
     const std::vector<std::vector<Hit>>& baseline, const std::size_t limit) {
     std::error_code error;
-    std::filesystem::remove(path, error);
-    std::filesystem::remove(path.string() + "-lck", error);
     BackendResult result{name};
     const auto make_options = [&](const std::shared_ptr<MdbxStorageContext>& context) {
         OptionsT options;
@@ -349,6 +462,12 @@ BackendResult run_durable(const std::string& name, const std::filesystem::path& 
             adapter_start - build_start).count();
         result.update_ms = std::chrono::duration<double, std::milli>(
             update_end - adapter_start).count();
+        result.query_path = "diagnostic_snapshot_bm25";
+        if constexpr(std::is_same_v<OptionsT, MdbxSegmentedLexicalIndexOptions>) {
+            result.revision = "MdbxSegmentedLexicalIndex@segmented-v2";
+        } else {
+            result.revision = "MdbxPersistentLexicalIndex@flat-v2";
+        }
         {
             const auto snapshot = index.read_snapshot();
             std::vector<std::vector<Hit>> actual;
@@ -356,6 +475,7 @@ BackendResult run_durable(const std::string& name, const std::filesystem::path& 
                 const auto started = Clock::now();
                 const auto hits = score(snapshot.index, queries[query_index], limit);
                 actual.push_back(hits);
+                result.evidence.push_back(QueryEvidence{queries[query_index].id, hits});
                 result.query_ms.push_back(std::chrono::duration<double, std::milli>(
                     Clock::now() - started).count());
                 result.ranking_parity = result.ranking_parity
@@ -392,19 +512,31 @@ std::string json_escape(const std::string& value) {
     return result;
 }
 
-void write_receipt(const std::filesystem::path& output, const std::string& corpus_name,
-    const std::vector<BackendResult>& results, const std::size_t query_count,
+void write_receipt(const std::filesystem::path& output,
+    const std::filesystem::path& corpus_path, const std::filesystem::path& queries_path,
+    const std::vector<Query>& queries, const std::vector<BackendResult>& results,
     const std::size_t limit) {
     std::ofstream stream(output, std::ios::binary);
     if(!stream) throw std::runtime_error("cannot write R2 receipt");
-    stream << "{\n  \"schema_version\": 1,\n  \"protocol\": \"lexical_retrieval_qualification_r2\",\n"
-        << "  \"corpus\": \"" << json_escape(corpus_name) << "\",\n"
+    stream << "{\n  \"schema_version\": 2,\n  \"protocol\": \"lexical_retrieval_qualification_r2\",\n"
+        << "  \"fixtures\": {\"corpus\": \"" << json_escape(corpus_path.filename().string())
+        << "\", \"queries\": \"" << json_escape(queries_path.filename().string())
+        << "\", \"digest_algorithm\": \"fnv1a64\", \"corpus_digest\": \""
+        << fixture_digest(corpus_path) << "\", \"query_digest\": \""
+        << fixture_digest(queries_path) << "\"},\n"
+        << "  \"tokenizer_revision\": \"" << kTokenizerRevision << "\",\n"
+        << "  \"scorer_revision\": \"" << kScorerRevision << "\",\n"
         << "  \"candidate_depth\": " << limit << ",\n  \"score_tolerance\": "
-        << kScoreTolerance << ",\n  \"query_count\": " << query_count
-        << ",\n  \"backends\": [\n";
+        << kScoreTolerance << ",\n  \"query_count\": " << queries.size() << ",\n  \"query_ids\": [";
+    for(std::size_t index = 0; index < queries.size(); ++index) {
+        stream << (index == 0 ? "" : ", ") << "\"" << json_escape(queries[index].id) << "\"";
+    }
+    stream << "],\n  \"measurement_paths\": {\"bm25\": \"production_exact_search\", \"durable\": \"diagnostic_snapshot_bm25\"},\n  \"backends\": [\n";
     for(std::size_t index = 0; index < results.size(); ++index) {
         const auto& result = results[index];
-        stream << "    {\"id\": \"" << result.name << "\", \"ranking_parity\": "
+        stream << "    {\"id\": \"" << result.name << "\", \"revision\": \""
+            << result.revision << "\", \"query_path\": \"" << result.query_path
+            << "\", \"ranking_parity\": "
             << (result.ranking_parity ? "true" : "false") << ", \"score_parity\": "
             << (result.score_parity ? "true" : "false") << ", \"index_build_ms\": "
             << result.build_ms << ", \"update_ms\": " << result.update_ms
@@ -417,7 +549,22 @@ void write_receipt(const std::filesystem::path& output, const std::string& corpu
             << percentile(result.query_ms, .50) << ", \"p95\": "
             << percentile(result.query_ms, .95) << ", \"p99\": "
             << percentile(result.query_ms, .99) << ", \"sample_count\": "
-            << result.query_ms.size() << ", \"observation_unit\": \"one_query\", \"statistical_status\": \"directional\"}}"
+            << result.query_ms.size() << ", \"observation_unit\": \"one_query\", \"statistical_status\": \"directional\"}, \"query_evidence\": [";
+        for(std::size_t evidence_index = 0; evidence_index < result.evidence.size(); ++evidence_index) {
+            const auto& evidence = result.evidence[evidence_index];
+            stream << (evidence_index == 0 ? "" : ",") << "{\"id\": \""
+                << json_escape(evidence.query_id) << "\", \"candidate_count\": "
+                << evidence.hits.size() << ", \"ranked_ids\": [";
+            for(std::size_t hit_index = 0; hit_index < evidence.hits.size(); ++hit_index) {
+                stream << (hit_index == 0 ? "" : ",") << evidence.hits[hit_index].id;
+            }
+            stream << "], \"scores\": [";
+            for(std::size_t hit_index = 0; hit_index < evidence.hits.size(); ++hit_index) {
+                stream << (hit_index == 0 ? "" : ",") << evidence.hits[hit_index].score;
+            }
+            stream << "]}";
+        }
+        stream << "]}"
             << (index + 1U == results.size() ? "\n" : ",\n");
     }
     stream << "  ],\n  \"quality_status\": \"QUALITY_INCONCLUSIVE\",\n"
@@ -427,18 +574,22 @@ void write_receipt(const std::filesystem::path& output, const std::string& corpu
 int run(const std::filesystem::path& corpus_path, const std::filesystem::path& queries_path,
     const std::filesystem::path& output, const std::filesystem::path& database_root) {
     const auto documents = load_documents(corpus_path);
-    const auto queries = load_queries(queries_path);
+    std::set<std::uint64_t> document_ids;
+    for(const auto& document : documents) document_ids.insert(document.id);
+    const auto queries = load_queries(queries_path, document_ids);
+    const OwnedDatabaseDirectory database_directory(database_root.parent_path());
     const std::size_t limit = 10;
     ExactLexicalIndex exact;
     const auto exact_start = Clock::now();
     for(const auto& document : documents) exact.upsert(record(document));
     const auto exact_build_ms = std::chrono::duration<double, std::milli>(Clock::now() - exact_start).count();
-    static_cast<void>(exact_build_ms);
-    BackendResult baseline_result{"bm25"};
+    BackendResult baseline_result{"bm25", "ExactLexicalIndex@production-bm25-v1",
+        "production_exact_search"};
     std::vector<std::vector<Hit>> baseline;
     for(const auto& query : queries) {
         const auto started = Clock::now();
         baseline.push_back(score_exact(exact, query, limit));
+        baseline_result.evidence.push_back(QueryEvidence{query.id, baseline.back()});
         baseline_result.query_ms.push_back(std::chrono::duration<double, std::milli>(Clock::now() - started).count());
     }
     add_quality(baseline_result, baseline, queries);
@@ -446,10 +597,10 @@ int run(const std::filesystem::path& corpus_path, const std::filesystem::path& q
     std::vector<BackendResult> results;
     results.push_back(std::move(baseline_result));
     results.push_back(run_durable<MdbxPersistentLexicalIndex, MdbxPersistentLexicalIndexOptions>(
-        "flat-v2", database_root.string() + "-flat-v2", documents, queries, baseline, limit));
+        "flat-v2", database_directory.database("flat-v2"), documents, queries, baseline, limit));
     results.push_back(run_durable<MdbxSegmentedLexicalIndex, MdbxSegmentedLexicalIndexOptions>(
-        "segmented-v2", database_root.string() + "-segmented-v2", documents, queries, baseline, limit));
-    write_receipt(output, corpus_path.filename().string(), results, queries.size(), limit);
+        "segmented-v2", database_directory.database("segmented-v2"), documents, queries, baseline, limit));
+    write_receipt(output, corpus_path, queries_path, queries, results, limit);
     for(const auto& result : results) {
         if(!result.ranking_parity || !result.score_parity) return 2;
     }

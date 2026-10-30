@@ -221,6 +221,23 @@ if(AGENT_MEMORY_BUILD_BENCHMARKS)
                 agent_memory_lexical_retrieval_qualification_r2_receipt
                 PROPERTIES DEPENDS agent_memory_lexical_retrieval_qualification_r2_smoke
             )
+            add_test(
+                NAME agent_memory_lexical_retrieval_qualification_r2_validator_self_test
+                COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/validate_lexical_retrieval_r2.py
+                        --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_lexical_retrieval_qualification_r2_parallel
+                COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/run_lexical_retrieval_r2_parallel.py
+                        $<TARGET_FILE:agent_memory_lexical_retrieval_qualification_r2>
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/fixtures/lexical_retrieval_qualification_r2_corpus.tsv
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/fixtures/lexical_retrieval_qualification_r2_queries.tsv
+                        ${CMAKE_CURRENT_BINARY_DIR}/lexical-retrieval-r2-parallel-parent
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
         endif()
     endif()
 endif()
