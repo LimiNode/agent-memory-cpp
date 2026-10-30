@@ -6,4 +6,4 @@ q-correction	judged	raw:correction stale generation ineligible	5:3
 q-contradiction	judged	raw:not atomic publication proof	6:3
 q-rare	judged	raw:frontier epoch seventeen	7:3
 q-hard-negative	judged	raw:token postings	1:2,8:1
-q-no-answer	no_answer	raw:quantum banana protocol	
+q-no-answer	no_answer	raw:quantum banana protocol	-

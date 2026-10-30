@@ -34,6 +34,9 @@ The fixture's `Token` metadata uses ordinal synthetic ranges solely to satisfy
 the in-memory index record contract; those values are not source byte offsets
 and are not evidence about document positions.
 
+The query TSV uses `-` as the explicit empty-qrels sentinel for the
+no-answer control, avoiding an ambiguous trailing empty field.
+
 The receipt reports exact logical ranking/score parity against the BM25
 baseline, Recall@1/5, nDCG@10, MRR, no-answer accuracy, build/update/reopen
 times, index bytes, and p50/p95/p99 query samples. `sample_count` is the

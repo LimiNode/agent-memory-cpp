@@ -116,14 +116,16 @@ std::vector<Query> load_queries(const std::filesystem::path& path) {
             || (query.mode != "judged" && query.mode != "no_answer")) {
             throw std::runtime_error("invalid or duplicate R2 query");
         }
-        for(const auto& judgment : split(fields[3], ',')) {
-            if(judgment.empty()) continue;
-            const auto separator = judgment.find(':');
-            if(separator == std::string::npos) throw std::runtime_error("malformed R2 qrel");
-            const auto id = std::stoull(judgment.substr(0, separator));
-            const auto grade = std::stoi(judgment.substr(separator + 1U));
-            if(id == 0 || grade < 0 || !query.qrels.emplace(id, grade).second) {
-                throw std::runtime_error("invalid or duplicate R2 qrel");
+        if(fields[3] != "-") {
+            for(const auto& judgment : split(fields[3], ',')) {
+                if(judgment.empty()) continue;
+                const auto separator = judgment.find(':');
+                if(separator == std::string::npos) throw std::runtime_error("malformed R2 qrel");
+                const auto id = std::stoull(judgment.substr(0, separator));
+                const auto grade = std::stoi(judgment.substr(separator + 1U));
+                if(id == 0 || grade < 0 || !query.qrels.emplace(id, grade).second) {
+                    throw std::runtime_error("invalid or duplicate R2 qrel");
+                }
             }
         }
         if((query.mode == "judged" && query.qrels.empty())
