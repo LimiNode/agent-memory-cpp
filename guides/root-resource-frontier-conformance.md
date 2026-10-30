@@ -98,10 +98,11 @@ mutable-field update that advances a unit revision must not bypass the fence
 even when its root token is unchanged.
 
 The current DBI budget is not changed by this planning slice. The executable
-fixture uses two uniquely prefixed test-only guard/token tables in an isolated
-temporary MDBX environment; it does not alter `guides/dbi-manifest.yaml` or
-production table names. An implementation PR must show its DBI-slot accounting
-before adding any table.
+fixture uses one resource-manifest table plus two uniquely prefixed test-only
+guard/token tables (three DBIs total) in an isolated temporary MDBX
+environment; it does not alter `guides/dbi-manifest.yaml` or production table
+names. An implementation PR must show its DBI-slot accounting before adding any
+table.
 
 ## Required conformance scenarios
 
