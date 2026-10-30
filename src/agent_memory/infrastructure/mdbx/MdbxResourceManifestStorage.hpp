@@ -8,12 +8,17 @@
 #include <agent_memory/storage/IResourceManifestStorage.hpp>
 
 #include <memory>
+#include <limits>
 #include <optional>
 #include <string>
 
 #if AGENT_MEMORY_HAS_MDBX
 
 #include "MdbxStorageContext.hpp"
+
+namespace mdbxc {
+class Transaction;
+}
 
 namespace agent_memory {
 
@@ -78,6 +83,18 @@ struct MdbxManifestPublicationGuard final {
         [[nodiscard]] std::optional<ResourceManifest> find_manifest(
             const ResourceId& resource_id
         ) const override;
+
+        /// \brief Reads one manifest from a caller-owned read transaction.
+        ///
+        /// The transaction must remain active on its creating thread. This
+        /// narrow overload is used by frontier snapshots to read several
+        /// stores from one stable MDBX view.
+        [[nodiscard]] std::optional<ResourceManifest> find_manifest_in_transaction(
+            const ResourceId& resource_id,
+            const mdbxc::Transaction& transaction,
+            std::size_t max_payload_bytes = std::numeric_limits<std::size_t>::max(),
+            std::size_t* observed_payload_bytes = nullptr
+        ) const;
 
         [[nodiscard]] bool erase_manifest(const ResourceId& resource_id) override;
 
