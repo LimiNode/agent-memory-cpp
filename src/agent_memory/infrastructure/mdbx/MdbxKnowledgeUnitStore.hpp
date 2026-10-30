@@ -10,12 +10,17 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <limits>
 #include <string>
 #include <vector>
 
 #if AGENT_MEMORY_HAS_MDBX
 
 #include "MdbxStorageContext.hpp"
+
+namespace mdbxc {
+class Transaction;
+}
 
 namespace agent_memory {
 
@@ -98,6 +103,18 @@ namespace agent_memory {
         [[nodiscard]] std::optional<KnowledgeUnitEnvelope> find(
             const KnowledgeUnitId& id
         ) const override;
+
+        /// \brief Reads one envelope from a caller-owned read transaction.
+        ///
+        /// This overload is intentionally narrow: it lets a frontier reader
+        /// combine unit and resource reads without emulating a snapshot with
+        /// sequential adapter-owned transactions.
+        [[nodiscard]] std::optional<KnowledgeUnitEnvelope> find_in_transaction(
+            const KnowledgeUnitId& id,
+            const mdbxc::Transaction& transaction,
+            std::size_t max_payload_bytes = std::numeric_limits<std::size_t>::max(),
+            std::size_t* observed_payload_bytes = nullptr
+        ) const;
 
         [[nodiscard]] std::optional<KnowledgeUnitId> find_by_content_key(
             const KnowledgeUnitKey& key

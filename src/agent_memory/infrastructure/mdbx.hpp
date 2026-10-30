@@ -10,6 +10,7 @@
 #include "mdbx/MdbxFederatedCanonicalReader.hpp"
 #include "mdbx/MdbxDocumentStorage.hpp"
 #include "mdbx/MdbxResourceManifestStorage.hpp"
+#include "mdbx/MdbxResourceFrontierSnapshot.hpp"
 #include "mdbx/MdbxStorageContext.hpp"
 #include "mdbx/MdbxWorkspaceStorageRegistry.hpp"
 #include "mdbx/MdbxDurableLexicalDocumentMemory.hpp"

@@ -1,10 +1,10 @@
 # Root Resource Frontier and Fenced Derived Publication
 
-Status: Draft design and conformance plan. This document does not implement a
-publication coordinator, change production retrieval, or make derived records
-authoritative.
+Status: Draft design plus B1 read-snapshot implementation. B1 does not
+implement fenced publication, change production retrieval, or make derived
+records authoritative.
 
-Baseline: `main@30705a290008ae9ddfcc8af85e33790fd8a468e5`, after #569.
+Baseline: `main@0ae237eee8084d09778280c73fb604231a275607`, after #570.
 
 ## Scope and boundary
 
@@ -106,6 +106,41 @@ pass by deleting the sentinel itself. It does not alter `guides/dbi-manifest.yam
 or production table names. An implementation PR must show its DBI-slot
 accounting before adding any table.
 
+## B1 implementation slice: consistent frontier snapshot
+
+`MdbxResourceFrontierSnapshotReader` is the first implementation slice of
+this plan. It owns one read-only transaction on the shared
+`MdbxStorageContext`, reads every requested KnowledgeUnit and its root
+`ResourceManifest` through that transaction, and retains the transaction owner
+on the returned snapshot. The adapter-scoped `find_in_transaction()` methods
+are intentionally narrow; passing a shared context to independent `find()`
+calls remains insufficient and is not used here.
+
+The B1 result is available only when all inputs agree on scope, active unit
+lifecycle, direct unit revision, root generation and SHA-256 body digest. A
+missing or inactive root, malformed provenance, cross-scope unit, unit
+revision mismatch or root mismatch fails closed with an explicit status. The
+reader materializes no derived body and performs no writes. The retained
+snapshot owns a typed, move-only `MdbxReadTransactionOwner`; it is thread-bound
+and must be moved and destroyed on its creating thread. Cross-thread move or
+destruction is rejected fail-fast, as required by MDBX transaction ownership.
+The reader rejects empty or duplicate input sets, caps the request at 4096
+units, and enforces a 1 MiB decoded/serialized per-frontier budget before
+returning a snapshot. The serialized-byte accumulator and the estimated
+materialized-byte accumulator are separate overflow-checked budgets; neither
+is presented as a precise allocator cap.
+
+The focused MDBX fixture covers a successful pinned read, a root mutation
+observed by a subsequent read, scope and unit-revision rejection, inactive
+unit rejection, request-limit and duplicate-input failures, and a
+deterministic writer interleaving between two reads, including a bounded
+injected-failure path that transfers exceptions from both worker threads and
+still joins them. The interleaving proves that both roots come from one read
+transaction even when a writer commits between the first and second point
+reads. B2 must still add the single writable transaction that re-checks this
+frontier and publishes derived rows; it is deliberately not part of the B1
+implementation.
+
 ## Required conformance scenarios
 
 | Scenario | Required result | Current status |
@@ -133,6 +168,16 @@ revalidation and interrupted-invalidation scenarios are deliberately listed as
 implementation-PR gates. Adding tests that merely call independent `find()`
 operations would falsely claim a guarantee that the current API does not
 provide.
+
+The B1 implementation fixture is
+`agent_memory_mdbx_resource_frontier_snapshot_test`. It exercises the
+transaction-scoped manifest/unit reads and verifies that a materialized
+snapshot retains its typed read transaction owner. It also checks the bounded
+input/decoded-byte contract, including oversized and aggregate budget
+rejections, and uses a deterministic read hook to interleave a writer without
+sleeps. Waits are bounded and all worker exceptions are transferred to the
+test thread before both workers are joined. It does not claim write-side
+fencing or any current derived-publication outcome.
 
 ## Proposed read outcome contract
 
