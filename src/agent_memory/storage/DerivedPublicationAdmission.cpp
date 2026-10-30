@@ -1,11 +1,16 @@
 #include "DerivedPublicationAdmission.hpp"
 
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 namespace agent_memory {
 namespace {
+
+constexpr std::size_t kMaxAdmissionInputs = 1'000'000;
+constexpr std::size_t kMaxAdmissionFrontierBytes = 1U * 1024U * 1024U;
 
 std::string hex_digest(const ResourceBodyDigest& digest) {
     std::ostringstream stream;
@@ -78,7 +83,7 @@ DerivedPublicationFrontierResult KnowledgeUnitDerivedPublicationFrontierProvider
     const ScopeId& scope_id,
     const std::vector<KnowledgeUnitId>& unit_ids
 ) const {
-    if(scope_id.empty() || unit_ids.empty())
+    if(scope_id.empty() || unit_ids.empty() || unit_ids.size() > kMaxAdmissionInputs)
         return {DerivedPublicationFrontierStatus::InvalidInput, std::nullopt};
 
     DerivedPublicationFrontierSnapshot snapshot;
@@ -103,10 +108,13 @@ DerivedPublicationFrontierResult KnowledgeUnitDerivedPublicationFrontierProvider
         const auto& revision = *source.resource_revision;
         const auto digest = hex_digest(revision.body_digest);
         snapshot.inputs.push_back({id, envelope->revision, revision.generation, digest});
-        snapshot.dependency_frontier += "unit:" + std::to_string(id.value()) +
+        const auto entry = "unit:" + std::to_string(id.value()) +
             "@" + std::to_string(envelope->revision) +
             ";source:" + revision.resource_id.value() +
             "@" + std::to_string(revision.generation) + ":" + digest + ";";
+        if(entry.size() > kMaxAdmissionFrontierBytes - snapshot.dependency_frontier.size())
+            return {DerivedPublicationFrontierStatus::InvalidInput, std::nullopt};
+        snapshot.dependency_frontier += entry;
     }
     return {DerivedPublicationFrontierStatus::Available, std::move(snapshot)};
 }
