@@ -2245,6 +2245,36 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+        add_test(
+            NAME agent_memory_segmented_lexical_qualification_validator_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate-segmented-qualification.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_segmented_lexical_qualification_timeout_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/run-segmented-qualification.py
+                    --timeout-self-test
+                    --fixture-binary $<TARGET_FILE:agent_memory_segmented_lexical_benchmark>
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_segmented_lexical_qualification_corpus_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/generate-segmented-qualification-corpus.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_segmented_lexical_qualification_receipt_replay
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate-segmented-qualification.py
+                    --raw ${CMAKE_CURRENT_SOURCE_DIR}/guides/experiments/2026-10-27-seg-v2-qualification.raw.tsv
+                    --receipt ${CMAKE_CURRENT_SOURCE_DIR}/guides/experiments/2026-10-27-seg-v2-qualification.receipt.json
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
     endif()
     add_subdirectory(tests)
 endif()

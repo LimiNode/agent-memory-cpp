@@ -388,7 +388,18 @@ jobs:
           ctest --test-dir build-mdbx-benchmark --build-config Release
           --output-on-failure
           -R
-          "agent_memory_mih_storage|agent_memory_native_thq_mdbx_serving_(lifecycle|integer_key)|agent_memory_native_mdbx_(serving_audit|layout_sweep)(_audit)?_self_test|agent_memory_mdbx_finalist_harness_self_test|agent_memory_segmented_lexical_benchmark_contract"
+          "agent_memory_mih_storage|agent_memory_native_thq_mdbx_serving_(lifecycle|integer_key)|agent_memory_native_mdbx_(serving_audit|layout_sweep)(_audit)?_self_test|agent_memory_mdbx_finalist_harness_self_test|agent_memory_segmented_lexical_(benchmark_contract|qualification_(validator_self_test|corpus_self_test|receipt_replay|timeout_self_test))"
+
+      - name: Replay segmented qualification evidence
+        run: |
+          python tools/run-segmented-qualification.py --timeout-self-test \
+            --fixture-binary build-mdbx-benchmark/bin/agent_memory_segmented_lexical_benchmark
+          python tools/validate-segmented-qualification.py --self-test
+          python tools/validate-segmented-qualification.py \
+            --raw guides/experiments/2026-10-27-seg-v2-qualification.raw.tsv \
+            --receipt guides/experiments/2026-10-27-seg-v2-qualification.receipt.json
+          python tools/validate-segmented-lexical-benchmark.py \
+            --binary build-mdbx-benchmark/bin/agent_memory_segmented_lexical_benchmark
 
   native-mih-benchmark:
     if: needs.changes.outputs.research == 'true'
