@@ -635,15 +635,25 @@ Algorithm:
 
 1. Cluster chunks в scope через embedding similarity (UMAP + GMM или simpler).
 2. Для каждого cluster: generate summary через LLM (external adapter).
-3. Создать `SummaryUnit` (`kind=Summary`) с `derived_from = [cluster_chunks]`.
+3. Create a `Summary` unit and publish typed derivation relations from its
+   exact output revision to every exact input revision. The envelope's narrow
+   optional `derived_from` field is not the multi-input lineage record.
 4. Рекурсивно cluster summaries -> build tree до `max_depth`.
 5. Update `SearchProjection` (Summary projection для каждого summary node).
 
 Storage:
 
 - Summary units в существующей `knowledge_units` DBI.
-- Tree edges в `graph_edges_by_src`/`graph_edges_by_dst` DBI (`parent_unit_id` -> `child_unit_ids`).
-- Optional: dedicated `summary_tree` DBI для fast tree traversal.
+- Relation-owned derivation/navigation edges in the existing
+  `graph_edges_by_src`/`graph_edges_by_dst` orientations. Multiple parents are
+  allowed, while derivation cycles are rejected.
+- A dedicated `summary_tree` DBI is not implied. Any future traversal index is
+  rebuildable and requires measured need, DBI-budget review and migration
+  compatibility.
+
+The shared lineage and navigation boundary is defined in
+[`linked-derived-knowledge.md`](linked-derived-knowledge.md); this job owns
+construction policy, not a second relation or provenance model.
 
 Integration:
 

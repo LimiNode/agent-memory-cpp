@@ -27,6 +27,16 @@ last transformation, while transitive ancestry explains which observations or
 source roots ultimately support the result. An ancestry chain may be partial;
 missing or opaque upstream lineage remains explicitly unknown.
 
+For multi-input derived knowledge, each unit input is bound to its exact unit
+revision and each source input to its exact source revision/evidence anchor.
+The output revision, recipe/producer fingerprint, source frontier and
+publication generation are retained with those immediate inputs. This
+revision-qualified derivation graph is acyclic; semantic relations may remain
+cyclic. Reverse traversal may mark active descendants stale after an input
+update, but it never rewrites historical derivation records. See
+[`linked-derived-knowledge.md`](linked-derived-knowledge.md) for the
+cross-owner integration and acceptance fixture.
+
 Corroboration is a policy decision over evidence ancestry and observation
 lineage, not a count of records, agents, providers or source identifiers. Two
 records with different IDs can still derive from one copied source or summary.

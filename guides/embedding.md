@@ -130,15 +130,21 @@ preparation bottleneck exists.
 
 ## Vector Storage And Math
 
-Keep `Embedding::values` as `std::vector<float>`. It is the portable storage
-format used by serialization, MDBX adapters, tests, APIs, and exact reranking.
+Keep `Embedding::values` as `std::vector<float>` for the portable public API,
+serialization boundaries, tests and exact-reference paths. This does not
+require every persisted document vector to remain FP32: a versioned physical
+codec may store a compact representation when its metric, scorer, provenance
+and recovery contracts are satisfied.
 
 Do not replace the public embedding vector with `Eigen::VectorXf`. If Eigen is
 added later, use it behind optional math or retrieval adapters through
 temporary `Eigen::Map` views over `Embedding::values`.
 
 Generic lossless compression such as Zstd is useful for text and cold storage,
-but it should not be the hot-path representation for vector search. Future
-vector storage reductions should be modeled as separate encodings such as
-float16, int8, binary signatures, or product quantization, while full float
-embeddings remain available for final ranking.
+but it should not be assumed to be the hot-path vector representation. Vector
+storage reductions are separate, descriptor-bound encodings such as FP32,
+INT8, THQ, LSQ/PLSQ, TQ, RSLM or product quantization. A native scorer may
+operate directly on a supported compact code or use bounded decode; it must
+not claim exact FP32 semantics unless parity is independently proven. FP32
+remains an optional exact baseline and user-selectable storage mode, not a
+mandatory persisted payload.
