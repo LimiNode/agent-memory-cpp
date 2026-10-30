@@ -2219,6 +2219,16 @@ if(AGENT_MEMORY_BUILD_TESTS)
         )
     endif() # Python3_Interpreter_FOUND
     endif() # AGENT_MEMORY_BUILD_RESEARCH_TESTS
+    if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(
+            NAME agent_memory_bge_m3_sparse_pilot_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/bge-m3/run_bge_m3_sparse_pilot.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+    endif() # AGENT_MEMORY_BUILD_RESEARCH_TESTS
     if(AGENT_MEMORY_BUILD_BENCHMARKS AND AGENT_MEMORY_ENABLE_MDBX)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
         add_test(
