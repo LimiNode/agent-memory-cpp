@@ -44,6 +44,13 @@ duplicate qrels, and removal of the no-answer control. Incomplete and
 unjudged qrels remain visible in the report but cannot silently enter positive
 quality aggregates.
 
+The current eligibility mode is explicitly `fixture_eligibility_simulation`.
+Hydration means JSON membership and source-revision checks against the frozen
+fixture only; it is not an MDBX canonical read, an authoritative publication
+frontier check, or production eligibility proof. The term
+`hydrated_recall` must therefore be read as fixture-level simulated hydration
+until a later C++ adapter supplies those guarantees.
+
 ## Baseline matrix
 
 | Backend / algorithm | Status | Index/build and lifecycle evidence | Qualification limitation |
@@ -88,6 +95,12 @@ query-repeat samples, not the number of independent queries. A `measured`
 sample distribution does not imply a statistically stable p99; the current
 Python smoke is explicitly directional and is not directly comparable to C++
 production latency.
+
+The committed `q_no_answer` is a lexical-empty negative control: its terms do
+not occur in the fixture. It checks that the BM25 smoke does not emit a match
+for an empty lexical intersection, but it does not test semantic abstention.
+Future qualification should add separate no-overlap, lexical-overlap without
+relevant evidence, stale-only, and conflicting-evidence controls.
 
 ## Reproducibility and split policy
 

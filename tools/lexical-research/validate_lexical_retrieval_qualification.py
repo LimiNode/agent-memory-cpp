@@ -77,6 +77,14 @@ def validate_manifest(manifest: dict[str, Any], manifest_path: Path) -> Path:
         raise ProtocolError("protocol revision is required")
     if not isinstance(manifest.get("source_frontier"), str) or not manifest["source_frontier"]:
         raise ProtocolError("source frontier is required")
+    revisions = manifest.get("revisions")
+    if not isinstance(revisions, dict) or revisions != {
+        "corpus": "r1-corpus-2026-10-30",
+        "qrels": "r1-qrels-2026-10-30",
+        "query_split": "r1-split-2026-10-30",
+        "tokenizer": "code_aware_fixture_v1",
+    }:
+        raise ProtocolError("manifest revision identities are incomplete")
     corpus = manifest.get("corpus")
     if not isinstance(corpus, dict) or corpus.get("access_policy") != "committed_fixture_only":
         raise ProtocolError("corpus access policy must be committed_fixture_only")
@@ -99,7 +107,9 @@ def validate_manifest(manifest: dict[str, Any], manifest_path: Path) -> Path:
     if not isinstance(split, dict) or split.get("name") != "r1-split-2026-10-30":
         raise ProtocolError("query split identity is incomplete")
     policy = manifest.get("eligibility_policy")
-    if not isinstance(policy, dict) or not all(policy.get(key) for key in (
+    if not isinstance(policy, dict) or policy.get("evaluation_mode") != "fixture_eligibility_simulation" \
+            or "not an MDBX canonical read" not in str(policy.get("hydration_evidence")) \
+            or not all(policy.get(key) for key in (
         "canonical_hydration", "stale_revision", "duplicate_hits", "unjudged_or_incomplete", "no_answer"
     )):
         raise ProtocolError("eligibility policy is incomplete")
@@ -142,7 +152,7 @@ def validate_manifest(manifest: dict[str, Any], manifest_path: Path) -> Path:
     return corpus_path
 
 
-def validate_fixture(corpus_path: Path) -> dict[str, Any]:
+def validate_fixture(corpus_path: Path, manifest: dict[str, Any] | None = None) -> dict[str, Any]:
     dataset = load_json(corpus_path)
     try:
         validate_dataset(dataset)
@@ -150,17 +160,26 @@ def validate_fixture(corpus_path: Path) -> dict[str, Any]:
         raise ProtocolError(f"dataset contract failed: {exc}") from exc
     corpus_ids = {row["id"] for row in dataset["corpus"]}
     queries = {row["id"]: row for row in dataset["queries"]}
+    if manifest is not None:
+        frontier = dataset.get("source_frontier")
+        if not isinstance(frontier, dict) or frontier.get("revision") != manifest.get("source_frontier"):
+            raise ProtocolError("fixture source frontier does not match manifest")
+        revisions = dataset.get("revisions")
+        if revisions != manifest.get("revisions"):
+            raise ProtocolError("fixture revision identities do not match manifest")
     if len(dataset["corpus"]) < 10:
         raise ProtocolError("R1 corpus must contain at least ten documents")
     required_languages = {"en", "ru"}
     if {row.get("language") for row in dataset["corpus"]} != required_languages:
         raise ProtocolError("R1 corpus must contain English and Russian documents")
-    required_classes = {"exact_identifier", "russian_morphology", "rare_fact", "correction", "contradictory_sources", "hard_negative", "no_answer"}
+    required_classes = {"exact_identifier", "russian_morphology", "rare_fact", "correction", "contradictory_sources", "hard_negative", "lexical_empty_control"}
     classes = {row.get("query_class") for row in dataset["queries"]}
     if not required_classes <= classes:
         raise ProtocolError(f"fixture misses query classes: {sorted(required_classes - classes)}")
     if {row.get("split") for row in dataset["queries"]} != {"train", "dev", "test"}:
         raise ProtocolError("fixture must declare train/dev/test query splits")
+    if any(not isinstance(row.get("split"), str) for row in dataset["queries"]):
+        raise ProtocolError("every query must have a split assignment")
     if queries["q_no_answer"]["answer_mode"] != "no_answer":
         raise ProtocolError("no-answer control is not explicit")
     qrel_pairs = {(row["query_id"], row["doc_id"]) for row in dataset["qrels"]}
@@ -170,14 +189,28 @@ def validate_fixture(corpus_path: Path) -> dict[str, Any]:
         raise ProtocolError("fixture must exercise incomplete-qrels reporting")
     if not any(row["answer_mode"] == "unjudged" for row in dataset["queries"]):
         raise ProtocolError("fixture must exercise unjudged reporting")
+    expected = dataset.get("expected_top_ids")
+    if not isinstance(expected, dict):
+        raise ProtocolError("expected_top_ids is required")
+    if set(expected) - set(queries):
+        raise ProtocolError("expected_top_ids references an unknown query")
+    for query_id, doc_ids in expected.items():
+        if not isinstance(doc_ids, list) or len(set(doc_ids)) != len(doc_ids) \
+                or any(doc_id not in corpus_ids for doc_id in doc_ids):
+            raise ProtocolError(f"expected_top_ids has invalid documents for {query_id}")
+    if any(row["answer_mode"] == "no_answer" and any(
+            judgment["query_id"] == row["id"] for judgment in dataset["qrels"])
+            for row in dataset["queries"]):
+        raise ProtocolError("no-answer query must not have qrels")
     if not corpus_ids:
         raise ProtocolError("fixture corpus is empty")
     return dataset
 
 
 def self_test(manifest_path: Path) -> None:
-    corpus_path = validate_manifest(load_json(manifest_path), manifest_path)
-    dataset = validate_fixture(corpus_path)
+    manifest = load_json(manifest_path)
+    corpus_path = validate_manifest(manifest, manifest_path)
+    dataset = validate_fixture(corpus_path, manifest)
     report = run_bm25(corpus_path, None, limit=50, repeats=1)
     if report["quality"]["evaluation_status"] != "partial_qrels":
         raise AssertionError("incomplete/unjudged queries must prevent complete quality status")
@@ -198,26 +231,31 @@ def self_test(manifest_path: Path) -> None:
     bad_fixture = copy.deepcopy(dataset)
     bad_fixture["queries"] = [row for row in bad_fixture["queries"] if row["id"] != "q_no_answer"]
     mutations.append(("missing no-answer control", bad_fixture))
+    bad_fixture = copy.deepcopy(dataset)
+    bad_fixture["source_frontier"]["revision"] = "stale-frontier"
+    mutations.append(("source frontier mismatch", bad_fixture))
     for label, candidate in mutations:
         try:
             if label == "backend scoring split":
                 validate_manifest(candidate, manifest_path)
             else:
-                validate_fixture_from_value(candidate)
+                validate_fixture_from_value(candidate, load_json(manifest_path))
         except ProtocolError:
             continue
         raise AssertionError(f"mutation was accepted: {label}")
-    print(json.dumps({"status": "PASS", "negative_controls": len(mutations) + 1,
+    print(json.dumps({"status": "PASS", "negative_controls": len(mutations),
+                      "positive_controls": 1,
+                      "mutation_controls": len(mutations),
                       "dataset": dataset["dataset_name"],
                       "quality_status": report["quality"]["evaluation_status"]}, indent=2, sort_keys=True))
 
 
-def validate_fixture_from_value(dataset: dict[str, Any]) -> None:
+def validate_fixture_from_value(dataset: dict[str, Any], manifest: dict[str, Any]) -> None:
     # Keep the same checks as the on-disk path without introducing another parser.
     with tempfile.TemporaryDirectory(prefix="lexical-r1-fixture-") as directory:
         path = Path(directory) / "fixture.json"
         path.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
-        validate_fixture(path)
+        validate_fixture(path, manifest)
 
 
 def main() -> int:
@@ -229,7 +267,7 @@ def main() -> int:
     try:
         manifest = load_json(args.manifest)
         corpus_path = validate_manifest(manifest, args.manifest)
-        validate_fixture(corpus_path)
+        validate_fixture(corpus_path, manifest)
         if args.self_test:
             self_test(args.manifest)
         elif args.run_bm25:

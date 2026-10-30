@@ -3,9 +3,15 @@
   "protocol": "lexical_retrieval_qualification_r1",
   "protocol_revision": "2026-10-30",
   "source_frontier": "fba352ed35791126c1aa0dede6213c5f59d40ccd",
+  "revisions": {
+    "corpus": "r1-corpus-2026-10-30",
+    "qrels": "r1-qrels-2026-10-30",
+    "query_split": "r1-split-2026-10-30",
+    "tokenizer": "code_aware_fixture_v1"
+  },
   "corpus": {
     "path": "lexical_retrieval_qualification_r1.json",
-    "sha256": "45c159915bef88949ca237d0d23a64fb251583f19a57c83a400c5f61a4c1ac76",
+    "sha256": "37509cc0907c2b3335a4a6f4574173c165bd9352f93434c52a130e91d99ec6e0",
     "access_policy": "committed_fixture_only"
   },
   "query_split": {
@@ -21,6 +27,8 @@
   },
   "eligibility_policy": {
     "canonical_hydration": "only hits whose doc_id and source_revision are present in the canonical snapshot",
+    "evaluation_mode": "fixture_eligibility_simulation",
+    "hydration_evidence": "synthetic JSON membership and revision checks only; not an MDBX canonical read or authoritative frontier proof",
     "stale_revision": "ineligible and counted as a provenance failure",
     "duplicate_hits": "invalid run",
     "unjudged_or_incomplete": "excluded from positive quality aggregates and reported separately",

@@ -34,7 +34,7 @@
     {"id": "q_contradiction", "split": "test", "query_class": "contradictory_sources", "answer_mode": "judged", "text": "not atomic publication proof"},
     {"id": "q_rare_fact", "split": "test", "query_class": "rare_fact", "answer_mode": "judged", "text": "frontier epoch 17"},
     {"id": "q_hard_negative", "split": "test", "query_class": "hard_negative", "answer_mode": "judged", "text": "ExactLexicalIndex token postings"},
-    {"id": "q_no_answer", "split": "test", "query_class": "no_answer", "answer_mode": "no_answer", "text": "quantum banana protocol"},
+    {"id": "q_no_answer", "split": "test", "query_class": "lexical_empty_control", "answer_mode": "no_answer", "text": "quantum banana protocol"},
     {"id": "q_zero_relevant", "split": "test", "query_class": "judged_zero_relevant", "answer_mode": "judged_zero_relevant", "text": "nonexistent frontier epoch"},
     {"id": "q_unjudged", "split": "test", "query_class": "future_qrels", "answer_mode": "unjudged", "text": "projection-aware retrieval"},
     {"id": "q_incomplete", "split": "test", "query_class": "partial_qrels", "answer_mode": "incomplete_qrels", "text": "publication metadata"}

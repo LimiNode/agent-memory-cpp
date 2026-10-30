@@ -136,4 +136,8 @@ for the baseline statuses, frozen provenance, candidate-versus-hydration
 metrics, lifecycle cost fields, and timing limitations. In particular,
 `sample_count` counts query-repeat observations rather than independent
 queries, and p99 remains a directional distribution statistic until a separate
-stability analysis is supplied.
+stability analysis is supplied. The current `hydrated_recall` vocabulary is
+explicitly fixture-level simulated hydration (JSON membership and revision
+checks); it is not evidence of an MDBX canonical read or authoritative source
+frontier. The committed no-answer case is only a lexical-empty negative
+control, not a semantic abstention test.
