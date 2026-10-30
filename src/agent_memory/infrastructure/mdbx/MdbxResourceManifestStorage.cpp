@@ -512,9 +512,17 @@ namespace agent_memory {
             auto txn = m_context->connection()->transaction(
                 mdbxc::TransactionMode::READ_ONLY
             );
+            const auto result = find_manifest_in_transaction(resource_id, txn);
+            txn.commit();
+            return result;
+        }
+
+        [[nodiscard]] std::optional<ResourceManifest> find_manifest_in_transaction(
+            const ResourceId& resource_id,
+            const mdbxc::Transaction& txn
+        ) const {
             const auto payload = m_manifests.find(resource_id.value(), txn);
             if(!payload) {
-                txn.commit();
                 return std::nullopt;
             }
             auto manifest = deserialize_manifest(*payload);
@@ -523,7 +531,6 @@ namespace agent_memory {
                     "Resource manifest key does not match payload resource id"
                 );
             }
-            txn.commit();
             return manifest;
         }
 
@@ -586,6 +593,14 @@ namespace agent_memory {
         const ResourceId& resource_id
     ) const {
         return m_impl->find_manifest(resource_id);
+    }
+
+    std::optional<ResourceManifest>
+    MdbxResourceManifestStorage::find_manifest_in_transaction(
+        const ResourceId& resource_id,
+        const mdbxc::Transaction& transaction
+    ) const {
+        return m_impl->find_manifest_in_transaction(resource_id, transaction);
     }
 
     bool MdbxResourceManifestStorage::erase_manifest(const ResourceId& resource_id) {

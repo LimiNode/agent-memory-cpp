@@ -17,6 +17,10 @@
 
 #include "MdbxStorageContext.hpp"
 
+namespace mdbxc {
+class Transaction;
+}
+
 namespace agent_memory {
 
     /// Maximum number of knowledge-unit requests in one durable batch.
@@ -98,6 +102,16 @@ namespace agent_memory {
         [[nodiscard]] std::optional<KnowledgeUnitEnvelope> find(
             const KnowledgeUnitId& id
         ) const override;
+
+        /// \brief Reads one envelope from a caller-owned read transaction.
+        ///
+        /// This overload is intentionally narrow: it lets a frontier reader
+        /// combine unit and resource reads without emulating a snapshot with
+        /// sequential adapter-owned transactions.
+        [[nodiscard]] std::optional<KnowledgeUnitEnvelope> find_in_transaction(
+            const KnowledgeUnitId& id,
+            const mdbxc::Transaction& transaction
+        ) const;
 
         [[nodiscard]] std::optional<KnowledgeUnitId> find_by_content_key(
             const KnowledgeUnitKey& key

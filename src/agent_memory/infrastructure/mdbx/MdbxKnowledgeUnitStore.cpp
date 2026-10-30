@@ -834,6 +834,16 @@ namespace agent_memory {
         std::optional<KnowledgeUnitEnvelope> find(const KnowledgeUnitId& id) const {
             if(id.empty()) return std::nullopt;
             auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+            const auto result = find_in_transaction(id, txn);
+            txn.commit();
+            return result;
+        }
+
+        std::optional<KnowledgeUnitEnvelope> find_in_transaction(
+            const KnowledgeUnitId& id,
+            const mdbxc::Transaction& txn
+        ) const {
+            if(id.empty()) return std::nullopt;
             const auto payload = m_units.find(id_key(id), txn);
             if(!payload) return std::nullopt;
             auto envelope = deserialize_envelope(*payload);
@@ -842,7 +852,6 @@ namespace agent_memory {
                     "Persisted M0 Chunk has unsupported multi-source identity"
                 );
             }
-            txn.commit();
             return envelope;
         }
 
@@ -1188,6 +1197,14 @@ namespace agent_memory {
         const KnowledgeUnitId& id
     ) const {
         return m_impl->find(id);
+    }
+
+    std::optional<KnowledgeUnitEnvelope>
+    MdbxKnowledgeUnitStore::find_in_transaction(
+        const KnowledgeUnitId& id,
+        const mdbxc::Transaction& transaction
+    ) const {
+        return m_impl->find_in_transaction(id, transaction);
     }
 
     std::optional<KnowledgeUnitId> MdbxKnowledgeUnitStore::find_by_content_key(
