@@ -129,6 +129,7 @@ For the full semantic cases, see the [canonical-content contract](guides/canonic
 - [Memory-feedback stability F0](guides/experiments/2026-10-07-memory-feedback-stability-protocol.md) — protocol, not a completed experiment.
 - [Temporal navigation and durable working context](guides/memory-lifecycle-governance-roadmap.md) and [runtime integration](guides/agent-runtime-integration-roadmap.md) — historical reads, resumable context and crash-boundary semantics.
 - [Knowledge activation](guides/knowledge-activation-roadmap.md) and [knowledge-base retrieval](guides/knowledge-base-roadmap.md) — bounded associative recall and event-centric grounding research.
+- [Linked derived knowledge and codec-neutral representations](guides/linked-derived-knowledge.md) and [derived representation/codec contract](guides/derived-representations-and-codecs.md) — versioned aspects, provenance, retention and compact-vector readiness.
 - [Offline consolidation and replay](guides/offline-consolidation-roadmap.md) — sleep-inspired offline projection refresh without source replacement.
 - [Hierarchical navigation](guides/hierarchical-navigation-roadmap.md) — DomainMap routing, map-of-maps bounds and flat-retrieval fallback.
 - [JPEG XL image representation research](guides/experiments/2026-10-13-jpeg-xl-image-representation.md) — optional codec candidate, not a production dependency.

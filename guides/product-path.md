@@ -113,7 +113,7 @@ not additional milestone gates.
 | Stage | Product capability | Depends on | Acceptance signal |
 | --- | --- | --- | --- |
 | KB-0 | Durable text source, revision-bound access, lexical retrieval, citation hydration and reopen | M0 | Import, read an explicit revision, apply a source update, search, close/reopen and recover the source binding |
-| KB-1 | Candidate extraction, optional versioned notes, duplicate detection and idempotent refresh | M0 plus selected M1b contracts | Reprocessing a source is stable; a selected M1b note profile may provide versioned editing with optimistic Conflict/NoChange; changes supersede rather than erase evidence |
+| KB-1 | Candidate extraction, optional versioned notes or linked derived knowledge, duplicate detection and idempotent refresh | M0 plus selected M1b contracts | Reprocessing is stable; an enabled profile may add optimistic note editing or exact-revision derivation/typed links; changes supersede rather than erase evidence |
 | KB-2 | Time, page and figure anchors; retained representations and optional image-derived views | Artifact-provenance profile | A result identifies the exact source revision and typed document/media locator, then hydrates it or reports explicit Partial/Unavailable status |
 | KB-3 | Subscriptions, bounded queues, targeted reindex, recovery and admission policy | M1c | Restart and partial failure do not lose or duplicate publication work |
 | KB-4 | External consumer API, scopes, access policy and operational observability | Stable M0/M1 substrate | Multiple applications can use the same knowledge base without cross-scope leakage |
@@ -126,6 +126,13 @@ selected M1b/KB-1 profile: when enabled, stale edits fail with Conflict,
 equivalent edits return NoChange, and a successful edit produces one canonical
 revision. It is not an M0/KB-0 gate, and the product path does not require the
 low-level store to expose line operations as a public API.
+
+The optional Linked Knowledge subset of KB-1 stores revision-qualified
+multi-input derivation, typed semantic links, reverse lookup and bounded source
+drill-down for admitted Notes, Summaries and Playbooks. It does not require
+automatic clustering, LLM summarization or hierarchical routing. Those later
+policies consume the same linked substrate and remain independently evaluated;
+see [`linked-derived-knowledge.md`](linked-derived-knowledge.md).
 
 The merged `main` branch provides the canonical-content foundation, lexical
 primitives and the implemented durable lexical document-memory vertical slice

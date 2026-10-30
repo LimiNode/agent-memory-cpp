@@ -13,5 +13,6 @@
 #include "storage/IResourceManifestStorage.hpp"
 #include "storage/IKnowledgeUnitStore.hpp"
 #include "storage/IProjectionStore.hpp"
+#include "storage/IDerivedPublicationStore.hpp"
 
 #endif

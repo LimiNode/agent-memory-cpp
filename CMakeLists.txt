@@ -97,6 +97,7 @@ add_library(agent_memory STATIC
     src/agent_memory/storage/CanonicalContentStore.cpp
     src/agent_memory/storage/IKnowledgeUnitStore.cpp
     src/agent_memory/storage/IProjectionStore.cpp
+    src/agent_memory/storage/IDerivedPublicationStore.cpp
     src/agent_memory/storage/IResourceIndexRecordOwnerStorage.cpp
     src/agent_memory/storage/IResourceManifestStorage.cpp
 )
@@ -136,6 +137,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentRouter.cpp
             src/agent_memory/infrastructure/mdbx/MdbxProjectionStore.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxDerivedPublicationStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxFederatedCanonicalReader.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceIndexRecordOwnerStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.cpp
