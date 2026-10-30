@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -110,7 +111,9 @@ namespace agent_memory {
         /// sequential adapter-owned transactions.
         [[nodiscard]] std::optional<KnowledgeUnitEnvelope> find_in_transaction(
             const KnowledgeUnitId& id,
-            const mdbxc::Transaction& transaction
+            const mdbxc::Transaction& transaction,
+            std::size_t max_payload_bytes = std::numeric_limits<std::size_t>::max(),
+            std::size_t* observed_payload_bytes = nullptr
         ) const;
 
         [[nodiscard]] std::optional<KnowledgeUnitId> find_by_content_key(

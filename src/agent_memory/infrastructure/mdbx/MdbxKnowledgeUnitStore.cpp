@@ -834,18 +834,25 @@ namespace agent_memory {
         std::optional<KnowledgeUnitEnvelope> find(const KnowledgeUnitId& id) const {
             if(id.empty()) return std::nullopt;
             auto txn = m_context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-            const auto result = find_in_transaction(id, txn);
+            const auto result = find_in_transaction(
+                id, txn, std::numeric_limits<std::size_t>::max(), nullptr);
             txn.commit();
             return result;
         }
 
         std::optional<KnowledgeUnitEnvelope> find_in_transaction(
             const KnowledgeUnitId& id,
-            const mdbxc::Transaction& txn
+            const mdbxc::Transaction& txn,
+            const std::size_t max_payload_bytes,
+            std::size_t* observed_payload_bytes
         ) const {
             if(id.empty()) return std::nullopt;
             const auto payload = m_units.find(id_key(id), txn);
             if(!payload) return std::nullopt;
+            if(observed_payload_bytes) *observed_payload_bytes = payload->size();
+            if(payload->size() > max_payload_bytes) {
+                throw std::runtime_error("knowledge-unit payload exceeds frontier read budget");
+            }
             auto envelope = deserialize_envelope(*payload);
             if(envelope.kind == KnowledgeUnitKind::Chunk && envelope.sources.size() != 1) {
                 throw std::runtime_error(
@@ -1202,9 +1209,12 @@ namespace agent_memory {
     std::optional<KnowledgeUnitEnvelope>
     MdbxKnowledgeUnitStore::find_in_transaction(
         const KnowledgeUnitId& id,
-        const mdbxc::Transaction& transaction
+        const mdbxc::Transaction& transaction,
+        const std::size_t max_payload_bytes,
+        std::size_t* observed_payload_bytes
     ) const {
-        return m_impl->find_in_transaction(id, transaction);
+        return m_impl->find_in_transaction(
+            id, transaction, max_payload_bytes, observed_payload_bytes);
     }
 
     std::optional<KnowledgeUnitId> MdbxKnowledgeUnitStore::find_by_content_key(

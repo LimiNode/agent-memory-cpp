@@ -512,18 +512,25 @@ namespace agent_memory {
             auto txn = m_context->connection()->transaction(
                 mdbxc::TransactionMode::READ_ONLY
             );
-            const auto result = find_manifest_in_transaction(resource_id, txn);
+            const auto result = find_manifest_in_transaction(
+                resource_id, txn, std::numeric_limits<std::size_t>::max(), nullptr);
             txn.commit();
             return result;
         }
 
         [[nodiscard]] std::optional<ResourceManifest> find_manifest_in_transaction(
             const ResourceId& resource_id,
-            const mdbxc::Transaction& txn
+            const mdbxc::Transaction& txn,
+            const std::size_t max_payload_bytes,
+            std::size_t* observed_payload_bytes
         ) const {
             const auto payload = m_manifests.find(resource_id.value(), txn);
             if(!payload) {
                 return std::nullopt;
+            }
+            if(observed_payload_bytes) *observed_payload_bytes = payload->size();
+            if(payload->size() > max_payload_bytes) {
+                throw std::runtime_error("resource manifest payload exceeds frontier read budget");
             }
             auto manifest = deserialize_manifest(*payload);
             if(manifest.revision.resource_id != resource_id) {
@@ -598,9 +605,12 @@ namespace agent_memory {
     std::optional<ResourceManifest>
     MdbxResourceManifestStorage::find_manifest_in_transaction(
         const ResourceId& resource_id,
-        const mdbxc::Transaction& transaction
+        const mdbxc::Transaction& transaction,
+        const std::size_t max_payload_bytes,
+        std::size_t* observed_payload_bytes
     ) const {
-        return m_impl->find_manifest_in_transaction(resource_id, transaction);
+        return m_impl->find_manifest_in_transaction(
+            resource_id, transaction, max_payload_bytes, observed_payload_bytes);
     }
 
     bool MdbxResourceManifestStorage::erase_manifest(const ResourceId& resource_id) {

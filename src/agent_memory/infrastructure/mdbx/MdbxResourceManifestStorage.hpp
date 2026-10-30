@@ -8,6 +8,7 @@
 #include <agent_memory/storage/IResourceManifestStorage.hpp>
 
 #include <memory>
+#include <limits>
 #include <optional>
 #include <string>
 
@@ -90,7 +91,9 @@ struct MdbxManifestPublicationGuard final {
         /// stores from one stable MDBX view.
         [[nodiscard]] std::optional<ResourceManifest> find_manifest_in_transaction(
             const ResourceId& resource_id,
-            const mdbxc::Transaction& transaction
+            const mdbxc::Transaction& transaction,
+            std::size_t max_payload_bytes = std::numeric_limits<std::size_t>::max(),
+            std::size_t* observed_payload_bytes = nullptr
         ) const;
 
         [[nodiscard]] bool erase_manifest(const ResourceId& resource_id) override;

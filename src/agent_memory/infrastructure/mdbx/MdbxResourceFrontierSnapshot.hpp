@@ -9,14 +9,48 @@
 #include "MdbxResourceManifestStorage.hpp"
 
 #include <cstdint>
+#include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #if AGENT_MEMORY_HAS_MDBX
 
+namespace mdbxc {
+class Transaction;
+}
+
 namespace agent_memory {
+
+/// \brief Move-only owner for one MDBX read transaction.
+///
+/// MDBX transactions are thread-bound. Moving or destroying this owner on a
+/// different thread terminates the process deliberately; callers must keep
+/// the owner on the thread that created the snapshot.
+class MdbxReadTransactionOwner final {
+public:
+    explicit MdbxReadTransactionOwner(std::unique_ptr<mdbxc::Transaction> transaction);
+    ~MdbxReadTransactionOwner();
+
+    MdbxReadTransactionOwner(const MdbxReadTransactionOwner&) = delete;
+    MdbxReadTransactionOwner& operator=(const MdbxReadTransactionOwner&) = delete;
+    MdbxReadTransactionOwner(MdbxReadTransactionOwner&& other) noexcept;
+    MdbxReadTransactionOwner& operator=(MdbxReadTransactionOwner&& other) noexcept;
+
+    [[nodiscard]] bool active() const noexcept;
+
+private:
+    void release() noexcept;
+
+    std::unique_ptr<mdbxc::Transaction> m_transaction;
+    std::thread::id m_owner_thread;
+};
+
+inline constexpr std::size_t kMdbxResourceFrontierMaxInputs = 4096;
+inline constexpr std::size_t kMdbxResourceFrontierMaxDecodedBytes = 1U * 1024U * 1024U;
 
 /// \brief One unit and the exact root revision it claims as provenance.
 struct MdbxResourceFrontierInput final {
@@ -47,11 +81,12 @@ struct MdbxResourceFrontierEntry final {
 /// All entries are decoded before the transaction is released. The opaque
 /// owner deliberately keeps the read transaction pinned for the lifetime of
 /// the snapshot, documenting the transaction/lifetime boundary for callers
-/// that retain the result. It must be destroyed on its creating thread.
+/// that retain the result. It must be moved and destroyed on its creating
+/// thread; the typed owner rejects cross-thread destruction.
 struct MdbxResourceFrontierSnapshot final {
     ScopeId scope_id;
     std::vector<MdbxResourceFrontierEntry> entries;
-    std::shared_ptr<void> read_transaction_owner;
+    std::optional<MdbxReadTransactionOwner> read_transaction_owner;
 };
 
 struct MdbxResourceFrontierSnapshotResult final {
@@ -77,10 +112,17 @@ public:
         const std::vector<MdbxResourceFrontierInput>& inputs
     ) const;
 
+    /// \brief Installs a deterministic test seam invoked after each input read.
+    ///
+    /// This hook is for conformance fixtures only; production callers should
+    /// leave it unset. The callback runs on the reader thread.
+    void set_read_hook_for_testing(std::function<void(std::size_t)> hook);
+
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
     MdbxResourceManifestStorage m_manifests;
     MdbxKnowledgeUnitStore m_units;
+    mutable std::function<void(std::size_t)> m_read_hook_for_testing;
 };
 
 } // namespace agent_memory
