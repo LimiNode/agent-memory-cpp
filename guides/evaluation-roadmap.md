@@ -170,6 +170,32 @@ revisions, tokenizer and final output budget. Adaptive selection may use fewer
 steps, but it may not receive hidden extra calls, tokens, decoded bytes, source
 opens or oracle labels. Actual work and unused budget are reported separately.
 
+### Graph retrieval comparison arms
+
+Graph experiments use the same predeclared corpus, query set, qrels or task
+oracle, source revisions, read frontiers, access policy, projection/model
+revisions, tokenizer, final ContextPack budget and total resource envelope as
+the flat baseline. The graph route may not receive extra source opens, decoded
+bytes, model calls or latency merely because it traverses relations.
+
+| Arm | Route under test | Main question |
+|---|---|---|
+| Flat baseline | Lexical+dense retrieval without graph expansion | What does the ordinary bounded route recover? |
+| Local graph-only | Eligible seeds followed by bounded relation expansion | Does local structure recover multi-hop or rare linked facts? |
+| Graph-guided hybrid | Flat seeds, graph expansion, fusion/rerank and source hydration | Does graph structure add value after accounting for seed and traversal work? |
+| Community/global | Versioned community or summary projections followed by source opening | Does hierarchical/global routing help corpus-level questions without trusting summaries as evidence? |
+| PPR challenger | Bounded Personalized PageRank with declared seeds and frontier | Does a different graph propagation rule beat the matched BFS/hybrid control? |
+
+At minimum, fixtures cover exact identifiers and exceptions, multi-hop
+relation questions, global sensemaking questions, disconnected or misleading
+edges, stale projections and denied or unavailable source material. Report
+Recall/nDCG or the applicable task-closure outcome together with visited
+nodes/edges, route calls, source opens, decoded bytes, provider work and
+p50/p95/p99 latency. Graph projections, summaries and edge scores must not
+change provenance, authority or lifecycle. If a graph route cannot complete,
+the trace records the typed fallback or unknown outcome and the independent
+flat route remains measurable.
+
 Benchmark outcome labels are evaluation classifications, not public C++ states:
 
 | Outcome | Meaning |
