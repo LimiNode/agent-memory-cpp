@@ -380,7 +380,11 @@ read, so `PublishedAfterUnitCheck` and `KnowledgeUnitLocalMatch` are not
 query-time freshness proofs and must not activate production derived retrieval.
 A root-resource frontier provider, consistent canonical read snapshot,
 cross-store commit fence and post-update query-time revalidation remain one
-separate coordinator/fenced conformance slice.
+separate coordinator/fenced conformance slice. The scoped design and acceptance
+gates for that next slice live in
+[`root-resource-frontier-conformance.md`](root-resource-frontier-conformance.md);
+the document is planning-only and does not claim that the missing guarantees
+are implemented.
 
 The following states are intentionally distinct:
 
