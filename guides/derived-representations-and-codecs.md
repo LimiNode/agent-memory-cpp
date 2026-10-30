@@ -344,6 +344,38 @@ dependency joins. Negative controls cover leakage, false role matches and
 graph/path hallucination. Offline extraction, embedding build, index bytes,
 retrieval latency and final evidence quality are reported separately.
 
+### Derived representations and downstream answer utility
+
+Derived materializations are hypotheses about a useful view of the canonical
+evidence, not evidence by themselves. An extraction recipe may produce atomic
+claims, question/answer pairs, summaries or arbitrary aspects, but the recipe
+must retain links to the exact source units and revisions and must not erase the
+original text or the order of later corrections. A correction to an input must
+make an affected publication stale or trigger a bounded rebuild; it must never
+silently leave two conflicting derived records looking independently
+authoritative.
+
+Any claim that a representation improves retrieval uses a matched evaluation
+with at least these arms where applicable:
+
+1. no retrieval;
+2. ordinary fixed or structural chunks;
+3. one derived representation (for example QA or atomic claims);
+4. a bounded combination of representations.
+
+All arms use the same source corpus, holdout questions, answer budget and
+access/frontier policy. Report retrieval metrics (Recall, nDCG, MRR) together
+with final answer correctness, citation/provenance fidelity, unsupported-claim
+or hallucination rate, token/latency/decoded-byte cost, and behavior after an
+input correction. A small demonstration or a better ranking score is a
+research signal, not a production default. Hybrid fusion and additional
+representations remain opt-in until their end-to-end utility is demonstrated.
+
+The [2026-10-29 derived-representation evaluation note](experiments/2026-10-29-derived-representation-evaluation.md)
+records external examples and the proposed matched protocol. It is a research
+reference, not a dependency, an ontology mandate or a claim that a particular
+extractor is universally superior.
+
 ## Decision matrix and handoff
 
 | Alternative | Decision | Reason |
