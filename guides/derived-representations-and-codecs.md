@@ -99,6 +99,15 @@ invalidation has been interrupted. The system never scans the whole corpus on
 one query. A coordinator may later maintain reverse invalidation eagerly, but
 the witness and read-time fence remain authoritative.
 
+The current graph-free implementation does not yet implement that
+authoritative transitive check. Its admission preview validates a
+caller-declared ordered input list against sequential KnowledgeUnit reads and
+returns only `KnowledgeUnitLocalMatch`. It neither confirms that a referenced
+root Resource revision is still current nor proves that the declared list is
+the complete causal lineage. Derived text remains ineligible for production
+retrieval until the resource-frontier and fenced read/commit checks above are
+implemented; original evidence remains independently addressable.
+
 ### Reader admission fence
 
 Every retrieval path applies three distinct boundaries before returning derived
