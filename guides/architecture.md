@@ -525,9 +525,12 @@ Optimization work should preserve the dependency-free contracts already used by
 storage, embedding, index, and retrieval layers.
 
 Text and document payloads may be compressed through an optional compression
-adapter. Hot vector-search data should keep full float embeddings available for
-final reranking, while approximate encodings such as binary signatures,
-float16, int8, or product quantization live in separate index-specific layers.
+adapter. `Embedding` remains the portable FP32 API/reference value, but a
+descriptor-bound compact scorer may perform final reranking without persisted
+document FP32 when its metric, parity and lifecycle gates are proven.
+Approximate encodings such as binary signatures, float16, int8, THQ, LSQ,
+PLSQ, TQ or product quantization live in separate codec/index layers and never
+change canonical knowledge identity.
 
 Eigen can be used later through temporary zero-copy views such as `Eigen::Map`,
 but `Embedding` must remain a `std::vector<float>` value type in the public API.

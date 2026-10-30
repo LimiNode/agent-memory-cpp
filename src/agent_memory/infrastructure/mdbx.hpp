@@ -17,5 +17,6 @@
 #include "mdbx/MdbxResourceImporter.hpp"
 #include "mdbx/MdbxKnowledgeUnitStore.hpp"
 #include "mdbx/MdbxProjectionStore.hpp"
+#include "mdbx/MdbxDerivedPublicationStore.hpp"
 
 #endif

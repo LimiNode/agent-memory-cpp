@@ -2647,8 +2647,9 @@ backlog or an alternative application-level retrieval contract.
 2. **SIMD exact scan kernel.** A vector-only, contiguous scan surface with
    scalar fallback and runtime SSE/AVX2/AVX-512/NEON dispatch. It returns only
    `(record_id, score)` candidates and keeps payload hydration outside the
-   vector layer. It is the exact oracle for quality tests and the final rerank
-   path for bounded candidates.
+   vector layer. It is the exact oracle for quality tests and one supported
+   final-rerank path for bounded candidates; a separately validated compact
+   scorer may serve that stage without persisted FP32.
 3. **Binary signature bucket index.** A collection-scoped, bounded multi-probe
    posting index over opaque record ids. The signature descriptor is part of
    the key space; different encoders, widths or normalization rules never

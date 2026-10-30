@@ -7,6 +7,11 @@ bounded map-of-maps traversal.
 Current status: **Docs/tests only**. No production hierarchical navigator is
 claimed.
 
+The shared multi-input lineage, typed-relation and optional KB-1 Linked
+Knowledge boundary is reconciled in
+[`linked-derived-knowledge.md`](linked-derived-knowledge.md). This guide owns
+navigation behavior and HN-0 evaluation, not durable derivation identity.
+
 ## 1. Navigation is a routing projection
 
 A navigator is a compact map of corpus structure:
@@ -180,11 +185,18 @@ material.
 The navigation hypothesis is informed by adjacent retrieval research, not
 proved by it:
 
+- [MemWalker](https://arxiv.org/abs/2310.05029) is an interactive
+  top-down reading policy over a summary hierarchy. It motivates bounded
+  descent, backtracking and route traces, but model choices stay outside the
+  memory core and every factual result still opens canonical evidence.
 - [RAPTOR](https://proceedings.iclr.cc/paper_files/paper/2024/hash/8a2acd174940dbca361a6398a4f9df91-Abstract-Conference.html)
-  is a recursive summary-tree and multi-abstraction retrieval baseline; it
-  motivates comparing multiple summary levels, but it does not establish this
-  project's `DomainMap` schema, admission state, access rules or lifecycle
-  semantics.
+  is a recursive summary-construction and multi-abstraction retrieval baseline.
+  Its soft clustering permits multiple parents, so the research structure is a
+  derivation DAG rather than necessarily a strict tree. It motivates comparing
+  all-level retrieval, collapsed-tree retrieval and guided traversal, but it
+  does not establish this project's `DomainMap` schema, admission state, access
+  rules or lifecycle semantics. UMAP, GMM and summarization prompts remain
+  experiment choices rather than core dependencies.
 - [HippoRAG](https://arxiv.org/abs/2405.14831) is a knowledge-graph and
   Personalized-PageRank associative-retrieval baseline; it motivates
   graph-conditioned routing comparisons, but it does not establish the
@@ -216,11 +228,13 @@ turn a map entry into independent evidence. See
 The **Hierarchical Navigation Retrieval Gate** compares:
 
 1. flat lexical+dense baseline;
-2. flat retrieval plus curated maps;
-3. flat retrieval plus derived maps;
-4. map-conditioned retrieval with route or scope hints;
-5. map plus bounded graph expansion;
-6. map-only retrieval as a negative control.
+2. bounded all-level retrieval over admitted source and summary levels;
+3. guided hierarchical descent with bounded backtracking (MemWalker-like);
+4. flat retrieval plus curated maps;
+5. flat retrieval plus derived maps;
+6. map-conditioned retrieval with route or scope hints;
+7. map plus bounded graph expansion;
+8. map/tree-only retrieval as a negative control.
 
 All arms use the same canonical corpus, embedding split, read frontiers,
 candidate budget, decoded-byte budget and final ContextPack/token budget. Each
@@ -277,6 +291,11 @@ Metrics include:
 - scope/access leakage;
 - update, delete, rebuild and relocation consistency;
 - provenance and lifecycle preservation.
+
+The result also reports offline hierarchy build/rebuild work, update
+amplification, model calls/tokens, citation fidelity, contradiction retention
+and rare-fact recall. A generated hierarchy and a curated DomainMap are
+separate comparison arms; neither receives an automatic quality advantage.
 
 A map-only answer is not accepted as factual evidence. Navigation quality is
 measured by the downstream retrieval and decision probes it enables.

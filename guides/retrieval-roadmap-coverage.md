@@ -1,5 +1,11 @@
 # Retrieval Roadmap Coverage
 
+For the broader product-readiness, ANN extensibility, and technical-preview
+audit at the current `main` baseline, see
+[`product-ann-readiness-audit.md`](product-ann-readiness-audit.md). This table
+remains the capability inventory; the audit adds source-level evidence and
+release acceptance gates without changing milestone ownership.
+
 This is the documentation audit for the current repository state. `Implemented`
 means exercised code exists; `Contract only` means a public or storage contract
 exists without the complete backend; `Docs/tests only` means the idea is
@@ -33,6 +39,8 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | Event-centric grounding | `knowledge-base-roadmap.md` EG0, `evaluation-roadmap.md` | Docs/tests only | extraction/linking fixture and parity-controlled event retrieval runner | EG0 grounding gate |
 | Offline consolidation / replay | `offline-consolidation-roadmap.md`, `compaction-roadmap.md`, `evaluation-roadmap.md` | Docs/tests only | bounded replay selection, source-frontier receipts, protected cases, rebuild and recovery fixtures | run OC-0 no-op/extractive/abstractive/consolidation comparison |
 | Hierarchical DomainMap navigation | `hierarchical-navigation-roadmap.md`, `knowledge-activation-roadmap.md`, `usage-llm-wiki.md` | Docs/tests only | curated/derived map parity, bounded recursive activation, stale-map handling and flat fallback | run HN-0 map-conditioned retrieval comparison |
+| Linked derived knowledge | `linked-derived-knowledge.md`, `knowledge-units-roadmap.md`, `source-trust-roadmap.md` | Contract only | durable multi-input exact-revision bindings, typed Relation publication, reverse lookup, bounded evidence drill-down and stale propagation are not implemented | implement the narrow Note/Summary/Playbook relation publication and reopen fixture |
+| Codec-neutral derived representations | `derived-representations-and-codecs.md`, `embedding.md`, `optimization-roadmap.md` | Contract/research split | arbitrary aspect registry, persisted dictionary IDs, retention policies and library compact-vector adapter are not implemented; THQ/LSQ/PLSQ/TQ/RSLM evidence remains research | implement one bounded compact-vector preview after storage/retrieval foundations |
 | Optional JPEG XL image representation | `artifact-provenance-roadmap.md`, `visual-retrieval-roadmap.md`, `experiments/2026-10-13-jpeg-xl-image-representation.md` | Research candidate | matched-corpus codec, metadata, lossless-roundtrip and decoder-portability evidence | benchmark before any adapter or production status |
 | Context compression | `compaction-roadmap.md`, `compression-is-intelligence-roadmap.md` | Roadmap only | budgeted compressor | no-op/extractive baseline |
 | Decision-relevant retention / compression evaluation | `evaluation-roadmap.md`, `compaction-roadmap.md`, `compression-is-intelligence-roadmap.md` | Docs/tests only | fixed decision probes, equal-budget extractive/abstractive comparisons and replayable retention evidence | run no-op/extractive/abstractive retention fixture with exact/key-based probes |

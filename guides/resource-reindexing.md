@@ -37,8 +37,11 @@ resource, not only discovered by scanning the whole database.
   [`storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md).
 - Frequently updated indexes may use generations, tombstones, or stale-entry
   filtering before physical compaction.
-- Full float embeddings remain the quality source of truth for reranking even
-  when approximate signatures or compressed bucket lists are present.
+- FP32 remains an exact quality reference and supported reranking mode, but it
+  is not mandatory persisted payload: a validated compact scorer may rerank
+  directly from its encoded representation. Approximate signatures or
+  compressed bucket lists still require descriptor-bound quality, stale and
+  recovery checks.
 
 ## Terms
 
