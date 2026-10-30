@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <thread>
 #include <unordered_set>
@@ -82,25 +83,53 @@ bool same_digest(const ResourceBodyDigest& left, const ResourceBodyDigest& right
     return left.algorithm == right.algorithm && left.bytes == right.bytes;
 }
 
-std::size_t estimate_entry_bytes(
+bool checked_add(std::size_t left, std::size_t right, std::size_t& result) {
+    if(right > std::numeric_limits<std::size_t>::max() - left) {
+        return false;
+    }
+    result = left + right;
+    return true;
+}
+
+std::optional<std::size_t> estimate_entry_bytes(
     const KnowledgeUnitEnvelope& unit,
     const ResourceManifest& root
 ) {
-    std::size_t total = unit.primary_text.size() + unit.display_text.size();
-    for(const auto& source : unit.sources) {
-        total += source.resource_id.value().size() + source.uri.size()
-            + source.preview.size() + sizeof(SourceRefSummary);
+    std::size_t total = 0;
+    if(!checked_add(total, unit.primary_text.size(), total)
+       || !checked_add(total, unit.display_text.size(), total)) {
+        return std::nullopt;
     }
-    total += root.revision.resource_id.value().size() + root.schema.schema_id.size();
+    for(const auto& source : unit.sources) {
+        if(!checked_add(total, source.resource_id.value().size(), total)
+           || !checked_add(total, source.uri.size(), total)
+           || !checked_add(total, source.preview.size(), total)
+           || !checked_add(total, sizeof(SourceRefSummary), total)) {
+            return std::nullopt;
+        }
+    }
+    if(!checked_add(total, root.revision.resource_id.value().size(), total)
+       || !checked_add(total, root.schema.schema_id.size(), total)) {
+        return std::nullopt;
+    }
     for(const auto& record : root.records) {
-        total += record.chunk_id.value().size() + record.key.size()
-            + sizeof(DerivedRecordRef);
+        if(!checked_add(total, record.chunk_id.value().size(), total)
+           || !checked_add(total, record.key.size(), total)
+           || !checked_add(total, sizeof(DerivedRecordRef), total)) {
+            return std::nullopt;
+        }
     }
     for(const auto& record : root.pending_reclaim_records) {
-        total += record.chunk_id.value().size() + record.key.size()
-            + sizeof(DerivedRecordRef);
+        if(!checked_add(total, record.chunk_id.value().size(), total)
+           || !checked_add(total, record.key.size(), total)
+           || !checked_add(total, sizeof(DerivedRecordRef), total)) {
+            return std::nullopt;
+        }
     }
-    return total + sizeof(MdbxResourceFrontierEntry);
+    if(!checked_add(total, sizeof(MdbxResourceFrontierEntry), total)) {
+        return std::nullopt;
+    }
+    return total;
 }
 
 std::shared_ptr<MdbxStorageContext> require_context(
@@ -148,14 +177,20 @@ MdbxResourceFrontierSnapshotResult MdbxResourceFrontierSnapshotReader::read(
     MdbxResourceFrontierSnapshot snapshot;
     snapshot.scope_id = scope_id;
     snapshot.entries.reserve(inputs.size());
-    std::size_t estimated_bytes = sizeof(MdbxResourceFrontierSnapshot);
+    std::size_t estimated_decoded_bytes = sizeof(MdbxResourceFrontierSnapshot);
+    std::size_t serialized_bytes_total = 0;
 
     for(std::size_t index = 0; index < inputs.size(); ++index) {
         const auto& input = inputs[index];
         std::size_t unit_payload_bytes = 0;
-        const auto unit = m_units.find_in_transaction(
-            input.unit_id, *transaction, kMdbxResourceFrontierMaxDecodedBytes,
-            &unit_payload_bytes);
+        std::optional<KnowledgeUnitEnvelope> unit;
+        try {
+            unit = m_units.find_in_transaction(
+                input.unit_id, *transaction, kMdbxResourceFrontierMaxDecodedBytes,
+                &unit_payload_bytes);
+        } catch(const std::exception&) {
+            return {MdbxResourceFrontierSnapshotStatus::Unavailable, std::nullopt};
+        }
         if(!unit) {
             return {MdbxResourceFrontierSnapshotStatus::MissingInput, std::nullopt};
         }
@@ -180,9 +215,14 @@ MdbxResourceFrontierSnapshotResult MdbxResourceFrontierSnapshotReader::read(
         }
 
         std::size_t root_payload_bytes = 0;
-        const auto root = m_manifests.find_manifest_in_transaction(
-            input.root_revision.resource_id, *transaction,
-            kMdbxResourceFrontierMaxDecodedBytes, &root_payload_bytes);
+        std::optional<ResourceManifest> root;
+        try {
+            root = m_manifests.find_manifest_in_transaction(
+                input.root_revision.resource_id, *transaction,
+                kMdbxResourceFrontierMaxDecodedBytes, &root_payload_bytes);
+        } catch(const std::exception&) {
+            return {MdbxResourceFrontierSnapshotStatus::Unavailable, std::nullopt};
+        }
         if(!root || root->state != ResourceManifestState::Active) {
             return {MdbxResourceFrontierSnapshotStatus::Unavailable, std::nullopt};
         }
@@ -194,14 +234,18 @@ MdbxResourceFrontierSnapshotResult MdbxResourceFrontierSnapshotReader::read(
             return {MdbxResourceFrontierSnapshotStatus::RootDigestMismatch, std::nullopt};
         }
 
+        std::size_t serialized_bytes = 0;
         const auto entry_bytes = estimate_entry_bytes(*unit, *root);
-        const auto serialized_bytes = unit_payload_bytes + root_payload_bytes;
-        if(entry_bytes > kMdbxResourceFrontierMaxDecodedBytes
-           || serialized_bytes > kMdbxResourceFrontierMaxDecodedBytes
-           || estimated_bytes > kMdbxResourceFrontierMaxDecodedBytes - entry_bytes) {
+        if(!entry_bytes
+           || !checked_add(unit_payload_bytes, root_payload_bytes, serialized_bytes)
+           || !checked_add(serialized_bytes_total, serialized_bytes,
+                           serialized_bytes_total)
+           || !checked_add(estimated_decoded_bytes, *entry_bytes,
+                           estimated_decoded_bytes)
+           || serialized_bytes_total > kMdbxResourceFrontierMaxDecodedBytes
+           || estimated_decoded_bytes > kMdbxResourceFrontierMaxDecodedBytes) {
             return {MdbxResourceFrontierSnapshotStatus::Unavailable, std::nullopt};
         }
-        estimated_bytes += entry_bytes;
         snapshot.entries.push_back(MdbxResourceFrontierEntry{*unit, *root});
         if(m_read_hook_for_testing) {
             m_read_hook_for_testing(index);

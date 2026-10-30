@@ -126,16 +126,20 @@ and must be moved and destroyed on its creating thread. Cross-thread move or
 destruction is rejected fail-fast, as required by MDBX transaction ownership.
 The reader rejects empty or duplicate input sets, caps the request at 4096
 units, and enforces a 1 MiB decoded/serialized per-frontier budget before
-returning a snapshot.
+returning a snapshot. The serialized-byte accumulator and the estimated
+materialized-byte accumulator are separate overflow-checked budgets; neither
+is presented as a precise allocator cap.
 
 The focused MDBX fixture covers a successful pinned read, a root mutation
 observed by a subsequent read, scope and unit-revision rejection, inactive
 unit rejection, request-limit and duplicate-input failures, and a
-deterministic writer interleaving between two reads. The interleaving proves
-that both roots come from one read transaction even when a writer commits
-between the first and second point reads. B2 must still add the single
-writable transaction that re-checks this frontier and publishes derived rows;
-it is deliberately not part of the B1 implementation.
+deterministic writer interleaving between two reads, including a bounded
+injected-failure path that transfers exceptions from both worker threads and
+still joins them. The interleaving proves that both roots come from one read
+transaction even when a writer commits between the first and second point
+reads. B2 must still add the single writable transaction that re-checks this
+frontier and publishes derived rows; it is deliberately not part of the B1
+implementation.
 
 ## Required conformance scenarios
 
@@ -169,9 +173,11 @@ The B1 implementation fixture is
 `agent_memory_mdbx_resource_frontier_snapshot_test`. It exercises the
 transaction-scoped manifest/unit reads and verifies that a materialized
 snapshot retains its typed read transaction owner. It also checks the bounded
-input/decoded-byte contract and uses a deterministic read hook to interleave a
-writer without sleeps. It does not claim write-side fencing or any current
-derived-publication outcome.
+input/decoded-byte contract, including oversized and aggregate budget
+rejections, and uses a deterministic read hook to interleave a writer without
+sleeps. Waits are bounded and all worker exceptions are transferred to the
+test thread before both workers are joined. It does not claim write-side
+fencing or any current derived-publication outcome.
 
 ## Proposed read outcome contract
 
