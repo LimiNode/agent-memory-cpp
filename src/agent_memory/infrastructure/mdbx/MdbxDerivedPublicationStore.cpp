@@ -1,4 +1,5 @@
 #include "MdbxDerivedPublicationStore.hpp"
+#include "MdbxResourceFrontierSnapshot.hpp"
 
 #if AGENT_MEMORY_HAS_MDBX
 
@@ -12,6 +13,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 
 namespace agent_memory {
@@ -239,6 +241,53 @@ std::string serialize_marker(const std::string& manifest, const std::string& bod
     return marker;
 }
 
+std::string digest_token(const ResourceBodyDigest& digest) {
+    static constexpr char kHex[] = "0123456789abcdef";
+    std::string value{"sha256:"};
+    value.reserve(71);
+    for(const auto byte : digest.bytes) {
+        value.push_back(kHex[(byte >> 4U) & 0x0fU]);
+        value.push_back(kHex[byte & 0x0fU]);
+    }
+    return value;
+}
+
+std::string frontier_token(const MdbxResourceFrontierSnapshot& frontier) {
+    std::string value{"mdbx-frontier-v1|"};
+    value += frontier.scope_id.value();
+    for(const auto& entry : frontier.entries) {
+        value.push_back('|');
+        value += std::to_string(entry.unit.id.value());
+        value.push_back('@');
+        value += std::to_string(entry.unit.revision);
+        value.push_back(':');
+        value += entry.root.revision.resource_id.value();
+        value.push_back('@');
+        value += std::to_string(entry.root.revision.generation);
+        value.push_back(':');
+        value += digest_token(*entry.root.revision.body_digest);
+    }
+    return value;
+}
+
+bool same_root_revision(const ResourceRevision& left, const ResourceRevision& right) {
+    if(left.resource_id != right.resource_id || left.generation != right.generation
+       || left.body_digest.has_value() != right.body_digest.has_value()) {
+        return false;
+    }
+    if(!left.body_digest) return true;
+    return left.body_digest->algorithm == right.body_digest->algorithm
+        && left.body_digest->bytes == right.body_digest->bytes;
+}
+
+bool same_root_revision(const ResourceRevisionRef& left, const ResourceRevision& right) {
+    return left.resource_id == right.resource_id
+        && left.generation == right.generation
+        && right.body_digest
+        && left.body_digest.algorithm == right.body_digest->algorithm
+        && left.body_digest.bytes == right.body_digest->bytes;
+}
+
 void validate_marker(std::string_view payload, std::string_view manifest, std::string_view body) {
     if(payload.size() > kMaxMarkerBytes || manifest.size() > kMaxManifestBytes || body.size() > kMaxBodyBytes)
         throw std::runtime_error("derived publication payload exceeds its byte budget");
@@ -267,10 +316,38 @@ public:
     explicit Impl(MdbxDerivedPublicationStoreOptions options)
         : context(options.context ? std::move(options.context)
                                   : MdbxStorageContext::open(std::move(options.path), options.relative_to_exe, options.max_dbs)),
-          table(context->connection(), table_name(options.table_prefix)) {}
+          table(context->connection(), table_name(options.table_prefix)),
+          table_prefix(std::move(options.table_prefix)) {}
 
     std::shared_ptr<MdbxStorageContext> context;
     mutable mdbxc::KeyValueTable<std::string, std::string> table;
+    std::string table_prefix;
+
+    void publish_in_transaction(
+        const DerivedPublicationRequest& request,
+        const std::string& manifest,
+        const std::string& marker,
+        mdbxc::Transaction& txn
+    ) {
+        const auto body_key = field_key(request.publication_id, 'b');
+        const auto manifest_key = field_key(request.publication_id, 'm');
+        const auto marker_key = field_key(request.publication_id, 'a');
+        const auto existing_body = table.find(body_key, txn);
+        const auto existing_manifest = table.find(manifest_key, txn);
+        const auto existing_marker = table.find(marker_key, txn);
+        if(existing_body || existing_manifest || existing_marker) {
+            if(!existing_body || !existing_manifest || !existing_marker
+               || *existing_body != request.body
+               || *existing_manifest != manifest || *existing_marker != marker) {
+                throw std::invalid_argument(
+                    "derived publication identity already has different content");
+            }
+            return;
+        }
+        table.insert_or_assign(body_key, request.body, txn);
+        table.insert_or_assign(manifest_key, manifest, txn);
+        table.insert_or_assign(marker_key, marker, txn);
+    }
 };
 
 MdbxDerivedPublicationStore::MdbxDerivedPublicationStore(MdbxDerivedPublicationStoreOptions options)
@@ -282,29 +359,106 @@ void MdbxDerivedPublicationStore::publish(DerivedPublicationRequest request) {
     validate_request(request);
     const auto body_digest = sha256(request.body);
     const auto manifest = serialize_manifest(request, body_digest);
-    const auto body_key = field_key(request.publication_id, 'b');
-    const auto manifest_key = field_key(request.publication_id, 'm');
-    const auto marker_key = field_key(request.publication_id, 'a');
     const auto marker = serialize_marker(manifest, request.body);
     if(marker.size() > kMaxMarkerBytes || manifest.size() > kMaxManifestBytes ||
        request.body.size() > kMaxBodyBytes || manifest.size() > kMaxSerializedBytes - request.body.size() ||
        marker.size() > kMaxSerializedBytes - request.body.size() - manifest.size())
         throw std::invalid_argument("derived publication serialized payload exceeds its byte budget");
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
-    const auto existing_body = m_impl->table.find(body_key, txn);
-    const auto existing_manifest = m_impl->table.find(manifest_key, txn);
-    const auto existing_marker = m_impl->table.find(marker_key, txn);
-    if(existing_body || existing_manifest || existing_marker) {
-        if(!existing_body || !existing_manifest || !existing_marker || *existing_body != request.body ||
-           *existing_manifest != manifest || *existing_marker != marker)
-            throw std::invalid_argument("derived publication identity already has different content");
-        txn.commit();
-        return;
-    }
-    m_impl->table.insert_or_assign(body_key, request.body, txn);
-    m_impl->table.insert_or_assign(manifest_key, manifest, txn);
-    m_impl->table.insert_or_assign(marker_key, marker, txn);
+    m_impl->publish_in_transaction(request, manifest, marker, txn);
     txn.commit();
+}
+
+MdbxFencedDerivedPublicationResult MdbxDerivedPublicationStore::publish_fenced(
+    const MdbxResourceFrontierSnapshot& frontier,
+    MdbxFencedDerivedPublicationRequest request
+) {
+    if(frontier.scope_id.empty() || frontier.entries.empty()
+       || frontier.entries.size() > kMdbxResourceFrontierMaxInputs
+       || request.dependency_frontier.empty()) {
+        return {MdbxFencedDerivedPublicationStatus::InvalidInput, std::nullopt};
+    }
+
+    DerivedPublicationRequest publication;
+    publication.scope_id = frontier.scope_id;
+    publication.publication_id = std::move(request.publication_id);
+    publication.kind = request.kind;
+    publication.output_revision = request.output_revision;
+    publication.body = std::move(request.body);
+    publication.generation = request.generation;
+    publication.inputs.reserve(frontier.entries.size());
+    std::unordered_set<std::uint64_t> unit_ids;
+    unit_ids.reserve(frontier.entries.size());
+    for(const auto& entry : frontier.entries) {
+        if(entry.unit.id.empty()
+           || !unit_ids.insert(entry.unit.id.value()).second
+           || entry.unit.scope_id != frontier.scope_id
+           || entry.unit.lifecycle_state != KnowledgeUnitLifecycleState::Active
+           || entry.unit.revision == 0
+           || entry.root.revision.resource_id.empty()
+           || entry.root.revision.generation == 0
+           || !entry.root.revision.body_digest
+           || entry.root.state != ResourceManifestState::Active) {
+            return {MdbxFencedDerivedPublicationStatus::InvalidInput, std::nullopt};
+        }
+        publication.inputs.push_back(DerivedPublicationInput{
+            entry.unit.id,
+            entry.unit.revision,
+            entry.root.revision.generation,
+            digest_token(*entry.root.revision.body_digest)
+        });
+    }
+    publication.dependency_frontier = frontier_token(frontier);
+    publication.dependency_frontier.push_back('|');
+    publication.dependency_frontier += request.dependency_frontier;
+
+    try {
+        validate_request(publication);
+        const auto body_digest = sha256(publication.body);
+        const auto serialized_manifest = serialize_manifest(publication, body_digest);
+        const auto marker = serialize_marker(serialized_manifest, publication.body);
+        if(marker.size() > kMaxMarkerBytes
+           || serialized_manifest.size() > kMaxManifestBytes
+           || publication.body.size() > kMaxBodyBytes) {
+            return {MdbxFencedDerivedPublicationStatus::InvalidInput, std::nullopt};
+        }
+
+        MdbxResourceManifestStorageOptions manifest_options;
+        manifest_options.context = m_impl->context;
+        manifest_options.table_prefix = m_impl->table_prefix;
+        MdbxResourceManifestStorage manifests(std::move(manifest_options));
+        MdbxKnowledgeUnitStoreOptions unit_options;
+        unit_options.context = m_impl->context;
+        unit_options.table_prefix = m_impl->table_prefix;
+        MdbxKnowledgeUnitStore units(std::move(unit_options));
+        auto txn = m_impl->context->connection()->transaction(
+            mdbxc::TransactionMode::WRITABLE);
+        for(const auto& entry : frontier.entries) {
+            const auto current_unit = units.find_in_transaction(entry.unit.id, txn);
+            const auto current_root = manifests.find_manifest_in_transaction(
+                entry.root.revision.resource_id, txn);
+            if(!current_unit || !current_root
+               || current_unit->scope_id != frontier.scope_id
+               || current_unit->lifecycle_state != KnowledgeUnitLifecycleState::Active
+               || current_unit->revision != entry.unit.revision
+               || current_unit->sources.size() != 1
+               || !current_unit->sources.front().resource_revision
+               || !same_root_revision(
+                   *current_unit->sources.front().resource_revision, entry.root.revision)
+               || current_root->state != ResourceManifestState::Active
+               || !same_root_revision(current_root->revision, entry.root.revision)) {
+                return {MdbxFencedDerivedPublicationStatus::FenceRejected, std::nullopt};
+            }
+        }
+        m_impl->publish_in_transaction(publication, serialized_manifest, marker, txn);
+        txn.commit();
+        return {MdbxFencedDerivedPublicationStatus::Published,
+                DerivedPublication{std::move(publication)}};
+    } catch(const std::invalid_argument&) {
+        return {MdbxFencedDerivedPublicationStatus::InvalidInput, std::nullopt};
+    } catch(const std::exception&) {
+        return {MdbxFencedDerivedPublicationStatus::Unavailable, std::nullopt};
+    }
 }
 
 DerivedPublicationReadResult MdbxDerivedPublicationStore::read(

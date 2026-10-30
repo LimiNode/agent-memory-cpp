@@ -1,5 +1,6 @@
 #include <agent_memory/infrastructure/mdbx/MdbxDerivedPublicationStore.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxProjectionStore.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxResourceFrontierSnapshot.hpp>
 #include <agent_memory/domain/Sha256.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
@@ -69,6 +70,63 @@ std::string marker_for(std::string_view manifest, std::string_view body) {
     append_digest(agent_memory::sha256(manifest));
     append_digest(agent_memory::sha256(body));
     return marker;
+}
+
+agent_memory::ResourceBodyDigest frontier_digest(std::uint8_t seed) {
+    agent_memory::ResourceBodyDigest value;
+    value.bytes.fill(seed);
+    return value;
+}
+
+agent_memory::SourceRefSummary frontier_source(
+    const agent_memory::ResourceId& resource,
+    std::uint64_t generation,
+    std::uint8_t seed
+) {
+    using namespace agent_memory;
+    SourceRefSummary value;
+    value.resource_id = resource;
+    value.resource_revision = ResourceRevisionRef{resource, generation, frontier_digest(seed)};
+    value.uri = "memory://fenced-publication";
+    value.excerpt = TextRange{0, 4};
+    value.preview = "fenced unit";
+    value.quote_hash = compute_quote_hash(value.preview);
+    value.confidence = 1.0;
+    return value;
+}
+
+agent_memory::KnowledgeUnitCreateRequest frontier_unit_request(
+    const agent_memory::ScopeId& scope,
+    const agent_memory::ResourceId& resource,
+    std::uint64_t generation,
+    std::uint8_t seed
+) {
+    using namespace agent_memory;
+    KnowledgeUnitCreateRequest value;
+    value.kind = KnowledgeUnitKind::Chunk;
+    value.scope_id = scope;
+    value.primary_text = "fenced publication unit";
+    value.display_text = value.primary_text;
+    value.sources.push_back(frontier_source(resource, generation, seed));
+    value.content_hash_recipe_version = 2;
+    value.content_hash = compute_chunk_content_hash(
+        value.scope_id, value.primary_text, value.sources, 2);
+    value.created_at_ms = 1;
+    value.observed_at_ms = 2;
+    return value;
+}
+
+agent_memory::ResourceManifest frontier_manifest(
+    const agent_memory::ResourceId& resource,
+    std::uint64_t generation,
+    std::uint8_t seed
+) {
+    agent_memory::ResourceManifest value;
+    value.revision.resource_id = resource;
+    value.revision.generation = generation;
+    value.revision.body_digest = frontier_digest(seed);
+    value.payload_version = agent_memory::ResourceManifestPayloadVersion::V6;
+    return value;
 }
 
 void write_field(const std::shared_ptr<agent_memory::MdbxStorageContext>& context,
@@ -244,6 +302,77 @@ int main() {
                           malformed_request.inputs, malformed_request.dependency_frontier).status ==
                    DerivedPublicationReadStatus::Unavailable,
                "malformed manifest was accepted");
+
+        MdbxResourceManifestStorage manifests({"", "agent_memory", false,
+                                               kDefaultMdbxMaxDbs, context});
+        MdbxKnowledgeUnitStore units({"", "agent_memory", false,
+                                      kDefaultMdbxMaxDbs, context});
+        const ScopeId fenced_scope{"fenced-scope"};
+        const ResourceId fenced_resource_a{"fenced-root-a"};
+        const ResourceId fenced_resource_b{"fenced-root-b"};
+        manifests.upsert_manifest(frontier_manifest(fenced_resource_a, 1, 21));
+        manifests.upsert_manifest(frontier_manifest(fenced_resource_b, 1, 22));
+        const auto fenced_unit_a = units.create_or_get_unit(
+            frontier_unit_request(fenced_scope, fenced_resource_a, 1, 21));
+        const auto fenced_unit_b = units.create_or_get_unit(
+            frontier_unit_request(fenced_scope, fenced_resource_b, 1, 22));
+        MdbxResourceFrontierSnapshotReader frontier_reader(context);
+        auto frontier_result = frontier_reader.read(fenced_scope, {
+            {fenced_unit_a.id, fenced_unit_a.revision,
+             ResourceRevisionRef{fenced_resource_a, 1, frontier_digest(21)}},
+            {fenced_unit_b.id, fenced_unit_b.revision,
+             ResourceRevisionRef{fenced_resource_b, 1, frontier_digest(22)}}
+        });
+        expect(frontier_result.status == MdbxResourceFrontierSnapshotStatus::Available
+                   && frontier_result.snapshot,
+               "fenced publication fixture did not obtain a B1 frontier");
+        // The B1 reader pins a read transaction for stable reads. Release it
+        // before opening B2's writable transaction on the same MDBX thread.
+        frontier_result.snapshot->read_transaction_owner.reset();
+        const auto fenced_request = MdbxFencedDerivedPublicationRequest{
+            "fenced-publication", ProjectionKind::QACombined, 1,
+            "fenced answer", 1, "pipeline@1"};
+        const auto fenced = store.publish_fenced(
+            *frontier_result.snapshot, fenced_request);
+        expect(fenced.status == MdbxFencedDerivedPublicationStatus::Published
+                   && fenced.publication,
+               "fenced publication was not committed");
+        const auto fenced_read = store.read(
+            fenced_scope, "fenced-publication", fenced.publication->request.inputs,
+            fenced.publication->request.dependency_frontier);
+        expect(fenced_read.status == DerivedPublicationReadStatus::StoredMatch,
+               "fenced publication did not produce a durable storage match");
+
+        manifests.upsert_manifest(frontier_manifest(fenced_resource_b, 2, 23));
+        const auto stale_fenced = store.publish_fenced(
+            *frontier_result.snapshot,
+            MdbxFencedDerivedPublicationRequest{
+                "fenced-stale", ProjectionKind::QACombined, 1,
+                "must not publish", 1, "pipeline@1"});
+        expect(stale_fenced.status == MdbxFencedDerivedPublicationStatus::FenceRejected,
+               "root mutation between frontier and commit was accepted");
+        expect(store.read(fenced_scope, "fenced-stale", {}, "").status
+                   == DerivedPublicationReadStatus::NotFound,
+               "fenced rejection left partial publication rows");
+
+        // Restore the other root so the next case isolates a unit-revision
+        // mutation rather than inheriting the previous root mismatch.
+        manifests.upsert_manifest(frontier_manifest(fenced_resource_b, 1, 22));
+        const auto fenced_unit_revision = units.update_mutable_fields(
+            fenced_unit_a.id, KnowledgeUnitMutablePatch{
+                std::string{"fenced publication unit v2"}, std::nullopt,
+                std::nullopt, std::nullopt, std::nullopt});
+        static_cast<void>(fenced_unit_revision);
+        const auto stale_unit = store.publish_fenced(
+            *frontier_result.snapshot,
+            MdbxFencedDerivedPublicationRequest{
+                "fenced-stale-unit", ProjectionKind::QACombined, 1,
+                "must not publish", 1, "pipeline@1"});
+        expect(stale_unit.status == MdbxFencedDerivedPublicationStatus::FenceRejected,
+               "KnowledgeUnit mutation without root mutation was accepted");
+        expect(store.read(fenced_scope, "fenced-stale-unit", {}, "").status
+                   == DerivedPublicationReadStatus::NotFound,
+               "unit fence rejection left partial publication rows");
     }
 
     {

@@ -9,12 +9,42 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #if AGENT_MEMORY_HAS_MDBX
 #include "MdbxStorageContext.hpp"
 
 namespace agent_memory {
+
+    struct MdbxResourceFrontierSnapshot;
+
+    /// \brief Caller-owned metadata for one fenced derived publication.
+    ///
+    /// The exact unit/root bindings are taken from the supplied B1 frontier
+    /// snapshot. This request carries only publication identity and body
+    /// metadata; callers cannot replace the snapshot's input revisions.
+    struct MdbxFencedDerivedPublicationRequest final {
+        std::string publication_id;
+        ProjectionKind kind = ProjectionKind::QACombined;
+        std::uint64_t output_revision = 0;
+        std::string body;
+        std::uint64_t generation = 0;
+        std::string dependency_frontier;
+    };
+
+    enum class MdbxFencedDerivedPublicationStatus : std::uint8_t {
+        Published,
+        FenceRejected,
+        InvalidInput,
+        Unavailable
+    };
+
+    struct MdbxFencedDerivedPublicationResult final {
+        MdbxFencedDerivedPublicationStatus status =
+            MdbxFencedDerivedPublicationStatus::Unavailable;
+        std::optional<DerivedPublication> publication;
+    };
 
     struct MdbxDerivedPublicationStoreOptions final {
         std::string path;
@@ -33,6 +63,19 @@ namespace agent_memory {
         MdbxDerivedPublicationStore& operator=(const MdbxDerivedPublicationStore&) = delete;
 
         void publish(DerivedPublicationRequest request) override;
+
+        /// rief Revalidates one B1 frontier and publishes atomically.
+        ///
+        /// Root manifests, KnowledgeUnits and the three derived rows are
+        /// checked or written in one MDBX writable transaction. A mismatch
+        /// rolls back the complete operation and returns FenceRejected.
+        /// The B1 snapshot's read transaction must be released before this
+        /// call when both operations run on the same MDBX thread; the method
+        /// then revalidates the materialized bindings in its write transaction.
+        [[nodiscard]] MdbxFencedDerivedPublicationResult publish_fenced(
+            const MdbxResourceFrontierSnapshot& frontier,
+            MdbxFencedDerivedPublicationRequest request
+        );
 
         [[nodiscard]] DerivedPublicationReadResult read(
             const ScopeId& access_scope,
