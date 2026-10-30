@@ -1,0 +1,9 @@
+# id\tanswer_mode\traw:text\tqrels (unit:grade comma-separated)
+q-api\tjudged\traw:ExactLexicalIndex search\t1:3
+q-reopen\tjudged\traw:reopens resource generation\t2:3,5:1
+q-russian\tjudged\traw:поколения ресурса повторной индексации\t4:3
+q-correction\tjudged\traw:correction stale generation ineligible\t5:3
+q-contradiction\tjudged\traw:not atomic publication proof\t6:3
+q-rare\tjudged\traw:frontier epoch seventeen\t7:3
+q-hard-negative\tjudged\traw:token postings\t1:2,8:1
+q-no-answer\tno_answer\traw:quantum banana protocol\t

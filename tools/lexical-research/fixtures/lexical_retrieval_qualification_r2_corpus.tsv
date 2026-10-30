@@ -1,0 +1,9 @@
+# id\tresource\tgeneration\trevision\traw:text
+1\tapi-exact\t1\t1\traw:ExactLexicalIndex search returns ChunkId candidates and BM25 scores.
+2\tapi-storage\t1\t1\traw:MdbxPersistentLexicalIndex reopens a durable index and checks resource generation.
+3\tapi-negative\t1\t1\traw:ExactVectorIndex searches embeddings and does not implement token postings.
+4\tru-update\t1\t1\traw:Индекс памяти хранит источник и поколение ресурса для повторной индексации.
+5\tcorrection\t2\t2\traw:Correction stale generation records are ineligible after a resource update.
+6\tcontradiction\t1\t1\traw:The corrected report says independent writes are not an atomic publication proof.
+7\trare-fact\t1\t1\traw:Rare fact frontier epoch seventeen uses a bounded token budget.
+8\thard-negative\t1\t1\traw:ExactLexicalIndex token postings are distinct from ExactVectorIndex embeddings.

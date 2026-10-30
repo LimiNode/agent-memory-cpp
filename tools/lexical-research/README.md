@@ -141,3 +141,13 @@ explicitly fixture-level simulated hydration (JSON membership and revision
 checks); it is not evidence of an MDBX canonical read or authoritative source
 frontier. The committed no-answer case is only a lexical-empty negative
 control, not a semantic abstention test.
+
+## Lexical Retrieval Qualification R2
+
+R2 is the first matched C++ smoke for the production BM25 baseline,
+flat-v2, and segmented-v2. It reuses the existing MDBX benchmark build and
+adds no production retrieval API. Build with `AGENT_MEMORY_BUILD_BENCHMARKS=ON`
+and run the registered CTest pair; the receipt validator requires exact logical
+ranking parity, score parity within the receipt's `1e-5` tolerance, lifecycle timings, and explicit `QUALITY_INCONCLUSIVE`
+and `NOT_MEASURED_NO_CANONICAL_READ_PATH` boundaries. See
+[`guides/experiments/2026-10-31-lexical-retrieval-qualification-r2.md`](../../guides/experiments/2026-10-31-lexical-retrieval-qualification-r2.md).
