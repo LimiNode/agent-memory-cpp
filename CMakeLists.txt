@@ -2228,6 +2228,13 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+        add_test(
+            NAME agent_memory_lexical_retrieval_qualification_r1_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/validate_lexical_retrieval_qualification.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
     endif() # AGENT_MEMORY_BUILD_RESEARCH_TESTS
     if(AGENT_MEMORY_BUILD_BENCHMARKS AND AGENT_MEMORY_ENABLE_MDBX)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
