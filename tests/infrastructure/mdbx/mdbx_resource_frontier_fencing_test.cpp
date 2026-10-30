@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <iostream>
 #include <mutex>
 #include <random>
 #include <stdexcept>
@@ -54,25 +55,6 @@ public:
         const auto nonce = static_cast<std::uint64_t>(
             std::chrono::high_resolution_clock::now().time_since_epoch().count()
         ) ^ static_cast<std::uint64_t>(std::random_device{}());
-        std::filesystem::path sentinel;
-        for(std::uint64_t sentinel_attempt = 0; sentinel_attempt < 64; ++sentinel_attempt) {
-            const auto sentinel_candidate = root /
-                ("agent_memory_resource_frontier_" + std::string{tag} + "_" +
-                 std::to_string(nonce) + "_sentinel_" + std::to_string(sentinel_attempt));
-            std::error_code error;
-            if(std::filesystem::create_directory(sentinel_candidate, error)) {
-                sentinel = sentinel_candidate;
-                break;
-            }
-            if(error && error != std::make_error_code(std::errc::file_exists)) {
-                throw std::runtime_error(
-                    "resource frontier sentinel creation failed: " + error.message()
-                );
-            }
-        }
-        if(sentinel.empty()) {
-            throw std::runtime_error("resource frontier sentinel reservation failed");
-        }
         for(std::uint64_t attempt = 0; attempt < 64; ++attempt) {
             const auto candidate = root /
                 ("agent_memory_resource_frontier_" + std::string{tag} + "_" +
@@ -82,20 +64,15 @@ public:
                 return TestDatabase(
                     candidate,
                     candidate / "frontier.mdbx",
-                    std::filesystem::path{(candidate / "frontier.mdbx").string() + "-lck"},
-                    sentinel
+                    std::filesystem::path{(candidate / "frontier.mdbx").string() + "-lck"}
                 );
             }
             if(error && error != std::make_error_code(std::errc::file_exists)) {
-                std::error_code cleanup_error;
-                std::filesystem::remove(sentinel, cleanup_error);
                 throw std::runtime_error(
                     "resource frontier database directory creation failed: " + error.message()
                 );
             }
         }
-        std::error_code cleanup_error;
-        std::filesystem::remove(sentinel, cleanup_error);
         throw std::runtime_error("resource frontier test directory reservation failed");
     }
 
@@ -106,7 +83,6 @@ public:
         : m_directory(std::move(other.m_directory))
         , m_path(std::move(other.m_path))
         , m_lock_path(std::move(other.m_lock_path))
-        , m_sentinel(std::move(other.m_sentinel))
         , m_cleaned(other.m_cleaned) {
         other.m_cleaned = true;
     }
@@ -121,9 +97,9 @@ public:
         return m_path;
     }
 
-    void verify_sentinel() const {
+    void verify_external_sentinel(const std::filesystem::path& sentinel) const {
         expect(
-            !m_sentinel.empty() && std::filesystem::is_directory(m_sentinel),
+            std::filesystem::is_directory(sentinel),
             "pre-existing sentinel disappeared during MDBX fixture"
         );
     }
@@ -132,7 +108,6 @@ public:
         remove_if_present(m_path, "resource frontier database");
         remove_if_present(m_lock_path, "resource frontier lock");
         remove_if_present(m_directory, "resource frontier database directory");
-        remove_if_present(m_sentinel, "resource frontier sentinel");
         m_cleaned = true;
     }
 
@@ -140,14 +115,13 @@ private:
     TestDatabase(
         std::filesystem::path directory,
         std::filesystem::path path,
-        std::filesystem::path lock_path,
-        std::filesystem::path sentinel
+        std::filesystem::path lock_path
     )
         : m_directory(std::move(directory))
         , m_path(std::move(path))
-        , m_lock_path(std::move(lock_path))
-        , m_sentinel(std::move(sentinel)) {}
+        , m_lock_path(std::move(lock_path)) {}
 
+public:
     static void remove_if_present(
         const std::filesystem::path& path,
         std::string_view description
@@ -164,6 +138,7 @@ private:
         );
     }
 
+private:
     void cleanup_noexcept() noexcept {
         std::error_code ignored;
         make_removable(m_path);
@@ -173,14 +148,66 @@ private:
         std::filesystem::remove(m_lock_path, ignored);
         ignored.clear();
         std::filesystem::remove(m_directory, ignored);
-        ignored.clear();
-        std::filesystem::remove(m_sentinel, ignored);
     }
 
     std::filesystem::path m_directory;
     std::filesystem::path m_path;
     std::filesystem::path m_lock_path;
-    std::filesystem::path m_sentinel;
+    bool m_cleaned = false;
+};
+
+class ExternalSentinel final {
+public:
+    static ExternalSentinel create(std::string_view tag) {
+        const auto root = std::filesystem::temp_directory_path();
+        const auto nonce = static_cast<std::uint64_t>(
+            std::chrono::high_resolution_clock::now().time_since_epoch().count()
+        ) ^ static_cast<std::uint64_t>(std::random_device{}());
+        for(std::uint64_t attempt = 0; attempt < 64; ++attempt) {
+            const auto candidate = root /
+                ("agent_memory_resource_frontier_external_" + std::string{tag} + "_" +
+                 std::to_string(nonce) + "_" + std::to_string(attempt));
+            std::error_code error;
+            if(std::filesystem::create_directory(candidate, error)) {
+                return ExternalSentinel(candidate);
+            }
+            if(error && error != std::make_error_code(std::errc::file_exists)) {
+                throw std::runtime_error(
+                    "external sentinel creation failed: " + error.message()
+                );
+            }
+        }
+        throw std::runtime_error("external sentinel reservation failed");
+    }
+
+    ExternalSentinel(const ExternalSentinel&) = delete;
+    ExternalSentinel& operator=(const ExternalSentinel&) = delete;
+
+    ExternalSentinel(ExternalSentinel&& other) noexcept
+        : m_path(std::move(other.m_path)), m_cleaned(other.m_cleaned) {
+        other.m_cleaned = true;
+    }
+
+    ~ExternalSentinel() {
+        if(!m_cleaned) {
+            std::error_code ignored;
+            std::filesystem::remove(m_path, ignored);
+        }
+    }
+
+    [[nodiscard]] const std::filesystem::path& path() const noexcept {
+        return m_path;
+    }
+
+    void cleanup_or_throw() {
+        TestDatabase::remove_if_present(m_path, "external sentinel");
+        m_cleaned = true;
+    }
+
+private:
+    explicit ExternalSentinel(std::filesystem::path path) : m_path(std::move(path)) {}
+
+    std::filesystem::path m_path;
     bool m_cleaned = false;
 };
 
@@ -203,6 +230,7 @@ agent_memory::ResourceManifest make_manifest(std::uint64_t generation) {
 void run_fixture(std::string_view tag) {
     using namespace agent_memory;
 
+    auto sentinel = ExternalSentinel::create(tag);
     auto database = TestDatabase::create(tag);
     const std::string guard_table = "agent_memory_frontier_fixture_guard";
     const std::string token_table = "agent_memory_frontier_fixture_tokens";
@@ -259,9 +287,10 @@ void run_fixture(std::string_view tag) {
             current && current->revision.generation == 2,
             "frontier retry did not publish the new root revision"
         );
-        database.verify_sentinel();
     }
     database.cleanup_or_throw();
+    database.verify_external_sentinel(sentinel.path());
+    sentinel.cleanup_or_throw();
 }
 
 } // namespace

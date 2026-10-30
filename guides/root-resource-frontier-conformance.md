@@ -100,9 +100,11 @@ even when its root token is unchanged.
 The current DBI budget is not changed by this planning slice. The executable
 fixture uses one resource-manifest table plus two uniquely prefixed test-only
 guard/token tables (three DBIs total) in an isolated temporary MDBX
-environment; it does not alter `guides/dbi-manifest.yaml` or production table
-names. An implementation PR must show its DBI-slot accounting before adding any
-table.
+environment. Its pre-existing sentinel is an independently owned sibling
+directory and is checked after MDBX cleanup, so the fixture cannot accidentally
+pass by deleting the sentinel itself. It does not alter `guides/dbi-manifest.yaml`
+or production table names. An implementation PR must show its DBI-slot
+accounting before adding any table.
 
 ## Required conformance scenarios
 
