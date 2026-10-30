@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "dataset_name": "learned_sparse_smoke_v1",
+  "source_revision": "corpus-revision-2026-10-26",
+  "tokenizer": {
+    "name": "unicode_word_v1",
+    "revision": "unicode-word-v1"
+  },
+  "model": {
+    "id": "toy-document-impact-v1",
+    "revision": "fixture-1",
+    "mode": "document_only_impact",
+    "license": "fixture-only"
+  },
+  "vocabulary": {
+    "publication": 0,
+    "coordinator": 1,
+    "fencing": 2,
+    "context": 3,
+    "legacy": 4,
+    "writer": 5,
+    "bypass": 6,
+    "русский": 7,
+    "поиск": 8,
+    "координатор": 9
+  },
+  "corpus": [
+    {"id": "d1", "active": true, "text": "publication coordinator fencing context"},
+    {"id": "d2", "active": true, "text": "legacy writer bypass context"},
+    {"id": "d3", "active": true, "text": "русский поиск координатор"}
+  ],
+  "queries": [
+    {"id": "q_code", "query_class": "code_identifier", "answer_mode": "judged", "text": "coordinator fencing"},
+    {"id": "q_ru", "query_class": "ru", "answer_mode": "judged", "text": "русский координатор"},
+    {"id": "q_none", "query_class": "no_answer", "answer_mode": "no_answer", "text": "quantum bananas"}
+  ],
+  "qrels": [
+    {"query_id": "q_code", "doc_id": "d1", "grade": 2},
+    {"query_id": "q_ru", "doc_id": "d3", "grade": 2}
+  ],
+  "weighted_postings": [
+    {"doc_id": "d1", "term": "publication", "token_id": 0, "weight": 1.0, "source_revision": "corpus-revision-2026-10-26", "tokenizer_revision": "unicode-word-v1"},
+    {"doc_id": "d1", "term": "coordinator", "token_id": 1, "weight": 3.0, "source_revision": "corpus-revision-2026-10-26", "tokenizer_revision": "unicode-word-v1"},
+    {"doc_id": "d1", "term": "fencing", "token_id": 2, "weight": 4.0, "source_revision": "corpus-revision-2026-10-26", "tokenizer_revision": "unicode-word-v1"},
+    {"doc_id": "d1", "term": "context", "token_id": 3, "weight": 0.5, "source_revision": "corpus-revision-2026-10-26", "tokenizer_revision": "unicode-word-v1"},
+    {"doc_id": "d2", "term": "legacy", "token_id": 4, "weight": 1.0, "source_revision": "corpus-revision-2026-10-26", "tokenizer_revision": "unicode-word-v1"},
+    {"doc_id": "d2", "term": "writer", "token_id": 5, "weight": 1.5, "source_revision": "corpus-revision-2026-10-26", "tokenizer_revision": "unicode-word-v1"},
+    {"doc_id": "d2", "term": "bypass", "token_id": 6, "weight": 2.0, "source_revision": "corpus-revision-2026-10-26", "tokenizer_revision": "unicode-word-v1"},
+    {"doc_id": "d2", "term": "context", "token_id": 3, "weight": 0.5, "source_revision": "corpus-revision-2026-10-26", "tokenizer_revision": "unicode-word-v1"},
+    {"doc_id": "d3", "term": "русский", "token_id": 7, "weight": 2.0, "source_revision": "corpus-revision-2026-10-26", "tokenizer_revision": "unicode-word-v1"},
+    {"doc_id": "d3", "term": "поиск", "token_id": 8, "weight": 1.0, "source_revision": "corpus-revision-2026-10-26", "tokenizer_revision": "unicode-word-v1"},
+    {"doc_id": "d3", "term": "координатор", "token_id": 9, "weight": 2.5, "source_revision": "corpus-revision-2026-10-26", "tokenizer_revision": "unicode-word-v1"}
+  ],
+  "expected_weighted_top_ids": {
+    "q_code": ["d1"],
+    "q_ru": ["d3"],
+    "q_none": []
+  }
+}

@@ -355,6 +355,33 @@ rows remain optional views over the manifest and are not required for
 publication or recovery. Body, manifest, frontier, identity, digest and total
 serialized-payload byte budgets are enforced before a row can be admitted.
 
+The current conformance gate layered above this storage slice is deliberately a
+**KnowledgeUnit-local admission check**. It reads the current unit revision,
+lifecycle and stored revision-bound source reference from
+`IKnowledgeUnitStore`. Caller-supplied ordered input metadata must match those
+sequential reads exactly. A missing, duplicate, cross-scope or inactive input
+is rejected before derived bytes are returned. The request is bounded to 4,096
+unique units and a one-MiB encoded witness. The witness uses a versioned,
+length-prefixed representation, so delimiter characters in `ResourceId` do not
+make distinct input identities collide.
+
+This local result is named `KnowledgeUnitLocalMatch`, not `Active` or
+authoritative freshness. `IKnowledgeUnitStore` can prove that a stored
+`ResourceRevisionRef` belongs to the current unit revision; it cannot prove
+that the referenced Resource revision remains the current root manifest. The
+caller-declared ordered list is checked for exact storage identity, but the
+gate does not infer that it is the complete causal lineage. Backend-local
+numeric unit IDs are globally allocated by the current store and are not
+reused as scope-local identities.
+
+The provider performs sequential `find()` calls, not a consistent multi-unit
+read snapshot. Unit state may change after the check and before publication or
+read, so `PublishedAfterUnitCheck` and `KnowledgeUnitLocalMatch` are not
+query-time freshness proofs and must not activate production derived retrieval.
+A root-resource frontier provider, consistent canonical read snapshot,
+cross-store commit fence and post-update query-time revalidation remain one
+separate coordinator/fenced conformance slice.
+
 The following states are intentionally distinct:
 
 - **Historical validity** asks whether a retained derivation record still

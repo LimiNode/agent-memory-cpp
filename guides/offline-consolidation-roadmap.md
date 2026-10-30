@@ -8,6 +8,13 @@ hierarchy, or an agent scheduler.
 Current status: **Docs/tests only**. This contract does not claim that an
 offline consolidator is implemented.
 
+The current graph-free publication admission preview validates an explicitly
+declared ordered list against sequential current KnowledgeUnit reads only. It
+does not validate the current root Resource frontier, prove complete causal
+lineage or fence publication against concurrent source changes. Consequently it
+is not yet the pinned-frontier publication gate required by OC-0; those missing
+guarantees remain in the later resource-frontier/coordinator conformance slice.
+
 ## 1. Purpose and boundary
 
 Online ingestion should remain small and durable. It accepts observations,

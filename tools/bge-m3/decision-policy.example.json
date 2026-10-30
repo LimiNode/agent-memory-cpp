@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "revision": "bge-m3-sparse-pilot-policy-v1",
+  "registered_before_evaluation": true,
+  "minimum_judged_queries_per_language": 5,
+  "minimum_recall_at_10_delta": 0.02,
+  "minimum_ndcg_at_10_delta": 0.0,
+  "no_go_recall_at_10_delta": -0.05,
+  "no_go_ndcg_at_10_delta": -0.05,
+  "registration_manifest": {
+    "repository": "LimiNode/agent-memory-cpp",
+    "commit": "7e3159355650b0b9d97d605a8b44fa7ec4c6c5a9",
+    "path": "tools/bge-m3/decision-policy.example.json",
+    "policy_sha256": "5977F0192BF1643DEA04B0E53F10193C5BFF9261AE236697CC8CC0BBCAB27387"
+  }
+}
