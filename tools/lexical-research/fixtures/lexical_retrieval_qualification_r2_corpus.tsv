@@ -1,0 +1,9 @@
+# id	resource	generation	revision	raw:text
+1	api-exact	1	1	raw:ExactLexicalIndex search returns ChunkId candidates and BM25 scores.
+2	api-storage	1	1	raw:MdbxPersistentLexicalIndex reopens a durable index and checks resource generation.
+3	api-negative	1	1	raw:ExactVectorIndex searches embeddings and does not implement token postings.
+4	ru-update	1	1	raw:Индекс памяти хранит источник и поколение ресурса для повторной индексации.
+5	correction	2	2	raw:Correction stale generation records are ineligible after a resource update.
+6	contradiction	1	1	raw:The corrected report says independent writes are not an atomic publication proof.
+7	rare-fact	1	1	raw:Rare fact frontier epoch seventeen uses a bounded token budget.
+8	hard-negative	1	1	raw:ExactLexicalIndex token postings are distinct from ExactVectorIndex embeddings.

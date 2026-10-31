@@ -1,0 +1,9 @@
+# id	answer_mode	raw:text	qrels (unit:grade comma-separated)
+q-api	judged	raw:ExactLexicalIndex search	1:3
+q-reopen	judged	raw:reopens resource generation	2:3,5:1
+q-russian	judged	raw:поколения ресурса повторной индексации	4:3
+q-correction	judged	raw:correction stale generation ineligible	5:3
+q-contradiction	judged	raw:not atomic publication proof	6:3
+q-rare	judged	raw:frontier epoch seventeen	7:3
+q-hard-negative	judged	raw:token postings	1:2,8:1
+q-no-answer	no_answer	raw:quantum banana protocol	-
