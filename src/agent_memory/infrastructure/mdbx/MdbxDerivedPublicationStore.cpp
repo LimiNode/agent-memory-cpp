@@ -307,6 +307,38 @@ public:
     std::string table_prefix;
     std::function<void(MdbxDerivedPublicationFaultPoint)> fault_injector;
 
+    DerivedPublicationReadResult read_in_transaction(
+        const ScopeId& access_scope,
+        const std::string& publication_id,
+        const mdbxc::Transaction& txn
+    ) const {
+        const auto body = table.find(field_key(publication_id, 'b'), txn);
+        const auto manifest = table.find(field_key(publication_id, 'm'), txn);
+        const auto marker = table.find(field_key(publication_id, 'a'), txn);
+        if(!body && !manifest && !marker)
+            return {DerivedPublicationReadStatus::NotFound, std::nullopt};
+        if(!body || !manifest || !marker)
+            return {DerivedPublicationReadStatus::Unavailable, std::nullopt};
+        try {
+            if(body->size() > kMaxBodyBytes || manifest->size() > kMaxManifestBytes ||
+               marker->size() > kMaxMarkerBytes || body->size() > kMaxSerializedBytes - manifest->size() ||
+               marker->size() > kMaxSerializedBytes - body->size() - manifest->size())
+                throw std::runtime_error("derived publication serialized payload exceeds its byte budget");
+            validate_marker(*marker, *manifest, *body);
+            std::array<std::uint8_t, 32> body_digest{};
+            auto request = deserialize_manifest(*manifest, body_digest);
+            request.body = *body;
+            validate_request(request);
+            if(body_digest != sha256(*body) || request.publication_id != publication_id)
+                throw std::runtime_error("derived publication body identity mismatch");
+            if(request.scope_id != access_scope)
+                return {DerivedPublicationReadStatus::ScopeMismatch, std::nullopt};
+            return {DerivedPublicationReadStatus::StoredMatch, DerivedPublication{std::move(request)}};
+        } catch(const std::exception&) {
+            return {DerivedPublicationReadStatus::Unavailable, std::nullopt};
+        }
+    }
+
     void publish_in_transaction(
         const DerivedPublicationRequest& request,
         const std::string& manifest,
@@ -471,37 +503,25 @@ DerivedPublicationReadResult MdbxDerivedPublicationStore::read(
             throw std::invalid_argument("derived publication source digest exceeds its byte budget");
     }
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-    const auto body = m_impl->table.find(field_key(publication_id, 'b'), txn);
-    const auto manifest = m_impl->table.find(field_key(publication_id, 'm'), txn);
-    const auto marker = m_impl->table.find(field_key(publication_id, 'a'), txn);
-    if(!body && !manifest && !marker) {
-        txn.commit();
-        return {DerivedPublicationReadStatus::NotFound, std::nullopt};
-    }
-    if(!body || !manifest || !marker) {
-        txn.commit();
-        return {DerivedPublicationReadStatus::Unavailable, std::nullopt};
-    }
-    try {
-        if(body->size() > kMaxBodyBytes || manifest->size() > kMaxManifestBytes ||
-           marker->size() > kMaxMarkerBytes || body->size() > kMaxSerializedBytes - manifest->size() ||
-           marker->size() > kMaxSerializedBytes - body->size() - manifest->size())
-            throw std::runtime_error("derived publication serialized payload exceeds its byte budget");
-        validate_marker(*marker, *manifest, *body);
-        std::array<std::uint8_t, 32> body_digest{};
-        auto request = deserialize_manifest(*manifest, body_digest);
-        request.body = *body;
-        validate_request(request);
-        if(body_digest != sha256(*body) || request.publication_id != publication_id) throw std::runtime_error("derived publication body identity mismatch");
-        txn.commit();
-        if(request.scope_id != access_scope) return {DerivedPublicationReadStatus::ScopeMismatch, std::nullopt};
-        if(request.dependency_frontier != current_dependency_frontier || !same_inputs(request.inputs, current_inputs))
-            return {DerivedPublicationReadStatus::StoredMismatch, std::nullopt};
-        return {DerivedPublicationReadStatus::StoredMatch, DerivedPublication{request}};
-    } catch(const std::exception&) {
-        txn.commit();
-        return {DerivedPublicationReadStatus::Unavailable, std::nullopt};
-    }
+    const auto stored = m_impl->read_in_transaction(access_scope, publication_id, txn);
+    txn.commit();
+    if(stored.status != DerivedPublicationReadStatus::StoredMatch || !stored.publication)
+        return stored;
+    if(stored.publication->request.dependency_frontier != current_dependency_frontier ||
+       !same_inputs(stored.publication->request.inputs, current_inputs))
+        return {DerivedPublicationReadStatus::StoredMismatch, std::nullopt};
+    return stored;
+}
+
+DerivedPublicationReadResult MdbxDerivedPublicationStore::read_in_transaction(
+    const ScopeId& access_scope,
+    const std::string& publication_id,
+    const mdbxc::Transaction& transaction
+) const {
+    if(access_scope.empty() || publication_id.empty() || access_scope.value().size() > kMaxScopeBytes ||
+       publication_id.size() > kMaxPublicationIdBytes)
+        throw std::invalid_argument("invalid derived publication read identity or byte budget");
+    return m_impl->read_in_transaction(access_scope, publication_id, transaction);
 }
 
 } // namespace agent_memory

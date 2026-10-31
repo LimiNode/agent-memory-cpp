@@ -1,4 +1,5 @@
 #include <agent_memory/infrastructure/mdbx/MdbxDerivedPublicationStore.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxCurrentDerivedPublicationReader.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxProjectionStore.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxResourceFrontierSnapshot.hpp>
 #include <agent_memory/domain/Sha256.hpp>
@@ -16,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <utility>
 
 #ifdef _WIN32
@@ -645,6 +647,66 @@ int main() {
                "custom-prefix publication was not readable");
     }
     custom_database.cleanup_or_fail();
+
+    auto current_database = TestDatabase::create("agent_memory_current_derived_reader");
+    {
+        auto context = MdbxStorageContext::open(current_database.path().string());
+        const ScopeId scope{"current-scope"};
+        const ResourceId resource{"current-root"};
+        MdbxResourceManifestStorage manifests({"", "agent_memory", false,
+                                                kDefaultMdbxMaxDbs, context});
+        MdbxKnowledgeUnitStore units({"", "agent_memory", false,
+                                      kDefaultMdbxMaxDbs, context});
+        manifests.upsert_manifest(frontier_manifest(resource, 1, 41));
+        const auto unit = units.create_or_get_unit(
+            frontier_unit_request(scope, resource, 1, 41));
+        MdbxResourceFrontierSnapshotReader frontier_reader(context);
+        auto frontier = frontier_reader.read(scope, {
+            {unit.id, unit.revision, ResourceRevisionRef{resource, 1, frontier_digest(41)}}
+        });
+        expect(frontier.status == MdbxResourceFrontierSnapshotStatus::Available && frontier.snapshot,
+               "current-read fixture frontier was unavailable");
+        frontier.snapshot->read_transaction_owner.reset();
+        MdbxDerivedPublicationStore publications({"", "agent_memory", false,
+                                                  kDefaultMdbxMaxDbs, context});
+        const auto published = publications.publish_fenced(
+            *frontier.snapshot,
+            MdbxFencedDerivedPublicationRequest{
+                "current-publication", ProjectionKind::QACombined, 1,
+                "current body", 1, "pipeline@1"});
+        expect(published.status == MdbxFencedDerivedPublicationStatus::Published,
+               "current-read fixture publication failed");
+
+        MdbxCurrentDerivedPublicationReader reader(context);
+        const auto current = reader.read_current(scope, "current-publication");
+        expect(current.status == MdbxCurrentDerivedPublicationStatus::Current && current.publication &&
+                   current.publication->request.body == "current body",
+               "current publication was not revalidated as Current");
+        const auto historical = reader.read_historical(scope, "current-publication");
+        expect(historical.status == MdbxCurrentDerivedPublicationStatus::Historical && historical.publication,
+               "exact historical publication was not readable");
+
+        reader.set_read_hook_for_testing([&] {
+            std::thread writer([&] {
+                auto writer_context = context;
+                MdbxResourceManifestStorage writer_manifests({"", "agent_memory", false,
+                                                               kDefaultMdbxMaxDbs, writer_context});
+                writer_manifests.upsert_manifest(frontier_manifest(resource, 2, 42));
+            });
+            writer.join();
+        });
+        const auto raced_current = reader.read_current(scope, "current-publication");
+        expect(raced_current.status == MdbxCurrentDerivedPublicationStatus::Current && raced_current.publication,
+               "one read transaction did not preserve a consistent pre-write snapshot");
+        reader.set_read_hook_for_testing({});
+        const auto stale = reader.read_current(scope, "current-publication");
+        expect(stale.status == MdbxCurrentDerivedPublicationStatus::Stale && !stale.publication,
+               "changed root revision was still returned as Current");
+        const auto absent = reader.read_current(scope, "missing-current-publication");
+        expect(absent.status == MdbxCurrentDerivedPublicationStatus::NotFound,
+               "missing current publication was not reported as NotFound");
+    }
+    current_database.cleanup_or_fail();
     database.cleanup_or_fail();
     std::cout << "mdbx derived publication store tests passed\n";
     return 0;
