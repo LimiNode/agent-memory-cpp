@@ -265,6 +265,9 @@ jobs:
       - name: Self-test PCA12 residual preservation validator
         run: python tools/validate-pca12-residual-preservation.py --self-test
 
+      - name: Self-test R3A corpus acquisition validator
+        run: python tools/lexical-research/prepare_r3a_corpus.py --self-test
+
       - name: Set up Python for DBI manifest checks
         if: needs.changes.outputs.dbi == 'true'
         uses: actions/setup-python@v5
