@@ -688,7 +688,7 @@ int main() {
 
         reader.set_read_hook_for_testing([&] {
             std::thread writer([&] {
-                auto writer_context = MdbxStorageContext::open(current_database.path().string());
+                auto writer_context = context;
                 MdbxResourceManifestStorage writer_manifests({"", "agent_memory", false,
                                                                kDefaultMdbxMaxDbs, writer_context});
                 writer_manifests.upsert_manifest(frontier_manifest(resource, 2, 42));
