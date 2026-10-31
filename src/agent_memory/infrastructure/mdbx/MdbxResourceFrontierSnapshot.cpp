@@ -15,6 +15,12 @@
 
 namespace agent_memory {
 
+struct MdbxResourceFrontierSnapshot::Witness final {
+    std::shared_ptr<MdbxStorageContext> context;
+    std::string table_prefix;
+    std::string identity;
+};
+
 MdbxReadTransactionOwner::MdbxReadTransactionOwner(
     std::unique_ptr<mdbxc::Transaction> transaction
 ) : m_transaction(std::move(transaction)), m_owner_thread(std::this_thread::get_id()) {}
@@ -58,6 +64,63 @@ void MdbxReadTransactionOwner::release() noexcept {
 }
 
 namespace {
+
+constexpr std::string_view kFrontierIdentityVersion = "mdbx-frontier-v2";
+
+void append_u8(std::string& value, std::uint8_t byte) {
+    value.push_back(static_cast<char>(byte));
+}
+
+void append_u64(std::string& value, std::uint64_t number) {
+    for(int shift = 56; shift >= 0; shift -= 8) {
+        value.push_back(static_cast<char>((number >> shift) & 0xffU));
+    }
+}
+
+void append_string(std::string& value, std::string_view text) {
+    append_u64(value, static_cast<std::uint64_t>(text.size()));
+    value.append(text.data(), text.size());
+}
+
+void append_digest(std::string& value, const ResourceBodyDigest& digest) {
+    append_u8(value, static_cast<std::uint8_t>(digest.algorithm));
+    value.append(reinterpret_cast<const char*>(digest.bytes.data()), digest.bytes.size());
+}
+
+void append_revision_ref(std::string& value, const ResourceRevisionRef& revision) {
+    append_string(value, revision.resource_id.value());
+    append_u64(value, revision.generation);
+    append_digest(value, revision.body_digest);
+}
+
+std::string make_frontier_identity(const MdbxResourceFrontierSnapshot& snapshot) {
+    std::string value{kFrontierIdentityVersion};
+    append_string(value, snapshot.scope_id.value());
+    append_u64(value, static_cast<std::uint64_t>(snapshot.entries.size()));
+    for(const auto& entry : snapshot.entries) {
+        append_u64(value, entry.unit.id.value());
+        append_u64(value, entry.unit.revision);
+        append_u64(value, static_cast<std::uint64_t>(entry.unit.kind));
+        append_u8(value, static_cast<std::uint8_t>(entry.unit.lifecycle_state));
+        append_u64(value, static_cast<std::uint64_t>(entry.unit.sources.size()));
+        for(const auto& source : entry.unit.sources) {
+            append_string(value, source.resource_id.value());
+            append_u8(value, static_cast<std::uint8_t>(source.reference_mode));
+            append_u8(value, source.resource_revision ? 1U : 0U);
+            if(source.resource_revision) {
+                append_revision_ref(value, *source.resource_revision);
+            }
+        }
+        append_u8(value, static_cast<std::uint8_t>(entry.root.state));
+        append_string(value, entry.root.revision.resource_id.value());
+        append_u64(value, entry.root.revision.generation);
+        append_u8(value, entry.root.revision.body_digest ? 1U : 0U);
+        if(entry.root.revision.body_digest) {
+            append_digest(value, *entry.root.revision.body_digest);
+        }
+    }
+    return value;
+}
 
 MdbxResourceManifestStorageOptions manifest_options(
     const std::shared_ptr<MdbxStorageContext>& context,
@@ -143,10 +206,34 @@ std::shared_ptr<MdbxStorageContext> require_context(
 
 } // namespace
 
+std::string MdbxResourceFrontierSnapshot::identity_token() const {
+    return make_frontier_identity(*this);
+}
+
+bool MdbxResourceFrontierSnapshot::authentic_for(
+    const std::shared_ptr<MdbxStorageContext>& context,
+    const std::string_view table_prefix
+) const noexcept {
+    if(!context || !witness || !witness->context
+       || witness->context->connection().get() != context->connection().get()
+       || witness->table_prefix != table_prefix
+       || entries.size() > kMdbxResourceFrontierMaxInputs) {
+        return false;
+    }
+    try {
+        const auto identity = make_frontier_identity(*this);
+        return identity.size() <= kMdbxResourceFrontierMaxDecodedBytes
+            && identity == witness->identity;
+    } catch(const std::exception&) {
+        return false;
+    }
+}
+
 MdbxResourceFrontierSnapshotReader::MdbxResourceFrontierSnapshotReader(
     std::shared_ptr<MdbxStorageContext> context,
     std::string table_prefix
 ) : m_context(std::move(context)),
+    m_table_prefix(table_prefix),
     m_manifests(manifest_options(require_context(m_context), table_prefix)),
     m_units(unit_options(require_context(m_context), std::move(table_prefix))) {}
 
@@ -252,6 +339,9 @@ MdbxResourceFrontierSnapshotResult MdbxResourceFrontierSnapshotReader::read(
         }
     }
 
+    snapshot.witness = std::make_shared<MdbxResourceFrontierSnapshot::Witness>(
+        MdbxResourceFrontierSnapshot::Witness{
+            m_context, m_table_prefix, snapshot.identity_token()});
     snapshot.read_transaction_owner.emplace(std::move(transaction));
     return {MdbxResourceFrontierSnapshotStatus::Available, std::move(snapshot)};
 }

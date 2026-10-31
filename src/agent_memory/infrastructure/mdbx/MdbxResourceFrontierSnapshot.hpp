@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -87,6 +88,23 @@ struct MdbxResourceFrontierSnapshot final {
     ScopeId scope_id;
     std::vector<MdbxResourceFrontierEntry> entries;
     std::optional<MdbxReadTransactionOwner> read_transaction_owner;
+
+    /// Returns the versioned, length-prefixed identity of the materialized
+    /// frontier. The encoding preserves input order and embedded delimiters.
+    [[nodiscard]] std::string identity_token() const;
+
+    /// Returns true only for a reader-created snapshot from this storage
+    /// context and table prefix whose admission-relevant fields are unchanged.
+    [[nodiscard]] bool authentic_for(
+        const std::shared_ptr<MdbxStorageContext>& context,
+        std::string_view table_prefix
+    ) const noexcept;
+
+private:
+    struct Witness;
+    std::shared_ptr<const Witness> witness;
+
+    friend class MdbxResourceFrontierSnapshotReader;
 };
 
 struct MdbxResourceFrontierSnapshotResult final {
@@ -120,6 +138,7 @@ public:
 
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
+    std::string m_table_prefix;
     MdbxResourceManifestStorage m_manifests;
     MdbxKnowledgeUnitStore m_units;
     mutable std::function<void(std::size_t)> m_read_hook_for_testing;

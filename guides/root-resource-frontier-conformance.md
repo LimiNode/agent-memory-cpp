@@ -1,10 +1,10 @@
 # Root Resource Frontier and Fenced Derived Publication
 
-Status: Draft design plus B1 read-snapshot implementation. B1 does not
-implement fenced publication, change production retrieval, or make derived
-records authoritative.
+Status: B1 integrated plus B2 fenced-publication implementation slice. B2
+does not change production retrieval, make derived records authoritative, or
+provide B3 query-time revalidation.
 
-Baseline: `main@0ae237eee8084d09778280c73fb604231a275607`, after #570.
+Baseline: `main@3358350a44b163142d6cc92d959f70940309610f`, after #572.
 
 ## Scope and boundary
 
@@ -137,9 +137,9 @@ deterministic writer interleaving between two reads, including a bounded
 injected-failure path that transfers exceptions from both worker threads and
 still joins them. The interleaving proves that both roots come from one read
 transaction even when a writer commits between the first and second point
-reads. B2 must still add the single writable transaction that re-checks this
-frontier and publishes derived rows; it is deliberately not part of the B1
-implementation.
+reads. The B2 slice below adds the single writable transaction that re-checks
+this frontier and publishes derived rows; query-time revalidation remains
+outside its scope.
 
 ## Required conformance scenarios
 
@@ -147,7 +147,7 @@ implementation.
 | --- | --- | --- |
 | `A@1 -> K@1 -> D@1`, then `A@2` | `D@1` is `Historical` only; `Current` read is `Stale` even if K still stores A@1. | #569 demonstrates the local-match limitation; implementation fixture required. |
 | One of several roots mutates | Whole publication is stale/rejected; no partial current result. | Design requirement. |
-| Mutation between snapshot and commit | Fence rejects the write; prior publication remains visible. | Existing primitive negative fixture; cross-store fixture deferred to implementation PR. |
+| Mutation between snapshot and commit | Fence rejects the write; prior publication remains visible. | B2 `publish_fenced()` covers root and KnowledgeUnit mutations with no partial rows. |
 | Mutation between admission and retrieval | Query-time revalidation returns `Stale` before body/evidence hydration. | Design requirement. |
 | Interrupted reverse invalidation | Old marker cannot authorize current data after reopen; historical read remains available. | Design requirement. |
 | Reopen/recovery after partial publication | Incomplete body/manifest/marker is not current and is either rolled back or explicitly recoverable. | Storage-only recovery exists; frontier witness gate deferred. |
@@ -163,11 +163,10 @@ update prepared with token `t1` is rejected after the durable token advances to
 `t2`, and that retrying with `t2` succeeds. This is the smallest executable
 negative fixture that the current API can support honestly.
 
-The multi-input snapshot, cross-store atomic publication, query-time
-revalidation and interrupted-invalidation scenarios are deliberately listed as
-implementation-PR gates. Adding tests that merely call independent `find()`
-operations would falsely claim a guarantee that the current API does not
-provide.
+The multi-input snapshot, query-time revalidation and interrupted-invalidation
+scenarios remain implementation-PR gates. Adding tests that merely call
+independent `find()` operations would falsely claim a guarantee that the
+current API does not provide.
 
 The B1 implementation fixture is
 `agent_memory_mdbx_resource_frontier_snapshot_test`. It exercises the
@@ -176,8 +175,53 @@ snapshot retains its typed read transaction owner. It also checks the bounded
 input/decoded-byte contract, including oversized and aggregate budget
 rejections, and uses a deterministic read hook to interleave a writer without
 sleeps. Waits are bounded and all worker exceptions are transferred to the
-test thread before both workers are joined. It does not claim write-side
-fencing or any current derived-publication outcome.
+test thread before both workers are joined. It does not claim query-time
+revalidation or any production current-retrieval outcome.
+
+## B2 implementation slice: fenced derived publication
+
+`MdbxDerivedPublicationStore::publish_fenced()` is the narrow write-side
+conformance slice built on B1. It takes the materialized frontier as the
+authoritative source of ordered unit and root revisions; the caller cannot
+replace those bindings through the publication request. One writable MDBX
+transaction re-reads every KnowledgeUnit and root manifest and rejects scope,
+lifecycle, unit-revision, source-binding, root-generation or root-digest
+mismatches with `FenceRejected`. On success, that same transaction writes the
+body, manifest and active marker and commits them atomically.
+
+The snapshot carries a reader-created witness bound to the shared
+`MdbxStorageContext` connection and table prefix. B2 rejects manually
+fabricated, cross-context or caller-mutated admission bindings before opening
+a writable transaction. The witness identity is a versioned length-prefixed
+encoding of the scope, ordered unit bindings, source revision bindings and
+root revision bindings; embedded `|`, `@` and `:` characters therefore cannot
+collide, and reordering inputs changes the identity. The witness is not a
+cryptographic signature and does not claim byte-for-byte immutability of
+decoded metadata that B2 does not use for admission. B1 remains authoritative
+for the 4096-input and 1 MiB serialized/estimated-materialized frontier
+budgets; B2 rejects caller-fabricated witnesses rather than reclassifying
+caller-mutated metadata as a new B1 snapshot.
+
+The B1 snapshot retains its read transaction for stable reads. MDBX does not
+permit opening a second transaction on the same connection and thread while
+that owner is active, so callers release `snapshot.read_transaction_owner`
+after materializing the frontier and before calling `publish_fenced()`. B2
+never trusts the retained read view for commit authorization; it always
+performs write-side revalidation. This is a transaction-lifetime constraint,
+not a weakening of the fence.
+
+The extended derived-publication fixture covers a successful B1-to-B2 handoff
+and `StoredMatch` after reopen, a root revision mutation between snapshot and
+commit, and a KnowledgeUnit revision mutation with an unchanged root. Both
+fence failures assert that no body, manifest or marker row remains. No new DBI
+or table is added; the existing manifest, unit and derived-publication tables
+are reused. It also covers publication-identity conflicts, caller-mutated
+frontier rejection, delimiter/order identity regressions and a non-default
+table prefix. The legacy unfenced `publish()` remains a storage-only
+compatibility primitive and is not an authoritative admission path. A narrow
+test-only fault seam throws after the body write and after the manifest write;
+both cases verify transaction rollback, physical-row absence and successful
+reopen without introducing a production recovery coordinator.
 
 ## Proposed read outcome contract
 
