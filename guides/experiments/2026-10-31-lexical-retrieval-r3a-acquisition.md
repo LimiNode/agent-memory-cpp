@@ -23,12 +23,24 @@ The acquisition run at the pinned source produced:
 | Field | Value |
 | --- | --- |
 | selected documents | 1,889 |
-| excluded files | 21 |
+| excluded files | 17 |
 | corpus digest | `473398540b16e43b2fdb2a502b8b2e459e9cc5641f2393e080a825e39f9c4dfe` |
 | digest definition | SHA-256 over ordered document ID, document digest, and byte count |
 | qrels | none; `JUDGMENT_READINESS_ONLY` |
 
-The compact manifest is committed at
+The same pinned-tree replay measured 20,548,640 normalized bytes. The document
+size distribution is min 27 bytes, median 5,269 bytes, p95 33,650 bytes, and
+max 573,147 bytes. By extension the selected set contains 740 Python, 416
+Markdown, 389 JSON, 206 C++, 119 C++ headers, 13 text, 5 TSV, and 1 YAML
+documents. The broad source slices are 325 C++/header documents, 429
+documentation/text documents, 72 documents below `tests/`, and 997 below
+`tools/` (slices overlap by design). A diagnostic Unicode scan found Cyrillic
+characters in 41 documents and Latin characters in all 1,889 documents; 41
+were therefore classified as RU/Latin mixed by this intentionally simple
+signal. These language counts are diagnostics, not language labels: code,
+identifiers, transliteration, and short files can make the heuristic wrong.
+
+The compact manifest and frozen document index are committed at
 `tools/lexical-research/fixtures/lexical_retrieval_r3a_manifest.json`.
 The generated JSONL is intentionally not committed; it is reproducible with:
 
@@ -39,8 +51,22 @@ py -3 tools/lexical-research/prepare_r3a_corpus.py `
   --output .artifacts/lexical_retrieval_r3a_manifest.json
 ```
 
-The command writes the manifest and a sibling JSONL corpus. A self-test covers
-UTF-8 normalization, deterministic count, and the no-synthetic-qrels rule.
+The command reads only the pinned Git tree (`git ls-tree` plus blob reads); it
+does not sign the current working tree as another revision. It writes the
+manifest, a sibling JSONL corpus, and a compact frozen per-document index. A
+frozen replay is fail-closed and can be checked without rewriting any files:
+
+```powershell
+py -3 tools/lexical-research/prepare_r3a_corpus.py `
+  --root . `
+  --verify `
+  --manifest tools/lexical-research/fixtures/lexical_retrieval_r3a_manifest.json
+```
+
+The self-test covers pinned-commit mismatch, frozen digest mutation, CRLF/LF
+normalization, non-UTF-8 and oversized files, missing required roots, generated
+file isolation, empty files, and deterministic repeated acquisition. Symlink entries are
+excluded from a Git tree rather than followed, and required roots fail closed.
 
 ## What this source does and does not represent
 
@@ -48,8 +74,10 @@ The corpus contains real project C++, tests, retrieval/storage tools, and
 English and Russian technical material where present in the repository. It is
 a concrete technical evaluation source, not evidence that the repository is a
 statistically representative sample of all agent-memory workloads. The
-scenario quotas below are therefore acceptance criteria for query authoring,
-not claims about the corpus before inspection.
+scenario quotas below are therefore planned quotas for query authoring, not
+claims about the corpus or evidence that 60 valid queries already exist.
+Scenario coverage remains `unmeasured` until query authoring and pool
+construction produce a frozen query manifest.
 
 If a quota cannot be filled without inventing or duplicating scenarios, R3A
 must report the shortfall and remain readiness-only. A larger external corpus

@@ -268,6 +268,11 @@ jobs:
       - name: Self-test R3A corpus acquisition validator
         run: python tools/lexical-research/prepare_r3a_corpus.py --self-test
 
+      - name: Verify frozen R3A corpus manifest
+        run: >-
+          python tools/lexical-research/prepare_r3a_corpus.py --root . --verify
+          --manifest tools/lexical-research/fixtures/lexical_retrieval_r3a_manifest.json
+
       - name: Set up Python for DBI manifest checks
         if: needs.changes.outputs.dbi == 'true'
         uses: actions/setup-python@v5

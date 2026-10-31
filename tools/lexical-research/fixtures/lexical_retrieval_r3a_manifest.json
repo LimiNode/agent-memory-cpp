@@ -1,36 +1,132 @@
 {
-  "schema_version": 1,
-  "protocol": "lexical_retrieval_r3a_acquisition",
-  "source": {
-    "repository": "LimiNode/agent-memory-cpp",
-    "license": "MIT",
-    "commit": "c71e275fd876f64f6dfb50dd76ed284b42fce9b1",
-    "roots": ["guides", "src", "tests", "tools"]
+  "corpus": {
+    "corpus_digest": "473398540b16e43b2fdb2a502b8b2e459e9cc5641f2393e080a825e39f9c4dfe",
+    "digest_algorithm": "sha256(path/id/digest/bytes-v1)",
+    "document_count": 1889,
+    "documents_file": "lexical_retrieval_r3a_manifest.jsonl",
+    "documents_index": "lexical_retrieval_r3a_documents.json",
+    "excluded_count": 17
   },
+  "excluded": [
+    {
+      "path": "guides/experiments/2026-10-13-pca12-divergent-path-audit.csv",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-aggregate-signature-smoke.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-binary-lifecycle-config-compat.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-binary-lifecycle-smoke.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-binary-rerank-grid-smoke.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-precomputed-embedding-artifact-canonicalization.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-precomputed-embedding-artifact-negative.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-precomputed-embedding-binary-rerank-external-hash.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-precomputed-embedding-binary-rerank-medium.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-precomputed-embedding-binary-rerank-minilm-large.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-precomputed-embedding-binary-rerank-minilm.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-precomputed-embedding-binary-rerank-multilingual-e5-small.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-precomputed-embedding-binary-rerank-smoke.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-precomputed-embedding-external-hash-regeneration.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "tools/agent-memory-bench/validate-precomputed-fixture-content-contract-negative.cmake",
+      "reason": "extension"
+    },
+    {
+      "path": "guides/experiments/2026-09-12-semantic-k8-r4-spann-oracle-result.json",
+      "reason": "size_limit"
+    },
+    {
+      "path": "guides/experiments/2026-10-06-incremental-edit-reindex-screen.receipt.json",
+      "reason": "size_limit"
+    }
+  ],
+  "judgments": {
+    "adjudication_on_disagreement": true,
+    "independent_judges_per_pair": 2,
+    "planned_judgment_pool_per_query": 20,
+    "planned_query_count": 60,
+    "qrels_present": false,
+    "status": "JUDGMENT_READINESS_ONLY"
+  },
+  "protocol": "lexical_retrieval_r3a_acquisition",
+  "schema_version": 2,
   "selection": {
-    "allowed_extensions": [".cpp", ".h", ".hpp", ".json", ".md", ".py", ".tsv", ".txt", ".yaml", ".yml"],
+    "allowed_extensions": [
+      ".cpp",
+      ".h",
+      ".hpp",
+      ".json",
+      ".md",
+      ".py",
+      ".tsv",
+      ".txt",
+      ".yaml",
+      ".yml"
+    ],
+    "excluded_path_parts": [
+      ".git",
+      "build",
+      "build-mdbx-benchmark",
+      "build-r2",
+      "external"
+    ],
+    "excluded_paths": [
+      "guides/experiments/2026-10-31-lexical-retrieval-r3a-acquisition.md",
+      "tools/lexical-research/fixtures/lexical_retrieval_r3a_documents.json",
+      "tools/lexical-research/fixtures/lexical_retrieval_r3a_manifest.json",
+      "tools/lexical-research/prepare_r3a_corpus.py"
+    ],
+    "line_endings": "CRLF/CR normalized to LF before hashing",
     "max_document_bytes": 1048576,
-    "excluded_path_parts": [".git", "build", "build-mdbx-benchmark", "build-r2", "external"],
+    "source_mode": "pinned_git_tree",
     "uses_qrels_for_selection": false
   },
-  "corpus": {
-    "document_count": 1889,
-    "excluded_count": 21,
-    "digest_algorithm": "sha256(path/id/digest/bytes-v1)",
-    "corpus_digest": "473398540b16e43b2fdb2a502b8b2e459e9cc5641f2393e080a825e39f9c4dfe",
-    "documents_file": "generated/lexical_retrieval_r3a_corpus.jsonl"
-  },
-  "judgments": {
-    "status": "JUDGMENT_READINESS_ONLY",
-    "qrels_present": false,
-    "planned_query_count": 60,
-    "planned_judgment_pool_per_query": 20,
-    "independent_judges_per_pair": 2,
-    "adjudication_on_disagreement": true
-  },
-  "limitations": [
-    "The repository corpus is a permitted, concrete technical corpus, not a claim of broad user-memory representativeness.",
-    "No quality aggregate is valid until independent judgments and adjudication are completed.",
-    "The JSONL corpus is generated locally and is intentionally not committed."
-  ]
+  "source": {
+    "commit": "c71e275fd876f64f6dfb50dd76ed284b42fce9b1",
+    "license": "MIT",
+    "repository": "LimiNode/agent-memory-cpp",
+    "roots": [
+      "guides",
+      "src",
+      "tests",
+      "tools"
+    ]
+  }
 }
