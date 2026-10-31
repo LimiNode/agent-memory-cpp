@@ -190,6 +190,63 @@ if(AGENT_MEMORY_BUILD_BENCHMARKS)
         target_compile_features(agent_memory_segmented_lexical_benchmark
             PRIVATE cxx_std_17
         )
+        add_executable(agent_memory_lexical_retrieval_qualification_r2
+            tools/lexical-retrieval-qualification-r2.cpp
+        )
+        target_link_libraries(agent_memory_lexical_retrieval_qualification_r2
+            PRIVATE agent_memory::agent_memory
+                    ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET}
+        )
+        target_compile_features(agent_memory_lexical_retrieval_qualification_r2
+            PRIVATE cxx_std_17
+        )
+        if(AGENT_MEMORY_BUILD_TESTS)
+            find_package(Python3 COMPONENTS Interpreter REQUIRED)
+            add_test(
+                NAME agent_memory_lexical_retrieval_qualification_r2_smoke
+                COMMAND $<TARGET_FILE:agent_memory_lexical_retrieval_qualification_r2>
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/fixtures/lexical_retrieval_qualification_r2_corpus.tsv
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/fixtures/lexical_retrieval_qualification_r2_queries.tsv
+                        ${CMAKE_CURRENT_BINARY_DIR}/lexical-retrieval-r2-receipt.json
+                        ${CMAKE_CURRENT_BINARY_DIR}/lexical-retrieval-r2-mdbx
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_lexical_retrieval_qualification_r2_receipt
+                COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/validate_lexical_retrieval_r2.py
+                        ${CMAKE_CURRENT_BINARY_DIR}/lexical-retrieval-r2-receipt.json
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            set_tests_properties(
+                agent_memory_lexical_retrieval_qualification_r2_receipt
+                PROPERTIES DEPENDS agent_memory_lexical_retrieval_qualification_r2_smoke
+            )
+            add_test(
+                NAME agent_memory_lexical_retrieval_qualification_r2_validator_self_test
+                COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/validate_lexical_retrieval_r2.py
+                        --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_lexical_retrieval_qualification_r2_parallel
+                COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/run_lexical_retrieval_r2_parallel.py
+                        $<TARGET_FILE:agent_memory_lexical_retrieval_qualification_r2>
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/fixtures/lexical_retrieval_qualification_r2_corpus.tsv
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/fixtures/lexical_retrieval_qualification_r2_queries.tsv
+                        ${CMAKE_CURRENT_BINARY_DIR}/lexical-retrieval-r2-parallel-parent
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_lexical_retrieval_qualification_r2_parallel_self_test
+                COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/run_lexical_retrieval_r2_parallel.py
+                        --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+        endif()
     endif()
 endif()
 
