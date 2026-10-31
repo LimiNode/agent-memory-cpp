@@ -239,6 +239,13 @@ if(AGENT_MEMORY_BUILD_BENCHMARKS)
                         ${CMAKE_CURRENT_BINARY_DIR}/lexical-retrieval-r2-parallel-parent
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
+            add_test(
+                NAME agent_memory_lexical_retrieval_qualification_r2_parallel_self_test
+                COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/run_lexical_retrieval_r2_parallel.py
+                        --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
         endif()
     endif()
 endif()

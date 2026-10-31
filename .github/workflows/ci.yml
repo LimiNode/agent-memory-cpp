@@ -389,7 +389,7 @@ jobs:
           ctest --test-dir build-mdbx-benchmark --build-config Release
           --output-on-failure
           -R
-          "agent_memory_mih_storage|agent_memory_native_thq_mdbx_serving_(lifecycle|integer_key)|agent_memory_native_mdbx_(serving_audit|layout_sweep)(_audit)?_self_test|agent_memory_mdbx_finalist_harness_self_test|agent_memory_segmented_lexical_(benchmark_contract|qualification_(validator_self_test|corpus_self_test|receipt_replay|timeout_self_test))|agent_memory_lexical_retrieval_qualification_r2_(smoke|receipt|validator_self_test|parallel)"
+          "agent_memory_mih_storage|agent_memory_native_thq_mdbx_serving_(lifecycle|integer_key)|agent_memory_native_mdbx_(serving_audit|layout_sweep)(_audit)?_self_test|agent_memory_mdbx_finalist_harness_self_test|agent_memory_segmented_lexical_(benchmark_contract|qualification_(validator_self_test|corpus_self_test|receipt_replay|timeout_self_test))|agent_memory_lexical_retrieval_qualification_r2_(smoke|receipt|validator_self_test|parallel|parallel_self_test)"
 
       - name: Upload lexical retrieval R2 receipt
         uses: actions/upload-artifact@v4

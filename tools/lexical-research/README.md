@@ -147,10 +147,13 @@ control, not a semantic abstention test.
 R2 is the first matched C++ smoke for the production BM25 baseline,
 flat-v2, and segmented-v2. It reuses the existing MDBX benchmark build and
 adds no production retrieval API. Build with `AGENT_MEMORY_BUILD_BENCHMARKS=ON`
-and run the registered CTest pair; the receipt validator requires exact logical
+and run the registered CTest tests; the receipt validator requires exact logical
 ranking parity, score parity within the receipt's `1e-5` tolerance, lifecycle timings, and explicit `QUALITY_INCONCLUSIVE`
 and `NOT_MEASURED_NO_CANONICAL_READ_PATH` boundaries. It also verifies
 per-query ranked IDs/scores, frozen fixture digests, and the distinction between
 the production exact-search latency path and the diagnostic durable snapshot
 scorer. See
 [`guides/experiments/2026-10-31-lexical-retrieval-qualification-r2.md`](../../guides/experiments/2026-10-31-lexical-retrieval-qualification-r2.md).
+The parallel regression preserves a pre-existing external sentinel, uses a
+bounded shared deadline, and reaps every child. Its separate self-test covers
+both a non-zero child and a hung child.

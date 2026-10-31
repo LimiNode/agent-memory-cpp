@@ -25,8 +25,9 @@ The small committed smoke inputs are:
 
 The C++ harness is `tools/lexical-retrieval-qualification-r2.cpp`. It builds
 all three paths, scores the same queries, reopens the MDBX backends, and emits
-a receipt. The CTest smoke, validator mutation self-test, and bounded parallel
-run are registered only when the existing MDBX benchmark option is enabled.
+a receipt. The CTest smoke, validator mutation self-test, bounded parallel
+run, and process-supervision negative self-test are registered only when the
+existing MDBX benchmark option is enabled.
 Ranking parity is exact; score parity uses the receipt's fixed absolute
 tolerance of `1e-5` to account for the reference float implementation versus
 the double-valued diagnostic scorer.
@@ -40,8 +41,11 @@ no-answer control, avoiding an ambiguous trailing empty field.
 
 Each run reserves a fresh, sentinel-marked MDBX directory under the requested
 parent and removes only that owned directory through RAII. The parallel CTest
-regression starts two processes, checks that both receipts validate, and checks
-that an external sentinel in the parent remains unchanged.
+regression starts two processes, uses a pre-existing sentinel without
+overwriting it, applies a shared bounded deadline, reaps every child after
+success or failure, checks that both receipts validate, and checks that the
+external sentinel in the parent remains unchanged. Its separate negative
+self-test covers both a non-zero child and a hung child.
 
 The receipt contains ordered per-query IDs and scores for every backend, the
 candidate count, frozen fixture digests, tokenizer/scorer/backend revisions,
