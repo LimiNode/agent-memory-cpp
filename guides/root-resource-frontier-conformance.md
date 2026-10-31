@@ -189,6 +189,15 @@ lifecycle, unit-revision, source-binding, root-generation or root-digest
 mismatches with `FenceRejected`. On success, that same transaction writes the
 body, manifest and active marker and commits them atomically.
 
+The snapshot carries a reader-created witness bound to the shared
+`MdbxStorageContext` and table prefix. B2 rejects manually fabricated,
+cross-context or caller-mutated snapshots before opening a writable
+transaction. The witness identity is a versioned length-prefixed encoding of
+the scope, ordered unit bindings, source revision bindings and root revision
+bindings; embedded `|`, `@` and `:` characters therefore cannot collide, and
+reordering inputs changes the identity. The identity is bounded by the same
+1 MiB frontier budget used by B1.
+
 The B1 snapshot retains its read transaction for stable reads. MDBX does not
 permit opening a second transaction on the same connection and thread while
 that owner is active, so callers release `snapshot.read_transaction_owner`
@@ -202,7 +211,10 @@ and `StoredMatch` after reopen, a root revision mutation between snapshot and
 commit, and a KnowledgeUnit revision mutation with an unchanged root. Both
 fence failures assert that no body, manifest or marker row remains. No new DBI
 or table is added; the existing manifest, unit and derived-publication tables
-are reused.
+are reused. It also covers publication-identity conflicts, caller-mutated
+frontier rejection, delimiter/order identity regressions and a non-default
+table prefix. The legacy unfenced `publish()` remains a storage-only
+compatibility primitive and is not an authoritative admission path.
 
 ## Proposed read outcome contract
 

@@ -9,6 +9,7 @@
 
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -136,6 +137,19 @@ void write_field(const std::shared_ptr<agent_memory::MdbxStorageContext>& contex
     auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
     table.insert_or_assign(field_key(publication_id, field), std::move(value), txn);
     txn.commit();
+}
+
+std::optional<std::string> read_field(
+    const std::shared_ptr<agent_memory::MdbxStorageContext>& context,
+    std::string_view publication_id,
+    char field
+) {
+    mdbxc::KeyValueTable<std::string, std::string> table(
+        context->connection(), "agent_memory_unit_projections");
+    auto txn = context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+    const auto value = table.find(field_key(publication_id, field), txn);
+    txn.commit();
+    return value;
 }
 
 void expect_invalid_publish(agent_memory::MdbxDerivedPublicationStore& store,
@@ -308,8 +322,8 @@ int main() {
         MdbxKnowledgeUnitStore units({"", "agent_memory", false,
                                       kDefaultMdbxMaxDbs, context});
         const ScopeId fenced_scope{"fenced-scope"};
-        const ResourceId fenced_resource_a{"fenced-root-a"};
-        const ResourceId fenced_resource_b{"fenced-root-b"};
+        const ResourceId fenced_resource_a{"fenced|root:@a"};
+        const ResourceId fenced_resource_b{"fenced|root:@b"};
         manifests.upsert_manifest(frontier_manifest(fenced_resource_a, 1, 21));
         manifests.upsert_manifest(frontier_manifest(fenced_resource_b, 1, 22));
         const auto fenced_unit_a = units.create_or_get_unit(
@@ -326,9 +340,24 @@ int main() {
         expect(frontier_result.status == MdbxResourceFrontierSnapshotStatus::Available
                    && frontier_result.snapshot,
                "fenced publication fixture did not obtain a B1 frontier");
+        const auto original_identity = frontier_result.snapshot->identity_token();
+        expect(original_identity.rfind("mdbx-frontier-v2", 0) == 0
+                   && original_identity.find("fenced|root:@a") != std::string::npos,
+               "frontier identity did not use the versioned length-prefixed encoding");
         // The B1 reader pins a read transaction for stable reads. Release it
         // before opening B2's writable transaction on the same MDBX thread.
         frontier_result.snapshot->read_transaction_owner.reset();
+        auto reversed_result = frontier_reader.read(fenced_scope, {
+            {fenced_unit_b.id, fenced_unit_b.revision,
+             ResourceRevisionRef{fenced_resource_b, 1, frontier_digest(22)}},
+            {fenced_unit_a.id, fenced_unit_a.revision,
+             ResourceRevisionRef{fenced_resource_a, 1, frontier_digest(21)}}
+        });
+        expect(reversed_result.status == MdbxResourceFrontierSnapshotStatus::Available
+                   && reversed_result.snapshot
+                   && reversed_result.snapshot->identity_token() != original_identity,
+               "frontier identity did not preserve input order");
+        reversed_result.snapshot->read_transaction_owner.reset();
         const auto fenced_request = MdbxFencedDerivedPublicationRequest{
             "fenced-publication", ProjectionKind::QACombined, 1,
             "fenced answer", 1, "pipeline@1"};
@@ -342,6 +371,39 @@ int main() {
             fenced.publication->request.dependency_frontier);
         expect(fenced_read.status == DerivedPublicationReadStatus::StoredMatch,
                "fenced publication did not produce a durable storage match");
+        const auto identity_conflict = store.publish_fenced(
+            *frontier_result.snapshot,
+            MdbxFencedDerivedPublicationRequest{
+                "fenced-publication", ProjectionKind::QACombined, 1,
+                "conflicting body", 1, "pipeline@1"});
+        expect(identity_conflict.status == MdbxFencedDerivedPublicationStatus::InvalidInput,
+               "conflicting replay of a publication identity was accepted");
+        expect(read_field(context, "fenced-publication", 'b') ==
+                   std::optional<std::string>{"fenced answer"},
+               "publication identity conflict damaged the stored body");
+
+        auto forged_result = frontier_reader.read(fenced_scope, {
+            {fenced_unit_a.id, fenced_unit_a.revision,
+             ResourceRevisionRef{fenced_resource_a, 1, frontier_digest(21)}},
+            {fenced_unit_b.id, fenced_unit_b.revision,
+             ResourceRevisionRef{fenced_resource_b, 1, frontier_digest(22)}}
+        });
+        expect(forged_result.status == MdbxResourceFrontierSnapshotStatus::Available
+                   && forged_result.snapshot,
+               "forged frontier fixture did not obtain a B1 frontier");
+        forged_result.snapshot->entries.front().unit.revision++;
+        forged_result.snapshot->read_transaction_owner.reset();
+        const auto forged = store.publish_fenced(
+            *forged_result.snapshot,
+            MdbxFencedDerivedPublicationRequest{
+                "fenced-forged", ProjectionKind::QACombined, 1,
+                "must not publish", 1, "pipeline@1"});
+        expect(forged.status == MdbxFencedDerivedPublicationStatus::InvalidInput,
+               "caller-mutated frontier was accepted as a trusted witness");
+        expect(!read_field(context, "fenced-forged", 'b')
+                   && !read_field(context, "fenced-forged", 'm')
+                   && !read_field(context, "fenced-forged", 'a'),
+               "untrusted frontier left a physical publication row");
 
         manifests.upsert_manifest(frontier_manifest(fenced_resource_b, 2, 23));
         const auto stale_fenced = store.publish_fenced(
@@ -354,6 +416,10 @@ int main() {
         expect(store.read(fenced_scope, "fenced-stale", {}, "").status
                    == DerivedPublicationReadStatus::NotFound,
                "fenced rejection left partial publication rows");
+        expect(!read_field(context, "fenced-stale", 'b')
+                   && !read_field(context, "fenced-stale", 'm')
+                   && !read_field(context, "fenced-stale", 'a'),
+               "root fence rejection left a physical publication row");
 
         // Restore the other root so the next case isolates a unit-revision
         // mutation rather than inheriting the previous root mismatch.
@@ -373,6 +439,10 @@ int main() {
         expect(store.read(fenced_scope, "fenced-stale-unit", {}, "").status
                    == DerivedPublicationReadStatus::NotFound,
                "unit fence rejection left partial publication rows");
+        expect(!read_field(context, "fenced-stale-unit", 'b')
+                   && !read_field(context, "fenced-stale-unit", 'm')
+                   && !read_field(context, "fenced-stale-unit", 'a'),
+               "unit fence rejection left a physical publication row");
     }
 
     {
@@ -410,6 +480,59 @@ int main() {
         expect(partial.status == DerivedPublicationReadStatus::Unavailable,
                "body without a durable marker was admitted");
     }
+
+    const auto custom_path = std::filesystem::temp_directory_path() /
+        "agent_memory_m0_derived_publication_store_custom_prefix_test.mdbx";
+    {
+        std::error_code custom_error;
+        std::filesystem::remove(custom_path, custom_error);
+        expect(!custom_error, "custom-prefix MDBX database could not be reset");
+        auto context = MdbxStorageContext::open(custom_path.string());
+        MdbxResourceManifestStorageOptions manifest_options;
+        manifest_options.context = context;
+        manifest_options.table_prefix = "custom_b2";
+        MdbxResourceManifestStorage manifests(std::move(manifest_options));
+        MdbxKnowledgeUnitStoreOptions unit_options;
+        unit_options.context = context;
+        unit_options.table_prefix = "custom_b2";
+        MdbxKnowledgeUnitStore units(std::move(unit_options));
+        const ScopeId scope{"custom-scope"};
+        const ResourceId resource{"custom-root"};
+        manifests.upsert_manifest(frontier_manifest(resource, 1, 31));
+        const auto unit = units.create_or_get_unit(
+            frontier_unit_request(scope, resource, 1, 31));
+        MdbxResourceFrontierSnapshotReader reader(context, "custom_b2");
+        auto snapshot = reader.read(scope, {
+            {unit.id, unit.revision,
+             ResourceRevisionRef{resource, 1, frontier_digest(31)}}
+        });
+        expect(snapshot.status == MdbxResourceFrontierSnapshotStatus::Available
+                   && snapshot.snapshot,
+               "custom-prefix frontier was unavailable");
+        snapshot.snapshot->read_transaction_owner.reset();
+        MdbxDerivedPublicationStoreOptions publication_options;
+        publication_options.context = context;
+        publication_options.table_prefix = "custom_b2";
+        MdbxDerivedPublicationStore custom_store(std::move(publication_options));
+        const auto custom_publication = custom_store.publish_fenced(
+            *snapshot.snapshot,
+            MdbxFencedDerivedPublicationRequest{
+                "custom-publication", ProjectionKind::QACombined, 1,
+                "custom body", 1, "pipeline@1"});
+        expect(custom_publication.status == MdbxFencedDerivedPublicationStatus::Published
+                   && custom_publication.publication,
+               "custom table prefix did not share the trusted storage domain");
+        expect(custom_store.read(
+                   scope, "custom-publication",
+                   custom_publication.publication->request.inputs,
+                   custom_publication.publication->request.dependency_frontier).status
+                   == DerivedPublicationReadStatus::StoredMatch,
+               "custom-prefix publication was not readable");
+    }
+    std::error_code custom_cleanup_error;
+    std::filesystem::remove(custom_path, custom_cleanup_error);
+    expect(!custom_cleanup_error && !std::filesystem::exists(custom_path),
+           "custom-prefix MDBX database could not be removed");
 
     const auto removed = std::filesystem::remove(path, error);
     expect(!error && (removed || !std::filesystem::exists(path)),

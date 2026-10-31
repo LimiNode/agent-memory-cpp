@@ -252,24 +252,6 @@ std::string digest_token(const ResourceBodyDigest& digest) {
     return value;
 }
 
-std::string frontier_token(const MdbxResourceFrontierSnapshot& frontier) {
-    std::string value{"mdbx-frontier-v1|"};
-    value += frontier.scope_id.value();
-    for(const auto& entry : frontier.entries) {
-        value.push_back('|');
-        value += std::to_string(entry.unit.id.value());
-        value.push_back('@');
-        value += std::to_string(entry.unit.revision);
-        value.push_back(':');
-        value += entry.root.revision.resource_id.value();
-        value.push_back('@');
-        value += std::to_string(entry.root.revision.generation);
-        value.push_back(':');
-        value += digest_token(*entry.root.revision.body_digest);
-    }
-    return value;
-}
-
 bool same_root_revision(const ResourceRevision& left, const ResourceRevision& right) {
     if(left.resource_id != right.resource_id || left.generation != right.generation
        || left.body_digest.has_value() != right.body_digest.has_value()) {
@@ -378,6 +360,9 @@ MdbxFencedDerivedPublicationResult MdbxDerivedPublicationStore::publish_fenced(
        || request.dependency_frontier.empty()) {
         return {MdbxFencedDerivedPublicationStatus::InvalidInput, std::nullopt};
     }
+    if(!frontier.authentic_for(m_impl->context, m_impl->table_prefix)) {
+        return {MdbxFencedDerivedPublicationStatus::InvalidInput, std::nullopt};
+    }
 
     DerivedPublicationRequest publication;
     publication.scope_id = frontier.scope_id;
@@ -408,7 +393,7 @@ MdbxFencedDerivedPublicationResult MdbxDerivedPublicationStore::publish_fenced(
             digest_token(*entry.root.revision.body_digest)
         });
     }
-    publication.dependency_frontier = frontier_token(frontier);
+    publication.dependency_frontier = frontier.identity_token();
     publication.dependency_frontier.push_back('|');
     publication.dependency_frontier += request.dependency_frontier;
 

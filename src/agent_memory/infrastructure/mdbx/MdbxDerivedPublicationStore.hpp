@@ -72,6 +72,7 @@ namespace agent_memory {
         /// The B1 snapshot's read transaction must be released before this
         /// call when both operations run on the same MDBX thread; the method
         /// then revalidates the materialized bindings in its write transaction.
+        /// A snapshot not created by the matching B1 reader/context is rejected.
         [[nodiscard]] MdbxFencedDerivedPublicationResult publish_fenced(
             const MdbxResourceFrontierSnapshot& frontier,
             MdbxFencedDerivedPublicationRequest request
