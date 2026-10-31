@@ -8,6 +8,7 @@
 #include <agent_memory/storage/IDerivedPublicationStore.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -46,12 +47,20 @@ namespace agent_memory {
         std::optional<DerivedPublication> publication;
     };
 
+    /// rief Test-only write stages for transaction rollback coverage.
+    enum class MdbxDerivedPublicationFaultPoint : std::uint8_t {
+        AfterBodyWrite,
+        AfterManifestWrite
+    };
+
     struct MdbxDerivedPublicationStoreOptions final {
         std::string path;
         std::string table_prefix = "agent_memory";
         bool relative_to_exe = false;
         std::int64_t max_dbs = kDefaultMdbxMaxDbs;
         std::shared_ptr<MdbxStorageContext> context;
+        /// Test-only fenced-write fault seam; production callers leave empty.
+        std::function<void(MdbxDerivedPublicationFaultPoint)> fault_injector;
     };
 
     class MdbxDerivedPublicationStore final : public IDerivedPublicationStore {

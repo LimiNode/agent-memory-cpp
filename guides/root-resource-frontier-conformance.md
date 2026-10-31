@@ -190,13 +190,17 @@ mismatches with `FenceRejected`. On success, that same transaction writes the
 body, manifest and active marker and commits them atomically.
 
 The snapshot carries a reader-created witness bound to the shared
-`MdbxStorageContext` and table prefix. B2 rejects manually fabricated,
-cross-context or caller-mutated snapshots before opening a writable
-transaction. The witness identity is a versioned length-prefixed encoding of
-the scope, ordered unit bindings, source revision bindings and root revision
-bindings; embedded `|`, `@` and `:` characters therefore cannot collide, and
-reordering inputs changes the identity. The identity is bounded by the same
-1 MiB frontier budget used by B1.
+`MdbxStorageContext` connection and table prefix. B2 rejects manually
+fabricated, cross-context or caller-mutated admission bindings before opening
+a writable transaction. The witness identity is a versioned length-prefixed
+encoding of the scope, ordered unit bindings, source revision bindings and
+root revision bindings; embedded `|`, `@` and `:` characters therefore cannot
+collide, and reordering inputs changes the identity. The witness is not a
+cryptographic signature and does not claim byte-for-byte immutability of
+decoded metadata that B2 does not use for admission. B1 remains authoritative
+for the 4096-input and 1 MiB serialized/estimated-materialized frontier
+budgets; B2 rejects caller-fabricated witnesses rather than reclassifying
+caller-mutated metadata as a new B1 snapshot.
 
 The B1 snapshot retains its read transaction for stable reads. MDBX does not
 permit opening a second transaction on the same connection and thread while
@@ -214,7 +218,10 @@ or table is added; the existing manifest, unit and derived-publication tables
 are reused. It also covers publication-identity conflicts, caller-mutated
 frontier rejection, delimiter/order identity regressions and a non-default
 table prefix. The legacy unfenced `publish()` remains a storage-only
-compatibility primitive and is not an authoritative admission path.
+compatibility primitive and is not an authoritative admission path. A narrow
+test-only fault seam throws after the body write and after the manifest write;
+both cases verify transaction rollback, physical-row absence and successful
+reopen without introducing a production recovery coordinator.
 
 ## Proposed read outcome contract
 

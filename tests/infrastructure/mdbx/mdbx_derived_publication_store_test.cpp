@@ -7,12 +7,21 @@
 
 #include <mdbx_containers/KeyValueTable.hpp>
 
+#include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <utility>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -20,10 +29,84 @@ void expect(bool condition, const char* message) {
     if(!condition) throw std::runtime_error(message);
 }
 
-std::filesystem::path test_path() {
-    return std::filesystem::temp_directory_path() /
-        "agent_memory_m0_derived_publication_store_test.mdbx";
+void make_removable(const std::filesystem::path& path) noexcept {
+#ifdef _WIN32
+    std::error_code error;
+    if(std::filesystem::exists(path, error) && !error) {
+        SetFileAttributesW(path.wstring().c_str(), FILE_ATTRIBUTE_NORMAL);
+    }
+#else
+    static_cast<void>(path);
+#endif
 }
+
+class TestDatabase final {
+public:
+    static TestDatabase create(std::string_view prefix) {
+        const auto root = std::filesystem::temp_directory_path();
+        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+        for(std::uint64_t attempt = 0; attempt < 64; ++attempt) {
+            const auto directory = root /
+                (std::string{prefix} + "_" + std::to_string(nonce) + "_" +
+                 std::to_string(attempt));
+            std::error_code error;
+            if(std::filesystem::create_directory(directory, error)) {
+                return TestDatabase(directory, directory / "database.mdbx");
+            }
+            if(error && error != std::make_error_code(std::errc::file_exists)) {
+                throw std::runtime_error("MDBX test directory creation failed: " +
+                                         error.message());
+            }
+        }
+        throw std::runtime_error("MDBX test directory reservation failed");
+    }
+
+    TestDatabase(const TestDatabase&) = delete;
+    TestDatabase& operator=(const TestDatabase&) = delete;
+    TestDatabase(TestDatabase&&) = delete;
+    TestDatabase& operator=(TestDatabase&&) = delete;
+
+    ~TestDatabase() {
+        std::error_code ignored;
+        cleanup(ignored);
+    }
+
+    [[nodiscard]] const std::filesystem::path& path() const noexcept { return m_path; }
+
+    void cleanup_or_fail() {
+        std::error_code error;
+        cleanup(error);
+        expect(!error && m_directory.empty(), "MDBX test database cleanup failed");
+    }
+
+private:
+    TestDatabase(std::filesystem::path directory, std::filesystem::path path)
+        : m_directory(std::move(directory)),
+          m_path(std::move(path)),
+          m_lock_path(std::filesystem::path{m_path.string() + "-lck"}) {}
+
+    void cleanup(std::error_code& result) noexcept {
+        if(m_directory.empty()) return;
+        result.clear();
+        std::filesystem::remove(m_path, result);
+        if(result) return;
+        result.clear();
+        make_removable(m_lock_path);
+        std::filesystem::remove(m_lock_path, result);
+        if(result) return;
+        result.clear();
+        std::filesystem::remove(m_directory, result);
+        if(!result) {
+            m_directory.clear();
+            m_path.clear();
+            m_lock_path.clear();
+        }
+    }
+
+    std::filesystem::path m_directory;
+    std::filesystem::path m_path;
+    std::filesystem::path m_lock_path;
+};
 
 agent_memory::DerivedPublicationRequest fixture_request(
     std::string body = "The answer is 42.",
@@ -165,10 +248,8 @@ void expect_invalid_publish(agent_memory::MdbxDerivedPublicationStore& store,
 
 int main() {
     using namespace agent_memory;
-    const auto path = test_path();
-    std::error_code error;
-    std::filesystem::remove(path, error);
-    expect(!error && !std::filesystem::exists(path), "derived publication test database is not clean");
+    auto database = TestDatabase::create("agent_memory_derived_publication_store");
+    const auto& path = database.path();
 
     const auto request = fixture_request();
     {
@@ -382,6 +463,37 @@ int main() {
                    std::optional<std::string>{"fenced answer"},
                "publication identity conflict damaged the stored body");
 
+        const auto expect_injected_rollback = [&](MdbxDerivedPublicationFaultPoint point,
+                                                  const char* publication_id) {
+            MdbxDerivedPublicationStoreOptions injected_options;
+            injected_options.context = context;
+            injected_options.table_prefix = "agent_memory";
+            injected_options.fault_injector = [point](
+                const MdbxDerivedPublicationFaultPoint current) {
+                if(current == point) {
+                    throw std::runtime_error("injected derived publication failure");
+                }
+            };
+            {
+                MdbxDerivedPublicationStore injected_store(std::move(injected_options));
+                const auto result = injected_store.publish_fenced(
+                    *frontier_result.snapshot,
+                    MdbxFencedDerivedPublicationRequest{
+                        publication_id, ProjectionKind::QACombined, 1,
+                        "injected body", 1, "pipeline@1"});
+                expect(result.status == MdbxFencedDerivedPublicationStatus::Unavailable,
+                       "injected publication failure was reported as committed");
+            }
+            expect(!read_field(context, publication_id, 'b')
+                       && !read_field(context, publication_id, 'm')
+                       && !read_field(context, publication_id, 'a'),
+                   "injected publication failure left a partial physical row");
+        };
+        expect_injected_rollback(
+            MdbxDerivedPublicationFaultPoint::AfterBodyWrite, "fenced-fault-body");
+        expect_injected_rollback(
+            MdbxDerivedPublicationFaultPoint::AfterManifestWrite, "fenced-fault-manifest");
+
         auto forged_result = frontier_reader.read(fenced_scope, {
             {fenced_unit_a.id, fenced_unit_a.revision,
              ResourceRevisionRef{fenced_resource_a, 1, frontier_digest(21)}},
@@ -453,6 +565,11 @@ int main() {
             request.scope_id, request.publication_id, request.inputs, request.dependency_frontier);
         expect(reopened.status == DerivedPublicationReadStatus::StoredMatch,
                "publication did not survive reopen as a storage match");
+        for(const auto publication_id : {"fenced-fault-body", "fenced-fault-manifest"}) {
+            expect(store.read(ScopeId{"fenced-scope"}, publication_id, {}, "").status
+                       == DerivedPublicationReadStatus::NotFound,
+                   "reopen exposed a publication rejected by injected failure");
+        }
 
         mdbxc::KeyValueTable<std::string, std::string> table(
             context->connection(), "agent_memory_unit_projections");
@@ -481,12 +598,10 @@ int main() {
                "body without a durable marker was admitted");
     }
 
-    const auto custom_path = std::filesystem::temp_directory_path() /
-        "agent_memory_m0_derived_publication_store_custom_prefix_test.mdbx";
+    auto custom_database = TestDatabase::create(
+        "agent_memory_derived_publication_store_custom_prefix");
+    const auto& custom_path = custom_database.path();
     {
-        std::error_code custom_error;
-        std::filesystem::remove(custom_path, custom_error);
-        expect(!custom_error, "custom-prefix MDBX database could not be reset");
         auto context = MdbxStorageContext::open(custom_path.string());
         MdbxResourceManifestStorageOptions manifest_options;
         manifest_options.context = context;
@@ -529,14 +644,8 @@ int main() {
                    == DerivedPublicationReadStatus::StoredMatch,
                "custom-prefix publication was not readable");
     }
-    std::error_code custom_cleanup_error;
-    std::filesystem::remove(custom_path, custom_cleanup_error);
-    expect(!custom_cleanup_error && !std::filesystem::exists(custom_path),
-           "custom-prefix MDBX database could not be removed");
-
-    const auto removed = std::filesystem::remove(path, error);
-    expect(!error && (removed || !std::filesystem::exists(path)),
-           "derived publication test database could not be removed");
+    custom_database.cleanup_or_fail();
+    database.cleanup_or_fail();
     std::cout << "mdbx derived publication store tests passed\n";
     return 0;
 }

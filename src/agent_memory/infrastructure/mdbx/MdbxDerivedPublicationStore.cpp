@@ -299,17 +299,20 @@ public:
         : context(options.context ? std::move(options.context)
                                   : MdbxStorageContext::open(std::move(options.path), options.relative_to_exe, options.max_dbs)),
           table(context->connection(), table_name(options.table_prefix)),
-          table_prefix(std::move(options.table_prefix)) {}
+          table_prefix(std::move(options.table_prefix)),
+          fault_injector(std::move(options.fault_injector)) {}
 
     std::shared_ptr<MdbxStorageContext> context;
     mutable mdbxc::KeyValueTable<std::string, std::string> table;
     std::string table_prefix;
+    std::function<void(MdbxDerivedPublicationFaultPoint)> fault_injector;
 
     void publish_in_transaction(
         const DerivedPublicationRequest& request,
         const std::string& manifest,
         const std::string& marker,
-        mdbxc::Transaction& txn
+        mdbxc::Transaction& txn,
+        const bool inject_faults
     ) {
         const auto body_key = field_key(request.publication_id, 'b');
         const auto manifest_key = field_key(request.publication_id, 'm');
@@ -327,7 +330,13 @@ public:
             return;
         }
         table.insert_or_assign(body_key, request.body, txn);
+        if(inject_faults && fault_injector) {
+            fault_injector(MdbxDerivedPublicationFaultPoint::AfterBodyWrite);
+        }
         table.insert_or_assign(manifest_key, manifest, txn);
+        if(inject_faults && fault_injector) {
+            fault_injector(MdbxDerivedPublicationFaultPoint::AfterManifestWrite);
+        }
         table.insert_or_assign(marker_key, marker, txn);
     }
 };
@@ -347,7 +356,7 @@ void MdbxDerivedPublicationStore::publish(DerivedPublicationRequest request) {
        marker.size() > kMaxSerializedBytes - request.body.size() - manifest.size())
         throw std::invalid_argument("derived publication serialized payload exceeds its byte budget");
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
-    m_impl->publish_in_transaction(request, manifest, marker, txn);
+    m_impl->publish_in_transaction(request, manifest, marker, txn, false);
     txn.commit();
 }
 
@@ -435,7 +444,7 @@ MdbxFencedDerivedPublicationResult MdbxDerivedPublicationStore::publish_fenced(
                 return {MdbxFencedDerivedPublicationStatus::FenceRejected, std::nullopt};
             }
         }
-        m_impl->publish_in_transaction(publication, serialized_manifest, marker, txn);
+        m_impl->publish_in_transaction(publication, serialized_manifest, marker, txn, true);
         txn.commit();
         return {MdbxFencedDerivedPublicationStatus::Published,
                 DerivedPublication{std::move(publication)}};
