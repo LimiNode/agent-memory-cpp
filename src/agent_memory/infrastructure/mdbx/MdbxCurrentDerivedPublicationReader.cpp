@@ -5,6 +5,7 @@
 #include "MdbxDerivedPublicationStore.hpp"
 #include "MdbxKnowledgeUnitStore.hpp"
 #include "MdbxResourceManifestStorage.hpp"
+#include "MdbxResourceFrontierSnapshot.hpp"
 
 #include <mdbx_containers/KeyValueTable.hpp>
 
@@ -12,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace agent_memory {
 namespace {
@@ -106,6 +108,8 @@ MdbxCurrentDerivedPublicationReadResult MdbxCurrentDerivedPublicationReader::rea
         }
         if(m_read_hook_for_testing) m_read_hook_for_testing();
         const auto& request = stored.publication->request;
+        std::vector<MdbxResourceFrontierEntry> frontier_entries;
+        frontier_entries.reserve(request.inputs.size());
         for(const auto& input : request.inputs) {
             const auto unit = units.find_in_transaction(input.unit_id, txn);
             if(!unit) {
@@ -141,6 +145,17 @@ MdbxCurrentDerivedPublicationReadResult MdbxCurrentDerivedPublicationReader::rea
                 txn.commit();
                 return {MdbxCurrentDerivedPublicationStatus::Stale, std::nullopt};
             }
+            frontier_entries.push_back({*unit, *root});
+        }
+        MdbxResourceFrontierSnapshot frontier;
+        frontier.scope_id = access_scope;
+        frontier.entries = std::move(frontier_entries);
+        const auto expected_frontier_prefix = frontier.identity_token() + '|';
+        if(request.dependency_frontier.size() < expected_frontier_prefix.size() ||
+           request.dependency_frontier.compare(
+               0, expected_frontier_prefix.size(), expected_frontier_prefix) != 0) {
+            txn.commit();
+            return {MdbxCurrentDerivedPublicationStatus::Stale, std::nullopt};
         }
         txn.commit();
         return {MdbxCurrentDerivedPublicationStatus::Current, stored.publication};
