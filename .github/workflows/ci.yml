@@ -350,6 +350,13 @@ jobs:
       - name: Test
         run: ctest --test-dir build-mdbx --build-config Release --output-on-failure
 
+      - name: Upload lexical product-path qualification receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: lexical-product-path-qualification-receipt
+          path: build-mdbx/tests/lexical-product-path-qualification.json
+          if-no-files-found: error
+
   mdbx-benchmark:
     if: needs.changes.outputs.research == 'true'
     needs: changes

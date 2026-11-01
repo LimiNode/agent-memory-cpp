@@ -949,4 +949,18 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         NAME agent_memory_mdbx_shared_unit_projections_conformance_test
         COMMAND agent_memory_mdbx_shared_unit_projections_conformance_test
     )
+
+    add_executable(agent_memory_mdbx_lexical_product_path_qualification_test
+        infrastructure/mdbx/mdbx_lexical_product_path_qualification_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_lexical_product_path_qualification_test
+        PRIVATE
+            agent_memory::agent_memory
+            mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_lexical_product_path_qualification_test
+        COMMAND agent_memory_mdbx_lexical_product_path_qualification_test
+                ${CMAKE_CURRENT_BINARY_DIR}/lexical-product-path-qualification.json
+    )
 endif()
