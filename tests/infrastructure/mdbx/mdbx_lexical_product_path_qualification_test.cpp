@@ -197,6 +197,8 @@ void write_receipt(
         << "  \"warmup_iterations\":" << kWarmupIterations << ",\n"
         << "  \"projection_rebuild_sample_count\":" << kTimedSamples << ",\n"
         << "  \"sample_count_semantics\":\"timed invocations in one process; persistent paths use one bounded publication-build sample\",\n"
+        << "  \"component_timing_semantics\":\"this harness measures public end-to-end retrieval; internal scan/read/tokenization/scoring stages are not separately instrumented\",\n"
+        << "  \"scaling_semantics\":\"one bounded 48-document-per-scope smoke workload; no multi-size scaling claim\",\n"
         << "  \"tail_semantics\":\"p95 is descriptive for this sample distribution; no p99 or production-stability claim\",\n"
         << "  \"reopen_timing_semantics\":\"measures one close/reopen snapshot read for each adapter; not product query latency\",\n"
         << "  \"paths\":{\n"

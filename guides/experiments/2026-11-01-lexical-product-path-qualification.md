@@ -52,6 +52,13 @@ product query latency.
 - This is a local directional snapshot, not production performance evidence.
 - `sample_count` means timed invocations in one process; it is not a count of
   independent requests or independent runs.
+- The harness measures the public end-to-end retrieval call. It does not claim
+  separate timings for scope scan, storage reads, freshness checks,
+  tokenization, scoring, or result materialization because those stages are not
+  instrumented by the current production API.
+- The 48-document-per-scope fixture is one bounded smoke workload, not a
+  scaling curve. Workloads of 128/512/2048/8192 units and read/byte counters
+  require a follow-up harness once the pinned R3A corpus is available.
 - p95 is descriptive for this small sample distribution. It does not establish
   a stable p99 or a capacity SLO.
 - The persistent adapters currently expose durable state and snapshot views,
