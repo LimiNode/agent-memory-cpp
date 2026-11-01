@@ -64,6 +64,18 @@ void require(bool condition, const char* message) {
     if(!condition) throw std::runtime_error(message);
 }
 
+bool has_posting_for_unit(
+    const FlatLexicalIndex& index,
+    TokenId token,
+    KnowledgeUnitId unit_id
+) {
+    const auto postings = index.postings(token);
+    return std::any_of(postings.begin(), postings.end(),
+        [unit_id](const FlatLexicalPosting& posting) {
+            return posting.unit_id == unit_id;
+        });
+}
+
 std::filesystem::path unique_path(const std::string& stem) {
     const auto stamp = Clock::now().time_since_epoch().count();
     return std::filesystem::temp_directory_path()
@@ -113,11 +125,16 @@ LexicalIndexDescriptor descriptor(const ScopeId& scope, std::uint8_t seed,
     };
 }
 
-FlatLexicalUnitInput lexical_unit(const Document& document, std::uint64_t revision = 1) {
+FlatLexicalUnitInput lexical_unit(
+    const Document& document,
+    std::uint64_t revision = 1,
+    std::vector<std::string> tokens = {}
+) {
+    if(tokens.empty()) tokens = document.tokens;
     return FlatLexicalUnitInput{
         document.scope, document.id, ProjectionKind::Original, document.resource,
         revision, revision, ProjectionVersionRef{revision, revision, 1, "derivation-v1"},
-        document.tokens
+        std::move(tokens)
     };
 }
 
@@ -164,8 +181,8 @@ void write_receipt(
     double segmented_reopen_ms,
     bool freshness,
     bool scope_isolation,
-    bool persistent_build_completed,
-    bool segmented_build_completed,
+    bool persistent_correctness,
+    bool segmented_correctness,
     bool lifecycle
 ) {
     std::ofstream output(path, std::ios::binary);
@@ -181,7 +198,7 @@ void write_receipt(
         << "  \"projection_rebuild_sample_count\":" << kTimedSamples << ",\n"
         << "  \"sample_count_semantics\":\"timed invocations in one process; persistent paths use one bounded publication-build sample\",\n"
         << "  \"tail_semantics\":\"p95 is descriptive for this sample distribution; no p99 or production-stability claim\",\n"
-        << "  \"reopen_timing_semantics\":\"zero is a sentinel: close/reopen is covered by existing MDBX conformance tests, not timed by this harness\",\n"
+        << "  \"reopen_timing_semantics\":\"measures one close/reopen snapshot read for each adapter; not product query latency\",\n"
         << "  \"paths\":{\n"
         << "    \"projection_aware_rebuild\":\"ProjectionAwareLexicalRetriever::retrieve; scans, loads, tokenizes, and rebuilds ExactLexicalIndex per invocation\",\n"
         << "    \"persistent_flat_build_path\":\"MdbxPersistentLexicalIndex::upsert publication build; no product query API is exposed by this adapter\",\n"
@@ -198,8 +215,8 @@ void write_receipt(
         << "  },\n"
         << "  \"checks\":{\"current_retriever_freshness\":" << (freshness ? "true" : "false")
         << ",\"current_retriever_scope_isolation\":" << (scope_isolation ? "true" : "false")
-        << ",\"persistent_build_completed\":" << (persistent_build_completed ? "true" : "false")
-        << ",\"segmented_build_completed\":" << (segmented_build_completed ? "true" : "false")
+        << ",\"persistent_correctness_gates\":" << (persistent_correctness ? "true" : "false")
+        << ",\"segmented_correctness_gates\":" << (segmented_correctness ? "true" : "false")
         << ",\"lifecycle_smoke\":" << (lifecycle ? "true" : "false") << "}\n"
         << "}\n";
 }
@@ -326,12 +343,62 @@ int main(int argc, char** argv) {
                     }
                 }
                 persistent_build_ms = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
+                std::optional<TokenId> old_token;
                 {
-                    persistent_freshness = true;
+                    const auto initial = index_a.read_snapshot();
+                    persistent_freshness =
+                        initial.index.collection_stats().unit_count == kDocumentsPerScope
+                        && initial.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 1;
+                    old_token = initial.index.find_token_id("anchor");
+                    require(old_token.has_value(), "persistent snapshot omitted anchor token");
+                    require(!initial.index.postings(*old_token).empty(),
+                        "persistent snapshot omitted anchor postings");
                 }
+                const auto& updated = corpus.front();
+                index_a.upsert(lexical_unit(updated, 2,
+                    {"replacement-token", "protocol", "durable", "unit-1"}),
+                    FlatLexicalExpectedState{
+                        updated.id, 1, 1, ProjectionVersionRef{1, 1, 1, "derivation-v1"}});
+                {
+                    const auto after_update = index_a.read_snapshot();
+                    const auto replacement = after_update.index.find_token_id("replacement-token");
+                    persistent_freshness = persistent_freshness
+                        && after_update.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 2
+                        && replacement.has_value()
+                        && has_posting_for_unit(after_update.index, *replacement,
+                            KnowledgeUnitId{1})
+                        && !has_posting_for_unit(after_update.index, *old_token,
+                            KnowledgeUnitId{1});
+                }
+                require(index_a.erase(KnowledgeUnitId{2}),
+                    "persistent erase did not remove an active unit");
+                persistent_freshness = persistent_freshness
+                    && index_a.read_snapshot().index.collection_stats().unit_count
+                        == kDocumentsPerScope - 1U;
                 persistent_search_timing.samples_ms.push_back(persistent_build_ms);
             }
-            persistent_lifecycle = persistent_freshness;
+            const auto reopen_begin = Clock::now();
+            MdbxPersistentLexicalIndex reopened{options_a};
+            bool reopened_parity = false;
+            {
+                const auto reopened_snapshot = reopened.read_snapshot();
+                reopened_parity = reopened_snapshot.index.collection_stats().unit_count
+                        == kDocumentsPerScope - 1U
+                    && reopened_snapshot.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 2
+                    && reopened_snapshot.index.find_unit_stats(KnowledgeUnitId{2}) == std::nullopt;
+            }
+            persistent_reopen_ms = std::chrono::duration<double, std::milli>(
+                Clock::now() - reopen_begin).count();
+            persistent_lifecycle = persistent_freshness
+                && reopened_parity;
+            require(persistent_freshness, "persistent update/erase checks failed");
+            require(reopened_parity, "persistent reopen parity failed");
+            MdbxPersistentLexicalIndexOptions options_b = options_a;
+            options_b.descriptor = descriptor(ScopeId{"tenant-b"}, 42, 1);
+            MdbxPersistentLexicalIndex other_scope{options_b};
+            other_scope.upsert(lexical_unit(corpus.back()));
+            persistent_lifecycle = persistent_lifecycle
+                && other_scope.read_snapshot().index.collection_stats().unit_count == 1;
         }
 
         {
@@ -349,11 +416,51 @@ int main(int argc, char** argv) {
                 }
                 segmented_build_ms = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
                 {
-                    segmented_freshness = true;
+                    const auto initial = index_a.read_snapshot();
+                    segmented_freshness =
+                        initial.index.collection_stats().unit_count == kDocumentsPerScope
+                        && initial.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 1;
                 }
+                const auto& updated = corpus.front();
+                index_a.upsert(lexical_unit(updated, 2,
+                    {"replacement-token", "protocol", "durable", "unit-1"}),
+                    FlatLexicalExpectedState{
+                        updated.id, 1, 1, ProjectionVersionRef{1, 1, 1, "derivation-v1"}});
+                {
+                    const auto after_update = index_a.read_snapshot();
+                    const auto replacement = after_update.index.find_token_id("replacement-token");
+                    segmented_freshness = segmented_freshness
+                        && after_update.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 2
+                        && replacement.has_value()
+                        && has_posting_for_unit(after_update.index, *replacement,
+                            KnowledgeUnitId{1});
+                }
+                require(index_a.erase(KnowledgeUnitId{2}),
+                    "segmented erase did not remove an active unit");
+                segmented_freshness = segmented_freshness
+                    && index_a.read_snapshot().index.collection_stats().unit_count
+                        == kDocumentsPerScope - 1U;
                 segmented_search_timing.samples_ms.push_back(segmented_build_ms);
             }
-            segmented_lifecycle = segmented_freshness;
+            const auto reopen_begin = Clock::now();
+            MdbxSegmentedLexicalIndex reopened{options_a};
+            bool reopened_parity = false;
+            {
+                const auto reopened_snapshot = reopened.read_snapshot();
+                reopened_parity = reopened_snapshot.index.collection_stats().unit_count
+                        == kDocumentsPerScope - 1U
+                    && reopened_snapshot.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 2
+                    && reopened_snapshot.index.find_unit_stats(KnowledgeUnitId{2}) == std::nullopt;
+            }
+            segmented_reopen_ms = std::chrono::duration<double, std::milli>(
+                Clock::now() - reopen_begin).count();
+            segmented_lifecycle = segmented_freshness && reopened_parity;
+            MdbxSegmentedLexicalIndexOptions options_b = options_a;
+            options_b.descriptor = descriptor(ScopeId{"tenant-b"}, 52, kLexicalSegmentLayoutVersion);
+            MdbxSegmentedLexicalIndex other_scope{options_b};
+            other_scope.upsert(lexical_unit(corpus.back()));
+            segmented_lifecycle = segmented_lifecycle
+                && other_scope.read_snapshot().index.collection_stats().unit_count == 1;
         }
 
         const auto freshness = current_freshness;
@@ -365,6 +472,8 @@ int main(int argc, char** argv) {
             scope_isolation, persistent_freshness, segmented_freshness, lifecycle);
         require(freshness, "lexical freshness checks failed");
         require(scope_isolation, "lexical scope isolation checks failed");
+        require(persistent_lifecycle, "persistent lexical lifecycle checks failed");
+        require(segmented_lifecycle, "segmented lexical lifecycle checks failed");
         require(lifecycle, "lexical lifecycle checks failed");
         std::filesystem::remove(importer_path, cleanup_error);
         std::filesystem::remove(persistent_path, cleanup_error);

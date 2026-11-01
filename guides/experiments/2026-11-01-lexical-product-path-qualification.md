@@ -42,10 +42,10 @@ The CTest receipt is written to the build directory as
 | Segmented `upsert` build | 1 | 501.00 | 501.00 | One publication build; not a query latency |
 
 The public retriever checks pass freshness and scope isolation. Both persistent
-adapters complete their bounded publication build, and the harness lifecycle
-smoke passes. Adapter-specific close/reopen timing is intentionally not claimed
-here; existing persistent and segmented conformance tests cover reopen
-durability.
+adapters complete their bounded publication build, exercise revision replacement
+and erase, reopen the resulting snapshot, and verify that a second scope does
+not leak into the first. Reopen timings are diagnostic only; they are not
+product query latency.
 
 ## Interpretation and limits
 
