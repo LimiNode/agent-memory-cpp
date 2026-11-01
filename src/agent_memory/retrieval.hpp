@@ -14,6 +14,7 @@
 #include "retrieval/HybridRetrievalEngine.hpp"
 #include "retrieval/OriginalProjection.hpp"
 #include "retrieval/ProjectionAwareLexicalRetriever.hpp"
+#include "retrieval/RevisionBoundRetrieval.hpp"
 #include "retrieval/IRetrievalEngine.hpp"
 #include "retrieval/IRetriever.hpp"
 #include "retrieval/Retrieval.hpp"

@@ -149,6 +149,13 @@ RetrievedChunk make_result(
     RetrievedChunk result;
     result.chunk = std::move(chunk);
     result.score = score;
+    // Keep the legacy chunk shape intact while exposing an explicit,
+    // producer-owned identity for revision-bound adapters.  Consumers must
+    // resolve this opaque id through the KnowledgeUnit store; it is not a
+    // ChunkId/KnowledgeUnitId equivalence.
+    result.metadata.set("knowledge_unit_id", std::to_string(envelope.id.value()));
+    result.metadata.set("knowledge_unit_revision", std::to_string(envelope.revision));
+    result.metadata.set("projection_kind", "Original");
     return result;
 }
 

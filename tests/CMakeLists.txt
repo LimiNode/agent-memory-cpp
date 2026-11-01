@@ -438,6 +438,20 @@ add_test(
     COMMAND agent_memory_projection_aware_lexical_retriever_test
 )
 
+add_executable(agent_memory_revision_bound_retrieval_test
+    retrieval/revision_bound_retrieval_test.cpp
+)
+
+target_link_libraries(agent_memory_revision_bound_retrieval_test
+    PRIVATE
+        agent_memory::agent_memory
+)
+
+add_test(
+    NAME agent_memory_revision_bound_retrieval_test
+    COMMAND agent_memory_revision_bound_retrieval_test
+)
+
 add_executable(agent_memory_resource_indexer_test
     ingestion/resource_indexer_test.cpp
 )
