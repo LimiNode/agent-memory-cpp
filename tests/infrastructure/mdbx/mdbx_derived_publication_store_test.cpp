@@ -11,8 +11,10 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <future>
 #include <iostream>
 #include <optional>
+#include <exception>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -682,20 +684,47 @@ int main() {
         expect(current.status == MdbxCurrentDerivedPublicationStatus::Current && current.publication &&
                    current.publication->request.body == "current body",
                "current publication was not revalidated as Current");
+
+        auto legacy = published.publication->request;
+        legacy.publication_id = "legacy-publication";
+        publications.publish(legacy);
+        const auto legacy_current = reader.read_current(scope, "legacy-publication");
+        expect(legacy_current.status == MdbxCurrentDerivedPublicationStatus::Unavailable &&
+                   !legacy_current.publication,
+               "storage-only legacy publication was incorrectly admitted as Current");
+        const auto legacy_historical = reader.read_historical(scope, "legacy-publication");
+        expect(legacy_historical.status == MdbxCurrentDerivedPublicationStatus::Historical &&
+                   legacy_historical.publication,
+               "legacy publication lost its explicit historical-read semantics");
         const auto historical = reader.read_historical(scope, "current-publication");
         expect(historical.status == MdbxCurrentDerivedPublicationStatus::Historical && historical.publication,
                "exact historical publication was not readable");
 
-        reader.set_read_hook_for_testing([&] {
-            std::thread writer([&] {
+        std::promise<void> writer_start;
+        auto writer_start_future = writer_start.get_future();
+        std::promise<void> writer_done;
+        auto writer_done_future = writer_done.get_future();
+        std::exception_ptr writer_error;
+        std::thread writer([&] {
+            try {
+                writer_start_future.wait();
                 auto writer_context = context;
                 MdbxResourceManifestStorage writer_manifests({"", "agent_memory", false,
                                                                kDefaultMdbxMaxDbs, writer_context});
                 writer_manifests.upsert_manifest(frontier_manifest(resource, 2, 42));
-            });
-            writer.join();
+            } catch(...) {
+                writer_error = std::current_exception();
+            }
+            writer_done.set_value();
+        });
+        reader.set_read_hook_for_testing([&] {
+            writer_start.set_value();
+            if(writer_done_future.wait_for(std::chrono::seconds(5)) != std::future_status::ready)
+                throw std::runtime_error("bounded current-read writer wait timed out");
         });
         const auto raced_current = reader.read_current(scope, "current-publication");
+        if(writer.joinable()) writer.join();
+        if(writer_error) std::rethrow_exception(writer_error);
         expect(raced_current.status == MdbxCurrentDerivedPublicationStatus::Current && raced_current.publication,
                "one read transaction did not preserve a consistent pre-write snapshot");
         reader.set_read_hook_for_testing({});

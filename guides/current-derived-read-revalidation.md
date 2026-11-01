@@ -10,17 +10,21 @@ and root ResourceManifests in one MDBX read transaction.
 `MdbxCurrentDerivedPublicationReader::read_current()` returns:
 
 - `Current` when every stored unit revision, source generation/digest, and
-  active root manifest agrees with the publication bindings;
+  active root manifest agrees with the publication bindings and the publication
+  carries the versioned B2 fenced-admission marker;
 - `Stale` when a retained unit or root exists but its lifecycle or revision no
   longer matches;
 - `Unavailable` when a required canonical row is missing, malformed, inactive
   in a way that prevents proof, or fails integrity validation;
 - `NotFound` when none of the three publication rows exists.
 
-The body is never returned for `Stale` or `Unavailable`. The separate
-`read_historical()` path returns `Historical` only after publication body,
-manifest, and active-marker integrity checks. It does not claim current
-freshness and never substitutes a newer revision.
+The body is never returned for `Stale` or `Unavailable`. A legacy
+storage-only `publish()` record can still be returned by `read_historical()`
+after publication body, manifest, and marker integrity checks, but it can
+never become `Current`. `Historical` means only that the saved derived
+publication is internally intact; it does not prove that historical source
+documents remain available or that their full evidence chain can be hydrated.
+No automatic `Current` to `Historical` fallback is performed.
 
 ## Snapshot and bounds
 

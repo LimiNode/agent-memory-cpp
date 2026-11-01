@@ -106,6 +106,10 @@ MdbxCurrentDerivedPublicationReadResult MdbxCurrentDerivedPublicationReader::rea
             txn.commit();
             return {MdbxCurrentDerivedPublicationStatus::Unavailable, std::nullopt};
         }
+        if(!stored.publication->fenced_admission) {
+            txn.commit();
+            return {MdbxCurrentDerivedPublicationStatus::Unavailable, std::nullopt};
+        }
         if(m_read_hook_for_testing) m_read_hook_for_testing();
         const auto& request = stored.publication->request;
         std::vector<MdbxResourceFrontierEntry> frontier_entries;

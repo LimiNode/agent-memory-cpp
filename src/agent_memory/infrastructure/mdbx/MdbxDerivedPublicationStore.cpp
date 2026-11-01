@@ -20,6 +20,7 @@ namespace agent_memory {
 namespace {
 
 constexpr std::string_view kPayloadVersion = "agent_memory.derived_publication.v1";
+constexpr std::string_view kFencedPayloadVersion = "agent_memory.derived_publication.v2";
 constexpr std::string_view kKeyPrefix = "derived_publication:";
 constexpr std::uint8_t kActiveMarker = 1;
 constexpr std::uint64_t kMaxInputs = 1'000'000;
@@ -230,12 +231,17 @@ DerivedPublicationRequest deserialize_manifest(std::string_view payload,
     return request;
 }
 
-std::string serialize_marker(const std::string& manifest, const std::string& body) {
+std::string serialize_marker(
+    const std::string& manifest,
+    const std::string& body,
+    bool fenced_admission
+) {
     const auto manifest_digest = sha256(manifest);
     const auto body_digest = sha256(body);
     std::string marker;
-    append_string(marker, kPayloadVersion);
+    append_string(marker, fenced_admission ? kFencedPayloadVersion : kPayloadVersion);
     append_u8(marker, kActiveMarker);
+    if(fenced_admission) append_u8(marker, 1U);
     append_digest(marker, manifest_digest);
     append_digest(marker, body_digest);
     return marker;
@@ -270,16 +276,20 @@ bool same_root_revision(const ResourceRevisionRef& left, const ResourceRevision&
         && left.body_digest.bytes == right.body_digest->bytes;
 }
 
-void validate_marker(std::string_view payload, std::string_view manifest, std::string_view body) {
+bool validate_marker(std::string_view payload, std::string_view manifest, std::string_view body) {
     if(payload.size() > kMaxMarkerBytes || manifest.size() > kMaxManifestBytes || body.size() > kMaxBodyBytes)
         throw std::runtime_error("derived publication payload exceeds its byte budget");
     std::size_t position = 0;
-    if(read_string(payload, position, kPayloadVersion.size(), "payload version") != kPayloadVersion ||
-       read_u8(payload, position) != kActiveMarker)
+    const auto version = read_string(payload, position, kFencedPayloadVersion.size(), "payload version");
+    const bool fenced = version == kFencedPayloadVersion;
+    if((!fenced && version != kPayloadVersion) || read_u8(payload, position) != kActiveMarker)
         throw std::runtime_error("derived publication marker is not active");
+    if(fenced && read_u8(payload, position) != 1U)
+        throw std::runtime_error("derived publication marker is not fenced");
     if(read_digest(payload, position) != sha256(manifest) || read_digest(payload, position) != sha256(body) ||
        position != payload.size())
         throw std::runtime_error("derived publication marker integrity mismatch");
+    return fenced;
 }
 
 bool same_inputs(const std::vector<DerivedPublicationInput>& left,
@@ -324,7 +334,7 @@ public:
                marker->size() > kMaxMarkerBytes || body->size() > kMaxSerializedBytes - manifest->size() ||
                marker->size() > kMaxSerializedBytes - body->size() - manifest->size())
                 throw std::runtime_error("derived publication serialized payload exceeds its byte budget");
-            validate_marker(*marker, *manifest, *body);
+            const auto fenced = validate_marker(*marker, *manifest, *body);
             std::array<std::uint8_t, 32> body_digest{};
             auto request = deserialize_manifest(*manifest, body_digest);
             request.body = *body;
@@ -333,7 +343,9 @@ public:
                 throw std::runtime_error("derived publication body identity mismatch");
             if(request.scope_id != access_scope)
                 return {DerivedPublicationReadStatus::ScopeMismatch, std::nullopt};
-            return {DerivedPublicationReadStatus::StoredMatch, DerivedPublication{std::move(request)}};
+            DerivedPublication publication{std::move(request)};
+            publication.fenced_admission = fenced;
+            return {DerivedPublicationReadStatus::StoredMatch, std::move(publication)};
         } catch(const std::exception&) {
             return {DerivedPublicationReadStatus::Unavailable, std::nullopt};
         }
@@ -382,7 +394,7 @@ void MdbxDerivedPublicationStore::publish(DerivedPublicationRequest request) {
     validate_request(request);
     const auto body_digest = sha256(request.body);
     const auto manifest = serialize_manifest(request, body_digest);
-    const auto marker = serialize_marker(manifest, request.body);
+    const auto marker = serialize_marker(manifest, request.body, false);
     if(marker.size() > kMaxMarkerBytes || manifest.size() > kMaxManifestBytes ||
        request.body.size() > kMaxBodyBytes || manifest.size() > kMaxSerializedBytes - request.body.size() ||
        marker.size() > kMaxSerializedBytes - request.body.size() - manifest.size())
@@ -442,7 +454,7 @@ MdbxFencedDerivedPublicationResult MdbxDerivedPublicationStore::publish_fenced(
         validate_request(publication);
         const auto body_digest = sha256(publication.body);
         const auto serialized_manifest = serialize_manifest(publication, body_digest);
-        const auto marker = serialize_marker(serialized_manifest, publication.body);
+        const auto marker = serialize_marker(serialized_manifest, publication.body, true);
         if(marker.size() > kMaxMarkerBytes
            || serialized_manifest.size() > kMaxManifestBytes
            || publication.body.size() > kMaxBodyBytes) {
