@@ -1,7 +1,7 @@
 # Lexical product-path performance qualification
 
-Date: 2026-11-01  
-Branch: `research/lexical-product-path-performance`  
+Date: 2026-11-01
+Branch: `research/lexical-product-path-performance`
 Experiment family: `lexical_product_path_performance_qualification_v1`
 
 ## Question

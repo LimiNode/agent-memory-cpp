@@ -320,7 +320,7 @@ int main(int argc, char** argv) {
             {
                 MdbxPersistentLexicalIndex index_a{options_a};
                 const auto begin = Clock::now();
-                for(const auto& document : corpus) {                     
+                for(const auto& document : corpus) {
                     if(document.scope.value() == "tenant-a") {
                         index_a.upsert(lexical_unit(document));
                     }
@@ -347,15 +347,12 @@ int main(int argc, char** argv) {
                 for(const auto& document : corpus) {
                     if(document.scope.value() == "tenant-a") index_a.upsert(lexical_unit(document));
                 }
-                std::cerr << "segmented:after-upsert\n";
                 segmented_build_ms = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
                 {
                     segmented_freshness = true;
                 }
                 segmented_search_timing.samples_ms.push_back(segmented_build_ms);
-                std::cerr << "segmented:after-sample\n";
             }
-            std::cerr << "segmented:after-index\n";
             segmented_lifecycle = segmented_freshness;
         }
 
