@@ -161,6 +161,24 @@ std::string marker_for(std::string_view manifest, std::string_view body) {
     return marker;
 }
 
+std::string fenced_marker_for(std::string_view manifest, std::string_view body) {
+    std::string marker;
+    const auto append_string = [&marker](std::string_view value) {
+        marker += std::to_string(value.size());
+        marker.push_back(':');
+        marker.append(value.data(), value.size());
+    };
+    const auto append_digest = [&marker](const auto& digest) {
+        marker.append(reinterpret_cast<const char*>(digest.data()), digest.size());
+    };
+    append_string("agent_memory.derived_publication.v2");
+    marker.push_back(static_cast<char>(1));
+    marker.push_back(static_cast<char>(1));
+    append_digest(agent_memory::sha256(manifest));
+    append_digest(agent_memory::sha256(body));
+    return marker;
+}
+
 agent_memory::ResourceBodyDigest frontier_digest(std::uint8_t seed) {
     agent_memory::ResourceBodyDigest value;
     value.bytes.fill(seed);
@@ -748,16 +766,27 @@ int main() {
         expect(reader.read_current(scope, "many-roots").status ==
                    MdbxCurrentDerivedPublicationStatus::Current,
                "multi-root B3 matrix baseline was not Current");
+
+        const auto wrong_scope = reader.read_current(ScopeId{"wrong-scope"}, "many-roots");
+        expect(wrong_scope.status != MdbxCurrentDerivedPublicationStatus::Current &&
+                   !wrong_scope.publication,
+               "wrong scope was admitted for a current publication");
+
         manifests.upsert_manifest(frontier_manifest(root_b, 2, 56));
         const auto one_root_stale = reader.read_current(scope, "many-roots");
         expect(one_root_stale.status == MdbxCurrentDerivedPublicationStatus::Stale &&
                    !one_root_stale.publication,
                "one-of-many root mutation was admitted as Current");
 
-        const auto wrong_scope = reader.read_current(ScopeId{"wrong-scope"}, "many-roots");
-        expect(wrong_scope.status != MdbxCurrentDerivedPublicationStatus::Current &&
-                   !wrong_scope.publication,
-               "wrong scope was admitted as Current");
+        const ResourceId missing_root_id{"matrix-missing-root"};
+        const auto missing_root = publish_one(missing_root_id, 59, "missing-root");
+        static_cast<void>(missing_root);
+        expect(manifests.erase_manifest(missing_root_id),
+               "B3 matrix missing root erase failed");
+        const auto missing_root_read = reader.read_current(scope, "missing-root");
+        expect(missing_root_read.status == MdbxCurrentDerivedPublicationStatus::Unavailable &&
+                   !missing_root_read.publication,
+               "missing root was not reported as unavailable");
 
         const auto corrupt = publish_one(ResourceId{"matrix-corrupt"}, 57, "corrupt-current");
         static_cast<void>(corrupt);
@@ -768,18 +797,38 @@ int main() {
                "corrupted publication rows were admitted as Current");
 
         const auto forged = publish_one(ResourceId{"matrix-forged"}, 58, "forged-frontier");
-        static_cast<void>(forged);
+        auto forged_snapshot = frontier_reader.read(scope, {
+            {forged.id, forged.revision,
+             ResourceRevisionRef{ResourceId{"matrix-forged"}, 1, frontier_digest(58)}}
+        });
+        expect(forged_snapshot.status == MdbxResourceFrontierSnapshotStatus::Available &&
+                   forged_snapshot.snapshot,
+               "forged frontier control could not reconstruct the canonical frontier");
+        const auto canonical_frontier =
+            forged_snapshot.snapshot->identity_token() + "|pipeline@1";
+        forged_snapshot.snapshot->read_transaction_owner.reset();
         auto forged_manifest = read_field(context, "forged-frontier", 'm');
         expect(forged_manifest.has_value(), "forged frontier publication manifest was missing");
-        const auto frontier_separator = forged_manifest->find('|');
-        expect(frontier_separator != std::string::npos,
-               "forged frontier publication had no dependency separator");
-        forged_manifest->replace(frontier_separator + 1, std::string::npos, "forged@9");
+        const auto frontier_position = forged_manifest->find(canonical_frontier);
+        expect(frontier_position != std::string::npos,
+               "canonical dependency frontier was absent from the serialized manifest");
+        auto forged_frontier = canonical_frontier;
+        forged_frontier.front() = forged_frontier.front() == 'x' ? 'y' : 'x';
+        forged_manifest->replace(
+            frontier_position, canonical_frontier.size(), forged_frontier);
         write_field(context, "forged-frontier", 'm', *forged_manifest);
+        write_field(
+            context, "forged-frontier", 'a',
+            fenced_marker_for(*forged_manifest, "matrix body"));
+        const auto forged_historical = reader.read_historical(scope, "forged-frontier");
+        expect(forged_historical.status == MdbxCurrentDerivedPublicationStatus::Historical &&
+                   forged_historical.publication &&
+                   forged_historical.publication->request.dependency_frontier == forged_frontier,
+               "forged frontier control did not preserve publication integrity");
         const auto forged_read = reader.read_current(scope, "forged-frontier");
-        expect(forged_read.status != MdbxCurrentDerivedPublicationStatus::Current &&
+        expect(forged_read.status == MdbxCurrentDerivedPublicationStatus::Stale &&
                    !forged_read.publication,
-               "forged frontier was admitted as Current");
+               "valid publication with a forged frontier was not rejected as Stale");
     }
     matrix_database.cleanup_or_fail();
 
