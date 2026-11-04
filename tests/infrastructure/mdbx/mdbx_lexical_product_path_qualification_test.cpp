@@ -1,4 +1,4 @@
-#include <agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.hpp>
+﻿#include <agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxPersistentLexicalIndex.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxProjectionStore.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxResourceImporter.hpp>
@@ -16,10 +16,17 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -64,22 +71,68 @@ void require(bool condition, const char* message) {
     if(!condition) throw std::runtime_error(message);
 }
 
-bool has_posting_for_unit(
-    const FlatLexicalIndex& index,
-    TokenId token,
-    KnowledgeUnitId unit_id
-) {
-    const auto postings = index.postings(token);
-    return std::any_of(postings.begin(), postings.end(),
-        [unit_id](const FlatLexicalPosting& posting) {
-            return posting.unit_id == unit_id;
-        });
-}
+// Reserve ownership before opening any data/lock file. Matches the B2 fixture.
+class TestWorkspace final {
+public:
+    TestWorkspace() {
+        const auto root = std::filesystem::temp_directory_path();
+        const auto nonce = Clock::now().time_since_epoch().count();
+        for(unsigned attempt = 0; attempt < 64; ++attempt) {
+            const auto candidate = root / ("agent-memory-lexical-qualification-"
+                + std::to_string(nonce) + "-" + std::to_string(attempt));
+            std::error_code error;
+            if(std::filesystem::create_directory(candidate, error)) {
+                m_directory = candidate;
+                return;
+            }
+            if(error && error != std::make_error_code(std::errc::file_exists)) {
+                throw std::runtime_error("temporary directory reservation failed: "
+                    + error.message());
+            }
+        }
+        throw std::runtime_error("temporary directory reservation exhausted");
+    }
+    TestWorkspace(const TestWorkspace&) = delete;
+    TestWorkspace& operator=(const TestWorkspace&) = delete;
+    ~TestWorkspace() { cleanup(); }
+    std::filesystem::path path(const char* name) const { return m_directory / name; }
+    const std::filesystem::path& directory() const { return m_directory; }
+    void cleanup_or_fail() {
+        const auto owned_directory = m_directory;
+        cleanup();
+        require(!std::filesystem::exists(owned_directory), "temporary workspace cleanup failed");
+    }
+private:
+    void cleanup() noexcept {
+        if(m_directory.empty()) return;
+        // Only these known files inside our exclusively reserved directory are owned.
+        for(const auto name : {"importer.mdbx", "persistent.mdbx", "segmented.mdbx",
+                              "receipt.json"}) {
+            for(const auto suffix : {"", "-lck"}) {
+                const auto file = m_directory / (std::string{name} + suffix);
+#ifdef _WIN32
+                SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_NORMAL);
+#endif
+                std::error_code ignored;
+                std::filesystem::remove(file, ignored);
+            }
+        }
+        std::error_code ignored;
+        if(std::filesystem::remove(m_directory, ignored)) m_directory.clear();
+    }
+    std::filesystem::path m_directory;
+};
 
-std::filesystem::path unique_path(const std::string& stem) {
-    const auto stamp = Clock::now().time_since_epoch().count();
-    return std::filesystem::temp_directory_path()
-        / (stem + "-" + std::to_string(stamp) + ".mdbx");
+void check_exception_cleanup() {
+    std::filesystem::path directory;
+    struct ExpectedInterruption {};
+    try {
+        TestWorkspace workspace;
+        directory = workspace.directory();
+        auto context = MdbxStorageContext::open(workspace.path("importer.mdbx").string());
+        throw ExpectedInterruption{};
+    } catch(const ExpectedInterruption&) {}
+    require(!std::filesystem::exists(directory), "exception path leaked MDBX data or lock files");
 }
 
 std::vector<Document> make_corpus() {
@@ -93,7 +146,8 @@ std::vector<Document> make_corpus() {
                 ScopeId{scope_name},
                 KnowledgeUnitId{numeric_id},
                 ResourceId{"resource-" + scope_name + "-" + std::to_string(index)},
-                {"anchor", "protocol", "durable", "unit-" + std::to_string(numeric_id)}
+                {"anchor", "protocol", "durable", "unit-" + std::to_string(numeric_id),
+                    scope_name == "tenant-a" ? "alphaonlymarker" : "betaonlymarker"}
             });
         }
     }
@@ -138,11 +192,82 @@ FlatLexicalUnitInput lexical_unit(
     };
 }
 
+std::vector<FlatLexicalUnitInput> lexical_units_for_scope(
+    const std::vector<Document>& corpus,
+    const ScopeId& scope
+) {
+    std::vector<FlatLexicalUnitInput> result;
+    for(const auto& document : corpus) {
+        if(document.scope == scope) result.push_back(lexical_unit(document));
+    }
+    return result;
+}
+
 RetrievalQuery public_query() {
     RetrievalQuery query;
     query.text = "anchor protocol";
     query.limit = 8;
     return query;
+}
+
+bool matches_public_ids(const RetrievalResult& result,
+    const std::set<std::string>& allowed, std::size_t expected_count) {
+    std::set<std::string> observed;
+    for(const auto& hit : result.chunks) {
+        if(allowed.count(hit.chunk.id.value()) != 1
+            || !observed.insert(hit.chunk.id.value()).second) return false;
+    }
+    return observed.size() == expected_count;
+}
+
+bool has_posting_for_unit(
+    const FlatLexicalIndex& index,
+    TokenId token,
+    KnowledgeUnitId unit_id
+) {
+    const auto postings = index.postings(token);
+    return std::any_of(postings.begin(), postings.end(),
+        [unit_id](const FlatLexicalPosting& posting) {
+            return posting.unit_id == unit_id;
+        });
+}
+
+void check_index(const FlatLexicalIndex& index, const ScopeId& scope,
+    const std::vector<FlatLexicalUnitInput>& expected) {
+    require(index.descriptor().ref.scope_id == scope, "snapshot scope mismatch");
+    require(index.collection_stats().unit_count == expected.size(), "snapshot unit count mismatch");
+    std::map<std::string, std::map<KnowledgeUnitId, std::uint32_t>> postings_by_text;
+    for(const auto& input : expected) {
+        const auto stats = index.find_unit_stats(input.unit_id);
+        require(stats.has_value(), "snapshot omitted expected unit");
+        require(stats->resource_id == input.resource_id, "snapshot resource identity mismatch");
+        require(stats->resource_generation == input.resource_generation,
+            "snapshot resource generation mismatch");
+        require(stats->unit_revision == input.unit_revision,
+            "snapshot unit revision mismatch");
+        for(const auto& token : input.normalized_tokens) ++postings_by_text[token][input.unit_id];
+    }
+    // Include retired dictionary entries: they must have no unexpected postings.
+    for(const auto& entry : index.token_dictionary_for_storage()) {
+        const auto& expected_postings = postings_by_text[entry.first];
+        const auto actual = index.postings(entry.second);
+        require(actual.size() == expected_postings.size(), "unexpected or missing scope postings");
+        for(const auto& posting : actual) {
+            const auto found = expected_postings.find(posting.unit_id);
+            require(found != expected_postings.end() && found->second == posting.term_frequency,
+                "posting unit identity/frequency mismatch");
+            const auto input = std::find_if(expected.begin(), expected.end(), [&](const auto& unit) {
+                return unit.unit_id == posting.unit_id;
+            });
+            require(input != expected.end() && posting.resource_id == input->resource_id
+                && posting.resource_generation == input->resource_generation,
+                "posting resource/projection revision mismatch");
+        }
+    }
+    for(const auto& entry : postings_by_text) {
+        if(!entry.second.empty()) require(index.find_token_id(entry.first).has_value(),
+            "snapshot omitted expected token");
+    }
 }
 
 template <typename Callable>
@@ -232,17 +357,17 @@ int main(int argc, char** argv) {
             : std::filesystem::temp_directory_path()
                 / "agent_memory_lexical_product_path_qualification.json";
         const auto corpus = make_corpus();
-        const auto importer_path = unique_path("agent-memory-lexical-importer");
-        const auto persistent_path = unique_path("agent-memory-lexical-persistent");
-        const auto segmented_path = unique_path("agent-memory-lexical-segmented");
-        std::error_code cleanup_error;
-        std::filesystem::remove(importer_path, cleanup_error);
-        std::filesystem::remove(persistent_path, cleanup_error);
-        std::filesystem::remove(segmented_path, cleanup_error);
+        TestWorkspace workspace;
+        check_exception_cleanup();
+        const auto importer_path = workspace.path("importer.mdbx");
+        const auto persistent_path = workspace.path("persistent.mdbx");
+        const auto segmented_path = workspace.path("segmented.mdbx");
 
         TimingSummary rebuild_timing;
         bool current_scope_isolation = false;
         bool current_freshness = false;
+        std::set<std::string> tenant_a_ids;
+        std::set<std::string> tenant_b_ids;
         {
             auto context = MdbxStorageContext::open(importer_path.string());
             MdbxResourceImporterOptions importer_options;
@@ -255,8 +380,14 @@ int main(int argc, char** argv) {
                 for(const auto& document : corpus) {
                     const auto body = (document.id.value() == 1U ? "exclusiveoldtoken " : "")
                         + std::string{"anchor protocol durable "}
-                        + document.scope.value() + " unit-" + std::to_string(document.id.value());
-                    static_cast<void>(import_document(importer, document, body));
+                        + document.scope.value() + " unit-" + std::to_string(document.id.value()) + " "
+                        + (document.scope == ScopeId{"tenant-a"} ? "alphaonlymarker" : "betaonlymarker");
+                    const auto imported = import_document(importer, document, body);
+                    require(!imported.raw_units.empty(), "importer returned no raw unit identity");
+                    auto& ids = document.scope == ScopeId{"tenant-a"}
+                        ? tenant_a_ids : tenant_b_ids;
+                    ids.insert("knowledge-unit:" +
+                        std::to_string(imported.raw_units.front().value()));
                 }
             }
 
@@ -281,10 +412,8 @@ int main(int argc, char** argv) {
                     "agent_memory.m0_resource_importer.raw_chunks_original@perf_importer", 1}};
             const auto query = public_query();
             const auto initial = retriever.retrieve(query);
-            if(initial.size() != 8) {
-                throw std::runtime_error("public retriever returned "
-                    + std::to_string(initial.size()) + " tenant-a hits");
-            }
+            require(matches_public_ids(initial, tenant_a_ids, 8),
+                "public retriever returned a foreign or duplicate tenant-a identity");
             volatile std::size_t sink = 0;
             rebuild_timing = measure([&]() { return retriever.retrieve(query).size(); }, sink);
             static_cast<void>(sink);
@@ -294,7 +423,24 @@ int main(int argc, char** argv) {
                 ProjectionAwareLexicalRetrieverOptions{
                     ProjectionKind::Original, 256, 4096, 8U * 1024U * 1024U,
                     "agent_memory.m0_resource_importer.raw_chunks_original@perf_importer", 1}};
-            current_scope_isolation = retriever_b.retrieve(query).size() == 8;
+            const auto tenant_b_result = retriever_b.retrieve(query);
+            current_scope_isolation = matches_public_ids(tenant_b_result, tenant_b_ids, 8);
+            RetrievalQuery alpha_query;
+            alpha_query.text = "alphaonlymarker";
+            alpha_query.limit = 8;
+            RetrievalQuery beta_query;
+            beta_query.text = "betaonlymarker";
+            beta_query.limit = 8;
+            require(matches_public_ids(retriever.retrieve(alpha_query), tenant_a_ids, 8),
+                "tenant-a marker identity check failed");
+            require(retriever.retrieve(beta_query).empty(),
+                "tenant-a admitted tenant-b marker");
+            const auto tenant_b_marker_result = retriever_b.retrieve(beta_query);
+            require(matches_public_ids(tenant_b_marker_result, tenant_b_ids, 8),
+                "tenant-b marker identity check failed");
+            require(retriever_b.retrieve(alpha_query).empty(),
+                "tenant-b admitted tenant-a marker");
+            current_scope_isolation = true;
             const auto& updated = corpus.front();
             const auto updated_body = "replacement-token protocol durable tenant-a unit-1";
             MdbxResourceImporterOptions update_options;
@@ -331,6 +477,7 @@ int main(int argc, char** argv) {
         bool segmented_lifecycle = false;
         {
             auto context = MdbxStorageContext::open(persistent_path.string());
+            const auto tenant_a_inputs = lexical_units_for_scope(corpus, ScopeId{"tenant-a"});
             MdbxPersistentLexicalIndexOptions options_a;
             options_a.path = persistent_path.string();
             options_a.context = context;
@@ -348,6 +495,7 @@ int main(int argc, char** argv) {
                 std::optional<TokenId> old_token;
                 {
                     const auto initial = index_a.read_snapshot();
+                    check_index(initial.index, ScopeId{"tenant-a"}, tenant_a_inputs);
                     persistent_freshness =
                         initial.index.collection_stats().unit_count == kDocumentsPerScope
                         && initial.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 1;
@@ -399,12 +547,15 @@ int main(int argc, char** argv) {
             options_b.descriptor = descriptor(ScopeId{"tenant-b"}, 42, 1);
             MdbxPersistentLexicalIndex other_scope{options_b};
             other_scope.upsert(lexical_unit(corpus.back()));
-            persistent_lifecycle = persistent_lifecycle
-                && other_scope.read_snapshot().index.collection_stats().unit_count == 1;
+            check_index(other_scope.read_snapshot().index, ScopeId{"tenant-b"},
+                {lexical_unit(corpus.back())});
+            persistent_lifecycle = persistent_lifecycle &&
+                other_scope.read_snapshot().index.collection_stats().unit_count == 1;
         }
 
         {
             auto context = MdbxStorageContext::open(segmented_path.string());
+            const auto tenant_a_inputs = lexical_units_for_scope(corpus, ScopeId{"tenant-a"});
             MdbxSegmentedLexicalIndexOptions options_a;
             options_a.context = context;
             options_a.path = segmented_path.string();
@@ -419,6 +570,7 @@ int main(int argc, char** argv) {
                 segmented_build_ms = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
                 {
                     const auto initial = index_a.read_snapshot();
+                    check_index(initial.index, ScopeId{"tenant-a"}, tenant_a_inputs);
                     segmented_freshness =
                         initial.index.collection_stats().unit_count == kDocumentsPerScope
                         && initial.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 1;
@@ -461,8 +613,10 @@ int main(int argc, char** argv) {
             options_b.descriptor = descriptor(ScopeId{"tenant-b"}, 52, kLexicalSegmentLayoutVersion);
             MdbxSegmentedLexicalIndex other_scope{options_b};
             other_scope.upsert(lexical_unit(corpus.back()));
-            segmented_lifecycle = segmented_lifecycle
-                && other_scope.read_snapshot().index.collection_stats().unit_count == 1;
+            check_index(other_scope.read_snapshot().index, ScopeId{"tenant-b"},
+                {lexical_unit(corpus.back())});
+            segmented_lifecycle = segmented_lifecycle &&
+                other_scope.read_snapshot().index.collection_stats().unit_count == 1;
         }
 
         const auto freshness = current_freshness;
@@ -477,9 +631,7 @@ int main(int argc, char** argv) {
         require(persistent_lifecycle, "persistent lexical lifecycle checks failed");
         require(segmented_lifecycle, "segmented lexical lifecycle checks failed");
         require(lifecycle, "lexical lifecycle checks failed");
-        std::filesystem::remove(importer_path, cleanup_error);
-        std::filesystem::remove(persistent_path, cleanup_error);
-        std::filesystem::remove(segmented_path, cleanup_error);
+        workspace.cleanup_or_fail();
         std::cout << "lexical product-path qualification receipt: " << receipt.string() << '\n';
         return 0;
     } catch(const std::exception& error) {
