@@ -217,6 +217,12 @@ ProjectionAwareLexicalRetriever::ProjectionAwareLexicalRetriever(
     }
 }
 
+void ProjectionAwareLexicalRetrieval::validate_candidate_pairing() const {
+    if(legacy.chunks.size() != candidates.size()) {
+        throw std::logic_error("projection-aware lexical producer returned unpaired candidates");
+    }
+}
+
 RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
     const RetrievalQuery& query
 ) const {

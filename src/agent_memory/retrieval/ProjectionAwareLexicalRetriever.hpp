@@ -47,7 +47,12 @@ namespace agent_memory {
 
     struct ProjectionAwareLexicalRetrieval final {
         RetrievalResult legacy;
+        /// One typed identity per legacy hit, in the same score/rank order.
         std::vector<ProjectionAwareLexicalCandidate> candidates;
+
+        /// Throws std::logic_error if the parallel channels have unequal sizes.
+        /// Consumers must validate before indexing either channel by the other.
+        void validate_candidate_pairing() const;
     };
 
     /// Thrown when a bounded retrieval request exceeds its configured work

@@ -37,9 +37,46 @@ Freshness, materialization, and query completeness are deliberately separate:
   `UnsupportedQuery` diagnostic (and `retrieve()` throws
   `RevisionBoundUnsupportedQuery`) instead of silently looking like no matches.
 
-Canonical unit text is returned only for a `Current` result. A source summary
-is returned only after its revision and active manifest digest are verified;
-full citation bytes are never implied by `Partial`/`SummaryOnly`.
+The three status axes are the sole contract; the unreleased single-axis
+`RevisionBoundHydrationOutcome` and `hydration` field have been removed.
+Returned values obey these invariants (the public DTO is a value type, not an
+admission authority for caller-constructed data):
+
+| Freshness | Materialization | `text` | `source` / `root_digest` |
+|---|---|---|---|
+| `Current` | `SummaryOnly` | Canonical unit text | Both required; exact source revision and active manifest digest checked |
+| `Current` | `Unavailable` | Empty | Both absent; unit/projection admitted but the supported single-source summary is unavailable |
+| `Stale` | `Unavailable` | Empty | Both absent, or both present as validated stored diagnostic provenance; any retained pair names the old source revision, not a current citation |
+| `Unavailable` | `Unavailable` | Empty | Both absent; no admitted identity/provenance |
+
+`Hydrated` is reserved and is never emitted by this generic adapter. No other
+combination is returned. A present provenance pair also requires matching
+`root_resource_id` and `root_generation`; absent provenance leaves these empty
+and zero. Full citation bytes are never implied by `SummaryOnly`. The Stale
+diagnostic case validates the stored summary but deliberately does not claim
+that its root still matches the active manifest.
+
+### Query budgets and candidate pairing
+
+For supported queries, `limit > max_candidates` returns `BudgetExceeded`
+before tokenization, scope scanning or store reads, even if the corpus might
+contain fewer matches. Unit-scan and indexed-projection-byte budget failures
+have the same outcome. `retrieve_detailed()` returns no partial results and a
+diagnostic; `retrieve()` throws `ProjectionAwareLexicalRetrievalBudgetExceeded`
+with that diagnostic. Limits from zero through the cap remain accepted.
+Unsupported filters take precedence and retain their explicit diagnostic.
+The legacy producer's capped/empty-result behavior is unchanged.
+
+`ProjectionAwareLexicalRetrieval` carries one typed candidate per legacy hit in
+the same rank/score order. The producer constructs both channels together; an
+allocation failure throws rather than returning a half-filled result. The
+adapter calls `validate_candidate_pairing()` before indexing the channels.
+Unequal sizes throw `std::logic_error` from both adapter entry points, with no
+results returned. Negative fixtures exercise both directions of size mismatch.
+
+`Complete` means the supported bounded candidate operation completed without a
+budget failure. It does not imply source-byte hydration, a coherent cross-store
+snapshot, or top-K refill when final admission rejects a candidate.
 
 The shared `has_current_original_projection()` seam is also used by the
 adapter and the lexical producer. It preserves manifest schema/bindings,

@@ -17,14 +17,6 @@
 
 namespace agent_memory {
 
-/// \brief Outcome of canonical source validation for one lexical candidate.
-enum class RevisionBoundHydrationOutcome : std::uint8_t {
-    Current,
-    Partial,
-    Stale,
-    Unavailable
-};
-
 /// \brief Canonical freshness of the admitted unit and its Original projection.
 enum class RevisionBoundFreshness : std::uint8_t {
     Current,
@@ -76,7 +68,11 @@ public:
 ///
 /// The inline source summary is a typed, revision-bound locator.  M0 does not
 /// yet own a byte-addressable source catalog, so a valid summary may be
-/// returned as Partial: callers must not treat it as a fully hydrated quote.
+/// returned as SummaryOnly: callers must not treat it as a fully hydrated quote.
+/// Returned values obey the state table in guides/kb0-revision-bound-retrieval.md:
+/// non-Current results have Unavailable materialization and empty text;
+/// source/root_digest are either both absent or a validated exact revision pair.
+/// A Stale pair is diagnostic provenance, never a current citation.
 struct RevisionBoundRetrievalResult final {
     KnowledgeUnitId knowledge_unit_id;
     ScopeId scope_id;
@@ -90,10 +86,8 @@ struct RevisionBoundRetrievalResult final {
     RevisionBoundFreshness freshness = RevisionBoundFreshness::Unavailable;
     RevisionBoundMaterialization materialization =
         RevisionBoundMaterialization::Unavailable;
-    /// Compatibility projection of the old single-axis status.
-    RevisionBoundHydrationOutcome hydration =
-        RevisionBoundHydrationOutcome::Unavailable;
-    /// Empty unless freshness is Current and materialization is available.
+    /// Inline canonical text is present only for Current/SummaryOnly results.
+    /// It is a bounded summary, not proof of byte-addressable source hydration.
     std::string text;
 };
 
@@ -108,7 +102,7 @@ struct RevisionBoundRetrievalResponse final {
 /// This is intentionally a small composition adapter. It does not replace
 /// IRetriever or change production retrieval defaults. Backend-specific
 /// implementations may provide a shared read snapshot; this generic adapter
-/// uses the existing store contracts and therefore documents Partial when
+/// uses the existing store contracts and therefore reports SummaryOnly when
 /// only the M0 inline source summary is available.
 class RevisionBoundLexicalRetriever final {
 public:
@@ -127,6 +121,8 @@ public:
 
     /// \brief Returns hit statuses and query completeness without conflating
     /// unsupported features or work-budget failures with zero matches.
+    /// A limit above max_candidates is rejected before reading any stores.
+    /// Both entry points throw std::logic_error for an unpaired producer result.
     [[nodiscard]] RevisionBoundRetrievalResponse retrieve_detailed(
         const RetrievalQuery& query
     ) const;
