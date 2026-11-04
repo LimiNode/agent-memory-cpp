@@ -21,17 +21,21 @@ yet a complete KB-0 Technical Preview because the product-facing retrieval path
 does not compose all of those stores under one read snapshot and does not
 hydrate source bytes through a typed evidence anchor.
 
-The audit found two confirmed physical/profile issues that should be handled by
-separate implementation PRs:
+Static source inspection identified two physical/profile facts. They must be
+distinguished from runtime failures, which this audit did not reproduce:
 
 1. `MdbxProjectionStore` and `MdbxDerivedPublicationStore` both derive the
    default table name `agent_memory_unit_projections`. Their key prefixes do
-   not collide today, but two independent owners share one DBI without a
-   manifest entry or a migration contract.
+   not collide today. Joint payload/schema, maintenance and migration ownership
+   needs qualification; data corruption or an incompatible operation has not
+   been demonstrated. This is a potential pre-release architecture risk, not
+   proof that the DBI must be split.
 2. The manifest describes `lexical_posting_segments` as a reserved M2 segment
    layout, while the flat-v2 and seg-v2 adapters use that DBI for versioned
    KV payload/keyspaces. The code documents the distinction, but the selected
-   profile and physical ownership are not yet machine-checked together.
+   profile and physical ownership are not yet machine-checked together. This
+   is an experimental profile/schema-tooling risk, not a mandatory gate for
+   the bounded text-first KB-0 path while those adapters remain opt-in.
 
 These are not fixed in this audit PR.
 
@@ -63,6 +67,14 @@ The implementation labels below mean:
   production path;
 - **Profile/experiment:** an intentionally bounded adapter or research slice;
 - **Docs only:** no production DTO or storage implementation exists.
+
+Evidence labels distinguish **STATIC** (source/contract inspection), **TEST
+SOURCE** (a named executable fixture exists and was inspected, not rerun by
+this docs-only audit), and **EXECUTED** (an actual recorded command/run).
+The audit's executed checks are the DBI manifest validator and its self-test,
+whitespace validation, and the documentation CI lane. These do not execute
+MDBX or prove co-ownership safety. Runtime reproducers in the finding table
+are acceptance work still to be performed, not reported test results.
 
 ## DTO and field ownership matrix
 
@@ -127,7 +139,7 @@ reserved or documentation-only. Names are shown with the default
 | `agent_memory_resource_import_fencing_tokens` | Importer / canonical guarded writers | ResourceId → fencing token | Same context and transaction as guarded publication | Token migration/recovery tests | Implemented profile |
 | `agent_memory_resource_import_fencing_schema` | Importer | schema marker → fencing schema version | Single marker; no scope | Explicit offline legacy migration; tests cover v3/v4 → v5 | Implemented profile |
 | `agent_memory_lexical_posting_segments` | `MdbxPersistentLexicalIndex` and `MdbxSegmentedLexicalIndex` | Versioned flat-v2 value or `seg-v1/seg-v2` row keyspace → bounded lexical payload | Scope/projection encoded in state key or row key; one index transaction | Reopen, rollback, corruption, segmented fault and benchmark tests | Implemented experiment; manifest classification drift |
-| Derived-publication table derived as `agent_memory_unit_projections` | `MdbxDerivedPublicationStore` | `derived_publication:<id>:b/m/a` → v1/v2 body/manifest/marker | Publication id point reads; B3 has caller-owned transaction overload | Atomic body/manifest/marker and reopen/fault tests | **Confirmed ownership/DBI collision risk** |
+| Derived-publication table derived as `agent_memory_unit_projections` | `MdbxDerivedPublicationStore` | `derived_publication:<id>:b/m/a` → v1/v2 body/manifest/marker | Publication id point reads; B3 has caller-owned transaction overload | Atomic body/manifest/marker and reopen/fault tests | **STATIC: same DBI name confirmed; runtime ownership conflict POTENTIAL, not reproduced** |
 | `resource_bodies`, `resource_body_manifest`, `resource_body_chunks` | Resource body profile | Resource/revision/digest and chunk-index keys → body payloads | Optional profile; range-read contract is documented, not a current default | No production BlobStore/CAS implementation | Reserved/documentation-only |
 | `source_refs`, `source_refs_by_resource` | Provenance profile | UnitId or ResourceId reverse keys → full source refs | Optional full-source profile | No current general adapter | Reserved |
 | `embedding_*`, graph, temporal, runtime, sync and payload DBIs | Capability/profile owners in `dbi-manifest.yaml` | Declared by manifest; many have no current writer | Profile selector controls opening; no implicit DBI creation | Migration peaks and budget are documented | Reserved/documentation-only |
@@ -145,12 +157,17 @@ adapter-local construction paths. Passing the same filesystem path is not a
 shared transaction context. The backend integration roadmap correctly treats
 shared context and transaction provenance as an architectural requirement.
 
-The two confirmed DBI findings need explicit acceptance tests:
+The confirmed shared name and experimental layout difference need separate
+qualification before choosing any physical change:
 
 - instantiate projection and derived-publication stores on one default context,
-  inspect the physical DBI inventory, and prove that each owner has a distinct
-  schema/name; or deliberately specify one shared namespace with a documented
-  composite key/value contract;
+  write both payload families, inspect keys, and test reads and reopen;
+  exercise each owner's available scan/delete/maintenance operations and schema
+  version handling without damaging the other's rows. Inventory whether a
+  public clear operation actually exists before promising a clear test.
+  A safe shared namespace with a documented composite schema is acceptable.
+  Only a reproduced incompatibility justifies a separate migration-safe DBI
+  decision; no automatic rename or new DBI is authorized by this audit;
 - select a named lexical profile and validate that its actual payload/keyspace
   (`flat-v2` versus `seg-v2`) matches the selected manifest entry, payload
   version and migration path.
@@ -285,27 +302,34 @@ An ASR/OCR/caption result is never the original media citation. A perceptual
 hash identifies a near-copy, not semantic evidence. Binary indexes may share
 candidate machinery only under an exact representation/space descriptor.
 
-## Release blocker and risk table
+## Release gates and risk table
 
-Each finding has source evidence, impact and a bounded acceptance test. Items
-marked DEFERRED are intentional non-goals, not bugs in the audit snapshot.
+Each finding has an explicit gate, evidence level and bounded acceptance test.
+`KB0_RELEASE_GATE` identifies required product-path qualification;
+`PRE_RELEASE_ARCHITECTURE_RISK` requires a scoped decision or qualification but
+is not itself a demonstrated release-blocking defect; `DEFERRED_PROFILE` is
+outside the selected text-first path. These labels do not override
+`milestones.md` or promote a partial KB-0 preview to completed M0.
 
-| Finding and source evidence | Reproducibility | Severity / status | KB-0 impact | Minimal fix and migration risk | Acceptance test / estimated scope |
+| Finding and source evidence | Evidence / reproduction status | Severity / status / gate | KB-0 impact | Minimal fix and migration risk | Acceptance test / estimated scope |
 |---|---|---|---|---|---|
-| Product-facing revision-bound retrieval reads unit, projection and manifest through independent store calls; the generic adapter documents that it does not own one MDBX snapshot | Construct concurrent update between the separate reads; existing in-memory tests cannot expose a durable torn view | **P1 / CONFIRMED** | `Current` cannot be advertised as snapshot-consistent | Add an MDBX-specific composition using one caller-owned read transaction and typed candidate reader; no domain transaction interface. Medium migration risk | Update/read race, close/reopen, stale rejection and exact-snapshot fixture. One focused PR |
-| `MdbxProjectionStore::table_name()` and `MdbxDerivedPublicationStore::table_name()` both produce `<prefix>_unit_projections` with default prefix `agent_memory` | Instantiate both on one context and inspect/open the same DBI; keys are currently disjoint but owners are not | **P1 / CONFIRMED** | Publication and projection schemas can be coupled accidentally; backup/migration ownership is ambiguous | Separate `derived_publications` DBI or formally define one composite schema and manifest owner. High migration risk for existing files | Physical DBI inventory, mixed-store reopen and migration test. One storage PR |
-| `lexical_posting_segments` manifest entry describes future segment rows, while flat-v2/seg-v2 use a versioned KV payload/keyspace there | Open persistent/segmented index and inspect keys/payload markers (`flat-v2`, `seg-v1`, `seg-v2`) | **P2 / CONFIRMED** | Profile selection and migration tooling can misclassify experimental data | Add explicit experimental profile delta/name and leave M2 segment DBI reserved, or update manifest with a versioned dual-layout contract. Medium migration risk | Manifest validator checks selected adapter, payload version and keyspace; one profile PR |
-| `SourceRefSummary.quote_hash` covers `preview`, and no product source reader proves original bytes | Change/erase retained body while leaving preview; current summary still hashes | **P1 / CONFIRMED** | KB-0 citation hydration is only summary-level | Add byte-addressable source reader/evidence anchor and explicit `SummaryOnly`/`Hydrated` outcomes. High API/storage risk | Exact revision/body digest/range test plus retention-unavailable and access-denied outcomes. One vertical slice |
-| M0 retrieval trace is required by `milestones.md`, while current projection-aware/revision-bound slices expose no `IRetrievalTrace` publication | Run retrieval and inspect API/result; no trace contract is wired | **P1 / CONFIRMED** | Operational debugging and reproducible candidate accounting are incomplete | Add minimal additive trace sink with query, filters, candidate counts and frontier; no runtime queue. Medium API risk | Trace conformance fixture and no-trace default compatibility test |
-| `KnowledgeUnitEnvelope` stores bounded source summaries; full `source_refs` and reverse lookup are reserved | Attempt to hydrate a full source or enumerate all unit citations from M0 stores | **P2 / CONFIRMED** | Long/large provenance cannot be guaranteed | Enable the explicit full-source profile; keep summary semantics unchanged. Medium migration risk | Reopen, reverse lookup, retention and source-count bounds |
-| `ResourceRevision` has optional digest plus prototype-local 64-bit hash hints | Construct a generic manifest without digest or compare pipeline hash changes | **P2 / CONFIRMED** | A caller can confuse freshness hints with integrity identity | Make the selected KB-0 profile require `body_digest` for byte-verified admission; preserve generic legacy manifests as historical-only. Medium migration risk | Admission rejects missing digest for current retrieval and accepts historical read explicitly |
-| No stable SegmentId/structured chunking/typed table locators | Import Markdown/CSV/PDF and request row/section-level evidence | **P2 / DEFERRED** | Text-first KB-0 remains limited to raw byte chunks | Implement one S0 structured profile after the text path; do not overload ChunkId or TextRange. High migration risk | UTF-8/row-cell/section locator fixture |
-| BlobStore/CAS, framed compression and GC are roadmap contracts only | Inspect `src/agent_memory`; no BlobStore implementation or C2 profile is wired | **P2 / DEFERRED** | Non-text and large-source retention are not releasable | Separate artifact storage PR; no changes in this audit | Crash, GC, range, checksum, backup/restore and erasure matrix |
-| Legacy adapters still permit private connections when constructed from path, unlike context-based stores | Construct two legacy adapters with the same path and compare transaction/context ownership | **P2 / CONFIRMED** | Cross-store atomicity and coordinated shutdown are not guaranteed | Add backend-specific factory/context overloads; do not leak transactions into domain interfaces. Medium migration risk | Shared-context identity, attached read-only and shutdown-drain tests |
+| Generic revision-bound retrieval uses independent unit/projection/manifest calls | STATIC: no shared transaction; TEST SOURCE: `revision_bound_retrieval_test.cpp` uses in-memory stores. Durable torn-read reproducer not run | **P1 / CONFIRMED gap / KB0_RELEASE_GATE** | `Current` cannot be advertised as snapshot-consistent | MDBX-specific caller-owned read transaction composition; no domain transaction interface or schema change | Bounded update/read race, stale rejection, close/reopen and exact-snapshot fixture; one focused PR |
+| Projection and derived-publication `table_name()` both return `<prefix>_unit_projections` | STATIC: shared name and distinct key families confirmed. Mixed-store corruption/maintenance failure NOT reproduced | **P1 / POTENTIAL conflict / PRE_RELEASE_ARCHITECTURE_RISK** | Joint payload, backup and migration ownership needs qualification | Test co-ownership first; retain a documented composite schema if safe. Split only with separately reviewed migration plan; high migration risk | Mixed-store writes/reads/reopen, per-owner scan/delete/available maintenance, schema/version negatives; separate storage PR only if needed |
+| `lexical_posting_segments` manifest key description differs from flat-v2/seg-v2 layouts; manifest notes already acknowledge this | STATIC: payload/keyspace difference confirmed. EXECUTED: manifest validator checks declarations, not adapter/runtime agreement | **P2 / CONFIRMED profile risk / DEFERRED_PROFILE** | Experimental schema tooling can misclassify data; does not block bounded text-first KB-0 | Named profile/schema validation before activation; no mandatory DBI rename. Medium risk if a future migration is chosen | Selected adapter/payload/keyspace conformance in a later profile PR |
+| `SourceRefSummary.quote_hash` hashes preview; product retrieval has no exact source-byte reader | STATIC: preview hash implementation and summary-only adapter inspected. End-to-end body-loss fixture not run | **P1 / CONFIRMED gap / KB0_RELEASE_GATE** | Citation materialization is summary-only | Minimal retained-text reader with exact revision/digest/range validation; no general BlobStore required | Byte-verified text, missing retained body, no historical substitution, import/update/reopen; one vertical slice |
+| Minimal retrieval trace required by `milestones.md` is not wired into this product route | STATIC: milestone/API inspection; no product trace conformance demonstrated | **P1 / CONFIRMED gap / KB0_RELEASE_GATE** | Candidate/rejection accounting and reproducibility incomplete | Add minimal query identity, scope, counts, limits and snapshot/frontier identity; no sensitive source content or runtime queue | Deterministic trace and no-trace compatibility fixture |
+| Envelope contains bounded summaries; full `source_refs`/reverse lookup is reserved | STATIC and TEST SOURCE: bounded envelope validation in `KnowledgeUnit.cpp` and unit tests | **P2 / DEFERRED / DEFERRED_PROFILE** | Long/general provenance unavailable; bounded M0 summaries are intentional | Implement full-source profile at its normative milestone; do not turn it into an M0 prerequisite | Future reverse lookup, reopen, retention and bounds tests |
+| Generic `ResourceRevision` has optional digest and prototype-local hashes | STATIC: value contract inspected; generic optional digest is intentional, not corruption | **P2 / POTENTIAL misuse / PRE_RELEASE_ARCHITECTURE_RISK** | Integrity claims must use a digest, not 64-bit hints | Require digest at the selected byte-verified admission boundary; no blanket change to legacy manifests | Selected-path missing-digest rejection and exact historical revision reads |
+| No general SegmentId/structural table locators | STATIC: roadmap/type inventory; no structured profile qualification | **P2 / DEFERRED / DEFERRED_PROFILE** | Raw byte chunks remain supported scope | Later S0 profile; do not overload ChunkId/TextRange | Future UTF-8/row-cell/section fixtures |
+| BlobStore/CAS, C2 compression and GC are roadmap-only | STATIC: no general implementation wired | **P2 / DEFERRED / DEFERRED_PROFILE** | Non-text/general large-source retention not claimed | Separate artifact/codec work, not required for retained raw-text composition | Future crash/GC/range/checksum/backup/erasure matrix |
+| Legacy path constructors can own private connections | STATIC: constructors inspected; equal path is not shared-context proof | **P2 / POTENTIAL composition misuse / PRE_RELEASE_ARCHITECTURE_RISK** | Cross-store atomicity is not implied by sharing a filename | Select shared-context adapters for the product route; no global legacy rewrite | Context identity, foreign-transaction rejection and shutdown tests for the selected route |
 
-The first five rows are release blockers for a product-labelled KB-0
-Technical Preview. The remaining rows are profile or roadmap blockers and
-should not be hidden by a green unit-test run.
+Only rows explicitly labelled `KB0_RELEASE_GATE` above identify missing
+product qualification. Potential risks require investigation, not an assumed
+runtime defect; deferred experimental profiles do not gate text-first KB-0.
+This table is not exhaustive M0 acceptance: BM25F/trace and every other required
+row in `milestones.md` remain normative even if an earlier preview excludes a
+capability explicitly. Green component CI alone does not close those gates.
 
 ## Minimal next implementation slice
 
