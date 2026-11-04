@@ -55,6 +55,10 @@ namespace agent_memory {
     /// \brief Committed publication returned after marker and storage checks.
     struct DerivedPublication final {
         DerivedPublicationRequest request;
+        /// True only when the publication was admitted through the fenced B2 path.
+        /// Storage-only legacy publications remain readable historically but
+        /// must never be treated as authoritative Current data.
+        bool fenced_admission = false;
     };
 
     /// \brief Result that keeps stored mismatches and unavailable rows distinct from absence.

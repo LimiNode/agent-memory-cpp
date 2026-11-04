@@ -20,6 +20,7 @@ namespace agent_memory {
 namespace {
 
 constexpr std::string_view kPayloadVersion = "agent_memory.derived_publication.v1";
+constexpr std::string_view kFencedPayloadVersion = "agent_memory.derived_publication.v2";
 constexpr std::string_view kKeyPrefix = "derived_publication:";
 constexpr std::uint8_t kActiveMarker = 1;
 constexpr std::uint64_t kMaxInputs = 1'000'000;
@@ -230,12 +231,17 @@ DerivedPublicationRequest deserialize_manifest(std::string_view payload,
     return request;
 }
 
-std::string serialize_marker(const std::string& manifest, const std::string& body) {
+std::string serialize_marker(
+    const std::string& manifest,
+    const std::string& body,
+    bool fenced_admission
+) {
     const auto manifest_digest = sha256(manifest);
     const auto body_digest = sha256(body);
     std::string marker;
-    append_string(marker, kPayloadVersion);
+    append_string(marker, fenced_admission ? kFencedPayloadVersion : kPayloadVersion);
     append_u8(marker, kActiveMarker);
+    if(fenced_admission) append_u8(marker, 1U);
     append_digest(marker, manifest_digest);
     append_digest(marker, body_digest);
     return marker;
@@ -270,16 +276,20 @@ bool same_root_revision(const ResourceRevisionRef& left, const ResourceRevision&
         && left.body_digest.bytes == right.body_digest->bytes;
 }
 
-void validate_marker(std::string_view payload, std::string_view manifest, std::string_view body) {
+bool validate_marker(std::string_view payload, std::string_view manifest, std::string_view body) {
     if(payload.size() > kMaxMarkerBytes || manifest.size() > kMaxManifestBytes || body.size() > kMaxBodyBytes)
         throw std::runtime_error("derived publication payload exceeds its byte budget");
     std::size_t position = 0;
-    if(read_string(payload, position, kPayloadVersion.size(), "payload version") != kPayloadVersion ||
-       read_u8(payload, position) != kActiveMarker)
+    const auto version = read_string(payload, position, kFencedPayloadVersion.size(), "payload version");
+    const bool fenced = version == kFencedPayloadVersion;
+    if((!fenced && version != kPayloadVersion) || read_u8(payload, position) != kActiveMarker)
         throw std::runtime_error("derived publication marker is not active");
+    if(fenced && read_u8(payload, position) != 1U)
+        throw std::runtime_error("derived publication marker is not fenced");
     if(read_digest(payload, position) != sha256(manifest) || read_digest(payload, position) != sha256(body) ||
        position != payload.size())
         throw std::runtime_error("derived publication marker integrity mismatch");
+    return fenced;
 }
 
 bool same_inputs(const std::vector<DerivedPublicationInput>& left,
@@ -306,6 +316,40 @@ public:
     mutable mdbxc::KeyValueTable<std::string, std::string> table;
     std::string table_prefix;
     std::function<void(MdbxDerivedPublicationFaultPoint)> fault_injector;
+
+    DerivedPublicationReadResult read_in_transaction(
+        const ScopeId& access_scope,
+        const std::string& publication_id,
+        const mdbxc::Transaction& txn
+    ) const {
+        const auto body = table.find(field_key(publication_id, 'b'), txn);
+        const auto manifest = table.find(field_key(publication_id, 'm'), txn);
+        const auto marker = table.find(field_key(publication_id, 'a'), txn);
+        if(!body && !manifest && !marker)
+            return {DerivedPublicationReadStatus::NotFound, std::nullopt};
+        if(!body || !manifest || !marker)
+            return {DerivedPublicationReadStatus::Unavailable, std::nullopt};
+        try {
+            if(body->size() > kMaxBodyBytes || manifest->size() > kMaxManifestBytes ||
+               marker->size() > kMaxMarkerBytes || body->size() > kMaxSerializedBytes - manifest->size() ||
+               marker->size() > kMaxSerializedBytes - body->size() - manifest->size())
+                throw std::runtime_error("derived publication serialized payload exceeds its byte budget");
+            const auto fenced = validate_marker(*marker, *manifest, *body);
+            std::array<std::uint8_t, 32> body_digest{};
+            auto request = deserialize_manifest(*manifest, body_digest);
+            request.body = *body;
+            validate_request(request);
+            if(body_digest != sha256(*body) || request.publication_id != publication_id)
+                throw std::runtime_error("derived publication body identity mismatch");
+            if(request.scope_id != access_scope)
+                return {DerivedPublicationReadStatus::ScopeMismatch, std::nullopt};
+            DerivedPublication publication{std::move(request)};
+            publication.fenced_admission = fenced;
+            return {DerivedPublicationReadStatus::StoredMatch, std::move(publication)};
+        } catch(const std::exception&) {
+            return {DerivedPublicationReadStatus::Unavailable, std::nullopt};
+        }
+    }
 
     void publish_in_transaction(
         const DerivedPublicationRequest& request,
@@ -350,7 +394,7 @@ void MdbxDerivedPublicationStore::publish(DerivedPublicationRequest request) {
     validate_request(request);
     const auto body_digest = sha256(request.body);
     const auto manifest = serialize_manifest(request, body_digest);
-    const auto marker = serialize_marker(manifest, request.body);
+    const auto marker = serialize_marker(manifest, request.body, false);
     if(marker.size() > kMaxMarkerBytes || manifest.size() > kMaxManifestBytes ||
        request.body.size() > kMaxBodyBytes || manifest.size() > kMaxSerializedBytes - request.body.size() ||
        marker.size() > kMaxSerializedBytes - request.body.size() - manifest.size())
@@ -410,7 +454,7 @@ MdbxFencedDerivedPublicationResult MdbxDerivedPublicationStore::publish_fenced(
         validate_request(publication);
         const auto body_digest = sha256(publication.body);
         const auto serialized_manifest = serialize_manifest(publication, body_digest);
-        const auto marker = serialize_marker(serialized_manifest, publication.body);
+        const auto marker = serialize_marker(serialized_manifest, publication.body, true);
         if(marker.size() > kMaxMarkerBytes
            || serialized_manifest.size() > kMaxManifestBytes
            || publication.body.size() > kMaxBodyBytes) {
@@ -471,37 +515,25 @@ DerivedPublicationReadResult MdbxDerivedPublicationStore::read(
             throw std::invalid_argument("derived publication source digest exceeds its byte budget");
     }
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-    const auto body = m_impl->table.find(field_key(publication_id, 'b'), txn);
-    const auto manifest = m_impl->table.find(field_key(publication_id, 'm'), txn);
-    const auto marker = m_impl->table.find(field_key(publication_id, 'a'), txn);
-    if(!body && !manifest && !marker) {
-        txn.commit();
-        return {DerivedPublicationReadStatus::NotFound, std::nullopt};
-    }
-    if(!body || !manifest || !marker) {
-        txn.commit();
-        return {DerivedPublicationReadStatus::Unavailable, std::nullopt};
-    }
-    try {
-        if(body->size() > kMaxBodyBytes || manifest->size() > kMaxManifestBytes ||
-           marker->size() > kMaxMarkerBytes || body->size() > kMaxSerializedBytes - manifest->size() ||
-           marker->size() > kMaxSerializedBytes - body->size() - manifest->size())
-            throw std::runtime_error("derived publication serialized payload exceeds its byte budget");
-        validate_marker(*marker, *manifest, *body);
-        std::array<std::uint8_t, 32> body_digest{};
-        auto request = deserialize_manifest(*manifest, body_digest);
-        request.body = *body;
-        validate_request(request);
-        if(body_digest != sha256(*body) || request.publication_id != publication_id) throw std::runtime_error("derived publication body identity mismatch");
-        txn.commit();
-        if(request.scope_id != access_scope) return {DerivedPublicationReadStatus::ScopeMismatch, std::nullopt};
-        if(request.dependency_frontier != current_dependency_frontier || !same_inputs(request.inputs, current_inputs))
-            return {DerivedPublicationReadStatus::StoredMismatch, std::nullopt};
-        return {DerivedPublicationReadStatus::StoredMatch, DerivedPublication{request}};
-    } catch(const std::exception&) {
-        txn.commit();
-        return {DerivedPublicationReadStatus::Unavailable, std::nullopt};
-    }
+    const auto stored = m_impl->read_in_transaction(access_scope, publication_id, txn);
+    txn.commit();
+    if(stored.status != DerivedPublicationReadStatus::StoredMatch || !stored.publication)
+        return stored;
+    if(stored.publication->request.dependency_frontier != current_dependency_frontier ||
+       !same_inputs(stored.publication->request.inputs, current_inputs))
+        return {DerivedPublicationReadStatus::StoredMismatch, std::nullopt};
+    return stored;
+}
+
+DerivedPublicationReadResult MdbxDerivedPublicationStore::read_in_transaction(
+    const ScopeId& access_scope,
+    const std::string& publication_id,
+    const mdbxc::Transaction& transaction
+) const {
+    if(access_scope.empty() || publication_id.empty() || access_scope.value().size() > kMaxScopeBytes ||
+       publication_id.size() > kMaxPublicationIdBytes)
+        throw std::invalid_argument("invalid derived publication read identity or byte budget");
+    return m_impl->read_in_transaction(access_scope, publication_id, transaction);
 }
 
 } // namespace agent_memory

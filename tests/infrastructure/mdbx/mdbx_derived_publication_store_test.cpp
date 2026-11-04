@@ -1,4 +1,5 @@
 #include <agent_memory/infrastructure/mdbx/MdbxDerivedPublicationStore.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxCurrentDerivedPublicationReader.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxProjectionStore.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxResourceFrontierSnapshot.hpp>
 #include <agent_memory/domain/Sha256.hpp>
@@ -8,14 +9,18 @@
 #include <mdbx_containers/KeyValueTable.hpp>
 
 #include <chrono>
+#include <cstdlib>
 #include <cstdint>
 #include <filesystem>
+#include <future>
 #include <iostream>
 #include <optional>
+#include <exception>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <utility>
 
 #ifdef _WIN32
@@ -150,6 +155,24 @@ std::string marker_for(std::string_view manifest, std::string_view body) {
         marker.append(reinterpret_cast<const char*>(digest.data()), digest.size());
     };
     append_string("agent_memory.derived_publication.v1");
+    marker.push_back(static_cast<char>(1));
+    append_digest(agent_memory::sha256(manifest));
+    append_digest(agent_memory::sha256(body));
+    return marker;
+}
+
+std::string fenced_marker_for(std::string_view manifest, std::string_view body) {
+    std::string marker;
+    const auto append_string = [&marker](std::string_view value) {
+        marker += std::to_string(value.size());
+        marker.push_back(':');
+        marker.append(value.data(), value.size());
+    };
+    const auto append_digest = [&marker](const auto& digest) {
+        marker.append(reinterpret_cast<const char*>(digest.data()), digest.size());
+    };
+    append_string("agent_memory.derived_publication.v2");
+    marker.push_back(static_cast<char>(1));
     marker.push_back(static_cast<char>(1));
     append_digest(agent_memory::sha256(manifest));
     append_digest(agent_memory::sha256(body));
@@ -643,8 +666,267 @@ int main() {
                    custom_publication.publication->request.dependency_frontier).status
                    == DerivedPublicationReadStatus::StoredMatch,
                "custom-prefix publication was not readable");
+        MdbxCurrentDerivedPublicationReader custom_reader(context, "custom_b2");
+        const auto custom_current = custom_reader.read_current(scope, "custom-publication");
+        expect(custom_current.status == MdbxCurrentDerivedPublicationStatus::Current &&
+                   custom_current.publication,
+               "custom-prefix current reader did not revalidate publication");
     }
     custom_database.cleanup_or_fail();
+
+    auto matrix_database = TestDatabase::create("agent_memory_current_read_matrix");
+    {
+        auto context = MdbxStorageContext::open(matrix_database.path().string());
+        const ScopeId scope{"matrix-scope"};
+        MdbxResourceManifestStorage manifests({"", "agent_memory", false,
+                                                kDefaultMdbxMaxDbs, context});
+        MdbxKnowledgeUnitStore units({"", "agent_memory", false,
+                                      kDefaultMdbxMaxDbs, context});
+        MdbxDerivedPublicationStore publications({"", "agent_memory", false,
+                                                  kDefaultMdbxMaxDbs, context});
+        MdbxResourceFrontierSnapshotReader frontier_reader(context);
+        MdbxCurrentDerivedPublicationReader reader(context);
+
+        const auto publish_one = [&](const ResourceId& resource,
+                                     std::uint8_t seed,
+                                     const std::string& publication_id) {
+            manifests.upsert_manifest(frontier_manifest(resource, 1, seed));
+            const auto unit = units.create_or_get_unit(
+                frontier_unit_request(scope, resource, 1, seed));
+            auto frontier = frontier_reader.read(scope, {
+                {unit.id, unit.revision, ResourceRevisionRef{resource, 1, frontier_digest(seed)}}
+            });
+            expect(frontier.status == MdbxResourceFrontierSnapshotStatus::Available &&
+                       frontier.snapshot,
+                   "B3 matrix fixture frontier was unavailable");
+            frontier.snapshot->read_transaction_owner.reset();
+            const auto published = publications.publish_fenced(
+                *frontier.snapshot,
+                MdbxFencedDerivedPublicationRequest{
+                    publication_id, ProjectionKind::QACombined, 1,
+                    "matrix body", 1, "pipeline@1"});
+            expect(published.status == MdbxFencedDerivedPublicationStatus::Published &&
+                       published.publication,
+                   "B3 matrix fixture publication failed");
+            return unit;
+        };
+
+        const auto unit_only = publish_one(ResourceId{"matrix-unit"}, 51, "unit-only");
+        expect(reader.read_current(scope, "unit-only").status ==
+                   MdbxCurrentDerivedPublicationStatus::Current,
+               "B3 matrix baseline was not Current");
+        static_cast<void>(units.update_mutable_fields(
+            unit_only.id,
+            KnowledgeUnitMutablePatch{std::string{"unit-only mutation"}, std::nullopt,
+                                      std::nullopt, std::nullopt, std::nullopt}));
+        const auto unit_stale = reader.read_current(scope, "unit-only");
+        expect(unit_stale.status == MdbxCurrentDerivedPublicationStatus::Stale &&
+                   !unit_stale.publication,
+               "KnowledgeUnit-only mutation was admitted as Current");
+
+        const auto inactive = publish_one(ResourceId{"matrix-inactive"}, 52, "inactive");
+        static_cast<void>(units.update_mutable_fields(
+            inactive.id,
+            KnowledgeUnitMutablePatch{std::nullopt, std::nullopt,
+                                      KnowledgeUnitLifecycleState::Superseded,
+                                      std::nullopt, std::nullopt}));
+        const auto inactive_read = reader.read_current(scope, "inactive");
+        expect(inactive_read.status == MdbxCurrentDerivedPublicationStatus::Stale &&
+                   !inactive_read.publication,
+               "inactive dependency was admitted as Current");
+
+        const auto missing = publish_one(ResourceId{"matrix-missing"}, 53, "missing");
+        expect(units.erase(missing.id), "B3 matrix missing dependency erase failed");
+        const auto missing_read = reader.read_current(scope, "missing");
+        expect(missing_read.status == MdbxCurrentDerivedPublicationStatus::Unavailable &&
+                   !missing_read.publication,
+               "missing dependency was not reported as unavailable");
+
+        const ResourceId root_a{"matrix-root-a"};
+        const ResourceId root_b{"matrix-root-b"};
+        manifests.upsert_manifest(frontier_manifest(root_a, 1, 54));
+        manifests.upsert_manifest(frontier_manifest(root_b, 1, 55));
+        const auto unit_a = units.create_or_get_unit(frontier_unit_request(scope, root_a, 1, 54));
+        const auto unit_b = units.create_or_get_unit(frontier_unit_request(scope, root_b, 1, 55));
+        auto many_frontier = frontier_reader.read(scope, {
+            {unit_a.id, unit_a.revision, ResourceRevisionRef{root_a, 1, frontier_digest(54)}},
+            {unit_b.id, unit_b.revision, ResourceRevisionRef{root_b, 1, frontier_digest(55)}}
+        });
+        expect(many_frontier.status == MdbxResourceFrontierSnapshotStatus::Available &&
+                   many_frontier.snapshot,
+               "multi-root B3 matrix frontier was unavailable");
+        many_frontier.snapshot->read_transaction_owner.reset();
+        const auto many = publications.publish_fenced(
+            *many_frontier.snapshot,
+            MdbxFencedDerivedPublicationRequest{
+                "many-roots", ProjectionKind::QACombined, 1,
+                "many roots", 1, "pipeline@1"});
+        expect(many.status == MdbxFencedDerivedPublicationStatus::Published && many.publication,
+               "multi-root B3 matrix publication failed");
+        expect(reader.read_current(scope, "many-roots").status ==
+                   MdbxCurrentDerivedPublicationStatus::Current,
+               "multi-root B3 matrix baseline was not Current");
+
+        const auto wrong_scope = reader.read_current(ScopeId{"wrong-scope"}, "many-roots");
+        expect(wrong_scope.status != MdbxCurrentDerivedPublicationStatus::Current &&
+                   !wrong_scope.publication,
+               "wrong scope was admitted for a current publication");
+
+        manifests.upsert_manifest(frontier_manifest(root_b, 2, 56));
+        const auto one_root_stale = reader.read_current(scope, "many-roots");
+        expect(one_root_stale.status == MdbxCurrentDerivedPublicationStatus::Stale &&
+                   !one_root_stale.publication,
+               "one-of-many root mutation was admitted as Current");
+
+        const ResourceId missing_root_id{"matrix-missing-root"};
+        const auto missing_root = publish_one(missing_root_id, 59, "missing-root");
+        static_cast<void>(missing_root);
+        expect(manifests.erase_manifest(missing_root_id),
+               "B3 matrix missing root erase failed");
+        const auto missing_root_read = reader.read_current(scope, "missing-root");
+        expect(missing_root_read.status == MdbxCurrentDerivedPublicationStatus::Unavailable &&
+                   !missing_root_read.publication,
+               "missing root was not reported as unavailable");
+
+        const auto corrupt = publish_one(ResourceId{"matrix-corrupt"}, 57, "corrupt-current");
+        static_cast<void>(corrupt);
+        write_field(context, "corrupt-current", 'b', "tampered body");
+        const auto corrupt_read = reader.read_current(scope, "corrupt-current");
+        expect(corrupt_read.status == MdbxCurrentDerivedPublicationStatus::Unavailable &&
+                   !corrupt_read.publication,
+               "corrupted publication rows were admitted as Current");
+
+        const auto forged = publish_one(ResourceId{"matrix-forged"}, 58, "forged-frontier");
+        auto forged_snapshot = frontier_reader.read(scope, {
+            {forged.id, forged.revision,
+             ResourceRevisionRef{ResourceId{"matrix-forged"}, 1, frontier_digest(58)}}
+        });
+        expect(forged_snapshot.status == MdbxResourceFrontierSnapshotStatus::Available &&
+                   forged_snapshot.snapshot,
+               "forged frontier control could not reconstruct the canonical frontier");
+        const auto canonical_frontier =
+            forged_snapshot.snapshot->identity_token() + "|pipeline@1";
+        forged_snapshot.snapshot->read_transaction_owner.reset();
+        auto forged_manifest = read_field(context, "forged-frontier", 'm');
+        expect(forged_manifest.has_value(), "forged frontier publication manifest was missing");
+        const auto frontier_position = forged_manifest->find(canonical_frontier);
+        expect(frontier_position != std::string::npos,
+               "canonical dependency frontier was absent from the serialized manifest");
+        auto forged_frontier = canonical_frontier;
+        forged_frontier.front() = forged_frontier.front() == 'x' ? 'y' : 'x';
+        forged_manifest->replace(
+            frontier_position, canonical_frontier.size(), forged_frontier);
+        write_field(context, "forged-frontier", 'm', *forged_manifest);
+        write_field(
+            context, "forged-frontier", 'a',
+            fenced_marker_for(*forged_manifest, "matrix body"));
+        const auto forged_historical = reader.read_historical(scope, "forged-frontier");
+        expect(forged_historical.status == MdbxCurrentDerivedPublicationStatus::Historical &&
+                   forged_historical.publication &&
+                   forged_historical.publication->request.dependency_frontier == forged_frontier,
+               "forged frontier control did not preserve publication integrity");
+        const auto forged_read = reader.read_current(scope, "forged-frontier");
+        expect(forged_read.status == MdbxCurrentDerivedPublicationStatus::Stale &&
+                   !forged_read.publication,
+               "valid publication with a forged frontier was not rejected as Stale");
+    }
+    matrix_database.cleanup_or_fail();
+
+    auto current_database = TestDatabase::create("agent_memory_current_derived_reader");
+    {
+        auto context = MdbxStorageContext::open(current_database.path().string());
+        const ScopeId scope{"current-scope"};
+        const ResourceId resource{"current-root"};
+        MdbxResourceManifestStorage manifests({"", "agent_memory", false,
+                                                kDefaultMdbxMaxDbs, context});
+        MdbxKnowledgeUnitStore units({"", "agent_memory", false,
+                                      kDefaultMdbxMaxDbs, context});
+        manifests.upsert_manifest(frontier_manifest(resource, 1, 41));
+        const auto unit = units.create_or_get_unit(
+            frontier_unit_request(scope, resource, 1, 41));
+        MdbxResourceFrontierSnapshotReader frontier_reader(context);
+        auto frontier = frontier_reader.read(scope, {
+            {unit.id, unit.revision, ResourceRevisionRef{resource, 1, frontier_digest(41)}}
+        });
+        expect(frontier.status == MdbxResourceFrontierSnapshotStatus::Available && frontier.snapshot,
+               "current-read fixture frontier was unavailable");
+        frontier.snapshot->read_transaction_owner.reset();
+        MdbxDerivedPublicationStore publications({"", "agent_memory", false,
+                                                  kDefaultMdbxMaxDbs, context});
+        const auto published = publications.publish_fenced(
+            *frontier.snapshot,
+            MdbxFencedDerivedPublicationRequest{
+                "current-publication", ProjectionKind::QACombined, 1,
+                "current body", 1, "pipeline@1"});
+        expect(published.status == MdbxFencedDerivedPublicationStatus::Published,
+               "current-read fixture publication failed");
+
+        MdbxCurrentDerivedPublicationReader reader(context);
+        const auto current = reader.read_current(scope, "current-publication");
+        expect(current.status == MdbxCurrentDerivedPublicationStatus::Current && current.publication &&
+                   current.publication->request.body == "current body",
+               "current publication was not revalidated as Current");
+
+        auto legacy = published.publication->request;
+        legacy.publication_id = "legacy-publication";
+        publications.publish(legacy);
+        const auto legacy_current = reader.read_current(scope, "legacy-publication");
+        expect(legacy_current.status == MdbxCurrentDerivedPublicationStatus::Unavailable &&
+                   !legacy_current.publication,
+               "storage-only legacy publication was incorrectly admitted as Current");
+        const auto legacy_historical = reader.read_historical(scope, "legacy-publication");
+        expect(legacy_historical.status == MdbxCurrentDerivedPublicationStatus::Historical &&
+                   legacy_historical.publication,
+               "legacy publication lost its explicit historical-read semantics");
+        const auto historical = reader.read_historical(scope, "current-publication");
+        expect(historical.status == MdbxCurrentDerivedPublicationStatus::Historical && historical.publication,
+               "exact historical publication was not readable");
+
+        std::promise<void> writer_start;
+        auto writer_start_future = writer_start.get_future();
+        std::promise<void> writer_done;
+        auto writer_done_future = writer_done.get_future();
+        std::exception_ptr writer_error;
+        std::thread writer([&] {
+            try {
+                writer_start_future.wait();
+                auto writer_context = context;
+                MdbxResourceManifestStorage writer_manifests({"", "agent_memory", false,
+                                                               kDefaultMdbxMaxDbs, writer_context});
+                writer_manifests.upsert_manifest(frontier_manifest(resource, 2, 42));
+            } catch(...) {
+                writer_error = std::current_exception();
+            }
+            writer_done.set_value();
+        });
+        reader.set_read_hook_for_testing([&] {
+            writer_start.set_value();
+            if(writer_done_future.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
+                // A C++17 thread cannot be safely cancelled.  Terminate the
+                // test process instead of entering an unbounded join on a
+                // broken MDBX synchronization path.
+                std::cerr << "current-read writer wait timed out\n";
+                std::_Exit(124);
+            }
+        });
+        const auto raced_current = reader.read_current(scope, "current-publication");
+        if(writer_done_future.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
+            std::cerr << "current-read writer completion timed out\n";
+            std::_Exit(125);
+        }
+        if(writer.joinable()) writer.join();
+        if(writer_error) std::rethrow_exception(writer_error);
+        expect(raced_current.status == MdbxCurrentDerivedPublicationStatus::Current && raced_current.publication,
+               "one read transaction did not preserve a consistent pre-write snapshot");
+        reader.set_read_hook_for_testing({});
+        const auto stale = reader.read_current(scope, "current-publication");
+        expect(stale.status == MdbxCurrentDerivedPublicationStatus::Stale && !stale.publication,
+               "changed root revision was still returned as Current");
+        const auto absent = reader.read_current(scope, "missing-current-publication");
+        expect(absent.status == MdbxCurrentDerivedPublicationStatus::NotFound,
+               "missing current publication was not reported as NotFound");
+    }
+    current_database.cleanup_or_fail();
     database.cleanup_or_fail();
     std::cout << "mdbx derived publication store tests passed\n";
     return 0;
