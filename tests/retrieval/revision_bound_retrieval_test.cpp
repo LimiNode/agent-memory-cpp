@@ -111,6 +111,21 @@ int fail(const char* message) { std::cerr << message << '\n'; return 1; }
 
 int main() {
     using namespace agent_memory;
+    RetrievedChunk missing_identity;
+    if(has_valid_revision_bound_candidate_identity(missing_identity)) {
+        return fail("missing typed candidate identity must be rejected");
+    }
+    RetrievedChunk::CandidateIdentity invalid_identity;
+    if(is_valid_revision_bound_candidate_identity(invalid_identity)) {
+        return fail("zero-valued candidate identity must be rejected");
+    }
+    invalid_identity.knowledge_unit_id = KnowledgeUnitId{7};
+    invalid_identity.unit_revision = 1;
+    invalid_identity.projection_kind = ProjectionKind::Summary;
+    if(is_valid_revision_bound_candidate_identity(invalid_identity)) {
+        return fail("wrong projection candidate identity must be rejected");
+    }
+
     const ScopeId scope{"tenant-a"};
     const ResourceId resource{"resource-a"};
     Units units;
@@ -134,6 +149,8 @@ int main() {
        current.root_resource_id != resource || current.root_generation != 1 ||
        !current.root_digest || !current.source ||
        current.hydration != RevisionBoundHydrationOutcome::Partial ||
+       current.freshness != RevisionBoundFreshness::Current ||
+       current.materialization != RevisionBoundMaterialization::SummaryOnly ||
        current.text != value.primary_text) {
         std::cerr << "size=" << results.size() << " id=" << current.knowledge_unit_id.value()
                   << " scope=" << current.scope_id.value() << " rev=" << current.unit_revision
@@ -143,6 +160,37 @@ int main() {
                   << " hydration=" << static_cast<int>(current.hydration)
                   << " text=" << current.text << '\n';
         return fail("current result must preserve revision-bound identity and source");
+    }
+
+    const auto detailed = retriever.retrieve_detailed(query);
+    if(detailed.completeness != RevisionBoundCompleteness::Complete ||
+       detailed.results.size() != 1) {
+        return fail("successful retrieval must report complete query status");
+    }
+    if(!matches_revision_bound_candidate_identity(
+            RetrievedChunk::CandidateIdentity{
+                value.id, value.revision, ProjectionKind::Original},
+            value)) {
+        return fail("matching typed candidate identity must be accepted");
+    }
+    auto mismatched_identity = RetrievedChunk::CandidateIdentity{
+        value.id, value.revision + 1, ProjectionKind::Original};
+    if(matches_revision_bound_candidate_identity(mismatched_identity, value)) {
+        return fail("revision-mismatched candidate identity must be rejected");
+    }
+
+    RetrievalQuery unsupported_query = query;
+    unsupported_query.metadata_filters.push_back(MetadataFilter{"kind", "chunk"});
+    const auto unsupported = retriever.retrieve_detailed(unsupported_query);
+    if(unsupported.completeness != RevisionBoundCompleteness::UnsupportedQuery ||
+       unsupported.results.size() != 0 || unsupported.diagnostic.empty()) {
+        return fail("unsupported metadata filters must have an explicit diagnostic");
+    }
+    bool unsupported_threw = false;
+    try { (void)retriever.retrieve(unsupported_query); }
+    catch(const RevisionBoundUnsupportedQuery&) { unsupported_threw = true; }
+    if(!unsupported_threw) {
+        return fail("unsupported metadata filters must not look like no matches");
     }
 
     auto stale_manifest = *manifests.find_manifest(resource);

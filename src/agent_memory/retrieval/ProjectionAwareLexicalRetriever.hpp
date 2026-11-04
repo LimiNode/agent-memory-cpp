@@ -75,6 +75,19 @@ namespace agent_memory {
         ProjectionAwareLexicalRetrieverOptions m_options;
     };
 
+    /// \brief Shared admission seam for revision-aware retrieval adapters.
+    ///
+    /// This is the same manifest, lifecycle, revision, derivation and body
+    /// validation used by the bounded lexical producer. Keeping this check in
+    /// one place prevents an adapter from accepting a weaker Original
+    /// projection than the producer that generated its candidate.
+    [[nodiscard]] bool has_current_original_projection(
+        const KnowledgeUnitEnvelope& envelope,
+        IProjectionStore& projection_store,
+        IResourceManifestStorage& manifest_store,
+        const ProjectionAwareLexicalRetrieverOptions& options
+    );
+
 } // namespace agent_memory
 
 #endif

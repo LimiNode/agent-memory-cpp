@@ -4,12 +4,16 @@ This slice is a small product-facing adapter over the existing bounded
 `ProjectionAwareLexicalRetriever`. It preserves the legacy `RetrievedChunk`
 contract and adds an explicit result carrying the opaque `KnowledgeUnitId`,
 scope, `Original` projection kind, unit revision, root resource revision,
-typed `SourceRefSummary`, score and a hydration outcome.
+typed `SourceRefSummary`, score and independent freshness/materialization
+outcomes. `RevisionBoundRetrievalResponse` also reports whether the query was
+complete, budget-limited, or outside the supported M0 profile.
 
 ## Admission rules
 
-The adapter accepts a lexical hit only when the producer supplied an explicit
-unit identity and the canonical stores still agree on:
+The producer supplies a typed candidate identity. Legacy string metadata is
+retained only for compatibility and is not parsed by the revision-bound
+adapter. The adapter accepts a lexical hit only when that identity is valid and
+the canonical stores still agree on:
 
 - scope and active unit lifecycle;
 - unit revision and an active `Original` projection with matching body;
@@ -20,11 +24,27 @@ No `ChunkId` is interpreted as a `KnowledgeUnitId`, and no numeric identity is
 reconstructed from a legacy chunk string. A stale or unavailable candidate is
 never returned with canonical unit text.
 
-`Partial` means that the revision-bound source summary was verified but M0
-only stores an inline preview. It is not proof that the complete canonical
-source bytes were hydrated. A future byte-addressable source adapter may
-upgrade this outcome to a fully hydrated state without changing result
-identity.
+Freshness, materialization, and query completeness are deliberately separate:
+
+- `Current` means the active unit and its published Original projection still
+  match the candidate revision and manifest binding.
+- `SummaryOnly` means the revision-bound source summary was verified, while M0
+  stores only an inline preview. It is not proof that complete canonical source
+  bytes were hydrated. `Hydrated` is reserved for a future byte-addressable
+  source adapter.
+- `Complete` describes the query operation, not the citation strength of one
+  result. Unsupported metadata filters return an explicit
+  `UnsupportedQuery` diagnostic (and `retrieve()` throws
+  `RevisionBoundUnsupportedQuery`) instead of silently looking like no matches.
+
+Canonical unit text is returned only for a `Current` result. A source summary
+is returned only after its revision and active manifest digest are verified;
+full citation bytes are never implied by `Partial`/`SummaryOnly`.
+
+The shared `has_current_original_projection()` seam is also used by the
+adapter and the lexical producer. It preserves manifest schema/bindings,
+derivation fingerprint, lifecycle, generation and body checks in one admission
+algorithm.
 
 ## Consistency boundary
 

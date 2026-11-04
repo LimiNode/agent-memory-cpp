@@ -1,49 +1,16 @@
 #include "RevisionBoundRetrieval.hpp"
 
-#include <charconv>
 #include <string>
 #include <utility>
 
 namespace agent_memory {
 namespace {
 
-std::optional<std::uint64_t> metadata_uint(
-    const Metadata& metadata,
-    const char* key
-) {
-    const auto value = metadata.get(key);
-    if(!value || value->empty()) return std::nullopt;
-    std::uint64_t parsed = 0;
-    const auto* first = value->data();
-    const auto* last = first + value->size();
-    const auto conversion = std::from_chars(first, last, parsed);
-    if(conversion.ec != std::errc{} || conversion.ptr != last) return std::nullopt;
-    return parsed;
-}
-
 bool same_digest(
     const ResourceBodyDigest& left,
     const ResourceBodyDigest& right
 ) {
     return left.algorithm == right.algorithm && left.bytes == right.bytes;
-}
-
-bool has_current_projection(
-    const KnowledgeUnitEnvelope& unit,
-    IProjectionStore& projections
-) {
-    for(const auto& projection : projections.list(
-            unit.scope_id, unit.id, ProjectionKind::Original)) {
-        if(projection.kind == ProjectionKind::Original &&
-           projection.version.unit_revision_at_build == unit.revision &&
-           projection.version.projection_revision == unit.revision &&
-           projection.version.derivation_generation == 1 &&
-           projection.body == unit.primary_text &&
-           is_valid_search_projection(projection)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 RevisionBoundRetrievalResult unavailable(
@@ -55,10 +22,43 @@ RevisionBoundRetrievalResult unavailable(
     result.scope_id = scope;
     result.score = score;
     result.hydration = outcome;
+    result.freshness = outcome == RevisionBoundHydrationOutcome::Stale
+        ? RevisionBoundFreshness::Stale
+        : RevisionBoundFreshness::Unavailable;
+    result.materialization = RevisionBoundMaterialization::Unavailable;
     return result;
 }
 
 } // namespace
+
+bool is_valid_revision_bound_candidate_identity(
+    const RetrievedChunk::CandidateIdentity& identity,
+    ProjectionKind expected_kind
+) noexcept {
+    return !identity.knowledge_unit_id.empty() &&
+           identity.unit_revision != 0 &&
+           is_valid_projection_kind(identity.projection_kind) &&
+           identity.projection_kind == expected_kind;
+}
+
+bool has_valid_revision_bound_candidate_identity(
+    const RetrievedChunk& candidate,
+    ProjectionKind expected_kind
+) noexcept {
+    return candidate.candidate_identity &&
+           is_valid_revision_bound_candidate_identity(
+               *candidate.candidate_identity, expected_kind);
+}
+
+bool matches_revision_bound_candidate_identity(
+    const RetrievedChunk::CandidateIdentity& identity,
+    const KnowledgeUnitEnvelope& envelope,
+    ProjectionKind expected_kind
+) noexcept {
+    return is_valid_revision_bound_candidate_identity(identity, expected_kind) &&
+           identity.knowledge_unit_id == envelope.id &&
+           identity.unit_revision == envelope.revision;
+}
 
 RevisionBoundLexicalRetriever::RevisionBoundLexicalRetriever(
     IKnowledgeUnitStore& unit_store,
@@ -73,34 +73,59 @@ RevisionBoundLexicalRetriever::RevisionBoundLexicalRetriever(
         manifest_store,
         scope_id,
         tokenizer,
-        std::move(options)
+        options
     ),
     m_unit_store(&unit_store),
     m_projection_store(&projection_store),
     m_manifest_store(&manifest_store),
-    m_scope_id(std::move(scope_id)) {}
+    m_scope_id(std::move(scope_id)),
+    m_options(std::move(options)) {}
 
 std::vector<RevisionBoundRetrievalResult> RevisionBoundLexicalRetriever::retrieve(
     const RetrievalQuery& query
 ) const {
+    const auto response = retrieve_detailed(query);
+    if(response.completeness == RevisionBoundCompleteness::UnsupportedQuery) {
+        throw RevisionBoundUnsupportedQuery(response.diagnostic);
+    }
+    if(response.completeness == RevisionBoundCompleteness::BudgetExceeded) {
+        throw ProjectionAwareLexicalRetrievalBudgetExceeded(response.diagnostic);
+    }
+    return response.results;
+}
+
+RevisionBoundRetrievalResponse RevisionBoundLexicalRetriever::retrieve_detailed(
+    const RetrievalQuery& query
+) const {
+    RevisionBoundRetrievalResponse response;
+    if(!query.metadata_filters.empty()) {
+        response.completeness = RevisionBoundCompleteness::UnsupportedQuery;
+        response.diagnostic =
+            "revision-bound lexical retrieval does not support metadata filters in M0";
+        return response;
+    }
+
     std::vector<RevisionBoundRetrievalResult> results;
-    const auto legacy = m_legacy.retrieve(query);
+    RetrievalResult legacy;
+    try {
+        legacy = m_legacy.retrieve(query);
+    } catch(const ProjectionAwareLexicalRetrievalBudgetExceeded& error) {
+        response.completeness = RevisionBoundCompleteness::BudgetExceeded;
+        response.diagnostic = error.what();
+        return response;
+    }
     results.reserve(legacy.chunks.size());
     for(const auto& hit : legacy.chunks) {
-        const auto id = metadata_uint(hit.metadata, "knowledge_unit_id");
-        const auto revision = metadata_uint(hit.metadata, "knowledge_unit_revision");
-        if(!id || !revision ||
-           !hit.metadata.get("projection_kind") ||
-           *hit.metadata.get("projection_kind") != "Original") {
+        if(!has_valid_revision_bound_candidate_identity(hit)) {
             results.push_back(unavailable(
                 m_scope_id, hit.score, RevisionBoundHydrationOutcome::Unavailable));
             continue;
         }
 
-        const KnowledgeUnitId unit_id{*id};
+        const auto& identity = *hit.candidate_identity;
+        const KnowledgeUnitId unit_id = identity.knowledge_unit_id;
         const auto unit = m_unit_store->find(unit_id);
         if(!unit || unit->scope_id != m_scope_id ||
-           unit->revision != *revision ||
            unit->lifecycle_state != KnowledgeUnitLifecycleState::Active) {
             auto stale = unavailable(
                 m_scope_id, hit.score, RevisionBoundHydrationOutcome::Stale);
@@ -108,7 +133,17 @@ std::vector<RevisionBoundRetrievalResult> RevisionBoundLexicalRetriever::retriev
             results.push_back(std::move(stale));
             continue;
         }
-        if(!has_current_projection(*unit, *m_projection_store)) {
+        if(!matches_revision_bound_candidate_identity(identity, *unit)) {
+            auto stale = unavailable(
+                m_scope_id, hit.score, RevisionBoundHydrationOutcome::Stale);
+            stale.knowledge_unit_id = unit_id;
+            stale.unit_revision = unit->revision;
+            stale.projection_kind = ProjectionKind::Original;
+            results.push_back(std::move(stale));
+            continue;
+        }
+        if(!has_current_original_projection(
+                *unit, *m_projection_store, *m_manifest_store, m_options)) {
             auto stale = unavailable(
                 m_scope_id, hit.score, RevisionBoundHydrationOutcome::Stale);
             stale.knowledge_unit_id = unit_id;
@@ -124,6 +159,7 @@ std::vector<RevisionBoundRetrievalResult> RevisionBoundLexicalRetriever::retriev
             auto unavailable_result = unavailable(
                 m_scope_id, hit.score, RevisionBoundHydrationOutcome::Unavailable);
             unavailable_result.knowledge_unit_id = unit_id;
+            unavailable_result.freshness = RevisionBoundFreshness::Current;
             unavailable_result.unit_revision = unit->revision;
             unavailable_result.projection_kind = ProjectionKind::Original;
             results.push_back(std::move(unavailable_result));
@@ -164,10 +200,13 @@ std::vector<RevisionBoundRetrievalResult> RevisionBoundLexicalRetriever::retriev
         result.text = unit->primary_text;
         // M0 stores only a bounded inline citation summary. The provenance is
         // verified, but a full canonical byte hydration is not implied.
+        result.freshness = RevisionBoundFreshness::Current;
+        result.materialization = RevisionBoundMaterialization::SummaryOnly;
         result.hydration = RevisionBoundHydrationOutcome::Partial;
         results.push_back(std::move(result));
     }
-    return results;
+    response.results = std::move(results);
+    return response;
 }
 
 } // namespace agent_memory

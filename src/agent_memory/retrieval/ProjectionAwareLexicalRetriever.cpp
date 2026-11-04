@@ -156,10 +156,34 @@ RetrievedChunk make_result(
     result.metadata.set("knowledge_unit_id", std::to_string(envelope.id.value()));
     result.metadata.set("knowledge_unit_revision", std::to_string(envelope.revision));
     result.metadata.set("projection_kind", "Original");
+    result.candidate_identity = RetrievedChunk::CandidateIdentity{
+        envelope.id,
+        envelope.revision,
+        ProjectionKind::Original
+    };
     return result;
 }
 
 } // namespace
+
+bool has_current_original_projection(
+    const KnowledgeUnitEnvelope& envelope,
+    IProjectionStore& projection_store,
+    IResourceManifestStorage& manifest_store,
+    const ProjectionAwareLexicalRetrieverOptions& options
+) {
+    const ManifestResolver resolve_manifest = [&](const ResourceId& resource_id) {
+        return manifest_store.find_manifest(resource_id);
+    };
+    return find_active_projection(
+        envelope,
+        ProjectionKind::Original,
+        projection_store,
+        resolve_manifest,
+        options.expected_manifest_schema_id,
+        options.expected_manifest_schema_version
+    ).has_value();
+}
 
 ProjectionAwareLexicalRetriever::ProjectionAwareLexicalRetriever(
     IKnowledgeUnitStore& unit_store,

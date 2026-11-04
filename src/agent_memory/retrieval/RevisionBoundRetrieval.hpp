@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,53 @@ enum class RevisionBoundHydrationOutcome : std::uint8_t {
     Stale,
     Unavailable
 };
+
+/// \brief Canonical freshness of the admitted unit and its Original projection.
+enum class RevisionBoundFreshness : std::uint8_t {
+    Current,
+    Stale,
+    Unavailable
+};
+
+/// \brief Materialization level of the returned canonical/provenance data.
+enum class RevisionBoundMaterialization : std::uint8_t {
+    Hydrated,
+    SummaryOnly,
+    Unavailable
+};
+
+/// \brief Completeness of the retrieval operation, independent of one hit.
+enum class RevisionBoundCompleteness : std::uint8_t {
+    Complete,
+    BudgetExceeded,
+    UnsupportedQuery
+};
+
+/// \brief Explicit diagnostic for a query feature outside the M0 profile.
+class RevisionBoundUnsupportedQuery final : public std::runtime_error {
+public:
+    explicit RevisionBoundUnsupportedQuery(const std::string& message)
+        : std::runtime_error(message) {}
+};
+
+/// \brief Validates the producer-owned typed identity carried by a candidate.
+[[nodiscard]] bool is_valid_revision_bound_candidate_identity(
+    const RetrievedChunk::CandidateIdentity& identity,
+    ProjectionKind expected_kind = ProjectionKind::Original
+) noexcept;
+
+/// \brief Returns whether a legacy hit carries a usable typed identity.
+[[nodiscard]] bool has_valid_revision_bound_candidate_identity(
+    const RetrievedChunk& candidate,
+    ProjectionKind expected_kind = ProjectionKind::Original
+) noexcept;
+
+/// \brief Checks the identity after canonical unit re-read.
+[[nodiscard]] bool matches_revision_bound_candidate_identity(
+    const RetrievedChunk::CandidateIdentity& identity,
+    const KnowledgeUnitEnvelope& envelope,
+    ProjectionKind expected_kind = ProjectionKind::Original
+) noexcept;
 
 /// \brief Retrieval result that cannot silently lose revision identity.
 ///
@@ -39,10 +87,20 @@ struct RevisionBoundRetrievalResult final {
     std::optional<ResourceBodyDigest> root_digest;
     std::optional<SourceRefSummary> source;
     float score = 0.0F;
+    RevisionBoundFreshness freshness = RevisionBoundFreshness::Unavailable;
+    RevisionBoundMaterialization materialization =
+        RevisionBoundMaterialization::Unavailable;
+    /// Compatibility projection of the old single-axis status.
     RevisionBoundHydrationOutcome hydration =
         RevisionBoundHydrationOutcome::Unavailable;
-    /// Empty for Stale/Unavailable outcomes; otherwise the canonical unit text.
+    /// Empty unless freshness is Current and materialization is available.
     std::string text;
+};
+
+struct RevisionBoundRetrievalResponse final {
+    std::vector<RevisionBoundRetrievalResult> results;
+    RevisionBoundCompleteness completeness = RevisionBoundCompleteness::Complete;
+    std::string diagnostic;
 };
 
 /// \brief Adapts the bounded legacy lexical path to revision-bound results.
@@ -67,12 +125,19 @@ public:
         const RetrievalQuery& query
     ) const;
 
+    /// \brief Returns hit statuses and query completeness without conflating
+    /// unsupported features or work-budget failures with zero matches.
+    [[nodiscard]] RevisionBoundRetrievalResponse retrieve_detailed(
+        const RetrievalQuery& query
+    ) const;
+
 private:
     ProjectionAwareLexicalRetriever m_legacy;
     IKnowledgeUnitStore* m_unit_store;
     IProjectionStore* m_projection_store;
     IResourceManifestStorage* m_manifest_store;
     ScopeId m_scope_id;
+    ProjectionAwareLexicalRetrieverOptions m_options;
 };
 
 } // namespace agent_memory
