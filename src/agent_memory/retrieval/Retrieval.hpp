@@ -8,11 +8,9 @@
 #include <agent_memory/domain/Document.hpp>
 #include <agent_memory/domain/Metadata.hpp>
 #include <agent_memory/domain/MetadataFilter.hpp>
-#include <agent_memory/domain/SearchProjection.hpp>
 #include <agent_memory/embedding/embedding_types.hpp>
 
 #include <cstddef>
-#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -44,17 +42,6 @@ namespace agent_memory {
         /// \brief Comparable retrieval score where higher is always better.
         float score = 0.0F;
         Metadata metadata;
-        /// \brief Optional producer-owned identity for revision-aware adapters.
-        ///
-        /// Legacy retrievers leave this unset. When present, consumers must
-        /// validate it against canonical storage rather than infer identity
-        /// from the legacy ChunkId or string metadata.
-        struct CandidateIdentity final {
-            KnowledgeUnitId knowledge_unit_id;
-            std::uint64_t unit_revision = 0;
-            ProjectionKind projection_kind = ProjectionKind::Original;
-        };
-        std::optional<CandidateIdentity> candidate_identity;
     };
 
     /// \brief Ordered retrieval response.

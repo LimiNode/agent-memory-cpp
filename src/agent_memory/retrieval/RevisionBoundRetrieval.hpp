@@ -55,19 +55,19 @@ public:
 
 /// \brief Validates the producer-owned typed identity carried by a candidate.
 [[nodiscard]] bool is_valid_revision_bound_candidate_identity(
-    const RetrievedChunk::CandidateIdentity& identity,
+    const ProjectionAwareLexicalCandidate& identity,
     ProjectionKind expected_kind = ProjectionKind::Original
 ) noexcept;
 
-/// \brief Returns whether a legacy hit carries a usable typed identity.
+/// \brief Returns whether an optional typed candidate identity is usable.
 [[nodiscard]] bool has_valid_revision_bound_candidate_identity(
-    const RetrievedChunk& candidate,
+    const std::optional<ProjectionAwareLexicalCandidate>& candidate,
     ProjectionKind expected_kind = ProjectionKind::Original
 ) noexcept;
 
 /// \brief Checks the identity after canonical unit re-read.
 [[nodiscard]] bool matches_revision_bound_candidate_identity(
-    const RetrievedChunk::CandidateIdentity& identity,
+    const ProjectionAwareLexicalCandidate& identity,
     const KnowledgeUnitEnvelope& envelope,
     ProjectionKind expected_kind = ProjectionKind::Original
 ) noexcept;

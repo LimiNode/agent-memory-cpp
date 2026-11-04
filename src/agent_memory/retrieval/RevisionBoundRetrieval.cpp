@@ -32,7 +32,7 @@ RevisionBoundRetrievalResult unavailable(
 } // namespace
 
 bool is_valid_revision_bound_candidate_identity(
-    const RetrievedChunk::CandidateIdentity& identity,
+    const ProjectionAwareLexicalCandidate& identity,
     ProjectionKind expected_kind
 ) noexcept {
     return !identity.knowledge_unit_id.empty() &&
@@ -42,16 +42,15 @@ bool is_valid_revision_bound_candidate_identity(
 }
 
 bool has_valid_revision_bound_candidate_identity(
-    const RetrievedChunk& candidate,
+    const std::optional<ProjectionAwareLexicalCandidate>& candidate,
     ProjectionKind expected_kind
 ) noexcept {
-    return candidate.candidate_identity &&
-           is_valid_revision_bound_candidate_identity(
-               *candidate.candidate_identity, expected_kind);
+    return candidate && is_valid_revision_bound_candidate_identity(
+        *candidate, expected_kind);
 }
 
 bool matches_revision_bound_candidate_identity(
-    const RetrievedChunk::CandidateIdentity& identity,
+    const ProjectionAwareLexicalCandidate& identity,
     const KnowledgeUnitEnvelope& envelope,
     ProjectionKind expected_kind
 ) noexcept {
@@ -106,23 +105,25 @@ RevisionBoundRetrievalResponse RevisionBoundLexicalRetriever::retrieve_detailed(
     }
 
     std::vector<RevisionBoundRetrievalResult> results;
-    RetrievalResult legacy;
+    ProjectionAwareLexicalRetrieval legacy;
     try {
-        legacy = m_legacy.retrieve(query);
+        legacy = m_legacy.retrieve_with_candidates(query);
     } catch(const ProjectionAwareLexicalRetrievalBudgetExceeded& error) {
         response.completeness = RevisionBoundCompleteness::BudgetExceeded;
         response.diagnostic = error.what();
         return response;
     }
-    results.reserve(legacy.chunks.size());
-    for(const auto& hit : legacy.chunks) {
-        if(!has_valid_revision_bound_candidate_identity(hit)) {
+    results.reserve(legacy.candidates.size());
+    for(std::size_t candidate_index = 0;
+        candidate_index < legacy.candidates.size(); ++candidate_index) {
+        const auto& hit = legacy.legacy.chunks[candidate_index];
+        const auto& identity = legacy.candidates[candidate_index];
+        if(!has_valid_revision_bound_candidate_identity(identity)) {
             results.push_back(unavailable(
                 m_scope_id, hit.score, RevisionBoundHydrationOutcome::Unavailable));
             continue;
         }
 
-        const auto& identity = *hit.candidate_identity;
         const KnowledgeUnitId unit_id = identity.knowledge_unit_id;
         const auto unit = m_unit_store->find(unit_id);
         if(!unit || unit->scope_id != m_scope_id ||

@@ -149,18 +149,13 @@ RetrievedChunk make_result(
     RetrievedChunk result;
     result.chunk = std::move(chunk);
     result.score = score;
-    // Keep the legacy chunk shape intact while exposing an explicit,
-    // producer-owned identity for revision-bound adapters.  Consumers must
-    // resolve this opaque id through the KnowledgeUnit store; it is not a
-    // ChunkId/KnowledgeUnitId equivalence.
+    // Keep the legacy chunk shape and string metadata intact. Revision-bound
+    // adapters receive the producer-owned typed identity through the separate
+    // candidate channel; consumers must resolve it through the KnowledgeUnit
+    // store rather than infer a ChunkId/KnowledgeUnitId equivalence.
     result.metadata.set("knowledge_unit_id", std::to_string(envelope.id.value()));
     result.metadata.set("knowledge_unit_revision", std::to_string(envelope.revision));
     result.metadata.set("projection_kind", "Original");
-    result.candidate_identity = RetrievedChunk::CandidateIdentity{
-        envelope.id,
-        envelope.revision,
-        ProjectionKind::Original
-    };
     return result;
 }
 
@@ -225,13 +220,21 @@ ProjectionAwareLexicalRetriever::ProjectionAwareLexicalRetriever(
 RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
     const RetrievalQuery& query
 ) const {
-    RetrievalResult result;
+    auto typed_result = retrieve_with_candidates(query);
+    return std::move(typed_result.legacy);
+}
+
+ProjectionAwareLexicalRetrieval ProjectionAwareLexicalRetriever::retrieve_with_candidates(
+    const RetrievalQuery& query
+) const {
+    ProjectionAwareLexicalRetrieval typed_result;
+    auto& result = typed_result.legacy;
     if(query.limit == 0 || !query.has_text() || !query.metadata_filters.empty()) {
-        return result;
+        return typed_result;
     }
 
     const auto query_tokens = m_tokenizer->tokenize(query.text);
-    if(query_tokens.empty()) return result;
+    if(query_tokens.empty()) return typed_result;
 
     ExactLexicalIndex index;
     std::unordered_map<std::string, KnowledgeUnitEnvelope> envelopes;
@@ -307,9 +310,15 @@ RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
             continue;
         }
         result.chunks.push_back(make_result(*current, hit.score));
+        typed_result.candidates.push_back(ProjectionAwareLexicalCandidate{
+            current->id,
+            current->revision,
+            ProjectionKind::Original,
+            hit.score
+        });
         if(result.chunks.size() >= query.limit) break;
     }
-    return result;
+    return typed_result;
 }
 
 } // namespace agent_memory

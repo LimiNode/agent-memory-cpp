@@ -111,11 +111,11 @@ int fail(const char* message) { std::cerr << message << '\n'; return 1; }
 
 int main() {
     using namespace agent_memory;
-    RetrievedChunk missing_identity;
+    std::optional<ProjectionAwareLexicalCandidate> missing_identity;
     if(has_valid_revision_bound_candidate_identity(missing_identity)) {
         return fail("missing typed candidate identity must be rejected");
     }
-    RetrievedChunk::CandidateIdentity invalid_identity;
+    ProjectionAwareLexicalCandidate invalid_identity;
     if(is_valid_revision_bound_candidate_identity(invalid_identity)) {
         return fail("zero-valued candidate identity must be rejected");
     }
@@ -168,12 +168,12 @@ int main() {
         return fail("successful retrieval must report complete query status");
     }
     if(!matches_revision_bound_candidate_identity(
-            RetrievedChunk::CandidateIdentity{
+            ProjectionAwareLexicalCandidate{
                 value.id, value.revision, ProjectionKind::Original},
             value)) {
         return fail("matching typed candidate identity must be accepted");
     }
-    auto mismatched_identity = RetrievedChunk::CandidateIdentity{
+    auto mismatched_identity = ProjectionAwareLexicalCandidate{
         value.id, value.revision + 1, ProjectionKind::Original};
     if(matches_revision_bound_candidate_identity(mismatched_identity, value)) {
         return fail("revision-mismatched candidate identity must be rejected");

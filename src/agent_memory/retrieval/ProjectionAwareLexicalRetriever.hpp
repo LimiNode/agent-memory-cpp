@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace agent_memory {
 
@@ -30,6 +31,23 @@ namespace agent_memory {
         std::string expected_manifest_schema_id =
             "agent_memory.m0_resource_importer.raw_chunks_original@agent_memory";
         std::uint32_t expected_manifest_schema_version = 1;
+    };
+
+    /// \brief Typed candidate reference emitted for revision-bound adapters.
+    ///
+    /// This additive channel leaves the legacy `RetrievedChunk` shape and its
+    /// string metadata compatibility intact. Consumers must still re-read and
+    /// validate the canonical unit before returning a product result.
+    struct ProjectionAwareLexicalCandidate final {
+        KnowledgeUnitId knowledge_unit_id;
+        std::uint64_t unit_revision = 0;
+        ProjectionKind projection_kind = ProjectionKind::Original;
+        float score = 0.0F;
+    };
+
+    struct ProjectionAwareLexicalRetrieval final {
+        RetrievalResult legacy;
+        std::vector<ProjectionAwareLexicalCandidate> candidates;
     };
 
     /// Thrown when a bounded retrieval request exceeds its configured work
@@ -65,6 +83,10 @@ namespace agent_memory {
         [[nodiscard]] RetrievalResult retrieve(
             const RetrievalQuery& query
         ) const override;
+
+        [[nodiscard]] ProjectionAwareLexicalRetrieval retrieve_with_candidates(
+            const RetrievalQuery& query
+        ) const;
 
     private:
         IKnowledgeUnitStore* m_unit_store;
