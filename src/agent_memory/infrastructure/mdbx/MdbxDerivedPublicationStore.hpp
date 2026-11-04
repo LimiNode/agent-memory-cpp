@@ -16,6 +16,10 @@
 #if AGENT_MEMORY_HAS_MDBX
 #include "MdbxStorageContext.hpp"
 
+namespace mdbxc {
+class Transaction;
+}
+
 namespace agent_memory {
 
     struct MdbxResourceFrontierSnapshot;
@@ -93,6 +97,17 @@ namespace agent_memory {
             const std::vector<DerivedPublicationInput>& current_inputs,
             const std::string& current_dependency_frontier
         ) const override;
+
+        /// \brief Reads and validates publication rows in a caller-owned snapshot.
+        ///
+        /// The transaction must remain active on its creating thread. This
+        /// overload lets B3 validate publication and canonical inputs from one
+        /// consistent MDBX read view.
+        [[nodiscard]] DerivedPublicationReadResult read_in_transaction(
+            const ScopeId& access_scope,
+            const std::string& publication_id,
+            const mdbxc::Transaction& transaction
+        ) const;
 
     private:
         class Impl;
