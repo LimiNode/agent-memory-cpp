@@ -298,14 +298,18 @@ void write_timing(std::ostream& output, const TimingSummary& timing) {
 void write_receipt(
     const std::filesystem::path& path,
     const TimingSummary& rebuild,
-    const TimingSummary& persistent_search,
-    const TimingSummary& segmented_search,
+    const TimingSummary& persistent_build,
+    const TimingSummary& segmented_build,
     double persistent_build_ms,
     double segmented_build_ms,
     double persistent_reopen_ms,
     double segmented_reopen_ms,
     bool freshness,
     bool scope_isolation,
+    bool tenant_a_marker_identity,
+    bool tenant_a_rejected_foreign_marker,
+    bool tenant_b_marker_identity,
+    bool tenant_b_rejected_foreign_marker,
     bool persistent_correctness,
     bool segmented_correctness,
     bool lifecycle
@@ -333,8 +337,8 @@ void write_receipt(
         << "  },\n"
         << "  \"timings_ms\":{\n"
         << "    \"projection_aware_rebuild\":"; write_timing(output, rebuild);
-    output << ",\n    \"persistent_flat_build_path\":"; write_timing(output, persistent_search);
-    output << ",\n    \"segmented_build_path\":"; write_timing(output, segmented_search);
+    output << ",\n    \"persistent_flat_build_path\":"; write_timing(output, persistent_build);
+    output << ",\n    \"segmented_build_path\":"; write_timing(output, segmented_build);
     output << ",\n    \"persistent_flat_build\":" << persistent_build_ms
         << ",\n    \"segmented_build\":" << segmented_build_ms
         << ",\n    \"persistent_reopen_and_snapshot\":" << persistent_reopen_ms
@@ -342,6 +346,12 @@ void write_receipt(
         << "  },\n"
         << "  \"checks\":{\"current_retriever_freshness\":" << (freshness ? "true" : "false")
         << ",\"current_retriever_scope_isolation\":" << (scope_isolation ? "true" : "false")
+        << ",\"tenant_a_marker_identity\":" << (tenant_a_marker_identity ? "true" : "false")
+        << ",\"tenant_a_rejected_foreign_marker\":"
+        << (tenant_a_rejected_foreign_marker ? "true" : "false")
+        << ",\"tenant_b_marker_identity\":" << (tenant_b_marker_identity ? "true" : "false")
+        << ",\"tenant_b_rejected_foreign_marker\":"
+        << (tenant_b_rejected_foreign_marker ? "true" : "false")
         << ",\"persistent_correctness_gates\":" << (persistent_correctness ? "true" : "false")
         << ",\"segmented_correctness_gates\":" << (segmented_correctness ? "true" : "false")
         << ",\"lifecycle_smoke\":" << (lifecycle ? "true" : "false") << "}\n"
@@ -365,6 +375,10 @@ int main(int argc, char** argv) {
 
         TimingSummary rebuild_timing;
         bool current_scope_isolation = false;
+        bool tenant_a_marker_identity = false;
+        bool tenant_a_rejected_foreign_marker = false;
+        bool tenant_b_marker_identity = false;
+        bool tenant_b_rejected_foreign_marker = false;
         bool current_freshness = false;
         std::set<std::string> tenant_a_ids;
         std::set<std::string> tenant_b_ids;
@@ -431,16 +445,20 @@ int main(int argc, char** argv) {
             RetrievalQuery beta_query;
             beta_query.text = "betaonlymarker";
             beta_query.limit = 8;
-            require(matches_public_ids(retriever.retrieve(alpha_query), tenant_a_ids, 8),
-                "tenant-a marker identity check failed");
-            require(retriever.retrieve(beta_query).empty(),
-                "tenant-a admitted tenant-b marker");
+            tenant_a_marker_identity =
+                matches_public_ids(retriever.retrieve(alpha_query), tenant_a_ids, 8);
+            tenant_a_rejected_foreign_marker =
+                retriever.retrieve(beta_query).empty();
             const auto tenant_b_marker_result = retriever_b.retrieve(beta_query);
-            require(matches_public_ids(tenant_b_marker_result, tenant_b_ids, 8),
-                "tenant-b marker identity check failed");
-            require(retriever_b.retrieve(alpha_query).empty(),
-                "tenant-b admitted tenant-a marker");
-            current_scope_isolation = true;
+            tenant_b_marker_identity =
+                matches_public_ids(tenant_b_marker_result, tenant_b_ids, 8);
+            tenant_b_rejected_foreign_marker =
+                retriever_b.retrieve(alpha_query).empty();
+            current_scope_isolation = current_scope_isolation
+                && tenant_a_marker_identity
+                && tenant_a_rejected_foreign_marker
+                && tenant_b_marker_identity
+                && tenant_b_rejected_foreign_marker;
             const auto& updated = corpus.front();
             const auto updated_body = "replacement-token protocol durable tenant-a unit-1";
             MdbxResourceImporterOptions update_options;
@@ -469,8 +487,8 @@ int main(int argc, char** argv) {
         double segmented_build_ms = 0.0;
         double persistent_reopen_ms = 0.0;
         double segmented_reopen_ms = 0.0;
-        TimingSummary persistent_search_timing;
-        TimingSummary segmented_search_timing;
+        TimingSummary persistent_build_timing;
+        TimingSummary segmented_build_timing;
         bool persistent_freshness = false;
         bool segmented_freshness = false;
         bool persistent_lifecycle = false;
@@ -483,6 +501,7 @@ int main(int argc, char** argv) {
             options_a.context = context;
             options_a.table_prefix = "agent_memory";
             options_a.descriptor = descriptor(ScopeId{"tenant-a"}, 41, 1);
+            std::vector<FlatLexicalUnitInput> persistent_expected_after_erase;
             {
                 MdbxPersistentLexicalIndex index_a{options_a};
                 const auto begin = Clock::now();
@@ -493,6 +512,7 @@ int main(int argc, char** argv) {
                 }
                 persistent_build_ms = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
                 std::optional<TokenId> old_token;
+                std::vector<FlatLexicalUnitInput> expected_after_update;
                 {
                     const auto initial = index_a.read_snapshot();
                     check_index(initial.index, ScopeId{"tenant-a"}, tenant_a_inputs);
@@ -505,44 +525,60 @@ int main(int argc, char** argv) {
                         "persistent snapshot omitted anchor postings");
                 }
                 const auto& updated = corpus.front();
-                index_a.upsert(lexical_unit(updated, 2,
-                    {"replacement-token", "protocol", "durable", "unit-1"}),
+                const auto updated_unit = lexical_unit(updated, 2,
+                    {"replacement-token", "protocol", "durable", "unit-1"});
+                expected_after_update = tenant_a_inputs;
+                const auto updated_input = std::find_if(expected_after_update.begin(),
+                    expected_after_update.end(), [&](const auto& input) {
+                        return input.unit_id == updated.id;
+                    });
+                require(updated_input != expected_after_update.end(),
+                    "persistent expected state omitted replaced unit");
+                *updated_input = updated_unit;
+                index_a.upsert(updated_unit,
                     FlatLexicalExpectedState{
                         updated.id, 1, 1, ProjectionVersionRef{1, 1, 1, "derivation-v1"}});
                 {
                     const auto after_update = index_a.read_snapshot();
+                    check_index(after_update.index, ScopeId{"tenant-a"}, expected_after_update);
                     const auto replacement = after_update.index.find_token_id("replacement-token");
-                    persistent_freshness = persistent_freshness
-                        && after_update.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 2
-                        && replacement.has_value()
+                    require(replacement.has_value()
                         && has_posting_for_unit(after_update.index, *replacement,
-                            KnowledgeUnitId{1})
-                        && !has_posting_for_unit(after_update.index, *old_token,
-                            KnowledgeUnitId{1});
+                            KnowledgeUnitId{1}),
+                        "persistent replacement posting missing");
+                    require(!has_posting_for_unit(after_update.index, *old_token,
+                        KnowledgeUnitId{1}),
+                        "persistent old posting survived replacement");
                 }
                 require(index_a.erase(KnowledgeUnitId{2}),
                     "persistent erase did not remove an active unit");
-                persistent_freshness = persistent_freshness
-                    && index_a.read_snapshot().index.collection_stats().unit_count
-                        == kDocumentsPerScope - 1U;
-                persistent_search_timing.samples_ms.push_back(persistent_build_ms);
+                persistent_expected_after_erase = expected_after_update;
+                persistent_expected_after_erase.erase(std::remove_if(
+                    persistent_expected_after_erase.begin(),
+                    persistent_expected_after_erase.end(), [](const auto& input) {
+                        return input.unit_id == KnowledgeUnitId{2};
+                    }), persistent_expected_after_erase.end());
+                const auto after_erase = index_a.read_snapshot();
+                check_index(after_erase.index, ScopeId{"tenant-a"},
+                    persistent_expected_after_erase);
+                require(after_erase.index.find_unit_stats(KnowledgeUnitId{2}) == std::nullopt,
+                    "persistent erased unit remained in stats");
+                persistent_freshness = true;
+                persistent_build_timing.samples_ms.push_back(persistent_build_ms);
             }
             const auto reopen_begin = Clock::now();
             MdbxPersistentLexicalIndex reopened{options_a};
-            bool reopened_parity = false;
             {
                 const auto reopened_snapshot = reopened.read_snapshot();
-                reopened_parity = reopened_snapshot.index.collection_stats().unit_count
-                        == kDocumentsPerScope - 1U
-                    && reopened_snapshot.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 2
-                    && reopened_snapshot.index.find_unit_stats(KnowledgeUnitId{2}) == std::nullopt;
+                check_index(reopened_snapshot.index, ScopeId{"tenant-a"},
+                    persistent_expected_after_erase);
+                require(reopened_snapshot.index.find_unit_stats(KnowledgeUnitId{2})
+                    == std::nullopt, "persistent reopen retained erased unit");
             }
             persistent_reopen_ms = std::chrono::duration<double, std::milli>(
                 Clock::now() - reopen_begin).count();
-            persistent_lifecycle = persistent_freshness
-                && reopened_parity;
+            persistent_lifecycle = persistent_freshness;
             require(persistent_freshness, "persistent update/erase checks failed");
-            require(reopened_parity, "persistent reopen parity failed");
             MdbxPersistentLexicalIndexOptions options_b = options_a;
             options_b.descriptor = descriptor(ScopeId{"tenant-b"}, 42, 1);
             MdbxPersistentLexicalIndex other_scope{options_b};
@@ -561,8 +597,10 @@ int main(int argc, char** argv) {
             options_a.path = segmented_path.string();
             options_a.table_prefix = "agent_memory";
             options_a.descriptor = descriptor(ScopeId{"tenant-a"}, 51, kLexicalSegmentLayoutVersion);
+            std::vector<FlatLexicalUnitInput> segmented_expected_after_erase;
             {
                 MdbxSegmentedLexicalIndex index_a{options_a};
+                std::vector<FlatLexicalUnitInput> expected_after_update;
                 const auto begin = Clock::now();
                 for(const auto& document : corpus) {
                     if(document.scope.value() == "tenant-a") index_a.upsert(lexical_unit(document));
@@ -576,39 +614,61 @@ int main(int argc, char** argv) {
                         && initial.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 1;
                 }
                 const auto& updated = corpus.front();
-                index_a.upsert(lexical_unit(updated, 2,
-                    {"replacement-token", "protocol", "durable", "unit-1"}),
+                const auto updated_unit = lexical_unit(updated, 2,
+                    {"replacement-token", "protocol", "durable", "unit-1"});
+                expected_after_update = tenant_a_inputs;
+                const auto updated_input = std::find_if(expected_after_update.begin(),
+                    expected_after_update.end(), [&](const auto& input) {
+                        return input.unit_id == updated.id;
+                    });
+                require(updated_input != expected_after_update.end(),
+                    "segmented expected state omitted replaced unit");
+                *updated_input = updated_unit;
+                index_a.upsert(updated_unit,
                     FlatLexicalExpectedState{
                         updated.id, 1, 1, ProjectionVersionRef{1, 1, 1, "derivation-v1"}});
                 {
                     const auto after_update = index_a.read_snapshot();
+                    check_index(after_update.index, ScopeId{"tenant-a"}, expected_after_update);
                     const auto replacement = after_update.index.find_token_id("replacement-token");
-                    segmented_freshness = segmented_freshness
-                        && after_update.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 2
-                        && replacement.has_value()
+                    const auto old_token = after_update.index.find_token_id("anchor");
+                    require(replacement.has_value()
                         && has_posting_for_unit(after_update.index, *replacement,
-                            KnowledgeUnitId{1});
+                            KnowledgeUnitId{1}),
+                        "segmented replacement posting missing");
+                    require(old_token.has_value()
+                        && !has_posting_for_unit(after_update.index, *old_token,
+                            KnowledgeUnitId{1}),
+                        "segmented old posting survived replacement");
                 }
                 require(index_a.erase(KnowledgeUnitId{2}),
                     "segmented erase did not remove an active unit");
-                segmented_freshness = segmented_freshness
-                    && index_a.read_snapshot().index.collection_stats().unit_count
-                        == kDocumentsPerScope - 1U;
-                segmented_search_timing.samples_ms.push_back(segmented_build_ms);
+                segmented_expected_after_erase = expected_after_update;
+                segmented_expected_after_erase.erase(std::remove_if(
+                    segmented_expected_after_erase.begin(),
+                    segmented_expected_after_erase.end(), [](const auto& input) {
+                        return input.unit_id == KnowledgeUnitId{2};
+                    }), segmented_expected_after_erase.end());
+                const auto after_erase = index_a.read_snapshot();
+                check_index(after_erase.index, ScopeId{"tenant-a"},
+                    segmented_expected_after_erase);
+                require(after_erase.index.find_unit_stats(KnowledgeUnitId{2}) == std::nullopt,
+                    "segmented erased unit remained in stats");
+                segmented_freshness = true;
+                segmented_build_timing.samples_ms.push_back(segmented_build_ms);
             }
             const auto reopen_begin = Clock::now();
             MdbxSegmentedLexicalIndex reopened{options_a};
-            bool reopened_parity = false;
             {
                 const auto reopened_snapshot = reopened.read_snapshot();
-                reopened_parity = reopened_snapshot.index.collection_stats().unit_count
-                        == kDocumentsPerScope - 1U
-                    && reopened_snapshot.index.find_unit_stats(KnowledgeUnitId{1})->unit_revision == 2
-                    && reopened_snapshot.index.find_unit_stats(KnowledgeUnitId{2}) == std::nullopt;
+                check_index(reopened_snapshot.index, ScopeId{"tenant-a"},
+                    segmented_expected_after_erase);
+                require(reopened_snapshot.index.find_unit_stats(KnowledgeUnitId{2})
+                    == std::nullopt, "segmented reopen retained erased unit");
             }
             segmented_reopen_ms = std::chrono::duration<double, std::milli>(
                 Clock::now() - reopen_begin).count();
-            segmented_lifecycle = segmented_freshness && reopened_parity;
+            segmented_lifecycle = segmented_freshness;
             MdbxSegmentedLexicalIndexOptions options_b = options_a;
             options_b.descriptor = descriptor(ScopeId{"tenant-b"}, 52, kLexicalSegmentLayoutVersion);
             MdbxSegmentedLexicalIndex other_scope{options_b};
@@ -622,10 +682,13 @@ int main(int argc, char** argv) {
         const auto freshness = current_freshness;
         const auto scope_isolation = current_scope_isolation;
         const auto lifecycle = persistent_lifecycle && segmented_lifecycle;
-        write_receipt(receipt, rebuild_timing, persistent_search_timing,
-            segmented_search_timing, persistent_build_ms, segmented_build_ms,
+        write_receipt(receipt, rebuild_timing, persistent_build_timing,
+            segmented_build_timing, persistent_build_ms, segmented_build_ms,
             persistent_reopen_ms, segmented_reopen_ms, freshness,
-            scope_isolation, persistent_freshness, segmented_freshness, lifecycle);
+            scope_isolation, tenant_a_marker_identity,
+            tenant_a_rejected_foreign_marker, tenant_b_marker_identity,
+            tenant_b_rejected_foreign_marker, persistent_freshness,
+            segmented_freshness, lifecycle);
         require(freshness, "lexical freshness checks failed");
         require(scope_isolation, "lexical scope isolation checks failed");
         require(persistent_lifecycle, "persistent lexical lifecycle checks failed");
