@@ -12,6 +12,7 @@
 #include "mdbx/MdbxResourceManifestStorage.hpp"
 #include "mdbx/MdbxResourceFrontierSnapshot.hpp"
 #include "mdbx/MdbxCurrentDerivedPublicationReader.hpp"
+#include "mdbx/MdbxSnapshotRevisionBoundRetriever.hpp"
 #include "mdbx/MdbxStorageContext.hpp"
 #include "mdbx/MdbxWorkspaceStorageRegistry.hpp"
 #include "mdbx/MdbxDurableLexicalDocumentMemory.hpp"

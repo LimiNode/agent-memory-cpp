@@ -223,6 +223,20 @@ std::vector<SearchProjection> MdbxProjectionStore::list(
     const KnowledgeUnitId& unit_id,
     std::optional<ProjectionKind> kind
 ) const {
+    auto txn = m_impl->context->connection()->transaction(
+        mdbxc::TransactionMode::READ_ONLY
+    );
+    auto result = list_in_transaction(scope_id, unit_id, txn, kind);
+    txn.commit();
+    return result;
+}
+
+std::vector<SearchProjection> MdbxProjectionStore::list_in_transaction(
+    const ScopeId& scope_id,
+    const KnowledgeUnitId& unit_id,
+    const mdbxc::Transaction& txn,
+    std::optional<ProjectionKind> kind
+) const {
     if(scope_id.empty() || unit_id.empty()) {
         throw std::invalid_argument("projection list identity is empty");
     }
@@ -231,9 +245,6 @@ std::vector<SearchProjection> MdbxProjectionStore::list(
     lower.push_back('\0');
     std::string upper = prefix;
     upper.push_back(static_cast<char>(0xff));
-    auto txn = m_impl->context->connection()->transaction(
-        mdbxc::TransactionMode::READ_ONLY
-    );
     std::vector<SearchProjection> result;
     m_impl->projections.for_each_range(
         lower,
@@ -255,7 +266,6 @@ std::vector<SearchProjection> MdbxProjectionStore::list(
         },
         txn
     );
-    txn.commit();
     return result;
 }
 
