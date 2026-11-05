@@ -7,6 +7,7 @@
 
 #include "domain/Document.hpp"
 #include "domain/CanonicalContent.hpp"
+#include "domain/Artifact.hpp"
 #include "domain/Identifiers.hpp"
 #include "domain/KnowledgeUnit.hpp"
 #include "domain/Metadata.hpp"

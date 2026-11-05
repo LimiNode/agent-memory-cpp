@@ -28,6 +28,7 @@ add_library(agent_memory STATIC
     src/agent_memory/core/LibraryInfo.cpp
     src/agent_memory/domain/Document.cpp
     src/agent_memory/domain/CanonicalContent.cpp
+    src/agent_memory/domain/Artifact.cpp
     src/agent_memory/domain/Identifiers.cpp
     src/agent_memory/domain/KnowledgeUnit.cpp
     src/agent_memory/domain/Sha256.cpp
