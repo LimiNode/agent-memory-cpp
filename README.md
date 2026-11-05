@@ -92,6 +92,9 @@ ctest --test-dir build --build-config Release --output-on-failure
 
 Optional MDBX support is **off by default**. Enable it with `-DAGENT_MEMORY_ENABLE_MDBX=ON` and provide the declared `libmdbx` / `mdbx-containers` dependencies. The core target is `agent_memory::agent_memory`; the aggregate include is `<agent_memory.hpp>`.
 
+Installation and external-consumer guidance is documented in
+[`guides/cmake-install.md`](guides/cmake-install.md).
+
 ### Minimal canonical-content example
 
 The executable example is the source of truth for this path: [`examples/canonical_content.cpp`](examples/canonical_content.cpp). It creates revision `0`, commits one edit, materializes both historical and current Markdown, and checks that the two revisions remain distinct.

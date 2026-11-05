@@ -5,6 +5,8 @@ project(agent-memory-cpp
     DESCRIPTION "Embedded C++17 memory and retrieval toolkit for AI agents"
     LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -159,9 +161,12 @@ if(AGENT_MEMORY_ENABLE_MDBX)
     )
 
     agent_memory_provide_mdbx_containers(AGENT_MEMORY_MDBX_CONTAINERS_TARGET)
+    add_library(agent_memory_mdbx_dependency INTERFACE IMPORTED GLOBAL)
+    set_property(TARGET agent_memory_mdbx_dependency PROPERTY
+        INTERFACE_LINK_LIBRARIES "${AGENT_MEMORY_MDBX_CONTAINERS_TARGET}")
     target_link_libraries(agent_memory
         PRIVATE
-            ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET}
+            agent_memory_mdbx_dependency
     )
 endif()
 
@@ -174,9 +179,12 @@ if(AGENT_MEMORY_ENABLE_JSON)
             src/agent_memory/eval/DatasetLoader.cpp
             src/agent_memory/eval/PrecomputedEmbeddingDataset.cpp
     )
+    add_library(agent_memory_json_dependency INTERFACE IMPORTED GLOBAL)
+    set_property(TARGET agent_memory_json_dependency PROPERTY
+        INTERFACE_LINK_LIBRARIES "${AGENT_MEMORY_JSON_TARGET}")
     target_link_libraries(agent_memory
         PRIVATE
-            ${AGENT_MEMORY_JSON_TARGET}
+            agent_memory_json_dependency
     )
 endif()
 
@@ -2350,3 +2358,55 @@ if(AGENT_MEMORY_BUILD_TESTS)
     endif()
     add_subdirectory(tests)
 endif()
+
+include(CMakePackageConfigHelpers)
+
+set(_AGENT_MEMORY_PACKAGE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/agent_memory")
+
+install(TARGETS agent_memory
+    EXPORT agent_memoryTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(DIRECTORY src/agent_memory/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/agent_memory
+    FILES_MATCHING
+        PATTERN "*.hpp"
+        PATTERN "*.h"
+        PATTERN "*.ipp"
+)
+
+file(GLOB _AGENT_MEMORY_PUBLIC_ROOT_HEADERS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
+)
+install(FILES ${_AGENT_MEMORY_PUBLIC_ROOT_HEADERS}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(EXPORT agent_memoryTargets
+    FILE agent_memoryTargets.cmake
+    NAMESPACE agent_memory::
+    DESTINATION ${_AGENT_MEMORY_PACKAGE_INSTALL_DIR}
+)
+
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/agent_memoryConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/agent_memoryConfig.cmake
+    INSTALL_DESTINATION ${_AGENT_MEMORY_PACKAGE_INSTALL_DIR}
+    NO_CHECK_REQUIRED_COMPONENTS_MACRO
+)
+
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/agent_memoryConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/agent_memoryConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/agent_memoryConfigVersion.cmake
+    DESTINATION ${_AGENT_MEMORY_PACKAGE_INSTALL_DIR}
+)

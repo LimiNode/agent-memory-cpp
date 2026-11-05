@@ -1,0 +1,10 @@
+cmake_minimum_required(VERSION 3.20)
+project(agent_memory_installed_consumer LANGUAGES CXX)
+
+find_package(agent_memory CONFIG REQUIRED)
+
+add_executable(agent_memory_installed_consumer
+    "${CMAKE_CURRENT_LIST_DIR}/../common/library_info_consumer.cpp")
+target_link_libraries(agent_memory_installed_consumer
+    PRIVATE agent_memory::agent_memory)
+target_compile_features(agent_memory_installed_consumer PRIVATE cxx_std_17)

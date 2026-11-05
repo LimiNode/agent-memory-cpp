@@ -1,0 +1,26 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+set(agent_memory_ENABLE_MDBX @AGENT_MEMORY_ENABLE_MDBX@)
+set(agent_memory_ENABLE_JSON @AGENT_MEMORY_ENABLE_JSON@)
+
+if(agent_memory_ENABLE_MDBX)
+    find_dependency(mdbx_containers CONFIG)
+    if(NOT TARGET agent_memory_mdbx_dependency)
+        add_library(agent_memory_mdbx_dependency INTERFACE IMPORTED)
+        set_property(TARGET agent_memory_mdbx_dependency PROPERTY
+            INTERFACE_LINK_LIBRARIES mdbx_containers::mdbx_containers)
+    endif()
+endif()
+
+if(agent_memory_ENABLE_JSON)
+    find_dependency(nlohmann_json CONFIG)
+    if(NOT TARGET agent_memory_json_dependency)
+        add_library(agent_memory_json_dependency INTERFACE IMPORTED)
+        set_property(TARGET agent_memory_json_dependency PROPERTY
+            INTERFACE_LINK_LIBRARIES nlohmann_json::nlohmann_json)
+    endif()
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/agent_memoryTargets.cmake")
