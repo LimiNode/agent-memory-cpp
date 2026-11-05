@@ -1,12 +1,12 @@
-# First Release Profile: Normalized-First Knowledge Base Preview
+# First Release Profile: Normalized-First, Artifact-Aware Knowledge Base Preview
 
 This document defines the intended first installable knowledge-base preview.
 It is a release contract and a capability gap list, not evidence that every
 listed feature is already implemented. The implementation inventory remains
 the source of truth for release readiness.
 
-The profile is text-first and normalized-first. It is suitable for articles,
-Telegram text and normalized video transcripts supplied by external
+The profile is normalized-first and artifact-aware. It is suitable for
+articles, Telegram posts and normalized video transcripts supplied by external
 connectors. HTML, video and other acquisition artifacts may be retained or
 discarded according to the selected retention policy; they are not silently
 replaced by a synthetic search projection.
@@ -19,18 +19,45 @@ replaced by a synthetic search projection.
    section boundaries, lists, code blocks, tables, image references and timed
    transcript ranges when those structures are present.
 3. Each `SegmentSet` and chunking recipe is versioned. Rechunking creates a new
-   representation without invalidating older evidence anchors.
-4. Derived summaries, facts, entities, notes and question/context projections
+   `SegmentSet` and mapping for the relevant `Representation`; it does not
+   silently create a new `Representation` or `SourceRevision`. Older
+   `SegmentSet` values and evidence anchors remain addressable under retention.
+4. Saved canonical bodies use file-backed content-addressable storage with
+   SHA-256 over decoded bytes. Raw and independently framed Zstd encodings
+   round-trip to the same logical digest, and codec generations never change
+   logical identity.
+5. Structured tables preserve column, row and cell identity with exact cell
+   hydration. Retained images preserve bytes in CAS plus caption/alt/source
+   bindings; transcript segments preserve time intervals and alignment
+   provenance. Typed locators distinguish these cases from plain text ranges.
+6. Derived summaries, facts, entities, notes and question/context projections
    retain exact input revisions, recipe/model/config fingerprints, publication
    generation and evidence. External LLM, OCR, ASR and extraction services are
    allowed; inference is not a core-library dependency.
-5. Retrieval may search Original and admitted derived views, but results are
+7. Retrieval may search Original and admitted derived views, but results are
    deduplicated by canonical identity and preserve scope, freshness, budget and
    completeness semantics.
-6. Text hydration returns `Hydrated` only after resolving the exact retained
-   normalized revision, validating its digest and validating the requested
-   UTF-8 range and quote. Missing, corrupt, stale and unsupported material must
-   fail closed.
+8. Text, table, image and transcript hydration returns `Hydrated` only after
+   resolving the exact retained normalized revision and validating its locator
+   and digest. Missing, corrupt, stale and unsupported material must fail
+   closed.
+9. Ingest publication is crash-safe and recoverable. Catalog plus retained CAS
+   bodies have a backup/restore path, reachability-based collection, reopen
+   checks and schema/codec compatibility gates.
+10. An external C++17 consumer can reproduce the supported profile from a clean
+    build without depending on repository-private test infrastructure.
+
+The following source profiles are in scope:
+
+| Source profile | Required retained primary representation |
+|---|---|
+| Article | normalized structured document, tables, image bytes when retained, locators |
+| Telegram post | text, metadata, source revision and retained image bytes |
+| Video transcript | normalized timed transcript, alignment provenance, external video identity and optional retained frames |
+| Table-bearing document | canonical table structure with row/cell locators and exact reads |
+
+Original HTML and video files remain optional. A transcript or external time
+link must never be presented as proof of retained original-video bytes.
 
 ## Retention policy
 
