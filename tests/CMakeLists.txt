@@ -96,6 +96,17 @@ target_link_libraries(agent_memory_canonical_content_test
 
 add_test(NAME agent_memory_canonical_content_test COMMAND agent_memory_canonical_content_test)
 
+add_executable(agent_memory_file_raw_blob_store_test
+    storage/file_raw_blob_store_test.cpp
+)
+
+target_link_libraries(agent_memory_file_raw_blob_store_test
+    PRIVATE
+        agent_memory::agent_memory
+)
+
+add_test(NAME agent_memory_file_raw_blob_store_test COMMAND agent_memory_file_raw_blob_store_test)
+
 add_executable(agent_memory_knowledge_unit_test
     domain/knowledge_unit_test.cpp
 )
