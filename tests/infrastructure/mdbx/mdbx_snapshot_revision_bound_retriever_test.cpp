@@ -296,7 +296,40 @@ int main() {
                resource_v2_current.root_digest->bytes ==
                    imported_v2.revision.body_digest->bytes,
            "resource A@2 was not admitted with its exact root revision");
-    unit_id = resource_v2_unit->id;
+    ResourceImportResult imported_v3;
+    retriever.set_candidate_hook_for_testing([&] {
+        imported_v3 = importer.import(
+            resource("snapshot projection alpha resource revision three"));
+    });
+    const auto invalidated_window = retriever.retrieve_detailed(query);
+    retriever.set_candidate_hook_for_testing({});
+    expect(imported_v3.revision.generation == 3 &&
+               imported_v3.revision.body_digest &&
+               imported_v3.revision.body_digest->bytes !=
+                   imported_v2.revision.body_digest->bytes,
+           "candidate-generation source update did not publish Resource A@3");
+    expect(invalidated_window.completeness == RevisionBoundCompleteness::Complete &&
+               invalidated_window.candidate_count > 0 &&
+               invalidated_window.admitted_count == 0 &&
+               invalidated_window.stale_count > 0 &&
+               invalidated_window.unavailable_count == 0 &&
+               !invalidated_window.diagnostic.empty() &&
+               !invalidated_window.results.empty() &&
+               invalidated_window.results.front().text.empty(),
+           "source update between ranking and admission was not reported boundedly");
+    const auto resource_v3_unit = units.find(imported_v3.raw_units.front());
+    expect(resource_v3_unit && resource_v3_unit->sources.size() == 1 &&
+               resource_v3_unit->sources.front().resource_revision &&
+               resource_v3_unit->sources.front().resource_revision->generation == 3,
+           "replacement unit lost the Resource A@3 binding");
+    const auto resource_v3_current = retriever.admit_candidate(
+        ProjectionAwareLexicalCandidate{
+            resource_v3_unit->id, resource_v3_unit->revision,
+            ProjectionKind::Original, 0.85F});
+    expect(resource_v3_current.freshness == RevisionBoundFreshness::Current &&
+               resource_v3_current.root_generation == 3,
+           "Resource A@3 was not admitted after bounded invalidation");
+    unit_id = resource_v3_unit->id;
     }
     }
 

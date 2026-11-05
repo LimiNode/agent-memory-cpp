@@ -21,6 +21,13 @@ schema. A candidate that does not match is returned as `Stale` or
 `Unavailable` with no text body. Historical data is never substituted for a
 current request.
 
+`Complete` means that the producer-owned candidate window was fully checked by
+final admission. It does not claim an exhaustive current top-K result: a
+candidate can become stale after ranking, and this slice does not refill the
+window from lower-ranked candidates. The response exposes candidate, admitted,
+stale and unavailable counts and a diagnostic when invalidation reduced the
+window.
+
 The `MdbxProjectionStore::list_in_transaction()` overload is deliberately
 narrow: it borrows the transaction and does not coordinate, commit or own any
 other adapter. `MdbxKnowledgeUnitStore::find_in_transaction()` and
@@ -43,6 +50,9 @@ duplicate-publication checks cannot silently diverge between the two paths.
   a real Resource A@1 to A@2 import with a changed body digest. The old
   candidate is rejected and the replacement unit is admitted only with the new
   root generation and digest.
+- A deterministic candidate-generation hook updates the source before final
+  admission. The stale candidate is returned without text, counts are exposed,
+  and a later Resource A@3 candidate can be admitted normally.
 - `SummaryOnly` remains the only materialization level. This slice does not
   read retained source bytes and does not claim byte hydration.
 - Ranking and candidate production are not snapshot-consistent. The slice

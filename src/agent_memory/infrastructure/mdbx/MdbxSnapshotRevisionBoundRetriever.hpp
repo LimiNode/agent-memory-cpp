@@ -56,6 +56,13 @@ public:
     /// is opened and before final admission begins.
     void set_read_hook_for_testing(std::function<void()> hook);
 
+    /// \brief Installs a deterministic test seam after candidate production.
+    ///
+    /// The hook runs before the final read transaction is opened. It is used
+    /// only to prove that source changes between ranking and admission are
+    /// reported as stale rather than silently refilled or returned as text.
+    void set_candidate_hook_for_testing(std::function<void()> hook);
+
 private:
     std::shared_ptr<MdbxStorageContext> m_context;
     ScopeId m_scope_id;
@@ -63,6 +70,7 @@ private:
     ProjectionAwareLexicalRetrieverOptions m_options;
     std::string m_table_prefix;
     mutable std::function<void()> m_read_hook_for_testing;
+    mutable std::function<void()> m_candidate_hook_for_testing;
 };
 
 } // namespace agent_memory

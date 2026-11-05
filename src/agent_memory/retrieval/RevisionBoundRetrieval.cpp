@@ -130,6 +130,7 @@ RevisionBoundRetrievalResponse RevisionBoundLexicalRetriever::retrieve_detailed(
         return response;
     }
     legacy.validate_candidate_pairing();
+    response.candidate_count = legacy.candidates.size();
     results.reserve(legacy.candidates.size());
     for(std::size_t candidate_index = 0;
         candidate_index < legacy.candidates.size(); ++candidate_index) {
@@ -206,6 +207,24 @@ RevisionBoundRetrievalResponse RevisionBoundLexicalRetriever::retrieve_detailed(
         result.freshness = RevisionBoundFreshness::Current;
         result.materialization = RevisionBoundMaterialization::SummaryOnly;
         results.push_back(std::move(result));
+    }
+    for(const auto& result : results) {
+        switch(result.freshness) {
+        case RevisionBoundFreshness::Current:
+            ++response.admitted_count;
+            break;
+        case RevisionBoundFreshness::Stale:
+            ++response.stale_count;
+            break;
+        case RevisionBoundFreshness::Unavailable:
+            ++response.unavailable_count;
+            break;
+        }
+    }
+    if(response.stale_count != 0 || response.unavailable_count != 0) {
+        response.diagnostic =
+            "complete candidate-window admission; stale/unavailable candidates "
+            "are not refilled, so this is not an exhaustive current top-K result";
     }
     response.results = std::move(results);
     return response;

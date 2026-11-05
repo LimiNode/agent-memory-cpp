@@ -158,6 +158,12 @@ void MdbxSnapshotRevisionBoundRetriever::set_read_hook_for_testing(
     m_read_hook_for_testing = std::move(hook);
 }
 
+void MdbxSnapshotRevisionBoundRetriever::set_candidate_hook_for_testing(
+    std::function<void()> hook
+) {
+    m_candidate_hook_for_testing = std::move(hook);
+}
+
 RevisionBoundRetrievalResult MdbxSnapshotRevisionBoundRetriever::admit_candidate(
     const ProjectionAwareLexicalCandidate& candidate
 ) const {
@@ -236,6 +242,8 @@ MdbxSnapshotRevisionBoundRetriever::retrieve_detailed(
         return response;
     }
     candidates.validate_candidate_pairing();
+    response.candidate_count = candidates.candidates.size();
+    if(m_candidate_hook_for_testing) m_candidate_hook_for_testing();
 
     auto transaction = m_context->connection()->transaction(
         mdbxc::TransactionMode::READ_ONLY);
@@ -245,6 +253,24 @@ MdbxSnapshotRevisionBoundRetriever::retrieve_detailed(
         response.results.push_back(admit_in_transaction(
             candidate, m_scope_id, units, projections, manifests, transaction,
             m_options));
+    }
+    for(const auto& result : response.results) {
+        switch(result.freshness) {
+        case RevisionBoundFreshness::Current:
+            ++response.admitted_count;
+            break;
+        case RevisionBoundFreshness::Stale:
+            ++response.stale_count;
+            break;
+        case RevisionBoundFreshness::Unavailable:
+            ++response.unavailable_count;
+            break;
+        }
+    }
+    if(response.stale_count != 0 || response.unavailable_count != 0) {
+        response.diagnostic =
+            "complete candidate-window admission; stale/unavailable candidates "
+            "are not refilled, so this is not an exhaustive current top-K result";
     }
     transaction.commit();
     return response;
