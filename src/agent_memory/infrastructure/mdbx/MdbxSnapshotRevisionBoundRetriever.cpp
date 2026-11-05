@@ -46,88 +46,6 @@ RevisionBoundRetrievalResult stale(
     return result;
 }
 
-bool has_publication_binding(
-    const KnowledgeUnitEnvelope& envelope,
-    MdbxResourceManifestStorage& manifests,
-    const mdbxc::Transaction& transaction,
-    const ProjectionAwareLexicalRetrieverOptions& options
-) {
-    const auto expected_projection =
-        "original_projection:" + std::to_string(envelope.id.value());
-    const auto expected_unit =
-        "knowledge_unit:" + std::to_string(envelope.id.value());
-    for(const auto& source : envelope.sources) {
-        if(!source.resource_revision) continue;
-        const auto manifest = manifests.find_manifest_in_transaction(
-            source.resource_id, transaction);
-        if(!manifest || !is_active_resource_manifest(*manifest) ||
-           manifest->schema.schema_id != options.expected_manifest_schema_id ||
-           manifest->schema.schema_version != options.expected_manifest_schema_version ||
-           manifest->revision.resource_id != source.resource_id ||
-           manifest->revision.generation != source.resource_revision->generation ||
-           !manifest->revision.body_digest ||
-           !same_digest(*manifest->revision.body_digest,
-                        source.resource_revision->body_digest)) {
-            continue;
-        }
-        const DerivedRecordRef* projection_binding = nullptr;
-        const DerivedRecordRef* unit_binding = nullptr;
-        for(const auto& record : manifest->records) {
-            if(record.kind != DerivedRecordKind::Custom) continue;
-            if(record.key == expected_projection) {
-                if(projection_binding) {
-                    projection_binding = nullptr;
-                    break;
-                }
-                projection_binding = &record;
-            } else if(record.key == expected_unit) {
-                if(unit_binding) {
-                    unit_binding = nullptr;
-                    break;
-                }
-                unit_binding = &record;
-            }
-        }
-        if(projection_binding && unit_binding &&
-           projection_binding->ordinal == unit_binding->ordinal) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool has_current_projection(
-    const KnowledgeUnitEnvelope& envelope,
-    MdbxProjectionStore& projections,
-    MdbxResourceManifestStorage& manifests,
-    const mdbxc::Transaction& transaction,
-    const ProjectionAwareLexicalRetrieverOptions& options
-) {
-    if(envelope.lifecycle_state != KnowledgeUnitLifecycleState::Active ||
-       !has_publication_binding(envelope, manifests, transaction, options)) {
-        return false;
-    }
-    std::optional<SearchProjection> found;
-    for(auto projection : projections.list_in_transaction(
-            envelope.scope_id, envelope.id, transaction, ProjectionKind::Original)) {
-        if(projection.kind != ProjectionKind::Original ||
-           projection.version.unit_revision_at_build != envelope.revision ||
-           projection.version.projection_revision != envelope.revision ||
-           projection.version.derivation_generation != 1 ||
-           projection.version.derivation_fingerprint != "m0.original.primary_text.v1" ||
-           projection.body != envelope.primary_text ||
-           !is_valid_search_projection(projection)) {
-            continue;
-        }
-        if(found) {
-            throw std::runtime_error(
-                "multiple fresh projections are published for one knowledge unit");
-        }
-        found = std::move(projection);
-    }
-    return found.has_value();
-}
-
 RevisionBoundRetrievalResult admit_in_transaction(
     const ProjectionAwareLexicalCandidate& candidate,
     const ScopeId& scope,
@@ -151,8 +69,21 @@ RevisionBoundRetrievalResult admit_in_transaction(
         return stale(scope, candidate.score, candidate.knowledge_unit_id,
                      unit->revision);
     }
-    if(!has_current_projection(
-            *unit, projections, manifests, transaction, options)) {
+    const OriginalProjectionListReader read_projections =
+        [&projections, &transaction](
+            const ScopeId& scope_id,
+            const KnowledgeUnitId& unit_id,
+            ProjectionKind kind
+        ) {
+            return projections.list_in_transaction(
+                scope_id, unit_id, transaction, kind);
+        };
+    const OriginalManifestReader read_manifest =
+        [&manifests, &transaction](const ResourceId& resource_id) {
+            return manifests.find_manifest_in_transaction(resource_id, transaction);
+        };
+    if(!has_current_original_projection_with_readers(
+            *unit, read_projections, read_manifest, options)) {
         return stale(scope, candidate.score, candidate.knowledge_unit_id,
                      unit->revision);
     }

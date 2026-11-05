@@ -9,13 +9,20 @@
 #if AGENT_MEMORY_HAS_MDBX
 
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <future>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <thread>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -25,17 +32,90 @@ void expect(bool condition, const char* message) {
     if(!condition) throw std::runtime_error(message);
 }
 
-std::filesystem::path test_path() {
-    return std::filesystem::temp_directory_path() /
-        "agent_memory_snapshot_revision_bound_retriever_test.mdbx";
+void make_removable(const std::filesystem::path& path) noexcept {
+#ifdef _WIN32
+    std::error_code error;
+    if(std::filesystem::exists(path, error) && !error) {
+        SetFileAttributesW(path.wstring().c_str(), FILE_ATTRIBUTE_NORMAL);
+    }
+#else
+    static_cast<void>(path);
+#endif
 }
 
-ObservedResource resource() {
+class TestDatabase final {
+public:
+    TestDatabase() {
+        const auto root = std::filesystem::temp_directory_path();
+        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+        for(std::uint64_t attempt = 0; attempt < 64; ++attempt) {
+            const auto directory = root /
+                ("agent_memory_snapshot_revision_bound_" +
+                 std::to_string(nonce) + "_" + std::to_string(attempt));
+            std::error_code error;
+            if(std::filesystem::create_directory(directory, error)) {
+                m_directory = directory;
+                m_path = directory / "snapshot.mdbx";
+                m_lock_path = std::filesystem::path{m_path.string() + "-lck"};
+                return;
+            }
+            if(error && error != std::make_error_code(std::errc::file_exists)) {
+                throw std::runtime_error(
+                    "snapshot test directory creation failed: " + error.message());
+            }
+        }
+        throw std::runtime_error("snapshot test directory reservation failed");
+    }
+
+    TestDatabase(const TestDatabase&) = delete;
+    TestDatabase& operator=(const TestDatabase&) = delete;
+
+    ~TestDatabase() {
+        std::error_code ignored;
+        cleanup(ignored);
+    }
+
+    [[nodiscard]] const std::filesystem::path& path() const noexcept {
+        return m_path;
+    }
+
+    void cleanup_or_fail() {
+        std::error_code error;
+        cleanup(error);
+        expect(!error && m_directory.empty(),
+               "snapshot test database cleanup failed");
+    }
+
+private:
+    void cleanup(std::error_code& result) noexcept {
+        if(m_directory.empty()) return;
+        result.clear();
+        std::filesystem::remove(m_path, result);
+        if(result) return;
+        result.clear();
+        make_removable(m_lock_path);
+        std::filesystem::remove(m_lock_path, result);
+        if(result) return;
+        result.clear();
+        std::filesystem::remove(m_directory, result);
+        if(!result) {
+            m_directory.clear();
+            m_path.clear();
+            m_lock_path.clear();
+        }
+    }
+
+    std::filesystem::path m_directory;
+    std::filesystem::path m_path;
+    std::filesystem::path m_lock_path;
+};
+
+ObservedResource resource(std::string body) {
     ObservedResource value;
     value.scope_id = ScopeId{"tenant-a"};
     value.resource_id = ResourceId{"snapshot-resource"};
     value.source_uri = "memory://snapshot";
-    value.utf8_body = "snapshot projection alpha evidence";
+    value.utf8_body = std::move(body);
     return value;
 }
 
@@ -60,10 +140,8 @@ void update_display(
 } // namespace
 
 int main() {
-    const auto path = test_path();
-    std::error_code error;
-    std::filesystem::remove(path, error);
-    expect(!error && !std::filesystem::exists(path), "MDBX test path was not clean");
+    TestDatabase database;
+    const auto& path = database.path();
 
     const ScopeId scope{"tenant-a"};
     const std::string table_prefix = "snapshot_custom";
@@ -81,7 +159,8 @@ int main() {
     importer_options.publication_profile =
         ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
     MdbxResourceImporter importer(std::move(importer_options));
-    const auto imported = importer.import(resource());
+    const auto imported = importer.import(
+        resource("snapshot projection alpha evidence"));
     expect(imported.raw_units.size() == 1, "snapshot fixture did not publish one raw unit");
     unit_id = imported.raw_units.front();
 
@@ -138,22 +217,36 @@ int main() {
         }
         writer_done.set_value();
     });
-    retriever.set_read_hook_for_testing([&] {
+    bool writer_started = false;
+    const auto release_writer = [&] {
+        if(writer_started) return;
+        writer_started = true;
         writer_start.set_value();
+    };
+    retriever.set_read_hook_for_testing([&] {
+        release_writer();
         if(writer_done_future.wait_for(std::chrono::seconds(3)) !=
            std::future_status::ready) {
             std::cerr << "snapshot writer wait timed out\n";
             std::_Exit(124);
         }
     });
-    const auto raced = retriever.retrieve_detailed(query);
+    RevisionBoundRetrievalResponse raced;
+    std::exception_ptr read_error;
+    try {
+        raced = retriever.retrieve_detailed(query);
+    } catch(...) {
+        read_error = std::current_exception();
+        release_writer();
+    }
     if(writer_done_future.wait_for(std::chrono::seconds(3)) !=
        std::future_status::ready) {
         std::cerr << "snapshot writer completion timed out\n";
         std::_Exit(125);
     }
-    if(writer.joinable()) writer.join();
+    writer.join();
     if(writer_error) std::rethrow_exception(writer_error);
+    if(read_error) std::rethrow_exception(read_error);
     retriever.set_read_hook_for_testing({});
     expect(!raced.results.empty() &&
                raced.results.front().freshness == RevisionBoundFreshness::Current &&
@@ -169,13 +262,48 @@ int main() {
            "post-race candidate did not become stale");
     projections.put(make_original_projection(*revision_three, revision_three->revision));
     candidate.unit_revision = revision_three->revision;
+
+    // A real source update changes both the resource digest and generation.
+    // The old unit remains historical staging data, but the new manifest no
+    // longer admits its revision-bound candidate.
+    const auto imported_v2 = importer.import(
+        resource("snapshot projection alpha resource revision two"));
+    expect(imported_v2.revision.generation == 2 &&
+               imported_v2.revision.body_digest && imported.revision.body_digest &&
+               imported_v2.revision.body_digest->bytes !=
+                   imported.revision.body_digest->bytes,
+           "resource update did not create a new digest-bound revision");
+    expect(imported_v2.raw_units.size() == 1,
+           "resource update did not publish one replacement raw unit");
+    const auto old_after_resource_update = retriever.admit_candidate(candidate);
+    expect(old_after_resource_update.freshness == RevisionBoundFreshness::Stale &&
+               old_after_resource_update.text.empty(),
+           "old resource revision remained Current after source update");
+    const auto resource_v2_unit = units.find(imported_v2.raw_units.front());
+    expect(resource_v2_unit && resource_v2_unit->sources.size() == 1 &&
+               resource_v2_unit->sources.front().resource_revision &&
+               resource_v2_unit->sources.front().resource_revision->generation == 2 &&
+               resource_v2_unit->sources.front().resource_revision->body_digest.bytes ==
+                   imported_v2.revision.body_digest->bytes,
+           "replacement unit lost the Resource A@2 binding");
+    const ProjectionAwareLexicalCandidate resource_v2_candidate{
+        resource_v2_unit->id, resource_v2_unit->revision,
+        ProjectionKind::Original, 0.80F};
+    const auto resource_v2_current = retriever.admit_candidate(resource_v2_candidate);
+    expect(resource_v2_current.freshness == RevisionBoundFreshness::Current &&
+               resource_v2_current.root_generation == 2 &&
+               resource_v2_current.root_digest &&
+               resource_v2_current.root_digest->bytes ==
+                   imported_v2.revision.body_digest->bytes,
+           "resource A@2 was not admitted with its exact root revision");
+    unit_id = resource_v2_unit->id;
     }
     }
 
     context.reset();
 
     // Reopen the same custom-prefix database and exercise fail-closed
-    // admission cases against the persisted revision-three publication.
+    // admission cases against the persisted Resource A@2 publication.
     context = MdbxStorageContext::open(path.string());
     {
     MdbxKnowledgeUnitStoreOptions reopened_unit_options;
@@ -196,7 +324,7 @@ int main() {
     MdbxSnapshotRevisionBoundRetriever reopened_retriever(
         context, scope, tokenizer, reopened_options, table_prefix);
     ProjectionAwareLexicalCandidate reopened_candidate{
-        unit_id, 3, ProjectionKind::Original, 0.75F};
+        unit_id, 1, ProjectionKind::Original, 0.80F};
     const auto reopened_current = reopened_retriever.admit_candidate(reopened_candidate);
     expect(reopened_current.freshness == RevisionBoundFreshness::Current,
            "reopened revision three was not admitted");
@@ -215,9 +343,11 @@ int main() {
            "missing unit was admitted");
 
     expect(reopened_projections.delete_revision(
-               scope, unit_id, ProjectionKind::Original, 3),
+               scope, unit_id, ProjectionKind::Original,
+               reopened_candidate.unit_revision),
            "fixture projection was not removable");
-    auto malformed = make_original_projection(*reopened_units.find(unit_id), 3);
+    auto malformed = make_original_projection(
+        *reopened_units.find(unit_id), reopened_candidate.unit_revision);
     malformed.version.derivation_fingerprint = "wrong.recipe.v1";
     reopened_projections.put(std::move(malformed));
     const auto wrong_projection = reopened_retriever.admit_candidate(reopened_candidate);
@@ -225,12 +355,14 @@ int main() {
                wrong_projection.text.empty(),
            "wrong projection fingerprint was admitted");
     expect(reopened_projections.delete_revision(
-               scope, unit_id, ProjectionKind::Original, 3),
+               scope, unit_id, ProjectionKind::Original,
+               reopened_candidate.unit_revision),
            "malformed projection was not removable");
 
     const auto current_unit = reopened_units.find(unit_id);
     expect(current_unit.has_value(), "reopened unit disappeared before root test");
-    reopened_projections.put(make_original_projection(*current_unit, 3));
+    reopened_projections.put(make_original_projection(
+        *current_unit, reopened_candidate.unit_revision));
     expect(reopened_manifests.erase_manifest(ResourceId{"snapshot-resource"}),
            "fixture root manifest was not removable");
     const auto missing_root = reopened_retriever.admit_candidate(reopened_candidate);
@@ -239,10 +371,7 @@ int main() {
            "missing root was admitted");
     }
     context.reset();
-
-    const bool removed = std::filesystem::remove(path, error);
-    expect(removed && !error && !std::filesystem::exists(path),
-           "MDBX snapshot test database cleanup failed");
+    database.cleanup_or_fail();
     std::cout << "mdbx snapshot revision-bound retriever tests passed\n";
     return 0;
 }

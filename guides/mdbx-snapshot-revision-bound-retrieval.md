@@ -27,6 +27,11 @@ other adapter. `MdbxKnowledgeUnitStore::find_in_transaction()` and
 `MdbxResourceManifestStorage::find_manifest_in_transaction()` follow the same
 caller-owned lifetime rule.
 
+Original admission rules are shared with the generic retriever through a
+callback-based internal algorithm. The MDBX adapter supplies transaction-bound
+projection and manifest readers, so schema, binding, derivation, body and
+duplicate-publication checks cannot silently diverge between the two paths.
+
 ## Guarantees and non-goals
 
 - A writer that commits after the read transaction starts cannot create a
@@ -34,6 +39,10 @@ caller-owned lifetime rule.
   prior complete snapshot or, on the next read, the new state.
 - Reopen, scope isolation, missing units/roots, stale revisions and malformed
   projection identities fail closed in the focused MDBX conformance test.
+- The conformance fixture covers both a mutable KnowledgeUnit-only revision and
+  a real Resource A@1 to A@2 import with a changed body digest. The old
+  candidate is rejected and the replacement unit is admitted only with the new
+  root generation and digest.
 - `SummaryOnly` remains the only materialization level. This slice does not
   read retained source bytes and does not claim byte hydration.
 - Ranking and candidate production are not snapshot-consistent. The slice
