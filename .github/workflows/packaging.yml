@@ -65,10 +65,13 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $repo = (Get-Location).Path
           $mdbxSource = Join-Path $repo 'external/libmdbx'
+          if (-not (Test-Path (Join-Path $mdbxSource 'CMakeLists.txt'))) {
+            throw "libmdbx submodule is not initialized: $mdbxSource"
+          }
           $providerBuild = Join-Path $repo '.build/mdbx-provider'
           $providerPrefix = Join-Path $repo '.build/mdbx-provider-prefix'
           cmake -S (Join-Path $repo 'packaging/test-dependencies/mdbx-provider') -B $providerBuild -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release -DMDBX_SOURCE_DIR=$mdbxSource
+            -DCMAKE_BUILD_TYPE=Release "-DMDBX_SOURCE_DIR=$mdbxSource"
           cmake --build $providerBuild --target mdbx-static --parallel
           cmake --install $providerBuild --prefix $providerPrefix
 
