@@ -38,14 +38,14 @@ jobs:
 
           $addBuild = Join-Path $repo '.build/packaging-consumer-add'
           cmake -S (Join-Path $repo 'packaging/consumers/add_subdirectory') -B $addBuild -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release -DAGENT_MEMORY_SOURCE_DIR=$repo
+            -DCMAKE_BUILD_TYPE=Release "-DAGENT_MEMORY_SOURCE_DIR=$repo"
           cmake --build $addBuild --parallel
           & (Join-Path $addBuild 'agent_memory_add_subdirectory_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'add_subdirectory consumer failed' }
 
           $installedBuild = Join-Path $repo '.build/packaging-consumer-installed'
           cmake -S (Join-Path $repo 'packaging/consumers/installed') -B $installedBuild -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$packagePrefix
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$packagePrefix"
           cmake --build $installedBuild --parallel
           & (Join-Path $installedBuild 'agent_memory_installed_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'installed consumer failed' }
@@ -78,8 +78,8 @@ jobs:
           $containersBuild = Join-Path $repo '.build/mdbx-containers'
           $containersPrefix = Join-Path $repo '.build/mdbx-containers-prefix'
           cmake -S (Join-Path $repo 'external/mdbx-containers') -B $containersBuild -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$containersPrefix `
-            -DCMAKE_PREFIX_PATH=$providerPrefix -DMDBXC_DEPS_MODE=SYSTEM `
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_INSTALL_PREFIX=$containersPrefix" `
+            "-DCMAKE_PREFIX_PATH=$providerPrefix" -DMDBXC_DEPS_MODE=SYSTEM `
             -DMDBXC_BUILD_EXAMPLES=OFF -DMDBXC_BUILD_TESTS=OFF -DMDBXC_BUILD_BENCHMARKS=OFF -DMDBXC_USE_ASAN=OFF
           cmake --build $containersBuild --parallel
           cmake --install $containersBuild
@@ -106,7 +106,7 @@ jobs:
           $consumerBuild = Join-Path $repo '.build/packaging-consumer-mdbx'
           $prefixPath = "$packagePrefix`;$repo/.build/mdbx-containers-prefix`;$repo/.build/mdbx-provider-prefix"
           cmake -S (Join-Path $repo 'packaging/consumers/mdbx-installed') -B $consumerBuild -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$prefixPath
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$prefixPath"
           cmake --build $consumerBuild --parallel
           & (Join-Path $consumerBuild 'agent_memory_mdbx_installed_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'MDBX installed consumer failed' }
