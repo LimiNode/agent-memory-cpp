@@ -58,6 +58,18 @@ void validate_options(const FramedZstdOptions& options) {
         throw std::invalid_argument("invalid framed zstd options");
 }
 
+bool checked_add(std::uint64_t left, std::uint64_t right, std::uint64_t& result) noexcept {
+    if(right > std::numeric_limits<std::uint64_t>::max() - left) return false;
+    result = left + right;
+    return true;
+}
+
+std::uint64_t expected_frame_count(std::uint64_t decoded_size,
+                                   std::uint64_t frame_bytes) noexcept {
+    if(decoded_size == 0) return 0;
+    return 1U + ((decoded_size - 1U) / frame_bytes);
+}
+
 BlobDigest digest_for(std::string_view bytes) {
     BlobDigest digest;
     digest.value = sha256(bytes);
@@ -152,8 +164,8 @@ FramedZstdDecoded decode_framed_zstd(std::string_view encoded_bytes,
        decoded_size > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()) ||
        level < 1 || level > 22)
         throw std::runtime_error("framed zstd descriptor exceeds budget");
-    const auto expected_frame_count = decoded_size == 0 ? 0U : (decoded_size + frame_bytes - 1U) / frame_bytes;
-    if(frame_count != expected_frame_count)
+    const auto expected_count = expected_frame_count(decoded_size, frame_bytes);
+    if(frame_count != expected_count)
         throw std::runtime_error("framed zstd frame count is invalid");
     FramedZstdDecoded result;
     result.descriptor = descriptor_from(frame_bytes, level, (flags & kRawFlag) != 0U);
@@ -171,7 +183,15 @@ FramedZstdDecoded decode_framed_zstd(std::string_view encoded_bytes,
         const auto payload = encoded_bytes.substr(position, encoded_frame_size);
         position += encoded_frame_size;
         const auto old_size = result.bytes.size();
-        result.bytes.resize(old_size + decoded_frame_size);
+        if(decoded_frame_size > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()) - old_size ||
+           decoded_frame_size > decoded_size - decoded_cursor ||
+           old_size > static_cast<std::size_t>(decoded_size))
+            throw std::runtime_error("framed zstd output budget is exhausted");
+        const auto new_size = old_size + static_cast<std::size_t>(decoded_frame_size);
+        if(static_cast<std::uint64_t>(new_size) > decoded_size ||
+           static_cast<std::uint64_t>(new_size) > options.max_decoded_bytes)
+            throw std::runtime_error("framed zstd output budget is exhausted");
+        result.bytes.resize(new_size);
         if(result.descriptor.raw_fallback) {
             if(encoded_frame_size != decoded_frame_size) throw std::runtime_error("raw fallback frame size mismatch");
             std::memcpy(result.bytes.data() + old_size, payload.data(), payload.size());
@@ -224,7 +244,7 @@ FramedZstdRange decode_framed_zstd_range(std::string_view encoded_bytes,
        decoded_size > options.max_decoded_bytes ||
        decoded_size > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))
         throw std::runtime_error("framed zstd descriptor exceeds budget");
-    const auto expected_count = decoded_size == 0 ? 0U : (decoded_size + frame_bytes - 1U) / frame_bytes;
+    const auto expected_count = expected_frame_count(decoded_size, frame_bytes);
     if(frame_count != expected_count || offset > decoded_size || length > decoded_size - offset)
         throw std::runtime_error("framed zstd range or frame count is invalid");
     FramedZstdRange result;
@@ -232,7 +252,9 @@ FramedZstdRange decode_framed_zstd_range(std::string_view encoded_bytes,
     result.descriptor = descriptor_from(frame_bytes, level, (flags & kRawFlag) != 0U);
     result.offset = offset;
     result.bytes.reserve(static_cast<std::size_t>(length));
-    const auto requested_end = offset + length;
+    std::uint64_t requested_end = 0;
+    if(!checked_add(offset, length, requested_end))
+        throw std::runtime_error("framed zstd range overflows");
     std::uint64_t decoded_cursor = 0;
     for(std::uint64_t frame = 0; frame < frame_count; ++frame) {
         const auto decoded_frame_size = read_u32(encoded_bytes, position);
