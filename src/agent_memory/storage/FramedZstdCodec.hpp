@@ -43,6 +43,13 @@ struct FramedZstdDecoded final {
     std::string bytes;
 };
 
+struct FramedZstdRange final {
+    ArtifactId artifact_id;
+    FramedZstdDescriptor descriptor;
+    std::uint64_t offset = 0;
+    std::string bytes;
+};
+
 /// \brief Encodes decoded bytes into deterministic independently decodable frames.
 ///
 /// `already_compressed` selects the explicit raw fallback. It changes only the
@@ -58,6 +65,17 @@ struct FramedZstdDecoded final {
 /// \brief Decodes and verifies one framed payload under bounded output budgets.
 [[nodiscard]] FramedZstdDecoded decode_framed_zstd(
     std::string_view encoded_bytes,
+    FramedZstdOptions options = {}
+);
+
+/// \brief Decodes one logical byte range, materializing at most one frame.
+///
+/// Integrity of each materialized frame is checked. Callers requiring
+/// whole-artifact digest verification must use `decode_framed_zstd()`.
+[[nodiscard]] FramedZstdRange decode_framed_zstd_range(
+    std::string_view encoded_bytes,
+    std::uint64_t offset,
+    std::uint64_t length,
     FramedZstdOptions options = {}
 );
 

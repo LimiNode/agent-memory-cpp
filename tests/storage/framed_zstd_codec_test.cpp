@@ -28,6 +28,18 @@ int main() {
     expect(raw.artifact_id == first.artifact_id, "raw fallback changed logical artifact identity");
     expect(raw.descriptor.raw_fallback, "raw fallback descriptor was not marked");
     expect(decode_framed_zstd(raw.bytes, options).bytes == body, "raw fallback did not round-trip");
+    const auto range = decode_framed_zstd_range(first.bytes, 3, 11, options);
+    expect(range.bytes == body.substr(3, 11), "framed range decode returned wrong bytes");
+    expect(range.artifact_id == first.artifact_id, "range decode lost logical identity");
+
+    const auto empty = encode_framed_zstd("", false, options);
+    expect(decode_framed_zstd(empty.bytes, options).bytes.empty(), "empty payload did not round-trip");
+    FramedZstdOptions tiny_budget = options;
+    tiny_budget.max_decoded_bytes = 1;
+    bool budget_rejected = false;
+    try { static_cast<void>(decode_framed_zstd(first.bytes, tiny_budget)); }
+    catch(const std::runtime_error&) { budget_rejected = true; }
+    expect(budget_rejected, "decoded output budget was not enforced");
 
     auto truncated = first.bytes;
     truncated.pop_back();
@@ -41,6 +53,14 @@ int main() {
     try { static_cast<void>(decode_framed_zstd(corrupted, options)); }
     catch(const std::runtime_error&) { rejected = true; }
     expect(rejected, "corrupted frame was accepted");
+    auto oversized_descriptor = first.bytes;
+    // The declared logical body becomes one byte while the first frame still
+    // claims its original decoded size; the decoder must reject before resize.
+    oversized_descriptor[21] = 1;
+    rejected = false;
+    try { static_cast<void>(decode_framed_zstd(oversized_descriptor, options)); }
+    catch(const std::runtime_error&) { rejected = true; }
+    expect(rejected, "oversized frame descriptor was accepted");
     std::cout << "framed zstd codec: PASS\n";
     return 0;
 }
