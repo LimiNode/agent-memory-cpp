@@ -1,0 +1,150 @@
+name: cmake packaging
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  minimal-consumers:
+    name: minimal consumers (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure and verify minimal package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+          $packageBuild = Join-Path $repo '.build/packaging-minimal'
+          $packagePrefix = Join-Path $repo '.build/packaging-prefix-minimal'
+          cmake -S $repo -B $packageBuild -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DAGENT_MEMORY_ENABLE_MDBX=OFF -DAGENT_MEMORY_ENABLE_JSON=OFF `
+            -DAGENT_MEMORY_BUILD_TESTS=OFF -DAGENT_MEMORY_BUILD_EXAMPLES=OFF `
+            -DAGENT_MEMORY_BUILD_BENCHMARKS=OFF -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF
+          cmake --build $packageBuild --parallel
+          cmake --install $packageBuild --prefix $packagePrefix
+
+          $addBuild = Join-Path $repo '.build/packaging-consumer-add'
+          cmake -S (Join-Path $repo 'packaging/consumers/add_subdirectory') -B $addBuild -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release "-DAGENT_MEMORY_SOURCE_DIR=$repo" `
+            -DAGENT_MEMORY_BUILD_EXAMPLES=ON -DAGENT_MEMORY_ENABLE_JSON=ON
+          cmake --build $addBuild --parallel
+          & (Join-Path $addBuild 'agent_memory_add_subdirectory_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'add_subdirectory consumer failed' }
+
+          $installedBuild = Join-Path $repo '.build/packaging-consumer-installed'
+          cmake -S (Join-Path $repo 'packaging/consumers/installed') -B $installedBuild -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$packagePrefix"
+          cmake --build $installedBuild --parallel
+          & (Join-Path $installedBuild 'agent_memory_installed_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'installed consumer failed' }
+
+          $relocatedPrefix = Join-Path $repo '.build/packaging-prefix-minimal-relocated'
+          Copy-Item -Recurse -Force $packagePrefix $relocatedPrefix
+          $relocatedBuild = Join-Path $repo '.build/packaging-consumer-installed-relocated'
+          cmake -S (Join-Path $repo 'packaging/consumers/installed') -B $relocatedBuild -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$relocatedPrefix"
+          cmake --build $relocatedBuild --parallel
+          & (Join-Path $relocatedBuild 'agent_memory_installed_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'relocated installed consumer failed' }
+
+  mdbx-installed-consumer:
+    name: MDBX installed consumer (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build dependency packages
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+          $mdbxSource = Join-Path $repo 'external/libmdbx'
+          if (-not (Test-Path (Join-Path $mdbxSource 'CMakeLists.txt'))) {
+            throw "libmdbx submodule is not initialized: $mdbxSource"
+          }
+          $providerBuild = Join-Path $repo '.build/mdbx-provider'
+          $providerPrefix = Join-Path $repo '.build/mdbx-provider-prefix'
+          cmake -S (Join-Path $repo 'packaging/test-dependencies/mdbx-provider') -B $providerBuild -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release "-DMDBX_SOURCE_DIR=$mdbxSource"
+          cmake --build $providerBuild --target mdbx-static --parallel
+          cmake --install $providerBuild --prefix $providerPrefix
+
+          $containersBuild = Join-Path $repo '.build/mdbx-containers'
+          $containersPrefix = Join-Path $repo '.build/mdbx-containers-prefix'
+          cmake -S (Join-Path $repo 'external/mdbx-containers') -B $containersBuild -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_INSTALL_PREFIX=$containersPrefix" `
+            "-DCMAKE_PREFIX_PATH=$providerPrefix" -DMDBXC_DEPS_MODE=SYSTEM `
+            -DMDBXC_BUILD_EXAMPLES=OFF -DMDBXC_BUILD_TESTS=OFF -DMDBXC_BUILD_BENCHMARKS=OFF -DMDBXC_USE_ASAN=OFF
+          cmake --build $containersBuild --parallel
+          cmake --install $containersBuild
+
+      - name: Build and verify installed MDBX package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+          $packageBuild = Join-Path $repo '.build/packaging-mdbx'
+          $packagePrefix = Join-Path $repo '.build/packaging-prefix-mdbx'
+          cmake -S $repo -B $packageBuild -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DAGENT_MEMORY_ENABLE_MDBX=ON -DAGENT_MEMORY_ENABLE_JSON=OFF `
+            -DAGENT_MEMORY_MDBX_DEPS_MODE=BUNDLED -DAGENT_MEMORY_BUILD_TESTS=OFF `
+            -DAGENT_MEMORY_BUILD_EXAMPLES=OFF -DAGENT_MEMORY_BUILD_BENCHMARKS=OFF `
+            -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF
+          cmake --build $packageBuild --parallel
+          cmake --install $packageBuild --prefix $packagePrefix
+
+          $exportFiles = Get-ChildItem -Recurse $packagePrefix -File -Include '*.cmake'
+          $forbidden = $exportFiles | Select-String -Pattern '_deps|external/libmdbx|external/mdbx-containers'
+          if ($forbidden) { throw 'installed package contains a source/build dependency path' }
+
+          $consumerBuild = Join-Path $repo '.build/packaging-consumer-mdbx'
+          $prefixPath = "$packagePrefix`;$repo/.build/mdbx-containers-prefix`;$repo/.build/mdbx-provider-prefix"
+          cmake -S (Join-Path $repo 'packaging/consumers/mdbx-installed') -B $consumerBuild -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$prefixPath"
+          cmake --build $consumerBuild --parallel
+          & (Join-Path $consumerBuild 'agent_memory_mdbx_installed_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'MDBX installed consumer failed' }
+
+  json-installed-consumer:
+    name: JSON installed consumer (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install JSON package dependency
+        run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev ninja-build
+      - name: Build and verify installed JSON package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+          $packageBuild = Join-Path $repo '.build/packaging-json'
+          $packagePrefix = Join-Path $repo '.build/packaging-prefix-json'
+          cmake -S $repo -B $packageBuild -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DAGENT_MEMORY_ENABLE_MDBX=OFF -DAGENT_MEMORY_ENABLE_JSON=ON `
+            -DAGENT_MEMORY_BUILD_TESTS=OFF -DAGENT_MEMORY_BUILD_EXAMPLES=OFF `
+            -DAGENT_MEMORY_BUILD_BENCHMARKS=OFF -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF
+          cmake --build $packageBuild --parallel
+          cmake --install $packageBuild --prefix $packagePrefix
+          $consumerBuild = Join-Path $repo '.build/packaging-consumer-json'
+          cmake -S (Join-Path $repo 'packaging/consumers/json-installed') -B $consumerBuild -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$packagePrefix"
+          cmake --build $consumerBuild --parallel
+          & (Join-Path $consumerBuild 'agent_memory_json_installed_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'JSON installed consumer failed' }

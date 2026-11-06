@@ -1,0 +1,19 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+if(NOT TARGET mdbx::mdbx)
+    add_library(mdbx::mdbx STATIC IMPORTED)
+    set_target_properties(mdbx::mdbx PROPERTIES
+        IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/libmdbx.a"
+        INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@"
+        INTERFACE_LINK_LIBRARIES "Threads::Threads;@CMAKE_DL_LIBS@")
+    if(WIN32)
+        set_property(TARGET mdbx::mdbx APPEND PROPERTY
+            INTERFACE_LINK_LIBRARIES ntdll)
+    endif()
+endif()
+
+set(mdbx_FOUND TRUE)
+set(MDBX_FOUND TRUE)
