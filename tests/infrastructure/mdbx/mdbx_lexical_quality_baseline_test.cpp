@@ -60,6 +60,9 @@ std::string build_platform() {
 }
 
 std::string source_commit() {
+    if(const auto* value = std::getenv("AGENT_MEMORY_SOURCE_COMMIT")) {
+        if(*value != '\0') return value;
+    }
     if(const auto* value = std::getenv("GITHUB_SHA")) {
         if(*value != '\0') return value;
     }
