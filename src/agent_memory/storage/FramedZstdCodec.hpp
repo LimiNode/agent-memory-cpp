@@ -68,7 +68,7 @@ struct FramedZstdRange final {
     FramedZstdOptions options = {}
 );
 
-/// \brief Decodes one logical byte range, materializing at most one frame.
+/// \brief Decodes one logical byte range, materializing only overlapping frames.
 ///
 /// Integrity of each materialized frame is checked. Callers requiring
 /// whole-artifact digest verification must use `decode_framed_zstd()`.

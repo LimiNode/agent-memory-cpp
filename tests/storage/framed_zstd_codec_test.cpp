@@ -31,6 +31,10 @@ int main() {
     const auto range = decode_framed_zstd_range(first.bytes, 3, 11, options);
     expect(range.bytes == body.substr(3, 11), "framed range decode returned wrong bytes");
     expect(range.artifact_id == first.artifact_id, "range decode lost logical identity");
+    bool range_rejected = false;
+    try { static_cast<void>(decode_framed_zstd_range(first.bytes, body.size() + 1U, 0, options)); }
+    catch(const std::runtime_error&) { range_rejected = true; }
+    expect(range_rejected, "out-of-bounds range was accepted");
 
     const auto empty = encode_framed_zstd("", false, options);
     expect(decode_framed_zstd(empty.bytes, options).bytes.empty(), "empty payload did not round-trip");
@@ -61,6 +65,13 @@ int main() {
     try { static_cast<void>(decode_framed_zstd(oversized_descriptor, options)); }
     catch(const std::runtime_error&) { rejected = true; }
     expect(rejected, "oversized frame descriptor was accepted");
+    auto invalid_frame_count = first.bytes;
+    // Header frame_count starts at byte 22 and is encoded big-endian.
+    invalid_frame_count[29] ^= 0x01;
+    rejected = false;
+    try { static_cast<void>(decode_framed_zstd(invalid_frame_count, options)); }
+    catch(const std::runtime_error&) { rejected = true; }
+    expect(rejected, "invalid frame count was accepted");
     std::cout << "framed zstd codec: PASS\n";
     return 0;
 }
