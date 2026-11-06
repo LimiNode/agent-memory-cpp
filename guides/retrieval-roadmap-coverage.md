@@ -11,6 +11,12 @@ means exercised code exists; `Contract only` means a public or storage contract
 exists without the complete backend; `Docs/tests only` means the idea is
 described or probed but not a product path; `Roadmap only` means planned work.
 
+The proposed first-release boundary is recorded in
+[`first-release-profile.md`](first-release-profile.md). It is intentionally
+normalized-first and artifact-aware: structural chunking, derived multi-view
+retrieval, CAS-backed materialization and byte-verified hydration are release
+gates, not claims that the current raw importer already provides them.
+
 | Area | Current owner | Status | Missing implementation/research | Next bounded step |
 |---|---|---|---|---|
 | Core domain primitives | `milestones.md`, `architecture.md` | Implemented | broader payload coverage | finish M0 fixtures |

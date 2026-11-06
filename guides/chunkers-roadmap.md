@@ -568,9 +568,15 @@ Content edits создают новую identity. Стабилен при пов
 
 Маппинг chunker-паттернов на наши maturity levels.
 
-### 8.1. M0 (MVP smoke tests)
+### 8.1. M0 (MVP smoke-test contract)
 
-Готово из коробки:
+The entries below describe the intended M0 conformance target. They are not a
+claim that a production Markdown structural chunker is present in the current
+library. The current implementation inventory must show an executable parser,
+stable locators and a product test before this section can be reported as
+`Implemented`.
+
+Нормативный M0 target (не утверждение о текущей реализации):
 
 - **Default length-based chunker** (500 chars + heading path) — baseline.
 - **Markdown chunker** — heading tree + parent chain в каждом chunk.
