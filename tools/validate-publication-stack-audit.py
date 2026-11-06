@@ -16,7 +16,7 @@ REQUIRED_TERMS = (
     "lexical participation",
     "pinned reads",
     "target-level vs scope-wide guarantee",
-    "independent File CAS publication",
+    "independent file cas publication",
     "source/body digest and content-token binding",
     "crash recovery",
     "legacy writer admission and deployment quiescence",
