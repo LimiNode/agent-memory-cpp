@@ -2301,6 +2301,13 @@ if(AGENT_MEMORY_BUILD_TESTS)
     if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
         add_test(
+            NAME agent_memory_lexical_product_path_feasibility_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/validate_product_path_feasibility.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
             NAME agent_memory_bge_m3_sparse_pilot_self_test
             COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_CURRENT_SOURCE_DIR}/tools/bge-m3/run_bge_m3_sparse_pilot.py

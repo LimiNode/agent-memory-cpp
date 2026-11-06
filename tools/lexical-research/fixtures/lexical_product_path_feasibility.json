@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "status": "FEASIBILITY_GATE",
+  "corpus": {
+    "name": "r3a",
+    "document_count": 1889,
+    "corpus_digest": "473398540b16e43b2fdb2a502b8b2e459e9cc5641f2393e080a825e39f9c4dfe",
+    "qrels_status": "JUDGMENT_READINESS_ONLY",
+    "quality_claim": "NOT_VERIFIED"
+  },
+  "paths": {
+    "rebuild_baseline": "ProjectionAwareLexicalRetriever::retrieve",
+    "candidate_path": "persistent_candidate_generation_then_existing_materializer",
+    "same_admission": true,
+    "same_query_contract": true
+  },
+  "scale_ladder": [
+    {"name": "smoke", "documents": 96, "scopes": 2, "units_per_scope": 48, "revisions": 1, "projections": ["original"]},
+    {"name": "small", "documents": 512, "scopes": 4, "units_per_scope": 128, "revisions": 2, "projections": ["original", "title"]},
+    {"name": "medium", "documents": 2048, "scopes": 8, "units_per_scope": 256, "revisions": 3, "projections": ["original", "title", "heading", "body", "code", "tags", "summary", "question"]},
+    {"name": "r3a_replay", "documents": 1889, "scopes": "manifest-derived", "units_per_scope": "manifest-derived", "revisions": "source-derived", "projections": "extractor-derived"}
+  ],
+  "lifecycle_operations": ["import", "query", "update", "delete", "rebuild", "reopen"],
+  "metrics": ["median_ms", "p95_ms", "sample_count", "peak_rss_bytes", "allocator_bytes", "mdbx_map_bytes", "rows_read", "rows_written", "bytes_read", "bytes_written", "update_fanout"],
+  "identity_fields": ["ScopeId", "KnowledgeUnitId", "projection", "resource_generation", "unit_revision", "projection_revision", "manifest_revision", "body_digest"],
+  "negative_cases": ["stale_projection", "wrong_generation", "wrong_digest", "cross_scope_row", "missing_manifest", "partial_update"],
+  "field_contract": ["title", "heading", "body", "code", "tags", "summary", "question"],
+  "measurement_semantics": {
+    "sample_count": "timed samples, not independent requests",
+    "p95": "descriptive sample percentile, not stable p99",
+    "build_vs_query": "never compare publication/build time directly with query latency"
+  }
+}
