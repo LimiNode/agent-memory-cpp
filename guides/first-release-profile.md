@@ -88,11 +88,20 @@ The first release therefore remains a Technical Preview until the following
 vertical evidence exists:
 
 - normalized Markdown article: structural chunks, derived summary/concepts,
-  retrieval and exact normalized-text citation;
-- Telegram text with image references: source revision update, stale rejection,
-  reopen and evidence-preserving locators;
-- timed transcript: derived retrieval, exact text hydration and an external
-  video time link without claiming retained video bytes.
+  retrieval and exact normalized-text citation, with the canonical body
+  materialized from File CAS and a raw/framed-Zstd round trip checked;
+- table-bearing article: structural table representation, stable row/cell
+  locators and exact cell hydration rather than a prose-only chunk;
+- Telegram text with retained image bytes: source revision update, stale
+  rejection, reopen, image-byte hydration and evidence-preserving bindings;
+- timed transcript: distinct transcript revision, SegmentSet and derived view,
+  exact text hydration and an external video time link without claiming
+  retained video bytes.
+
+These fixtures are release evidence only when they exercise the real storage
+and retrieval path. DTO round-trips, image references without retained bytes,
+or a summary that replaces the canonical representation do not satisfy the
+profile.
 
 ANN, graph traversal, embedded LLM inference, OCR/ASR connectors, late
 chunking, complex rerankers and a universal agent coordinator are not required

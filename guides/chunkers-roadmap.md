@@ -576,7 +576,7 @@ library. The current implementation inventory must show an executable parser,
 stable locators and a product test before this section can be reported as
 `Implemented`.
 
-Готово из коробки:
+Нормативный M0 target (не утверждение о текущей реализации):
 
 - **Default length-based chunker** (500 chars + heading path) — baseline.
 - **Markdown chunker** — heading tree + parent chain в каждом chunk.
