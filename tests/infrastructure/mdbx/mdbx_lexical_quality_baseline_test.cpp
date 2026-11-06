@@ -10,6 +10,7 @@
 #if AGENT_MEMORY_HAS_MDBX
 
 #include <chrono>
+#include <cstdlib>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -44,6 +45,25 @@ std::string read_file(const std::filesystem::path& path) {
     std::ifstream input(path, std::ios::binary);
     require(input.good(), "quality fixture could not be opened");
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+std::string build_platform() {
+#if defined(_WIN32)
+    return "windows";
+#elif defined(__APPLE__)
+    return "macos";
+#elif defined(__linux__)
+    return "linux";
+#else
+    return "unknown";
+#endif
+}
+
+std::string source_commit() {
+    if(const auto* value = std::getenv("GITHUB_SHA")) {
+        if(*value != '\0') return value;
+    }
+    return "UNPINNED";
 }
 
 std::string normalized_document(const Json& document) {
@@ -170,6 +190,8 @@ int main(int argc, char** argv) {
             {"fixture_sha256", sha256_hex(fixture_bytes)},
             {"document_count", fixture.at("documents").size()},
             {"query_count", fixture.at("queries").size()},
+            {"source_commit", source_commit()},
+            {"build_platform", build_platform()},
             {"score_semantics", "producer score returned by ProjectionAwareLexicalRetriever; no score recomputation"},
             {"runs", std::move(runs)}
         };
