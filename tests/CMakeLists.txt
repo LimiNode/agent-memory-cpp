@@ -928,4 +928,17 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         NAME agent_memory_mdbx_snapshot_revision_bound_retriever_test
         COMMAND agent_memory_mdbx_snapshot_revision_bound_retriever_test
     )
+
+    add_executable(agent_memory_mdbx_unit_projections_coownership_test
+        infrastructure/mdbx/mdbx_unit_projections_coownership_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_unit_projections_coownership_test
+        PRIVATE
+            agent_memory::agent_memory
+            mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_unit_projections_coownership_test
+        COMMAND agent_memory_mdbx_unit_projections_coownership_test
+    )
 endif()
