@@ -956,11 +956,18 @@ if(AGENT_MEMORY_ENABLE_MDBX)
     target_link_libraries(agent_memory_mdbx_lexical_product_path_qualification_test
         PRIVATE
             agent_memory::agent_memory
+            agent_memory::json
             mdbx_containers::mdbx_containers
     )
     add_test(
         NAME agent_memory_mdbx_lexical_product_path_qualification_test
         COMMAND agent_memory_mdbx_lexical_product_path_qualification_test
                 ${CMAKE_CURRENT_BINARY_DIR}/lexical-product-path-qualification.json
+                ${CMAKE_BINARY_DIR}/lexical-product-path-smoke-workload.json
     )
+    if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
+        set_tests_properties(agent_memory_mdbx_lexical_product_path_qualification_test
+            PROPERTIES DEPENDS agent_memory_lexical_product_path_workload_self_test
+        )
+    endif()
 endif()
