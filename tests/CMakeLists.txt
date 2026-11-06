@@ -969,5 +969,35 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         set_tests_properties(agent_memory_mdbx_lexical_product_path_qualification_test
             PROPERTIES DEPENDS agent_memory_lexical_product_path_workload_self_test
         )
+
+        add_executable(agent_memory_mdbx_lexical_quality_baseline_test
+            infrastructure/mdbx/mdbx_lexical_quality_baseline_test.cpp
+        )
+        target_link_libraries(agent_memory_mdbx_lexical_quality_baseline_test
+            PRIVATE
+                agent_memory::agent_memory
+                agent_memory::json
+                mdbx_containers::mdbx_containers
+        )
+        add_test(
+            NAME agent_memory_mdbx_lexical_quality_baseline_test
+            COMMAND agent_memory_mdbx_lexical_quality_baseline_test
+                    ${CMAKE_CURRENT_SOURCE_DIR}/../tools/lexical-research/fixtures/independent_retrieval_quality_v1.json
+                    ${CMAKE_CURRENT_BINARY_DIR}/lexical-quality-baseline-receipt.json
+        )
+        set_tests_properties(agent_memory_mdbx_lexical_quality_baseline_test
+            PROPERTIES DEPENDS agent_memory_lexical_product_path_workload_self_test
+        )
+        add_test(
+            NAME agent_memory_lexical_quality_evaluation
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/../tools/lexical-research/evaluate_lexical_quality.py
+                    --fixture ${CMAKE_CURRENT_SOURCE_DIR}/../tools/lexical-research/fixtures/independent_retrieval_quality_v1.json
+                    --receipt ${CMAKE_CURRENT_BINARY_DIR}/lexical-quality-baseline-receipt.json
+                    --output ${CMAKE_CURRENT_BINARY_DIR}/lexical-quality-baseline-summary.json
+        )
+        set_tests_properties(agent_memory_lexical_quality_evaluation
+            PROPERTIES DEPENDS agent_memory_mdbx_lexical_quality_baseline_test
+        )
     endif()
 endif()
