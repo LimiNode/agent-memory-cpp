@@ -8,13 +8,14 @@ historical coordinator API a production dependency.
 
 The audit covers the coordinator sequence `#544 -> #549 -> #550 -> #551 ->
 #552 -> #553 -> #554`, plus the separate legacy-writer gate in `#555`. It was
-performed against `main@4e79a6a4acc9fe4c7762a35b9812b7d6bcf51fe3` (including
-#579 typed revision-bound retrieval, #582 release-profile and #583 artifact
-identity contracts) and compares
+performed against `main@41cbe54c12826012e0ecceaaa44a3fd4c23910b7` (including
+#579 typed revision-bound retrieval, #582 release-profile, #583 artifact
+identity contracts, #584 File-backed Raw CAS, #590 Raw ArtifactCatalog and
+#593 shared projection conformance) and compares
 the historical files with the current B3 publication substrate, the typed
 revision-bound retrieval slice (`#579`), the first-agent snapshot admission
-work, and the planned ArtifactCatalog/File CAS and ResourceImporter recovery
-contracts. Historical claims are source-level comparisons; no coordinator
+work and the ResourceImporter recovery contracts. Historical claims are
+source-level comparisons; no coordinator
 implementation is silently imported into main by this document.
 
 The current main equivalents are `DerivedPublicationAdmission`,
@@ -33,7 +34,7 @@ write transaction or a File CAS publication protocol.
 | Lexical participation | #552 `MdbxProjectionLexicalPublicationParticipants` | `MdbxCurrentDerivedPublicationReader` reads current derived evidence; no writer | Lexical rows and projection must share target revision/generation | Target-bound evidence fields and lexical digest checks | Separate lexical callback that advances frontier | Bind lexical generation and digest to the same publication transaction | P1 |
 | Pinned reads | #553 `MdbxPublicationReadScope::finish` | B3 current reader and #579 typed revision-bound retrieval | Pinned snapshot must prove one transaction and reject mixed frontier evidence | Revision-bound result types and fail-closed checks | Enum assignment/receipt-only “PinnedSnapshot” claims | Require transaction identity/frontier proof, not an assigned enum | P0 |
 | Target-level vs scope-wide guarantee | #554 corrective validator and read scope | `RevisionBoundRetrieval` is target/revision bounded | Scope-wide Exact must not be inferred from one target's evidence | Target-level status vocabulary and negative tests | Global Exact shortcut over contradictory partition evidence | Make scope completeness explicit and reject contradictory partitions | P1 |
-| Independent File CAS publication | Not present in #544–#555 | Planned first-agent ArtifactCatalog/File CAS branches | Content-addressed body/blob publication is outside MDBX coordinator scope | None yet; use CAS API once landed | Treating a digest as if it published bytes | Keep CAS upload/commit independent, then atomically publish artifact reference | P0 |
+| Independent File CAS publication | Not present in #544–#555 | `FileBackedRawBlobStore`/Raw CAS are on main (#584) | Coordinator still has no publication ownership for CAS bytes | Use the existing CAS API; do not duplicate it in the coordinator | Treating a digest as if it published bytes | Keep CAS upload/commit independent, then atomically publish the durable artifact reference | P0 |
 | Source/body digest and content-token binding | #551/#552 evidence fields | Canonical content and B3 derived admission carry revision/digest evidence | No end-to-end proof that source bytes, body digest and token payload are the same artifact | Evidence comparison helpers | Duplicated serializers and IDs without byte binding | Reuse canonical digest API and add content-token binding at importer boundary | P0 |
 | Crash recovery | #554 rollback/corrective tests | MDBX resource importer has recovery/fencing protocols; B3 snapshot admission is fail-closed | Recovery must reconcile partial row families and CAS references | Counterexample scenarios and receipt vocabulary | Assuming transaction callbacks imply durable recovery | Specify journal/commit marker and replay policy before writer activation | P0 |
 | Legacy writer admission and deployment quiescence | #555 writer activation gate | No automatic quiescence on main | Old writers can advance rows/frontier outside coordinator | Operational gate format and mixed-writer negative cases | Treating a green coordinator test as deployment fencing | Require explicit quiescence/fence receipt and versioned writer epoch | P0 |
@@ -54,8 +55,8 @@ write transaction or a File CAS publication protocol.
 ## Release decision and coordination
 
 No historical coordinator PR is release-ready solely because its tests pass.
-The release sequence is: (1) land the first-agent public snapshot, canonical
-content and ArtifactCatalog/File CAS contracts; (2) define one writer epoch and
+The release sequence is: (1) use the landed canonical content, ArtifactCatalog
+and File CAS contracts; (2) define one writer epoch and
 transaction owner; (3) implement a minimal adapter with crash-recovery and
 mixed-writer counterexamples; (4) compare reads against B3 admission and the
 #535 oracle; and only then (5) consider a production writer.
@@ -69,7 +70,7 @@ tests are P0 release gates.
 
 Current B3 admission is a post-publication validation/current-read contract;
 it is not a cross-family atomic publication guarantee. A future adapter must
-keep File CAS writes outside the MDBX transaction, record a recoverable CAS
+keep the existing File CAS writes outside the MDBX transaction, record a recoverable CAS
 publication state, and atomically publish only the MDBX reference/frontier
 after the CAS object is durable. The historical rollback/fault fixtures that
 are reusable are the missing-row, stale-generation, digest-mismatch,
@@ -88,7 +89,7 @@ proof of bytes, transaction identity, or cross-family atomicity.
 | --- | --- | --- |
 | Historical ownership mapped | PASS | Matrix above covers #544, #549–#554 and #555. |
 | Current-main equivalence checked | PASS | B3 admission/current-read/frontier and #579 are named explicitly. |
-| File CAS boundary | DEFERRED | First-agent ArtifactCatalog/File CAS public APIs are not on this branch. |
+| File CAS boundary | PASS (surface only) | #584/#590 supply the public Raw CAS and ArtifactCatalog surfaces; coordinator-to-CAS atomic publication is intentionally deferred. |
 | Durable crash recovery | DEFERRED | No production journal/replay contract exists for a coordinator adapter. |
 | Legacy writer quiescence | DEFERRED | Requires deployment receipt and writer epoch, not a library-only test. |
 | Production activation | BLOCKED | Do not activate the historical coordinator stack. |
