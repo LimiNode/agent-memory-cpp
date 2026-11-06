@@ -29,7 +29,9 @@ It names the pinned R3A corpus (`1,889` documents,
 `473398540b16e43b2fdb2a502b8b2e459e9cc5641f2393e080a825e39f9c4dfe`), while
 keeping quality status `JUDGMENT_READINESS_ONLY` because qrels are absent. The
 scale ladder is synthetic expansion of real R3A document-size statistics, not
-a claim that all levels are already measured:
+a claim that all levels are already measured. Each scale row is explicitly
+`DESIGNED_NOT_MEASURED` (or `IDENTITY_ONLY_NOT_MEASURED` for the R3A identity
+row): these are workload definitions, not execution receipts.
 
 | Level | Documents | Scopes | Units/scope | Revisions | Projections |
 | --- | ---: | ---: | ---: | ---: | --- |
@@ -103,10 +105,10 @@ revision/freshness binding, scope isolation, or lifecycle parity fails.
 
 | Gate | Status | Required evidence |
 | --- | --- | --- |
-| End-to-end stage model | PASS | Separate import, query, update, delete, rebuild and reopen rows in fixture/schema. |
-| Representative scale fixture | PASS | Smoke/small/medium ladder plus pinned R3A identity. |
-| Identical admission/query semantics | PASS | Explicit IDs, projections, revisions, generations, manifests and stale rejection. |
-| Read/write cost accounting | DEFERRED | Requires an executable adapter with MDBX row/byte counters and peak-memory hooks. |
-| Persistent-vs-rebuild equivalence | DEFERRED | No production-level candidate-generation seam exists without duplicating admission. |
+| End-to-end stage model | SPECIFIED | Separate import, query, update, delete, rebuild and reopen rows in fixture/schema; no lifecycle run is attached yet. |
+| Representative scale fixture | DESIGNED / NOT MEASURED | Smoke/small/medium ladder plus pinned R3A identity; generated workloads and receipts are future deliverables. |
+| Identical admission/query semantics | SPECIFIED / NOT VERIFIED | The required contract is frozen, but two executable implementations have not been compared. |
+| Read/write cost accounting | NOT MEASURED | Requires an executable adapter with MDBX row/byte counters and peak-memory hooks. |
+| Persistent-vs-rebuild equivalence | NOT VERIFIED | No production-level candidate-generation seam exists without duplicating admission. |
 | Retrieval quality | NOT VERIFIED | R3A qrels are absent; no quality aggregate is allowed. |
 | Production activation | BLOCKED | Keep rebuild path/defaults; do not enable persistent or segmented indexing. |

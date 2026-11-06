@@ -11,14 +11,14 @@
   "paths": {
     "rebuild_baseline": "ProjectionAwareLexicalRetriever::retrieve",
     "candidate_path": "persistent_candidate_generation_then_existing_materializer",
-    "same_admission": true,
-    "same_query_contract": true
+    "same_admission_rules": "SPECIFIED_NOT_VERIFIED",
+    "same_query_contract": "SPECIFIED_NOT_VERIFIED"
   },
   "scale_ladder": [
-    {"name": "smoke", "documents": 96, "scopes": 2, "units_per_scope": 48, "revisions": 1, "projections": ["original"]},
-    {"name": "small", "documents": 512, "scopes": 4, "units_per_scope": 128, "revisions": 2, "projections": ["original", "title"]},
-    {"name": "medium", "documents": 2048, "scopes": 8, "units_per_scope": 256, "revisions": 3, "projections": ["original", "title", "heading", "body", "code", "tags", "summary", "question"]},
-    {"name": "r3a_replay", "documents": 1889, "scopes": "manifest-derived", "units_per_scope": "manifest-derived", "revisions": "source-derived", "projections": "extractor-derived"}
+    {"name": "smoke", "status": "DESIGNED_NOT_MEASURED", "documents": 96, "scopes": 2, "units_per_scope": 48, "revisions": 1, "projections": ["original"]},
+    {"name": "small", "status": "DESIGNED_NOT_MEASURED", "documents": 512, "scopes": 4, "units_per_scope": 128, "revisions": 2, "projections": ["original", "title"]},
+    {"name": "medium", "status": "DESIGNED_NOT_MEASURED", "documents": 2048, "scopes": 8, "units_per_scope": 256, "revisions": 3, "projections": ["original", "title", "heading", "body", "code", "tags", "summary", "question"]},
+    {"name": "r3a_replay", "status": "IDENTITY_ONLY_NOT_MEASURED", "documents": 1889, "scopes": "manifest-derived", "units_per_scope": "manifest-derived", "revisions": "source-derived", "projections": "extractor-derived"}
   ],
   "lifecycle_operations": ["import", "query", "update", "delete", "rebuild", "reopen"],
   "metrics": ["median_ms", "p95_ms", "sample_count", "peak_rss_bytes", "allocator_bytes", "mdbx_map_bytes", "rows_read", "rows_written", "bytes_read", "bytes_written", "update_fanout"],
