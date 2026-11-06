@@ -148,6 +148,18 @@ RawBlobReadResult read_failure(RawBlobStatus status, std::string diagnostic) {
 
 enum class ExclusiveWriteResult { Created, AlreadyExists, Failed };
 
+#ifdef _WIN32
+int exclusive_file_mode() noexcept {
+#ifdef _MSC_VER
+    return _S_IREAD | _S_IWRITE;
+#else
+    // MinGW exposes the portable stat mode names, while MSVC exposes the
+    // underscored variants used above.
+    return S_IREAD | S_IWRITE;
+#endif
+}
+#endif
+
 ExclusiveWriteResult write_exclusive(
     const std::filesystem::path& path,
     std::string_view bytes
@@ -155,7 +167,7 @@ ExclusiveWriteResult write_exclusive(
 #ifdef _WIN32
     const int descriptor = _open(
         path.string().c_str(), _O_BINARY | _O_CREAT | _O_EXCL | _O_WRONLY,
-        _S_IREAD | _S_IWRITE);
+        exclusive_file_mode());
     if(descriptor < 0) {
         return errno == EEXIST
             ? ExclusiveWriteResult::AlreadyExists
