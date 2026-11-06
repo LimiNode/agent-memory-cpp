@@ -124,6 +124,11 @@ int main() {
 
     const std::string body = "normalized bytes\nsecond line\n";
     const auto stored = store.put(body);
+    if(stored.status != RawBlobStatus::Ok || !stored.metadata) {
+        std::cerr << "raw CAS put diagnostic: root=" << root.string()
+                  << " status=" << static_cast<int>(stored.status)
+                  << " detail=" << stored.diagnostic << '\n';
+    }
     expect(stored.status == RawBlobStatus::Ok && stored.metadata,
            "raw CAS put failed");
     const auto deduplicated = store.put(body);
@@ -140,6 +145,14 @@ int main() {
     expect(store.read_range(stored.metadata->artifact_id, 0, body.size() + 1).status ==
                RawBlobStatus::InvalidArgument,
            "raw CAS accepted an oversized range");
+    const FileRawBlobStoreOptions small_range_options{4};
+    const FileRawBlobStore bounded_store(root, small_range_options);
+    expect(bounded_store.read_range(stored.metadata->artifact_id, 0, 5).status ==
+               RawBlobStatus::InvalidArgument,
+           "raw CAS exceeded its configured range budget");
+    expect(bounded_store.read_range(stored.metadata->artifact_id, 0, 0).status ==
+               RawBlobStatus::Ok,
+           "raw CAS rejected a zero-length range at the budget boundary");
     expect(store.read_range(stored.metadata->artifact_id,
                             std::numeric_limits<std::uint64_t>::max(), 1).status ==
                RawBlobStatus::InvalidArgument,
@@ -226,6 +239,9 @@ int main() {
     if(!error) {
         expect(FileRawBlobStore(redirect).put("redirected").status != RawBlobStatus::Ok,
                "CAS followed a symlink root outside its workspace");
+        expect(FileRawBlobStore(redirect / "nested-cas").put("redirected-parent").status !=
+                   RawBlobStatus::Ok,
+               "CAS followed a symlinked parent outside its workspace");
         std::filesystem::remove(redirect, error);
     }
 

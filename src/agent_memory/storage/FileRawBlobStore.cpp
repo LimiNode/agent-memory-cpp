@@ -70,10 +70,23 @@ bool is_link_or_reparse(const std::filesystem::path& path) {
     return false;
 }
 
+bool is_trusted_platform_ancestor(const std::filesystem::path& path) {
+#ifdef __APPLE__
+    // macOS exposes these stable system aliases as symlinks to /private/*.
+    // They are outside the caller-owned CAS root and are safe to traverse.
+    const auto normalized = path.lexically_normal();
+    return normalized == std::filesystem::path("/var") ||
+        normalized == std::filesystem::path("/tmp");
+#else
+    (void)path;
+    return false;
+#endif
+}
+
 bool has_link_component(const std::filesystem::path& path) {
     auto current = path;
     while(!current.empty()) {
-        if(is_link_or_reparse(current)) {
+        if(is_link_or_reparse(current) && !is_trusted_platform_ancestor(current)) {
             return true;
         }
         const auto parent = current.parent_path();
@@ -83,6 +96,22 @@ bool has_link_component(const std::filesystem::path& path) {
         current = parent;
     }
     return false;
+}
+
+std::string path_diagnostic(
+    const char* operation,
+    const std::filesystem::path& path,
+    const std::error_code& error
+) {
+    std::string diagnostic = operation;
+    diagnostic += " (path=";
+    diagnostic += path.string();
+    diagnostic += ")";
+    if(error) {
+        diagnostic += ": ";
+        diagnostic += error.message();
+    }
+    return diagnostic;
 }
 
 bool is_missing_path_error(const std::error_code& error) noexcept {
@@ -187,7 +216,14 @@ bool safe_regular_file(const std::filesystem::path& path) {
 
 } // namespace
 
-FileRawBlobStore::FileRawBlobStore(std::filesystem::path root) {
+FileRawBlobStore::FileRawBlobStore(std::filesystem::path root)
+    : FileRawBlobStore(std::move(root), FileRawBlobStoreOptions{}) {}
+
+FileRawBlobStore::FileRawBlobStore(
+    std::filesystem::path root,
+    FileRawBlobStoreOptions options
+)
+    : m_options(options) {
     std::error_code error;
     m_root = std::filesystem::absolute(std::move(root), error);
     if(error) {
@@ -203,7 +239,9 @@ std::filesystem::path FileRawBlobStore::path_for(const ArtifactId& id) const {
 
 RawBlobResult FileRawBlobStore::put(std::string_view bytes) const {
     if(m_root.empty() || has_link_component(m_root)) {
-        return failure(RawBlobStatus::InvalidArgument, "CAS root is not a safe directory");
+        return failure(
+            RawBlobStatus::InvalidArgument,
+            path_diagnostic("CAS root is not a safe directory", m_root, {}));
     }
     const auto digest = digest_for(bytes);
     const auto artifact_id = artifact_id_for_digest(digest);
@@ -211,12 +249,16 @@ RawBlobResult FileRawBlobStore::put(std::string_view bytes) const {
     std::error_code error;
     std::filesystem::create_directories(path.parent_path(), error);
     if(error || has_link_component(path.parent_path())) {
-        return failure(RawBlobStatus::IoError, "failed to create a safe CAS directory");
+        return failure(
+            RawBlobStatus::IoError,
+            path_diagnostic("failed to create a safe CAS directory", path.parent_path(), error));
     }
 
     const auto target_status = std::filesystem::symlink_status(path, error);
     if(error && !is_missing_path_error(error)) {
-        return failure(RawBlobStatus::IoError, "failed to inspect CAS target");
+        return failure(
+            RawBlobStatus::IoError,
+            path_diagnostic("failed to inspect CAS target", path, error));
     }
     if(!error && std::filesystem::exists(target_status)) {
         if(!safe_regular_file(path)) {
@@ -237,13 +279,17 @@ RawBlobResult FileRawBlobStore::put(std::string_view bytes) const {
         if(temporary_write == ExclusiveWriteResult::Failed) {
             std::filesystem::remove(temporary, error);
         }
-        return failure(RawBlobStatus::IoError, "failed to exclusively write CAS temporary body");
+        return failure(
+            RawBlobStatus::IoError,
+            path_diagnostic("failed to exclusively write CAS temporary body", temporary, {}));
     }
 
     const auto published = publish_no_clobber(temporary, path);
     const bool removed = std::filesystem::remove(temporary, error);
     if(!removed && error) {
-        return failure(RawBlobStatus::IoError, "failed to clean up CAS temporary body");
+        return failure(
+            RawBlobStatus::IoError,
+            path_diagnostic("failed to clean up CAS temporary body", temporary, error));
     }
     if(published == PublishResult::TargetExists) {
         return safe_regular_file(path)
@@ -251,7 +297,9 @@ RawBlobResult FileRawBlobStore::put(std::string_view bytes) const {
             : failure(RawBlobStatus::Corrupt, "CAS target is not a regular immutable file");
     }
     if(published == PublishResult::Failed) {
-        return failure(RawBlobStatus::IoError, "failed to publish CAS body without clobbering");
+        return failure(
+            RawBlobStatus::IoError,
+            path_diagnostic("failed to publish CAS body without clobbering", path, {}));
     }
     return verify_file(artifact_id, path);
 }
@@ -297,16 +345,23 @@ RawBlobResult FileRawBlobStore::probe(const ArtifactId& artifact_id) const {
         return failure(RawBlobStatus::InvalidArgument, "invalid artifact identity");
     }
     if(m_root.empty() || has_link_component(m_root)) {
-        return failure(RawBlobStatus::InvalidArgument, "CAS root is not a safe directory");
+        return failure(
+            RawBlobStatus::InvalidArgument,
+            path_diagnostic("CAS root is not a safe directory", m_root, {}));
     }
     const auto path = path_for(artifact_id);
     std::error_code error;
     const auto status = std::filesystem::symlink_status(path, error);
     if(error && !is_missing_path_error(error)) {
-        return failure(RawBlobStatus::IoError, "failed to inspect CAS body");
+        return failure(
+            RawBlobStatus::IoError,
+            path_diagnostic("failed to inspect CAS body", path, error));
     }
     if(error || !std::filesystem::exists(status)) {
         return failure(RawBlobStatus::NotFound, "CAS body was not found");
+    }
+    if(has_link_component(path.parent_path())) {
+        return failure(RawBlobStatus::Corrupt, "CAS path contains a symlink or reparse point");
     }
     return verify_file(artifact_id, path);
 }
@@ -317,15 +372,25 @@ RawBlobReadResult FileRawBlobStore::read_range(
     std::uint64_t length
 ) const {
     if(!is_canonical_artifact_id(artifact_id) ||
+       length > m_options.max_read_range_bytes ||
        length > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()) ||
        length > static_cast<std::uint64_t>(std::numeric_limits<std::streamsize>::max()) ||
        offset > std::numeric_limits<std::uint64_t>::max() - length) {
-        return read_failure(RawBlobStatus::InvalidArgument, "invalid or overflowing CAS range");
+        return read_failure(
+            RawBlobStatus::InvalidArgument,
+            length > m_options.max_read_range_bytes
+                ? "CAS range exceeds configured read budget"
+                : "invalid or overflowing CAS range");
     }
     if(m_root.empty() || has_link_component(m_root)) {
-        return read_failure(RawBlobStatus::InvalidArgument, "CAS root is not a safe directory");
+        return read_failure(
+            RawBlobStatus::InvalidArgument,
+            path_diagnostic("CAS root is not a safe directory", m_root, {}));
     }
     const auto path = path_for(artifact_id);
+    if(has_link_component(path.parent_path())) {
+        return read_failure(RawBlobStatus::Corrupt, "CAS path contains a symlink or reparse point");
+    }
     if(!safe_regular_file(path)) {
         return read_failure(RawBlobStatus::NotFound, "CAS body was not found");
     }
