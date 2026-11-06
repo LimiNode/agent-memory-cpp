@@ -39,6 +39,7 @@ add_library(agent_memory STATIC
     src/agent_memory/domain/Resource.cpp
     src/agent_memory/domain/SearchProjection.cpp
     src/agent_memory/domain/SourceKind.cpp
+    src/agent_memory/domain/TypedRepresentation.cpp
     src/agent_memory/embedding/embedding_types.cpp
     src/agent_memory/embedding/enums.cpp
     src/agent_memory/embedding/IEmbedder.cpp
