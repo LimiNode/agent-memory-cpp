@@ -545,3 +545,38 @@ activate a coordinator, add LLM inference, or claim MemWalker/RAPTOR quality.
 
 - [MemWalker: Walking Down the Memory Maze](https://arxiv.org/abs/2310.05029)
 - [RAPTOR: Recursive Abstractive Processing for Tree-Organized Retrieval](https://arxiv.org/abs/2401.18059)
+
+## K-Plex comparison (non-normative)
+
+K-Plex is a useful design reference for inspecting one knowledge base through
+several read-only views. Its most relevant lesson for this repository is that a
+relationship should remain explainable: the relation has a type, one or more
+supporting observations, and a revision context. The observation that produced
+a relation is evidence for that relation; it is not silently promoted to a new
+canonical fact.
+
+The comparison reinforces four existing relation channels rather than adding a
+new graph model:
+
+- `TechnicalLineage` identifies exact derivation inputs;
+- `Evidence` identifies source observations or anchors;
+- `Semantic` carries supports, contradictions and navigation links;
+- `Supersession` records replacement without collapsing contradiction into
+  version order.
+
+K-Plex-style facets are best represented as bounded, read-only projections over
+  the canonical units and relations. A facet may depend on an explicit query
+  context and may report `Unassigned`, `Conflicting` or `Cannot classify`; an
+  unavailable value must not be treated as the boolean value `false`. Facet
+  evaluation must not rewrite canonical units or publication manifests.
+
+A future agent-facing relationship query may use bounded neighborhood
+exploration. Such a result must carry the admitted revision bindings, relation
+provenance, freshness and an explicit completeness or budget outcome. Flat
+retrieval remains an independent fallback when the relationship view is stale,
+missing or over budget.
+
+These observations are a KB-1 design input. They do not add a DBI, relation
+enum, graph requirement or runtime dependency to the M0/KB-0 profile. K-Plex
+source code is AGPL-3.0-only; this repository records the architectural ideas
+only and does not copy implementation code.

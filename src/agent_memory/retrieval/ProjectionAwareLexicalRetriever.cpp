@@ -149,10 +149,36 @@ RetrievedChunk make_result(
     RetrievedChunk result;
     result.chunk = std::move(chunk);
     result.score = score;
+    // Keep the legacy chunk shape and string metadata intact. Revision-bound
+    // adapters receive the producer-owned typed identity through the separate
+    // candidate channel; consumers must resolve it through the KnowledgeUnit
+    // store rather than infer a ChunkId/KnowledgeUnitId equivalence.
+    result.metadata.set("knowledge_unit_id", std::to_string(envelope.id.value()));
+    result.metadata.set("knowledge_unit_revision", std::to_string(envelope.revision));
+    result.metadata.set("projection_kind", "Original");
     return result;
 }
 
 } // namespace
+
+bool has_current_original_projection(
+    const KnowledgeUnitEnvelope& envelope,
+    IProjectionStore& projection_store,
+    IResourceManifestStorage& manifest_store,
+    const ProjectionAwareLexicalRetrieverOptions& options
+) {
+    const ManifestResolver resolve_manifest = [&](const ResourceId& resource_id) {
+        return manifest_store.find_manifest(resource_id);
+    };
+    return find_active_projection(
+        envelope,
+        ProjectionKind::Original,
+        projection_store,
+        resolve_manifest,
+        options.expected_manifest_schema_id,
+        options.expected_manifest_schema_version
+    ).has_value();
+}
 
 ProjectionAwareLexicalRetriever::ProjectionAwareLexicalRetriever(
     IKnowledgeUnitStore& unit_store,
@@ -191,16 +217,30 @@ ProjectionAwareLexicalRetriever::ProjectionAwareLexicalRetriever(
     }
 }
 
+void ProjectionAwareLexicalRetrieval::validate_candidate_pairing() const {
+    if(legacy.chunks.size() != candidates.size()) {
+        throw std::logic_error("projection-aware lexical producer returned unpaired candidates");
+    }
+}
+
 RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
     const RetrievalQuery& query
 ) const {
-    RetrievalResult result;
+    auto typed_result = retrieve_with_candidates(query);
+    return std::move(typed_result.legacy);
+}
+
+ProjectionAwareLexicalRetrieval ProjectionAwareLexicalRetriever::retrieve_with_candidates(
+    const RetrievalQuery& query
+) const {
+    ProjectionAwareLexicalRetrieval typed_result;
+    auto& result = typed_result.legacy;
     if(query.limit == 0 || !query.has_text() || !query.metadata_filters.empty()) {
-        return result;
+        return typed_result;
     }
 
     const auto query_tokens = m_tokenizer->tokenize(query.text);
-    if(query_tokens.empty()) return result;
+    if(query_tokens.empty()) return typed_result;
 
     ExactLexicalIndex index;
     std::unordered_map<std::string, KnowledgeUnitEnvelope> envelopes;
@@ -276,9 +316,15 @@ RetrievalResult ProjectionAwareLexicalRetriever::retrieve(
             continue;
         }
         result.chunks.push_back(make_result(*current, hit.score));
+        typed_result.candidates.push_back(ProjectionAwareLexicalCandidate{
+            current->id,
+            current->revision,
+            ProjectionKind::Original,
+            hit.score
+        });
         if(result.chunks.size() >= query.limit) break;
     }
-    return result;
+    return typed_result;
 }
 
 } // namespace agent_memory

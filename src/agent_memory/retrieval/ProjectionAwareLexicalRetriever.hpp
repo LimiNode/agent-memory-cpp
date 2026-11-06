@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace agent_memory {
 
@@ -30,6 +31,28 @@ namespace agent_memory {
         std::string expected_manifest_schema_id =
             "agent_memory.m0_resource_importer.raw_chunks_original@agent_memory";
         std::uint32_t expected_manifest_schema_version = 1;
+    };
+
+    /// \brief Typed candidate reference emitted for revision-bound adapters.
+    ///
+    /// This additive channel leaves the legacy `RetrievedChunk` shape and its
+    /// string metadata compatibility intact. Consumers must still re-read and
+    /// validate the canonical unit before returning a product result.
+    struct ProjectionAwareLexicalCandidate final {
+        KnowledgeUnitId knowledge_unit_id;
+        std::uint64_t unit_revision = 0;
+        ProjectionKind projection_kind = ProjectionKind::Original;
+        float score = 0.0F;
+    };
+
+    struct ProjectionAwareLexicalRetrieval final {
+        RetrievalResult legacy;
+        /// One typed identity per legacy hit, in the same score/rank order.
+        std::vector<ProjectionAwareLexicalCandidate> candidates;
+
+        /// Throws std::logic_error if the parallel channels have unequal sizes.
+        /// Consumers must validate before indexing either channel by the other.
+        void validate_candidate_pairing() const;
     };
 
     /// Thrown when a bounded retrieval request exceeds its configured work
@@ -66,6 +89,10 @@ namespace agent_memory {
             const RetrievalQuery& query
         ) const override;
 
+        [[nodiscard]] ProjectionAwareLexicalRetrieval retrieve_with_candidates(
+            const RetrievalQuery& query
+        ) const;
+
     private:
         IKnowledgeUnitStore* m_unit_store;
         IProjectionStore* m_projection_store;
@@ -74,6 +101,19 @@ namespace agent_memory {
         ITokenizer* m_tokenizer;
         ProjectionAwareLexicalRetrieverOptions m_options;
     };
+
+    /// \brief Shared admission seam for revision-aware retrieval adapters.
+    ///
+    /// This is the same manifest, lifecycle, revision, derivation and body
+    /// validation used by the bounded lexical producer. Keeping this check in
+    /// one place prevents an adapter from accepting a weaker Original
+    /// projection than the producer that generated its candidate.
+    [[nodiscard]] bool has_current_original_projection(
+        const KnowledgeUnitEnvelope& envelope,
+        IProjectionStore& projection_store,
+        IResourceManifestStorage& manifest_store,
+        const ProjectionAwareLexicalRetrieverOptions& options
+    );
 
 } // namespace agent_memory
 
