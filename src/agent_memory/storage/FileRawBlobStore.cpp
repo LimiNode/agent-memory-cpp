@@ -148,6 +148,7 @@ RawBlobReadResult read_failure(RawBlobStatus status, std::string diagnostic) {
 
 enum class ExclusiveWriteResult { Created, AlreadyExists, Failed };
 
+#ifdef _WIN32
 int exclusive_file_mode() noexcept {
 #ifdef _MSC_VER
     return _S_IREAD | _S_IWRITE;
@@ -157,6 +158,7 @@ int exclusive_file_mode() noexcept {
     return S_IREAD | S_IWRITE;
 #endif
 }
+#endif
 
 ExclusiveWriteResult write_exclusive(
     const std::filesystem::path& path,
