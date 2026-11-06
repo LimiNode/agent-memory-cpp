@@ -1620,6 +1620,36 @@ confirmation run. Publish profiles such as `lightweight`, `balanced`,
 `maximum_structured_fidelity` and `hard_page_fallback`; do not promote a
 universal default from one small corpus.
 
+## 8.1 Raw artifact catalog implementation boundary
+
+The Raw-only MDBX vertical is implemented by `MdbxArtifactCatalog` together
+with `FileRawBlobStore`. It persists versioned artifact, binding,
+source-revision-index, ingest-intent and body-state receipt rows. The catalog
+owns logical SHA-256 identity and decoded byte size; the file CAS owns the
+immutable Raw bytes. A codec or physical encoding descriptor must not change
+`ArtifactId`.
+
+Publication is intentionally a recoverable protocol, not a distributed
+transaction:
+
+1. validate the normalized binding intent and derive the full digest;
+2. persist an ingest intent/lease in MDBX;
+3. publish and verify the CAS body;
+4. commit artifact, binding and source-revision rows in one MDBX transaction;
+5. finalize the receipt in a second MDBX transaction.
+
+Reopen recovery reconciles intents whose CAS body is already present and leaves
+pre-CAS intents safe to retry. Any missing, corrupt or size-mismatched body is
+rejected before a binding is considered readable. The adapter reports
+unreferenced catalog artifacts as GC candidates but never deletes CAS files;
+destructive GC requires a separate reachability proof and retention policy.
+
+The durability boundary is explicit: an MDBX backup contains catalog rows and
+a CAS backup contains immutable files. They must be backed up and restored as
+coordinated artifacts with matching schema/identity descriptors, but no claim
+is made that a file-system operation and an MDBX commit are one atomic backup
+unit. Restore must verify every referenced CAS digest before enabling reads.
+
 ## 9. Non-Goals
 
 This roadmap does not require a concrete media parser, hosted vector database,

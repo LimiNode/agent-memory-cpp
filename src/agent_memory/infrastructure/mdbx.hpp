@@ -21,5 +21,6 @@
 #include "mdbx/MdbxKnowledgeUnitStore.hpp"
 #include "mdbx/MdbxProjectionStore.hpp"
 #include "mdbx/MdbxDerivedPublicationStore.hpp"
+#include "mdbx/MdbxArtifactCatalog.hpp"
 
 #endif
