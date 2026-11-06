@@ -38,7 +38,8 @@ jobs:
 
           $addBuild = Join-Path $repo '.build/packaging-consumer-add'
           cmake -S (Join-Path $repo 'packaging/consumers/add_subdirectory') -B $addBuild -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release "-DAGENT_MEMORY_SOURCE_DIR=$repo"
+            -DCMAKE_BUILD_TYPE=Release "-DAGENT_MEMORY_SOURCE_DIR=$repo" `
+            -DAGENT_MEMORY_BUILD_EXAMPLES=ON -DAGENT_MEMORY_ENABLE_JSON=ON
           cmake --build $addBuild --parallel
           & (Join-Path $addBuild 'agent_memory_add_subdirectory_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'add_subdirectory consumer failed' }
@@ -49,6 +50,15 @@ jobs:
           cmake --build $installedBuild --parallel
           & (Join-Path $installedBuild 'agent_memory_installed_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'installed consumer failed' }
+
+          $relocatedPrefix = Join-Path $repo '.build/packaging-prefix-minimal-relocated'
+          Copy-Item -Recurse -Force $packagePrefix $relocatedPrefix
+          $relocatedBuild = Join-Path $repo '.build/packaging-consumer-installed-relocated'
+          cmake -S (Join-Path $repo 'packaging/consumers/installed') -B $relocatedBuild -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$relocatedPrefix"
+          cmake --build $relocatedBuild --parallel
+          & (Join-Path $relocatedBuild 'agent_memory_installed_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'relocated installed consumer failed' }
 
   mdbx-installed-consumer:
     name: MDBX installed consumer (ubuntu-latest)
@@ -110,3 +120,31 @@ jobs:
           cmake --build $consumerBuild --parallel
           & (Join-Path $consumerBuild 'agent_memory_mdbx_installed_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'MDBX installed consumer failed' }
+
+  json-installed-consumer:
+    name: JSON installed consumer (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install JSON package dependency
+        run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev ninja-build
+      - name: Build and verify installed JSON package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+          $packageBuild = Join-Path $repo '.build/packaging-json'
+          $packagePrefix = Join-Path $repo '.build/packaging-prefix-json'
+          cmake -S $repo -B $packageBuild -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DAGENT_MEMORY_ENABLE_MDBX=OFF -DAGENT_MEMORY_ENABLE_JSON=ON `
+            -DAGENT_MEMORY_BUILD_TESTS=OFF -DAGENT_MEMORY_BUILD_EXAMPLES=OFF `
+            -DAGENT_MEMORY_BUILD_BENCHMARKS=OFF -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF
+          cmake --build $packageBuild --parallel
+          cmake --install $packageBuild --prefix $packagePrefix
+          $consumerBuild = Join-Path $repo '.build/packaging-consumer-json'
+          cmake -S (Join-Path $repo 'packaging/consumers/json-installed') -B $consumerBuild -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$packagePrefix"
+          cmake --build $consumerBuild --parallel
+          & (Join-Path $consumerBuild 'agent_memory_json_installed_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'JSON installed consumer failed' }

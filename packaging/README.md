@@ -27,6 +27,13 @@ prefix first. The installed `agent_memoryConfig.cmake` deliberately uses
 `find_dependency(mdbx_containers CONFIG)`; it never embeds source-tree or
 build-tree dependency paths into the consumer package.
 
+The JSON profile is exercised when a `nlohmann_json` CMake package is
+available. Its consumer parses a dataset through the installed public target;
+it is kept separate from the MDBX profile because the JSON dependency is
+optional. The add-subdirectory consumer also passes parent options that must
+remain unchanged, while using normal (non-cache) child variables for its
+minimal profile.
+
 `verify-consumer.cmake` is used by CI and local checks to configure, build and
 run each independent consumer. A successful configure/build/run is required;
 compile-only checks are insufficient for the MDBX profile.

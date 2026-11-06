@@ -4,6 +4,7 @@ include(CMakeFindDependencyMacro)
 
 set(agent_memory_ENABLE_MDBX @AGENT_MEMORY_ENABLE_MDBX@)
 set(agent_memory_ENABLE_JSON @AGENT_MEMORY_ENABLE_JSON@)
+set(agent_memory_PACKAGE_VERSION "@PROJECT_VERSION@")
 
 if(agent_memory_ENABLE_MDBX)
     find_dependency(mdbx_containers CONFIG)
