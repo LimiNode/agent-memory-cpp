@@ -1,6 +1,7 @@
 #include "Sha256.hpp"
 
 #include <array>
+#include <algorithm>
 
 namespace agent_memory {
 namespace {
@@ -15,6 +16,89 @@ constexpr std::array<std::uint32_t, 64> K{{
     0x748F82EEU,0x78A5636FU,0x84C87814U,0x8CC70208U,0x90BEFFFAU,0xA4506CEBU,0xBEF9A3F7U,0xC67178F2U
 }};
 constexpr std::uint32_t rotr(std::uint32_t x, unsigned n) { return (x >> n) | (x << (32U - n)); }
+}
+
+Sha256Accumulator::Sha256Accumulator() noexcept
+    : m_state{{0x6A09E667U, 0xBB67AE85U, 0x3C6EF372U, 0xA54FF53AU,
+               0x510E527FU, 0x9B05688CU, 0x1F83D9ABU, 0x5BE0CD19U}} {}
+
+void Sha256Accumulator::process_block(const std::uint8_t* block) noexcept {
+    std::array<std::uint32_t, 64> w{};
+    for(unsigned i = 0; i < 16U; ++i) {
+        w[i] = (static_cast<std::uint32_t>(block[i * 4U]) << 24U) |
+            (static_cast<std::uint32_t>(block[i * 4U + 1U]) << 16U) |
+            (static_cast<std::uint32_t>(block[i * 4U + 2U]) << 8U) |
+            static_cast<std::uint32_t>(block[i * 4U + 3U]);
+    }
+    for(unsigned i = 16U; i < 64U; ++i) {
+        const auto s0 = rotr(w[i - 15U], 7U) ^ rotr(w[i - 15U], 18U) ^
+            (w[i - 15U] >> 3U);
+        const auto s1 = rotr(w[i - 2U], 17U) ^ rotr(w[i - 2U], 19U) ^
+            (w[i - 2U] >> 10U);
+        w[i] = w[i - 16U] + s0 + w[i - 7U] + s1;
+    }
+    auto a = m_state[0]; auto b = m_state[1]; auto c = m_state[2]; auto d = m_state[3];
+    auto e = m_state[4]; auto f = m_state[5]; auto g = m_state[6]; auto h = m_state[7];
+    for(unsigned i = 0; i < 64U; ++i) {
+        const auto s1 = rotr(e, 6U) ^ rotr(e, 11U) ^ rotr(e, 25U);
+        const auto choose = (e & f) ^ ((~e) & g);
+        const auto first = h + s1 + choose + K[i] + w[i];
+        const auto s0 = rotr(a, 2U) ^ rotr(a, 13U) ^ rotr(a, 22U);
+        const auto majority = (a & b) ^ (a & c) ^ (b & c);
+        const auto second = s0 + majority;
+        h = g; g = f; f = e; e = d + first; d = c; c = b; b = a; a = first + second;
+    }
+    m_state[0] += a; m_state[1] += b; m_state[2] += c; m_state[3] += d;
+    m_state[4] += e; m_state[5] += f; m_state[6] += g; m_state[7] += h;
+}
+
+void Sha256Accumulator::update(std::string_view bytes) noexcept {
+    m_bit_count += static_cast<std::uint64_t>(bytes.size()) * 8U;
+    std::size_t offset = 0;
+    if(m_block_size != 0) {
+        const auto copied = std::min<std::size_t>(64U - m_block_size, bytes.size());
+        std::copy_n(bytes.data(), copied, m_block.data() + m_block_size);
+        m_block_size += copied;
+        offset += copied;
+        if(m_block_size == 64U) {
+            process_block(m_block.data());
+            m_block_size = 0;
+        }
+    }
+    while(offset + 64U <= bytes.size()) {
+        process_block(reinterpret_cast<const std::uint8_t*>(bytes.data() + offset));
+        offset += 64U;
+    }
+    if(offset < bytes.size()) {
+        m_block_size = bytes.size() - offset;
+        std::copy_n(bytes.data() + offset, m_block_size, m_block.data());
+    }
+}
+
+std::array<std::uint8_t, 32> Sha256Accumulator::finish() const noexcept {
+    auto copy = *this;
+    copy.m_block[copy.m_block_size++] = 0x80U;
+    if(copy.m_block_size > 56U) {
+        std::fill(copy.m_block.begin() + copy.m_block_size, copy.m_block.end(),
+                  static_cast<std::uint8_t>(0));
+        copy.process_block(copy.m_block.data());
+        copy.m_block_size = 0;
+    }
+    std::fill(copy.m_block.begin() + copy.m_block_size, copy.m_block.begin() + 56U,
+              static_cast<std::uint8_t>(0));
+    for(unsigned i = 0; i < 8U; ++i) {
+        copy.m_block[56U + i] = static_cast<std::uint8_t>(
+            copy.m_bit_count >> (56U - i * 8U));
+    }
+    copy.process_block(copy.m_block.data());
+    std::array<std::uint8_t, 32> result{};
+    for(unsigned i = 0; i < 8U; ++i) {
+        result[i * 4U] = static_cast<std::uint8_t>(copy.m_state[i] >> 24U);
+        result[i * 4U + 1U] = static_cast<std::uint8_t>(copy.m_state[i] >> 16U);
+        result[i * 4U + 2U] = static_cast<std::uint8_t>(copy.m_state[i] >> 8U);
+        result[i * 4U + 3U] = static_cast<std::uint8_t>(copy.m_state[i]);
+    }
+    return result;
 }
 
 std::array<std::uint8_t, 32> sha256(std::string_view input) noexcept {

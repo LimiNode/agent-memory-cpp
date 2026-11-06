@@ -649,6 +649,7 @@ primary model/repository documentation instead.
 | Capability | Status | Boundary |
 |---|---|---|
 | Artifact identity/retention value types | Contract + domain tests | `src/agent_memory/domain/Artifact.hpp` validates typed ids, SHA-256 digest identity and body-state transition rules; no durable catalog or blob store is implied. |
+| File-backed Raw CAS | Executable slice + storage test | `FileRawBlobStore` verifies decoded SHA-256 bytes with bounded-memory streaming, atomically publishes deterministic `.raw` paths without clobbering, supports reopen/probe and verified bounded reads; each range is limited by a configurable materialization budget (64 MiB by default). This is atomic visibility/integrity for ordinary trusted local storage only, not crash durability or protection against hostile concurrent filesystem mutation. Leases, catalog publication, recovery, GC and compression remain separate. |
 | `Artifact`/`Representation`/`ExtractionReport`/typed locators | Contract only | Owned here; existing catalog and evidence records remain the source of truth. |
 | Provider/recipe/admission boundary | Contract | This subsection; exact public provider ABI is deferred. |
 | Concrete OCR, parser, VLM and region-fallback adapters | Research candidate | External or optional adapters; no core runtime dependency is implied. |
