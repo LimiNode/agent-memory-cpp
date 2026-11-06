@@ -292,6 +292,67 @@ profile_deltas:
         replication_semantics: logical_adapter_required
         physical_key: [DocumentId]
         migration_peak: 1
+  - name: raw_artifact_catalog
+    dbis: 6
+    migration_peak: 6
+    default: false
+    names:
+      - agent_memory_artifact_schema
+      - agent_memory_artifact_artifacts
+      - agent_memory_artifact_bindings
+      - agent_memory_artifact_revisions
+      - agent_memory_artifact_intents
+      - agent_memory_artifact_receipts
+    note: Raw-only artifact provenance profile. MDBX catalog rows and the file-backed Raw CAS are separate durability domains bridged by recoverable ingest intents; no file/MDBX distributed transaction is claimed.
+    dbi_entries:
+      - name: agent_memory_artifact_schema
+        owner: provenance
+        table_type: KeyValueTable
+        opens: RawArtifactCatalog
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [SchemaKey]
+        migration_peak: 1
+      - name: agent_memory_artifact_artifacts
+        owner: provenance
+        table_type: KeyValueTable
+        opens: RawArtifactCatalog
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [ArtifactId]
+        migration_peak: 1
+      - name: agent_memory_artifact_bindings
+        owner: provenance
+        table_type: KeyValueTable
+        opens: RawArtifactCatalog
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [ArtifactBindingId]
+        migration_peak: 1
+      - name: agent_memory_artifact_revisions
+        owner: provenance
+        table_type: KeyValueTable
+        opens: RawArtifactCatalog
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [SourceRevisionId, ArtifactBindingId]
+        migration_peak: 1
+      - name: agent_memory_artifact_intents
+        owner: provenance
+        table_type: KeyValueTable
+        opens: RawArtifactCatalog
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [ArtifactBindingId]
+        migration_peak: 1
+      - name: agent_memory_artifact_receipts
+        owner: provenance
+        table_type: KeyValueTable
+        opens: RawArtifactCatalog
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [ArtifactBindingId]
+        migration_peak: 1
   - name: durable_lexical_document_memory
     dbis: 6
     migration_peak: 6
@@ -724,9 +785,10 @@ expanded_peak_reference:
   global_unit_id_to_local_id: 1
   runtime_sequence_index: 1
   durable_lexical_document_memory: 6
+  raw_artifact_catalog: 6
   sync_system_be72a2b: 9
   migration_dual_write_reserve: 8
-  total: 70
+  total: 76
 
 runtime_integration_mapping:
   a0_a2_component_only_new_runtime_dbis: 0

@@ -20,7 +20,14 @@
 #endif
 #include <fcntl.h>
 #include <io.h>
+#include <sys/stat.h>
 #include <windows.h>
+#ifndef _S_IREAD
+#define _S_IREAD S_IREAD
+#endif
+#ifndef _S_IWRITE
+#define _S_IWRITE S_IWRITE
+#endif
 #else
 #include <cerrno>
 #include <fcntl.h>

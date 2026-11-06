@@ -53,6 +53,7 @@ ALLOWED_SELECTORS = {
     "DurableGlobalIdentity",
     "SequenceReplay",
     "UpstreamSync",
+    "RawArtifactCatalog",
 }
 
 ALLOWED_WIRE_SYNC_SUPPORT = {
