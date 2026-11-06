@@ -35,6 +35,8 @@ struct StructuralSegment final {
     StructuralByteRange source;
     std::string heading_path;
     std::string text;
+    /// Exact bytes addressed by `source`; this may differ from display text.
+    std::string source_text;
     /// Sentence ranges are relative to `text`; paragraph segments retain
     /// sentence boundaries without introducing overlapping top-level rows.
     std::vector<StructuralByteRange> sentence_ranges;

@@ -128,14 +128,22 @@ std::string heading_path(const std::vector<std::string>& headings) {
 
 std::size_t utf8_prefix(std::string_view value, std::size_t maximum) {
     if(value.size() <= maximum) return value.size();
+    if(maximum == 0) return 0;
     std::size_t end = maximum;
     while(end > 0 && (static_cast<unsigned char>(value[end]) & 0xc0U) == 0x80U) --end;
-    return end == 0 ? maximum : end;
+    return end;
 }
 
 void add_segment(StructuralSegmentSet& set, StructuralSegment segment,
-                 const SegmentSetOptions& options) {
+                 const SegmentSetOptions& options, bool bounded) {
     if(segment.text.empty()) return;
+    if(!bounded || segment.source_text != segment.text) {
+        segment.ordinal = set.segments.size();
+        set.segments.push_back(std::move(segment));
+        if(set.segments.size() > options.max_segments)
+            throw std::invalid_argument("structural segment count exceeds its budget");
+        return;
+    }
     const auto budget = options.max_segment_bytes;
     for(std::size_t offset = 0; offset < segment.text.size();) {
         if(set.segments.size() >= options.max_segments)
@@ -145,6 +153,7 @@ void add_segment(StructuralSegmentSet& set, StructuralSegment segment,
         auto part = segment;
         part.ordinal = set.segments.size();
         part.text = segment.text.substr(offset, length);
+        part.source_text = part.text;
         part.source.offset = segment.source.offset + offset;
         part.source.length = length;
         if(offset != 0 || length != segment.text.size()) part.sentence_ranges.clear();
@@ -183,7 +192,7 @@ StructuralSegmentSet build_structural_segment_set(
         if(heading(value, level, title)) {
             if(headings.size() >= level) headings.resize(level - 1U);
             headings.push_back(std::string(title));
-            add_segment(set, {StructuralSegmentKind::Heading, 0, {line.begin, line.end - line.begin}, heading_path(headings), std::string(title), {}}, options);
+            add_segment(set, {StructuralSegmentKind::Heading, 0, {line.begin, line.end - line.begin}, heading_path(headings), std::string(title), std::string(value), {}}, options, false);
             ++index; continue;
         }
         char fence_marker = 0; std::size_t fence_width = 0;
@@ -200,7 +209,8 @@ StructuralSegmentSet build_structural_segment_set(
                 }
                 end = candidate.next; ++index;
             }
-            add_segment(set, {StructuralSegmentKind::FencedCode, 0, {start, end - start}, heading_path(headings), set.normalized_utf8.substr(start, end - start), {}}, options);
+            const auto source = set.normalized_utf8.substr(start, end - start);
+            add_segment(set, {StructuralSegmentKind::FencedCode, 0, {start, end - start}, heading_path(headings), source, source, {}}, options, false);
             continue;
         }
         if(index + 1U < source_lines.size() && value.find('|') != std::string_view::npos &&
@@ -212,17 +222,18 @@ StructuralSegmentSet build_structural_segment_set(
             while(index < source_lines.size() && std::string_view(set.normalized_utf8).substr(source_lines[index].begin, source_lines[index].end - source_lines[index].begin).find('|') != std::string_view::npos) {
                 end = source_lines[index].next; ++index;
             }
-            add_segment(set, {StructuralSegmentKind::Table, 0, {start, end - start}, heading_path(headings), set.normalized_utf8.substr(start, end - start), {}}, options);
+            const auto source = set.normalized_utf8.substr(start, end - start);
+            add_segment(set, {StructuralSegmentKind::Table, 0, {start, end - start}, heading_path(headings), source, source, {}}, options, false);
             continue;
         }
         std::size_t marker_end = 0;
         if(starts_with_list(value, marker_end)) {
-            add_segment(set, {StructuralSegmentKind::ListItem, 0, {line.begin, line.end - line.begin}, heading_path(headings), std::string(trim(value.substr(marker_end))), {}}, options);
+            add_segment(set, {StructuralSegmentKind::ListItem, 0, {line.begin, line.end - line.begin}, heading_path(headings), std::string(trim(value.substr(marker_end))), std::string(value), {}}, options, false);
             ++index; continue;
         }
         const auto stripped = trim(value);
         if(stripped.size() >= 4U && stripped.substr(0, 2U) == "![" && stripped.find("](") != std::string_view::npos) {
-            add_segment(set, {StructuralSegmentKind::ImagePlaceholder, 0, {line.begin, line.end - line.begin}, heading_path(headings), "[image-placeholder]", {}}, options);
+            add_segment(set, {StructuralSegmentKind::ImagePlaceholder, 0, {line.begin, line.end - line.begin}, heading_path(headings), "[image-placeholder]", std::string(value), {}}, options, false);
             ++index; continue;
         }
         const auto start = line.begin;
@@ -232,12 +243,17 @@ StructuralSegmentSet build_structural_segment_set(
         while(index < source_lines.size()) {
             const auto next = source_lines[index];
             const auto next_value = std::string_view(set.normalized_utf8).substr(next.begin, next.end - next.begin);
-            if(next_value.empty() || heading(next_value, level, title) || fence(next_value, fence_marker, fence_width) || starts_with_list(next_value, marker_end)) break;
+            const auto begins_table = index + 1U < source_lines.size() &&
+                next_value.find('|') != std::string_view::npos &&
+                table_separator(std::string_view(set.normalized_utf8).substr(
+                    source_lines[index + 1U].begin,
+                    source_lines[index + 1U].end - source_lines[index + 1U].begin));
+            if(next_value.empty() || begins_table || heading(next_value, level, title) || fence(next_value, fence_marker, fence_width) || starts_with_list(next_value, marker_end)) break;
             if(!paragraph.empty()) paragraph.push_back('\n');
             paragraph.append(next_value.data(), next_value.size());
             end = next.end; ++index;
         }
-        StructuralSegment segment{StructuralSegmentKind::Paragraph, 0, {start, end - start}, heading_path(headings), paragraph, {}};
+        StructuralSegment segment{StructuralSegmentKind::Paragraph, 0, {start, end - start}, heading_path(headings), paragraph, paragraph, {}};
         for(std::size_t sentence = 0, begin = 0; sentence < paragraph.size(); ++sentence) {
             if(paragraph[sentence] == '.' || paragraph[sentence] == '!' || paragraph[sentence] == '?') {
                 auto boundary = sentence + 1U;
@@ -247,7 +263,7 @@ StructuralSegmentSet build_structural_segment_set(
             }
         }
         if(segment.sentence_ranges.empty() && !paragraph.empty()) segment.sentence_ranges.push_back({0, paragraph.size()});
-        add_segment(set, std::move(segment), options);
+        add_segment(set, std::move(segment), options, true);
     }
     return set;
 }

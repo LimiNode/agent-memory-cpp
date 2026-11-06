@@ -49,14 +49,26 @@ int main() {
     for(const auto& segment : first.segments) {
         expect(segment.source.offset + segment.source.length <= first.normalized_utf8.size(),
                "segment byte range escaped normalized source");
+        expect(first.normalized_utf8.substr(segment.source.offset, segment.source.length) == segment.source_text,
+               "segment source locator does not round-trip exact source bytes");
     }
 
     options.max_segment_bytes = 8;
     const auto rechunked = build_structural_segment_set(source, "source@7", options);
     expect(rechunked.identity != first.identity, "rechunking reused SegmentSet identity");
     expect(rechunked.segments.size() > first.segments.size(), "rechunking did not enforce budget");
-    for(const auto& segment : rechunked.segments)
-        expect(segment.text.size() <= options.max_segment_bytes, "segment budget was exceeded");
+    for(const auto& segment : rechunked.segments) {
+        if(segment.kind == StructuralSegmentKind::Paragraph)
+            expect(segment.text.size() <= options.max_segment_bytes, "paragraph chunk budget was exceeded");
+    }
+
+    bool tiny_budget_rejected = false;
+    try {
+        SegmentSetOptions tiny;
+        tiny.max_segment_bytes = 1;
+        static_cast<void>(build_structural_segment_set("Привет 😀 e\xCC\x81", "source@utf8", tiny));
+    } catch(const std::invalid_argument&) { tiny_budget_rejected = true; }
+    expect(tiny_budget_rejected, "a budget smaller than one UTF-8 code point was accepted");
 
     bool rejected = false;
     try { static_cast<void>(build_structural_segment_set("\xff", "source@bad")); }
