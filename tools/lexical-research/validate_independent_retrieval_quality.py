@@ -17,6 +17,32 @@ REQUIRED_CLASSES = {
 VALID_STATES = {"complete_qrels", "judged_zero_relevant", "incomplete_qrels", "unjudged"}
 
 
+def eligible_pool_for_query(query: dict, documents: dict[str, dict]) -> set[str]:
+    """Return the complete pool allowed by scope and optional declared filters."""
+    pool = {
+        item_id
+        for item_id, document in documents.items()
+        if document["scope_id"] == query["scope_id"]
+    }
+    filters = query.get("declared_filters", {})
+    source_kinds = filters.get("source_kinds")
+    if source_kinds is not None:
+        pool = {
+            item_id for item_id in pool
+            if documents[item_id]["source_kind"] in set(source_kinds)
+        }
+    required_tags = filters.get("required_tags")
+    if required_tags is not None:
+        required = set(required_tags)
+        pool = {
+            item_id for item_id in pool
+            if required.issubset(set(documents[item_id].get("tags", [])))
+        }
+    pool -= set(filters.get("excluded_document_ids", []))
+    pool -= set(query.get("access_control", {}).get("forbidden_document_ids", []))
+    return pool
+
+
 def validate(data: dict) -> None:
     if data.get("fixture_status") != "MANUALLY_JUDGED_SYNTHETIC":
         raise AssertionError("fixture must remain explicitly synthetic/manual")
@@ -68,6 +94,15 @@ def validate(data: dict) -> None:
         if state in {"complete_qrels", "judged_zero_relevant"}:
             if judged_ids != eligible_ids or coverage.get("unjudged_count") != 0:
                 raise AssertionError(f"{query_id} is not closed-world complete")
+            expected_pool = eligible_pool_for_query(query, documents)
+            if eligible_ids != expected_pool:
+                raise AssertionError(
+                    f"{query_id} eligible pool does not match declared scope/filters"
+                )
+            if state == "judged_zero_relevant" and any(judged.values()):
+                raise AssertionError(
+                    f"{query_id} judged_zero_relevant contains a positive grade"
+                )
         elif state == "incomplete_qrels":
             if not judged_ids or coverage.get("unjudged_count") == 0:
                 raise AssertionError(f"{query_id} must expose unjudged documents")
@@ -122,6 +157,34 @@ def main() -> int:
         })
         hard_filter["judgment_coverage"]["q:wrong-scope"]["judged_count"] += 1
         mutations.append(("cross-scope qrel", hard_filter))
+        zero_grade = json.loads(args.fixture.read_text(encoding="utf-8"))
+        zero_judgment = next(
+            judgment for judgment in zero_grade["judgments"]
+            if judgment["query_id"] == "q:no-answer"
+        )
+        zero_judgment["relevance_grade"] = 1
+        mutations.append(("positive grade in zero-relevant qrels", zero_grade))
+        missing_pool = json.loads(args.fixture.read_text(encoding="utf-8"))
+        missing_pool["queries"] = [
+            query if query["id"] != "q:exact-mdbx" else {
+                **query,
+                "eligible_document_ids": [
+                    item_id for item_id in query["eligible_document_ids"]
+                    if item_id != "doc:unrelated"
+                ],
+            }
+            for query in missing_pool["queries"]
+        ]
+        missing_pool["judgments"] = [
+            judgment for judgment in missing_pool["judgments"]
+            if not (
+                judgment["query_id"] == "q:exact-mdbx"
+                and judgment["item_id"] == "doc:unrelated"
+            )
+        ]
+        missing_pool["judgment_coverage"]["q:exact-mdbx"]["eligible_count"] -= 1
+        missing_pool["judgment_coverage"]["q:exact-mdbx"]["judged_count"] -= 1
+        mutations.append(("incomplete declared eligible pool", missing_pool))
         for label, case in mutations:
             try:
                 validate(case)
