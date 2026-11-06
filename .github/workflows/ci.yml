@@ -1163,6 +1163,7 @@ jobs:
       - changes
       - docs
       - cmake
+      - zstd
       - mdbx
       - mdbx-benchmark
       - native-mih-benchmark
@@ -1186,6 +1187,7 @@ jobs:
           FULL_REQUIRED: ${{ needs.changes.outputs.full }}
           DOCS_RESULT: ${{ needs.docs.result }}
           CORE_RESULT: ${{ needs.cmake.result }}
+          ZSTD_RESULT: ${{ needs.zstd.result }}
           STORAGE_RESULT: ${{ needs.mdbx.result }}
           MDBX_BENCHMARK_RESULT: ${{ needs.mdbx-benchmark.result }}
           MIH_RESULT: ${{ needs.native-mih-benchmark.result }}
@@ -1219,6 +1221,7 @@ jobs:
 
           check_required "$DOCS_REQUIRED" "$DOCS_RESULT" "documentation checks"
           check_required "$CORE_REQUIRED" "$CORE_RESULT" "core CMake/CTest"
+          check_required "$STORAGE_REQUIRED" "$ZSTD_RESULT" "Framed Zstd"
           check_required "$STORAGE_REQUIRED" "$STORAGE_RESULT" "MDBX storage"
           check_required "$RESEARCH_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
           check_required "$RESEARCH_REQUIRED" "$MIH_RESULT" "native MIH"
