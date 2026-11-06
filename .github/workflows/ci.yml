@@ -347,6 +347,13 @@ jobs:
       - name: Build
         run: cmake --build build-mdbx --config Release
 
+      - name: Generate deterministic lexical smoke workload
+        run: >
+          python tools/lexical-research/generate_product_path_workload.py
+          --profile smoke
+          --self-test
+          --output build-mdbx/lexical-product-path-smoke-workload.json
+
       - name: Test
         run: ctest --test-dir build-mdbx --build-config Release --output-on-failure
 
@@ -354,7 +361,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lexical-product-path-qualification-receipt
-          path: build-mdbx/tests/lexical-product-path-qualification.json
+          path: |
+            build-mdbx/tests/lexical-product-path-qualification.json
+            build-mdbx/lexical-product-path-smoke-workload.json
           if-no-files-found: error
 
   mdbx-benchmark:

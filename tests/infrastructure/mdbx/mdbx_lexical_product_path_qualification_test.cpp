@@ -4,14 +4,17 @@
 #include <agent_memory/infrastructure/mdbx/MdbxResourceImporter.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxSegmentedLexicalIndex.hpp>
+#include <agent_memory/domain/Sha256.hpp>
 #include <agent_memory/lexical/StandardTokenizer.hpp>
 #include <agent_memory/retrieval/ProjectionAwareLexicalRetriever.hpp>
+#include <nlohmann/json.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -69,6 +72,16 @@ struct TimingSummary final {
 
 void require(bool condition, const char* message) {
     if(!condition) throw std::runtime_error(message);
+}
+
+std::string sha256_hex(std::string_view bytes) {
+    const auto digest = agent_memory::sha256(bytes);
+    std::ostringstream output;
+    output << std::hex << std::setfill('0');
+    for(const auto byte : digest) {
+        output << std::setw(2) << static_cast<unsigned>(byte);
+    }
+    return output.str();
 }
 
 // Reserve ownership before opening any data/lock file. Matches the B2 fixture.
@@ -151,6 +164,42 @@ std::vector<Document> make_corpus() {
             });
         }
     }
+    return documents;
+}
+
+std::vector<Document> load_corpus(const std::filesystem::path& workload_path) {
+    std::ifstream input(workload_path);
+    require(input.good(), "lexical workload fixture could not be opened");
+    const auto workload = nlohmann::json::parse(input);
+    require(workload.value("workload_version", "") == "lexical_product_path_workload_v1",
+        "lexical workload version is unsupported");
+    const auto& rows = workload.at("documents");
+    require(rows.is_array() && rows.size() == workload.at("document_count").get<std::size_t>(),
+        "lexical workload document count is inconsistent");
+    StandardTokenizer tokenizer;
+    std::vector<Document> documents;
+    documents.reserve(rows.size());
+    for(const auto& row : rows) {
+        const auto id = row.at("id").get<std::string>();
+        const auto separator = id.find(':');
+        require(separator != std::string::npos, "lexical workload ID is malformed");
+        const auto numeric_id = std::stoul(id.substr(separator + 1));
+        const auto body = row.at("normalized_text").get<std::string>();
+        require(row.at("body_digest").get<std::string>() == sha256_hex(body),
+            "lexical workload body digest does not match normalized bytes");
+        const auto tokenization = tokenizer.tokenize(body);
+        std::vector<std::string> tokens;
+        tokens.reserve(tokenization.tokens.size());
+        for(const auto& token : tokenization.tokens) tokens.push_back(token.text);
+        documents.push_back(Document{
+            ScopeId{row.at("scope_id").get<std::string>()},
+            KnowledgeUnitId{numeric_id},
+            ResourceId{row.at("resource_id").get<std::string>()},
+            std::move(tokens)
+        });
+    }
+    require(documents.size() == kDocumentsPerScope * 2U,
+        "smoke workload must contain two 48-document scopes");
     return documents;
 }
 
@@ -304,6 +353,8 @@ void write_receipt(
     double segmented_build_ms,
     double persistent_reopen_ms,
     double segmented_reopen_ms,
+    double source_import_ms,
+    double targeted_update_ms,
     bool freshness,
     bool scope_isolation,
     bool tenant_a_marker_identity,
@@ -330,6 +381,14 @@ void write_receipt(
         << "  \"scaling_semantics\":\"one bounded 48-document-per-scope smoke workload; no multi-size scaling claim\",\n"
         << "  \"tail_semantics\":\"p95 is descriptive for this sample distribution; no p99 or production-stability claim\",\n"
         << "  \"reopen_timing_semantics\":\"measures one close/reopen snapshot read for each adapter; not product query latency\",\n"
+        << "  \"workload_binding\":{\"executed_profile\":\"lexical_product_path_workload_v1:smoke\",\"documents\":"
+        << (kDocumentsPerScope * 2U)
+        << ",\"scopes\":2,\"generated_fixture_status\":\"EXECUTED\",\"generated_fixture_is_executed\":true},\n"
+        << "  \"execution_identity\":{\"git_sha\":\""
+        << (std::getenv("GITHUB_SHA") != nullptr ? std::getenv("GITHUB_SHA") : "LOCAL")
+        << "\",\"ci_run_id\":\""
+        << (std::getenv("GITHUB_RUN_ID") != nullptr ? std::getenv("GITHUB_RUN_ID") : "LOCAL")
+        << "\",\"stage_names\":[\"source_import\",\"public_rebuild_query\",\"targeted_update\",\"persistent_publication\",\"segmented_publication\",\"persistent_reopen\",\"segmented_reopen\"]},\n"
         << "  \"paths\":{\n"
         << "    \"projection_aware_rebuild\":\"ProjectionAwareLexicalRetriever::retrieve; scans, loads, tokenizes, and rebuilds ExactLexicalIndex per invocation\",\n"
         << "    \"persistent_flat_build_path\":\"MdbxPersistentLexicalIndex::upsert publication build; no product query API is exposed by this adapter\",\n"
@@ -342,7 +401,9 @@ void write_receipt(
     output << ",\n    \"persistent_flat_build\":" << persistent_build_ms
         << ",\n    \"segmented_build\":" << segmented_build_ms
         << ",\n    \"persistent_reopen_and_snapshot\":" << persistent_reopen_ms
-        << ",\n    \"segmented_reopen_and_snapshot\":" << segmented_reopen_ms << "\n"
+        << ",\n    \"segmented_reopen_and_snapshot\":" << segmented_reopen_ms
+        << ",\n    \"source_import\":" << source_import_ms
+        << ",\n    \"targeted_update\":" << targeted_update_ms << "\n"
         << "  },\n"
         << "  \"checks\":{\"current_retriever_freshness\":" << (freshness ? "true" : "false")
         << ",\"current_retriever_scope_isolation\":" << (scope_isolation ? "true" : "false")
@@ -366,7 +427,9 @@ int main(int argc, char** argv) {
             ? std::filesystem::path{argv[1]}
             : std::filesystem::temp_directory_path()
                 / "agent_memory_lexical_product_path_qualification.json";
-        const auto corpus = make_corpus();
+        const auto corpus = argc > 2
+            ? load_corpus(std::filesystem::path{argv[2]})
+            : make_corpus();
         TestWorkspace workspace;
         check_exception_cleanup();
         const auto importer_path = workspace.path("importer.mdbx");
@@ -380,6 +443,8 @@ int main(int argc, char** argv) {
         bool tenant_b_marker_identity = false;
         bool tenant_b_rejected_foreign_marker = false;
         bool current_freshness = false;
+        double source_import_ms = 0.0;
+        double targeted_update_ms = 0.0;
         std::set<std::string> tenant_a_ids;
         std::set<std::string> tenant_b_ids;
         {
@@ -391,6 +456,7 @@ int main(int argc, char** argv) {
                 ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
             {
                 MdbxResourceImporter importer{std::move(importer_options)};
+                const auto import_begin = Clock::now();
                 for(const auto& document : corpus) {
                     const auto body = (document.id.value() == 1U ? "exclusiveoldtoken " : "")
                         + std::string{"anchor protocol durable "}
@@ -403,6 +469,8 @@ int main(int argc, char** argv) {
                     ids.insert("knowledge-unit:" +
                         std::to_string(imported.raw_units.front().value()));
                 }
+                source_import_ms = std::chrono::duration<double, std::milli>(
+                    Clock::now() - import_begin).count();
             }
 
             {
@@ -467,7 +535,10 @@ int main(int argc, char** argv) {
             update_options.publication_profile =
                 ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
             MdbxResourceImporter update_importer{std::move(update_options)};
+            const auto update_begin = Clock::now();
             const auto updated_result = import_document(update_importer, updated, updated_body);
+            targeted_update_ms = std::chrono::duration<double, std::milli>(
+                Clock::now() - update_begin).count();
             require(updated_result.revision.generation > 1,
                 "importer did not create a new revision for freshness check");
             RetrievalQuery replacement_query;
@@ -684,7 +755,8 @@ int main(int argc, char** argv) {
         const auto lifecycle = persistent_lifecycle && segmented_lifecycle;
         write_receipt(receipt, rebuild_timing, persistent_build_timing,
             segmented_build_timing, persistent_build_ms, segmented_build_ms,
-            persistent_reopen_ms, segmented_reopen_ms, freshness,
+            persistent_reopen_ms, segmented_reopen_ms, source_import_ms,
+            targeted_update_ms, freshness,
             scope_isolation, tenant_a_marker_identity,
             tenant_a_rejected_foreign_marker, tenant_b_marker_identity,
             tenant_b_rejected_foreign_marker, persistent_freshness,
