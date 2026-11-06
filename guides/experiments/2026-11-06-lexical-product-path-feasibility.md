@@ -21,6 +21,11 @@ publication separately. Its persistent build samples are not query latency and
 are not a quality result. This follow-up adds scale/lifecycle coverage rather
 than another isolated microbenchmark.
 
+The typed revision-bound retrieval contract from #579 is now present on
+`main`. This protocol records the required snapshot/freshness checks, but does
+not mark them executed for a persistent candidate path; the executable smoke
+qualification is tracked separately in #587 and must provide the receipts.
+
 ## Frozen fixture and scale plan
 
 The machine-readable fixture is
