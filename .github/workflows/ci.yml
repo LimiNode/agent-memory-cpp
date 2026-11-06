@@ -526,6 +526,8 @@ jobs:
           agent_memory_mdbx_lexical_quality_baseline_test
 
       - name: Run executable quality baseline and evaluator
+        env:
+          AGENT_MEMORY_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >
           ctest --test-dir build-lexical-quality --build-config Release
           --output-on-failure -R
