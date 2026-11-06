@@ -308,7 +308,7 @@ profile_deltas:
       - name: agent_memory_artifact_schema
         owner: provenance
         table_type: KeyValueTable
-        opens: raw_artifact_catalog
+        opens: RawArtifactCatalog
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [SchemaKey]
@@ -316,7 +316,7 @@ profile_deltas:
       - name: agent_memory_artifact_artifacts
         owner: provenance
         table_type: KeyValueTable
-        opens: raw_artifact_catalog
+        opens: RawArtifactCatalog
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [ArtifactId]
@@ -324,7 +324,7 @@ profile_deltas:
       - name: agent_memory_artifact_bindings
         owner: provenance
         table_type: KeyValueTable
-        opens: raw_artifact_catalog
+        opens: RawArtifactCatalog
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [ArtifactBindingId]
@@ -332,7 +332,7 @@ profile_deltas:
       - name: agent_memory_artifact_revisions
         owner: provenance
         table_type: KeyValueTable
-        opens: raw_artifact_catalog
+        opens: RawArtifactCatalog
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [SourceRevisionId]
@@ -340,7 +340,7 @@ profile_deltas:
       - name: agent_memory_artifact_intents
         owner: provenance
         table_type: KeyValueTable
-        opens: raw_artifact_catalog
+        opens: RawArtifactCatalog
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [ArtifactBindingId]
@@ -348,7 +348,7 @@ profile_deltas:
       - name: agent_memory_artifact_receipts
         owner: provenance
         table_type: KeyValueTable
-        opens: raw_artifact_catalog
+        opens: RawArtifactCatalog
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [ArtifactBindingId]
