@@ -46,7 +46,8 @@ struct FileRawBlobStoreOptions final {
     ///
     /// Full-file digest verification remains streaming and is not limited by
     /// this value. Callers can read larger artifacts in several verified
-    /// ranges when needed.
+    /// ranges when needed. The default is intended for ordinary document and
+    /// image ranges; callers may raise or lower it for their deployment.
     std::uint64_t max_read_range_bytes = 64U * 1024U * 1024U;
 };
 
