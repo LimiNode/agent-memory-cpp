@@ -4,63 +4,1030 @@
   "fixture_status": "MANUALLY_JUDGED_SYNTHETIC",
   "judgment_protocol": {
     "authoring": "human-authored query and relevance records; no retriever output used",
-    "grades": {"0": "not relevant or contradicted", "1": "related context", "2": "answer-bearing", "3": "direct authoritative evidence"},
-    "aggregate_policy": "exclude incomplete_qrels; retain judged_zero_relevant as an evaluated no-answer case"
+    "grades": {
+      "0": "not relevant or contradicted",
+      "1": "related context",
+      "2": "answer-bearing",
+      "3": "direct authoritative evidence"
+    },
+    "aggregate_policy": "exclude incomplete_qrels; retain judged_zero_relevant as an evaluated no-answer case",
+    "closed_world": "eligible_document_ids define the full in-scope pool; every complete_qrels or judged_zero_relevant query has an explicit judgment for every eligible ID; absent judgments remain unjudged",
+    "hard_filter_policy": "forbidden scope IDs are never qrels and must be reported as access-control violations"
   },
   "documents": [
-    {"id": "doc:article-mdbx", "scope_id": "public", "source_kind": "habr_article", "source_revision": 2, "title": "MDBX recovery for normalized knowledge bases", "heading": "Crash recovery", "body": "A journal marker and replay fence make a normalized import recoverable after a crash.", "code": "replay(marker)", "tags": ["mdbx", "recovery"], "summary": "Recovery protocol for MDBX imports.", "question": "How can an import recover after a crash?", "derived_revision": 2},
-    {"id": "doc:article-bm25", "scope_id": "public", "source_kind": "habr_article", "source_revision": 1, "title": "BM25F field weighting", "heading": "Fields", "body": "Title and heading fields can receive separate lexical weights from body text.", "code": "score(title, body)", "tags": ["bm25", "lexical"], "summary": "Field-aware lexical scoring.", "question": "How should fields be weighted?", "derived_revision": 1},
-    {"id": "doc:telegram-backup", "scope_id": "public", "source_kind": "telegram_post", "source_revision": 1, "title": "Cheap backup tools for a small service", "heading": "Tools", "body": "Restic and rclone cover encrypted snapshots and remote synchronization.", "code": "restic backup", "tags": ["tools", "service", "backup"], "summary": "Backup tool choices for a small service.", "question": "Which tools cover backup and synchronization?", "derived_revision": 1},
-    {"id": "doc:telegram-niche", "scope_id": "public", "source_kind": "telegram_post", "source_revision": 1, "title": "Niches for a maintenance business", "heading": "Business niches", "body": "The post enumerates observability, backup migration, and data-cleanup niches.", "code": "", "tags": ["business", "niches"], "summary": "An explicit niche enumeration.", "question": "Which niches are listed?", "derived_revision": 1},
-    {"id": "doc:transcript-import", "scope_id": "public", "source_kind": "timed_transcript", "source_revision": 1, "title": "Transcript: normalize and import", "heading": "00:12 Import", "body": "At twelve seconds the speaker normalizes UTF-8 text before importing chunks.", "code": "normalize(utf8)", "tags": ["transcript", "import"], "summary": "Timed import procedure.", "question": "What happens at twelve seconds?", "derived_revision": 1},
-    {"id": "doc:table-revisions", "scope_id": "public", "source_kind": "table", "source_revision": 3, "title": "Revision compatibility table", "heading": "Revision matrix", "body": "Revision 3 accepts projection generation 2; revision 1 is stale.", "code": "", "tags": ["table", "revision"], "summary": "Revision compatibility facts.", "question": "Which projection generation is accepted?", "derived_revision": 3},
-    {"id": "doc:stale-summary", "scope_id": "public", "source_kind": "derived_summary", "source_revision": 1, "title": "Old summary", "heading": "Stale", "body": "This derived summary claims the old recovery protocol.", "code": "", "tags": ["stale", "derived"], "summary": "Stale recovery summary.", "question": "What was the old protocol?", "derived_revision": 0},
-    {"id": "doc:private-tool", "scope_id": "private", "source_kind": "telegram_post", "source_revision": 1, "title": "Private deployment tool", "heading": "Private", "body": "A private tool is not part of the public corpus.", "code": "", "tags": ["private"], "summary": "Private-scope tool.", "question": "Which private tool is used?", "derived_revision": 1},
-    {"id": "doc:comparison-a", "scope_id": "public", "source_kind": "habr_article", "source_revision": 1, "title": "Restic versus rclone", "heading": "Comparison", "body": "Restic encrypts snapshots while rclone synchronizes files.", "code": "", "tags": ["comparison"], "summary": "Comparison of two tools.", "question": "How do Restic and rclone differ?", "derived_revision": 1},
-    {"id": "doc:unrelated", "scope_id": "public", "source_kind": "habr_article", "source_revision": 1, "title": "Unrelated cooking notes", "heading": "Recipe", "body": "A recipe has no retrieval relevance to storage or tools.", "code": "", "tags": ["cooking"], "summary": "Unrelated notes.", "question": "How does MDBX recover?", "derived_revision": 1}
+    {
+      "id": "doc:article-mdbx",
+      "scope_id": "public",
+      "source_kind": "habr_article",
+      "source_revision": 2,
+      "title": "MDBX recovery for normalized knowledge bases",
+      "heading": "Crash recovery",
+      "body": "A journal marker and replay fence make a normalized import recoverable after a crash.",
+      "code": "replay(marker)",
+      "tags": [
+        "mdbx",
+        "recovery"
+      ],
+      "summary": "Recovery protocol for MDBX imports.",
+      "question": "How can an import recover after a crash?",
+      "derived_revision": 2
+    },
+    {
+      "id": "doc:article-bm25",
+      "scope_id": "public",
+      "source_kind": "habr_article",
+      "source_revision": 1,
+      "title": "BM25F field weighting",
+      "heading": "Fields",
+      "body": "Title and heading fields can receive separate lexical weights from body text.",
+      "code": "score(title, body)",
+      "tags": [
+        "bm25",
+        "lexical"
+      ],
+      "summary": "Field-aware lexical scoring.",
+      "question": "How should fields be weighted?",
+      "derived_revision": 1
+    },
+    {
+      "id": "doc:telegram-backup",
+      "scope_id": "public",
+      "source_kind": "telegram_post",
+      "source_revision": 1,
+      "title": "Cheap backup tools for a small service",
+      "heading": "Tools",
+      "body": "Restic and rclone cover encrypted snapshots and remote synchronization.",
+      "code": "restic backup",
+      "tags": [
+        "tools",
+        "service",
+        "backup"
+      ],
+      "summary": "Backup tool choices for a small service.",
+      "question": "Which tools cover backup and synchronization?",
+      "derived_revision": 1
+    },
+    {
+      "id": "doc:telegram-niche",
+      "scope_id": "public",
+      "source_kind": "telegram_post",
+      "source_revision": 1,
+      "title": "Niches for a maintenance business",
+      "heading": "Business niches",
+      "body": "The post enumerates observability, backup migration, and data-cleanup niches.",
+      "code": "",
+      "tags": [
+        "business",
+        "niches"
+      ],
+      "summary": "An explicit niche enumeration.",
+      "question": "Which niches are listed?",
+      "derived_revision": 1
+    },
+    {
+      "id": "doc:transcript-import",
+      "scope_id": "public",
+      "source_kind": "timed_transcript",
+      "source_revision": 1,
+      "title": "Transcript: normalize and import",
+      "heading": "00:12 Import",
+      "body": "At twelve seconds the speaker normalizes UTF-8 text before importing chunks.",
+      "code": "normalize(utf8)",
+      "tags": [
+        "transcript",
+        "import"
+      ],
+      "summary": "Timed import procedure.",
+      "question": "What happens at twelve seconds?",
+      "derived_revision": 1
+    },
+    {
+      "id": "doc:table-revisions",
+      "scope_id": "public",
+      "source_kind": "table",
+      "source_revision": 3,
+      "title": "Revision compatibility table",
+      "heading": "Revision matrix",
+      "body": "Revision 3 accepts projection generation 2; revision 1 is stale.",
+      "code": "",
+      "tags": [
+        "table",
+        "revision"
+      ],
+      "summary": "Revision compatibility facts.",
+      "question": "Which projection generation is accepted?",
+      "derived_revision": 3
+    },
+    {
+      "id": "doc:stale-summary",
+      "scope_id": "public",
+      "source_kind": "derived_summary",
+      "source_revision": 1,
+      "title": "Old summary",
+      "heading": "Stale",
+      "body": "This derived summary claims the old recovery protocol.",
+      "code": "",
+      "tags": [
+        "stale",
+        "derived"
+      ],
+      "summary": "Stale recovery summary.",
+      "question": "What was the old protocol?",
+      "derived_revision": 0
+    },
+    {
+      "id": "doc:private-tool",
+      "scope_id": "private",
+      "source_kind": "telegram_post",
+      "source_revision": 1,
+      "title": "Private deployment tool",
+      "heading": "Private",
+      "body": "A private tool is not part of the public corpus.",
+      "code": "",
+      "tags": [
+        "private"
+      ],
+      "summary": "Private-scope tool.",
+      "question": "Which private tool is used?",
+      "derived_revision": 1
+    },
+    {
+      "id": "doc:comparison-a",
+      "scope_id": "public",
+      "source_kind": "habr_article",
+      "source_revision": 1,
+      "title": "Restic versus rclone",
+      "heading": "Comparison",
+      "body": "Restic encrypts snapshots while rclone synchronizes files.",
+      "code": "",
+      "tags": [
+        "comparison"
+      ],
+      "summary": "Comparison of two tools.",
+      "question": "How do Restic and rclone differ?",
+      "derived_revision": 1
+    },
+    {
+      "id": "doc:unrelated",
+      "scope_id": "public",
+      "source_kind": "habr_article",
+      "source_revision": 1,
+      "title": "Unrelated cooking notes",
+      "heading": "Recipe",
+      "body": "A recipe has no retrieval relevance to storage or tools.",
+      "code": "",
+      "tags": [
+        "cooking"
+      ],
+      "summary": "Unrelated notes.",
+      "question": "How does MDBX recover?",
+      "derived_revision": 1
+    }
   ],
   "queries": [
-    {"id": "q:exact-mdbx", "class": "exact_terminology", "scope_id": "public", "text": "MDBX recovery replay fence", "answer_mode": "judged_retrieval"},
-    {"id": "q:paraphrase-backup", "class": "synonym_paraphrase", "scope_id": "public", "text": "encrypted snapshot synchronization", "answer_mode": "judged_retrieval"},
-    {"id": "q:topic-bm25", "class": "document_level_topic", "scope_id": "public", "text": "field-aware lexical scoring", "answer_mode": "judged_retrieval"},
-    {"id": "q:section-crash", "class": "section_level_topic", "scope_id": "public", "text": "crash recovery marker replay", "answer_mode": "judged_retrieval"},
-    {"id": "q:niches", "class": "business_niche", "scope_id": "public", "text": "all maintenance business niches", "answer_mode": "exhaustive", "enumeration_contract": {"required": true, "complete_source": "doc:telegram-niche", "expected_items": ["observability", "backup migration", "data-cleanup"]}},
-    {"id": "q:service-tools", "class": "tool_service", "scope_id": "public", "text": "tools for service backup", "answer_mode": "judged_retrieval"},
-    {"id": "q:procedure", "class": "procedure_lifehack", "scope_id": "public", "text": "what happens at twelve seconds", "answer_mode": "judged_retrieval"},
-    {"id": "q:comparison", "class": "cross_document_comparison", "scope_id": "public", "text": "compare Restic and rclone", "answer_mode": "judged_retrieval"},
-    {"id": "q:stale", "class": "stale_derived_knowledge", "scope_id": "public", "text": "current recovery protocol", "answer_mode": "judged_retrieval"},
-    {"id": "q:no-answer", "class": "no_answer", "scope_id": "public", "text": "Kubernetes quantum scheduler", "answer_mode": "no_answer"},
-    {"id": "q:wrong-scope", "class": "wrong_scope", "scope_id": "public", "text": "private deployment tool", "answer_mode": "no_answer"},
-    {"id": "q:incomplete", "class": "incomplete_pool_control", "scope_id": "public", "text": "revision matrix", "answer_mode": "judged_retrieval"}
+    {
+      "id": "q:exact-mdbx",
+      "class": "exact_terminology",
+      "scope_id": "public",
+      "text": "MDBX recovery replay fence",
+      "answer_mode": "judged_retrieval",
+      "eligible_document_ids": [
+        "doc:article-mdbx",
+        "doc:article-bm25",
+        "doc:telegram-backup",
+        "doc:telegram-niche",
+        "doc:transcript-import",
+        "doc:table-revisions",
+        "doc:stale-summary",
+        "doc:comparison-a",
+        "doc:unrelated"
+      ]
+    },
+    {
+      "id": "q:paraphrase-backup",
+      "class": "synonym_paraphrase",
+      "scope_id": "public",
+      "text": "encrypted snapshot synchronization",
+      "answer_mode": "judged_retrieval",
+      "eligible_document_ids": [
+        "doc:article-mdbx",
+        "doc:article-bm25",
+        "doc:telegram-backup",
+        "doc:telegram-niche",
+        "doc:transcript-import",
+        "doc:table-revisions",
+        "doc:stale-summary",
+        "doc:comparison-a",
+        "doc:unrelated"
+      ]
+    },
+    {
+      "id": "q:topic-bm25",
+      "class": "document_level_topic",
+      "scope_id": "public",
+      "text": "field-aware lexical scoring",
+      "answer_mode": "judged_retrieval",
+      "eligible_document_ids": [
+        "doc:article-mdbx",
+        "doc:article-bm25",
+        "doc:telegram-backup",
+        "doc:telegram-niche",
+        "doc:transcript-import",
+        "doc:table-revisions",
+        "doc:stale-summary",
+        "doc:comparison-a",
+        "doc:unrelated"
+      ]
+    },
+    {
+      "id": "q:section-crash",
+      "class": "section_level_topic",
+      "scope_id": "public",
+      "text": "crash recovery marker replay",
+      "answer_mode": "judged_retrieval",
+      "eligible_document_ids": [
+        "doc:article-mdbx",
+        "doc:article-bm25",
+        "doc:telegram-backup",
+        "doc:telegram-niche",
+        "doc:transcript-import",
+        "doc:table-revisions",
+        "doc:stale-summary",
+        "doc:comparison-a",
+        "doc:unrelated"
+      ]
+    },
+    {
+      "id": "q:niches",
+      "class": "business_niche",
+      "scope_id": "public",
+      "text": "all maintenance business niches",
+      "answer_mode": "exhaustive",
+      "enumeration_contract": {
+        "required": true,
+        "complete_source": "doc:telegram-niche",
+        "expected_items": [
+          "observability",
+          "backup migration",
+          "data-cleanup"
+        ],
+        "declared_complete": true,
+        "covered_items": [
+          "observability",
+          "backup migration",
+          "data-cleanup"
+        ]
+      },
+      "eligible_document_ids": [
+        "doc:article-mdbx",
+        "doc:article-bm25",
+        "doc:telegram-backup",
+        "doc:telegram-niche",
+        "doc:transcript-import",
+        "doc:table-revisions",
+        "doc:stale-summary",
+        "doc:comparison-a",
+        "doc:unrelated"
+      ]
+    },
+    {
+      "id": "q:service-tools",
+      "class": "tool_service",
+      "scope_id": "public",
+      "text": "tools for service backup",
+      "answer_mode": "judged_retrieval",
+      "eligible_document_ids": [
+        "doc:article-mdbx",
+        "doc:article-bm25",
+        "doc:telegram-backup",
+        "doc:telegram-niche",
+        "doc:transcript-import",
+        "doc:table-revisions",
+        "doc:stale-summary",
+        "doc:comparison-a",
+        "doc:unrelated"
+      ]
+    },
+    {
+      "id": "q:procedure",
+      "class": "procedure_lifehack",
+      "scope_id": "public",
+      "text": "what happens at twelve seconds",
+      "answer_mode": "judged_retrieval",
+      "eligible_document_ids": [
+        "doc:article-mdbx",
+        "doc:article-bm25",
+        "doc:telegram-backup",
+        "doc:telegram-niche",
+        "doc:transcript-import",
+        "doc:table-revisions",
+        "doc:stale-summary",
+        "doc:comparison-a",
+        "doc:unrelated"
+      ]
+    },
+    {
+      "id": "q:comparison",
+      "class": "cross_document_comparison",
+      "scope_id": "public",
+      "text": "compare Restic and rclone",
+      "answer_mode": "judged_retrieval",
+      "eligible_document_ids": [
+        "doc:article-mdbx",
+        "doc:article-bm25",
+        "doc:telegram-backup",
+        "doc:telegram-niche",
+        "doc:transcript-import",
+        "doc:table-revisions",
+        "doc:stale-summary",
+        "doc:comparison-a",
+        "doc:unrelated"
+      ]
+    },
+    {
+      "id": "q:stale",
+      "class": "stale_derived_knowledge",
+      "scope_id": "public",
+      "text": "current recovery protocol",
+      "answer_mode": "judged_retrieval",
+      "eligible_document_ids": [
+        "doc:article-mdbx",
+        "doc:article-bm25",
+        "doc:telegram-backup",
+        "doc:telegram-niche",
+        "doc:transcript-import",
+        "doc:table-revisions",
+        "doc:stale-summary",
+        "doc:comparison-a",
+        "doc:unrelated"
+      ],
+      "outcome_contract": {
+        "kind": "stale_derived_evidence",
+        "must_reject_ids": [
+          "doc:stale-summary"
+        ]
+      }
+    },
+    {
+      "id": "q:no-answer",
+      "class": "no_answer",
+      "scope_id": "public",
+      "text": "Kubernetes quantum scheduler",
+      "answer_mode": "no_answer",
+      "eligible_document_ids": [
+        "doc:article-mdbx",
+        "doc:article-bm25",
+        "doc:telegram-backup",
+        "doc:telegram-niche",
+        "doc:transcript-import",
+        "doc:table-revisions",
+        "doc:stale-summary",
+        "doc:comparison-a",
+        "doc:unrelated"
+      ],
+      "outcome_contract": {
+        "kind": "legitimate_no_answer",
+        "expected_empty": true
+      }
+    },
+    {
+      "id": "q:wrong-scope",
+      "class": "wrong_scope",
+      "scope_id": "public",
+      "text": "private deployment tool",
+      "answer_mode": "no_answer",
+      "eligible_document_ids": [
+        "doc:article-mdbx",
+        "doc:article-bm25",
+        "doc:telegram-backup",
+        "doc:telegram-niche",
+        "doc:transcript-import",
+        "doc:table-revisions",
+        "doc:stale-summary",
+        "doc:comparison-a",
+        "doc:unrelated"
+      ],
+      "access_control": {
+        "forbidden_document_ids": [
+          "doc:private-tool"
+        ],
+        "forbidden_reason": "scope_filter"
+      },
+      "outcome_contract": {
+        "kind": "cross_scope_access_control",
+        "expected_empty": true,
+        "forbidden_document_ids": [
+          "doc:private-tool"
+        ]
+      }
+    },
+    {
+      "id": "q:incomplete",
+      "class": "incomplete_pool_control",
+      "scope_id": "public",
+      "text": "revision matrix",
+      "answer_mode": "judged_retrieval",
+      "eligible_document_ids": [
+        "doc:article-mdbx",
+        "doc:article-bm25",
+        "doc:telegram-backup",
+        "doc:telegram-niche",
+        "doc:transcript-import",
+        "doc:table-revisions",
+        "doc:stale-summary",
+        "doc:comparison-a",
+        "doc:unrelated"
+      ]
+    }
   ],
   "judgments": [
-    {"query_id": "q:exact-mdbx", "item_id": "doc:article-mdbx", "relevance_grade": 3},
-    {"query_id": "q:paraphrase-backup", "item_id": "doc:telegram-backup", "relevance_grade": 3},
-    {"query_id": "q:paraphrase-backup", "item_id": "doc:comparison-a", "relevance_grade": 2},
-    {"query_id": "q:topic-bm25", "item_id": "doc:article-bm25", "relevance_grade": 3},
-    {"query_id": "q:section-crash", "item_id": "doc:article-mdbx", "relevance_grade": 3},
-    {"query_id": "q:niches", "item_id": "doc:telegram-niche", "relevance_grade": 3},
-    {"query_id": "q:service-tools", "item_id": "doc:telegram-backup", "relevance_grade": 3},
-    {"query_id": "q:procedure", "item_id": "doc:transcript-import", "relevance_grade": 3},
-    {"query_id": "q:comparison", "item_id": "doc:comparison-a", "relevance_grade": 3},
-    {"query_id": "q:stale", "item_id": "doc:article-mdbx", "relevance_grade": 3},
-    {"query_id": "q:stale", "item_id": "doc:stale-summary", "relevance_grade": 0},
-    {"query_id": "q:no-answer", "item_id": "doc:unrelated", "relevance_grade": 0},
-    {"query_id": "q:wrong-scope", "item_id": "doc:private-tool", "relevance_grade": 0},
-    {"query_id": "q:incomplete", "item_id": "doc:table-revisions", "relevance_grade": 2}
+    {
+      "query_id": "q:exact-mdbx",
+      "item_id": "doc:article-mdbx",
+      "relevance_grade": 3
+    },
+    {
+      "query_id": "q:exact-mdbx",
+      "item_id": "doc:article-bm25",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:exact-mdbx",
+      "item_id": "doc:telegram-backup",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:exact-mdbx",
+      "item_id": "doc:telegram-niche",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:exact-mdbx",
+      "item_id": "doc:transcript-import",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:exact-mdbx",
+      "item_id": "doc:table-revisions",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:exact-mdbx",
+      "item_id": "doc:stale-summary",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:exact-mdbx",
+      "item_id": "doc:comparison-a",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:exact-mdbx",
+      "item_id": "doc:unrelated",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:paraphrase-backup",
+      "item_id": "doc:article-mdbx",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:paraphrase-backup",
+      "item_id": "doc:article-bm25",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:paraphrase-backup",
+      "item_id": "doc:telegram-backup",
+      "relevance_grade": 3
+    },
+    {
+      "query_id": "q:paraphrase-backup",
+      "item_id": "doc:telegram-niche",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:paraphrase-backup",
+      "item_id": "doc:transcript-import",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:paraphrase-backup",
+      "item_id": "doc:table-revisions",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:paraphrase-backup",
+      "item_id": "doc:stale-summary",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:paraphrase-backup",
+      "item_id": "doc:comparison-a",
+      "relevance_grade": 2
+    },
+    {
+      "query_id": "q:paraphrase-backup",
+      "item_id": "doc:unrelated",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:topic-bm25",
+      "item_id": "doc:article-mdbx",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:topic-bm25",
+      "item_id": "doc:article-bm25",
+      "relevance_grade": 3
+    },
+    {
+      "query_id": "q:topic-bm25",
+      "item_id": "doc:telegram-backup",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:topic-bm25",
+      "item_id": "doc:telegram-niche",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:topic-bm25",
+      "item_id": "doc:transcript-import",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:topic-bm25",
+      "item_id": "doc:table-revisions",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:topic-bm25",
+      "item_id": "doc:stale-summary",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:topic-bm25",
+      "item_id": "doc:comparison-a",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:topic-bm25",
+      "item_id": "doc:unrelated",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:section-crash",
+      "item_id": "doc:article-mdbx",
+      "relevance_grade": 3
+    },
+    {
+      "query_id": "q:section-crash",
+      "item_id": "doc:article-bm25",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:section-crash",
+      "item_id": "doc:telegram-backup",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:section-crash",
+      "item_id": "doc:telegram-niche",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:section-crash",
+      "item_id": "doc:transcript-import",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:section-crash",
+      "item_id": "doc:table-revisions",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:section-crash",
+      "item_id": "doc:stale-summary",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:section-crash",
+      "item_id": "doc:comparison-a",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:section-crash",
+      "item_id": "doc:unrelated",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:niches",
+      "item_id": "doc:article-mdbx",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:niches",
+      "item_id": "doc:article-bm25",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:niches",
+      "item_id": "doc:telegram-backup",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:niches",
+      "item_id": "doc:telegram-niche",
+      "relevance_grade": 3
+    },
+    {
+      "query_id": "q:niches",
+      "item_id": "doc:transcript-import",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:niches",
+      "item_id": "doc:table-revisions",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:niches",
+      "item_id": "doc:stale-summary",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:niches",
+      "item_id": "doc:comparison-a",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:niches",
+      "item_id": "doc:unrelated",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:service-tools",
+      "item_id": "doc:article-mdbx",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:service-tools",
+      "item_id": "doc:article-bm25",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:service-tools",
+      "item_id": "doc:telegram-backup",
+      "relevance_grade": 3
+    },
+    {
+      "query_id": "q:service-tools",
+      "item_id": "doc:telegram-niche",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:service-tools",
+      "item_id": "doc:transcript-import",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:service-tools",
+      "item_id": "doc:table-revisions",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:service-tools",
+      "item_id": "doc:stale-summary",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:service-tools",
+      "item_id": "doc:comparison-a",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:service-tools",
+      "item_id": "doc:unrelated",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:procedure",
+      "item_id": "doc:article-mdbx",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:procedure",
+      "item_id": "doc:article-bm25",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:procedure",
+      "item_id": "doc:telegram-backup",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:procedure",
+      "item_id": "doc:telegram-niche",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:procedure",
+      "item_id": "doc:transcript-import",
+      "relevance_grade": 3
+    },
+    {
+      "query_id": "q:procedure",
+      "item_id": "doc:table-revisions",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:procedure",
+      "item_id": "doc:stale-summary",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:procedure",
+      "item_id": "doc:comparison-a",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:procedure",
+      "item_id": "doc:unrelated",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:comparison",
+      "item_id": "doc:article-mdbx",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:comparison",
+      "item_id": "doc:article-bm25",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:comparison",
+      "item_id": "doc:telegram-backup",
+      "relevance_grade": 2
+    },
+    {
+      "query_id": "q:comparison",
+      "item_id": "doc:telegram-niche",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:comparison",
+      "item_id": "doc:transcript-import",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:comparison",
+      "item_id": "doc:table-revisions",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:comparison",
+      "item_id": "doc:stale-summary",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:comparison",
+      "item_id": "doc:comparison-a",
+      "relevance_grade": 3
+    },
+    {
+      "query_id": "q:comparison",
+      "item_id": "doc:unrelated",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:stale",
+      "item_id": "doc:article-mdbx",
+      "relevance_grade": 3
+    },
+    {
+      "query_id": "q:stale",
+      "item_id": "doc:article-bm25",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:stale",
+      "item_id": "doc:telegram-backup",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:stale",
+      "item_id": "doc:telegram-niche",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:stale",
+      "item_id": "doc:transcript-import",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:stale",
+      "item_id": "doc:table-revisions",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:stale",
+      "item_id": "doc:stale-summary",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:stale",
+      "item_id": "doc:comparison-a",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:stale",
+      "item_id": "doc:unrelated",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:no-answer",
+      "item_id": "doc:article-mdbx",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:no-answer",
+      "item_id": "doc:article-bm25",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:no-answer",
+      "item_id": "doc:telegram-backup",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:no-answer",
+      "item_id": "doc:telegram-niche",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:no-answer",
+      "item_id": "doc:transcript-import",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:no-answer",
+      "item_id": "doc:table-revisions",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:no-answer",
+      "item_id": "doc:stale-summary",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:no-answer",
+      "item_id": "doc:comparison-a",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:no-answer",
+      "item_id": "doc:unrelated",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:wrong-scope",
+      "item_id": "doc:article-mdbx",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:wrong-scope",
+      "item_id": "doc:article-bm25",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:wrong-scope",
+      "item_id": "doc:telegram-backup",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:wrong-scope",
+      "item_id": "doc:telegram-niche",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:wrong-scope",
+      "item_id": "doc:transcript-import",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:wrong-scope",
+      "item_id": "doc:table-revisions",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:wrong-scope",
+      "item_id": "doc:stale-summary",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:wrong-scope",
+      "item_id": "doc:comparison-a",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:wrong-scope",
+      "item_id": "doc:unrelated",
+      "relevance_grade": 0
+    },
+    {
+      "query_id": "q:incomplete",
+      "item_id": "doc:table-revisions",
+      "relevance_grade": 2
+    }
   ],
   "query_states": {
-    "q:exact-mdbx": "judged",
-    "q:paraphrase-backup": "judged",
-    "q:topic-bm25": "judged",
-    "q:section-crash": "judged",
-    "q:niches": "judged",
-    "q:service-tools": "judged",
-    "q:procedure": "judged",
-    "q:comparison": "judged",
-    "q:stale": "judged",
+    "q:exact-mdbx": "complete_qrels",
+    "q:paraphrase-backup": "complete_qrels",
+    "q:topic-bm25": "complete_qrels",
+    "q:section-crash": "complete_qrels",
+    "q:niches": "complete_qrels",
+    "q:service-tools": "complete_qrels",
+    "q:procedure": "complete_qrels",
+    "q:comparison": "complete_qrels",
+    "q:stale": "complete_qrels",
     "q:no-answer": "judged_zero_relevant",
     "q:wrong-scope": "judged_zero_relevant",
     "q:incomplete": "incomplete_qrels"
+  },
+  "judgment_coverage": {
+    "q:exact-mdbx": {
+      "eligible_count": 9,
+      "judged_count": 9,
+      "unjudged_count": 0,
+      "closed_world": true
+    },
+    "q:paraphrase-backup": {
+      "eligible_count": 9,
+      "judged_count": 9,
+      "unjudged_count": 0,
+      "closed_world": true
+    },
+    "q:topic-bm25": {
+      "eligible_count": 9,
+      "judged_count": 9,
+      "unjudged_count": 0,
+      "closed_world": true
+    },
+    "q:section-crash": {
+      "eligible_count": 9,
+      "judged_count": 9,
+      "unjudged_count": 0,
+      "closed_world": true
+    },
+    "q:niches": {
+      "eligible_count": 9,
+      "judged_count": 9,
+      "unjudged_count": 0,
+      "closed_world": true
+    },
+    "q:service-tools": {
+      "eligible_count": 9,
+      "judged_count": 9,
+      "unjudged_count": 0,
+      "closed_world": true
+    },
+    "q:procedure": {
+      "eligible_count": 9,
+      "judged_count": 9,
+      "unjudged_count": 0,
+      "closed_world": true
+    },
+    "q:comparison": {
+      "eligible_count": 9,
+      "judged_count": 9,
+      "unjudged_count": 0,
+      "closed_world": true
+    },
+    "q:stale": {
+      "eligible_count": 9,
+      "judged_count": 9,
+      "unjudged_count": 0,
+      "closed_world": true
+    },
+    "q:no-answer": {
+      "eligible_count": 9,
+      "judged_count": 9,
+      "unjudged_count": 0,
+      "closed_world": true
+    },
+    "q:wrong-scope": {
+      "eligible_count": 9,
+      "judged_count": 9,
+      "unjudged_count": 0,
+      "closed_world": true
+    },
+    "q:incomplete": {
+      "eligible_count": 9,
+      "judged_count": 1,
+      "unjudged_count": 8,
+      "closed_world": false
+    }
   }
 }
