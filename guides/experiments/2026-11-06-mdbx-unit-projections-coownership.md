@@ -35,4 +35,3 @@ surface. No additional DBI or migration is required by this conformance slice.
 `SAFE` is limited to the listed invariants and does not certify a general
 multi-process publication coordinator, crash recovery, or production activation
 of derived retrieval.
-
