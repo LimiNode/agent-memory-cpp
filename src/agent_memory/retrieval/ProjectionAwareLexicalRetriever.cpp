@@ -20,7 +20,7 @@ std::string unit_key(const KnowledgeUnitId& id) {
     return "knowledge-unit:" + std::to_string(id.value());
 }
 
-using ManifestResolver = std::function<std::optional<ResourceManifest>(const ResourceId&)>;
+using ManifestResolver = OriginalManifestReader;
 
 constexpr std::string_view kOriginalDerivationFingerprint =
     "m0.original.primary_text.v1";
@@ -76,7 +76,7 @@ bool has_publication_binding(
 std::optional<SearchProjection> find_active_projection(
     const KnowledgeUnitEnvelope& envelope,
     ProjectionKind kind,
-    IProjectionStore& projections,
+    const OriginalProjectionListReader& read_projections,
     const ManifestResolver& resolve_manifest,
     const std::string& expected_schema_id,
     std::uint32_t expected_schema_version
@@ -92,7 +92,8 @@ std::optional<SearchProjection> find_active_projection(
     }
 
     std::optional<SearchProjection> result;
-    for(auto projection : projections.list(envelope.scope_id, envelope.id, kind)) {
+    for(auto projection : read_projections(
+            envelope.scope_id, envelope.id, kind)) {
         if(projection.kind != kind ||
            projection.version.unit_revision_at_build != envelope.revision ||
            projection.version.projection_revision != envelope.revision ||
@@ -170,11 +171,33 @@ bool has_current_original_projection(
     const ManifestResolver resolve_manifest = [&](const ResourceId& resource_id) {
         return manifest_store.find_manifest(resource_id);
     };
+    const OriginalProjectionListReader read_projections =
+        [&projection_store](
+            const ScopeId& scope_id,
+            const KnowledgeUnitId& unit_id,
+            ProjectionKind kind
+        ) {
+            return projection_store.list(scope_id, unit_id, kind);
+        };
+    return has_current_original_projection_with_readers(
+        envelope,
+        read_projections,
+        resolve_manifest,
+        options
+    );
+}
+
+bool has_current_original_projection_with_readers(
+    const KnowledgeUnitEnvelope& envelope,
+    const OriginalProjectionListReader& projection_reader,
+    const OriginalManifestReader& manifest_reader,
+    const ProjectionAwareLexicalRetrieverOptions& options
+) {
     return find_active_projection(
         envelope,
         ProjectionKind::Original,
-        projection_store,
-        resolve_manifest,
+        projection_reader,
+        manifest_reader,
         options.expected_manifest_schema_id,
         options.expected_manifest_schema_version
     ).has_value();
@@ -261,13 +284,21 @@ ProjectionAwareLexicalRetrieval ProjectionAwareLexicalRetriever::retrieve_with_c
         manifest_cache.emplace(cache_key, loaded);
         return loaded;
     };
+    const OriginalProjectionListReader read_projections =
+        [this](
+            const ScopeId& scope_id,
+            const KnowledgeUnitId& unit_id,
+            ProjectionKind kind
+        ) {
+            return m_projection_store->list(scope_id, unit_id, kind);
+        };
     for(const auto& id : ids) {
         const auto envelope = m_unit_store->find(id);
         if(!envelope || envelope->scope_id.value() != m_scope_id.value()) continue;
         const auto projection = find_active_projection(
             *envelope,
             m_options.projection_kind,
-            *m_projection_store,
+            read_projections,
             resolve_manifest,
             m_options.expected_manifest_schema_id,
             m_options.expected_manifest_schema_version

@@ -14,6 +14,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -112,6 +114,27 @@ namespace agent_memory {
         const KnowledgeUnitEnvelope& envelope,
         IProjectionStore& projection_store,
         IResourceManifestStorage& manifest_store,
+        const ProjectionAwareLexicalRetrieverOptions& options
+    );
+
+    /// \brief Reuses Original admission with caller-supplied read callbacks.
+    ///
+    /// Backend adapters use this narrow seam when their projection and
+    /// manifest reads must share one storage snapshot. The callbacks own no
+    /// transaction and must return values from the same logical read view.
+    using OriginalProjectionListReader = std::function<std::vector<SearchProjection>(
+        const ScopeId&,
+        const KnowledgeUnitId&,
+        ProjectionKind
+    )>;
+    using OriginalManifestReader = std::function<std::optional<ResourceManifest>(
+        const ResourceId&)
+    >;
+
+    [[nodiscard]] bool has_current_original_projection_with_readers(
+        const KnowledgeUnitEnvelope& envelope,
+        const OriginalProjectionListReader& projection_reader,
+        const OriginalManifestReader& manifest_reader,
         const ProjectionAwareLexicalRetrieverOptions& options
     );
 

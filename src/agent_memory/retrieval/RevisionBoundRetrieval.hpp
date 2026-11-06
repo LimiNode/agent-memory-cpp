@@ -95,6 +95,14 @@ struct RevisionBoundRetrievalResponse final {
     std::vector<RevisionBoundRetrievalResult> results;
     RevisionBoundCompleteness completeness = RevisionBoundCompleteness::Complete;
     std::string diagnostic;
+    /// Number of producer-owned candidates that were examined.
+    std::size_t candidate_count = 0;
+    /// Number of candidates admitted as Current from the final read view.
+    std::size_t admitted_count = 0;
+    /// Number of candidates rejected because their canonical state was stale.
+    std::size_t stale_count = 0;
+    /// Number of candidates rejected as unavailable or malformed.
+    std::size_t unavailable_count = 0;
 };
 
 /// \brief Adapts the bounded legacy lexical path to revision-bound results.
