@@ -335,7 +335,7 @@ profile_deltas:
         opens: RawArtifactCatalog
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
-        physical_key: [SourceRevisionId]
+        physical_key: [SourceRevisionId, ArtifactBindingId]
         migration_peak: 1
       - name: agent_memory_artifact_intents
         owner: provenance

@@ -73,6 +73,12 @@ struct ArtifactCatalogReadResult final {
     std::string diagnostic;
 };
 
+struct ArtifactCatalogCollectionResult final {
+    ArtifactCatalogStatus status = ArtifactCatalogStatus::IoError;
+    std::vector<ArtifactCatalogRecord> records;
+    std::string diagnostic;
+};
+
 struct MdbxArtifactCatalogOptions final {
     std::string path;
     std::string table_prefix = "agent_memory";
@@ -81,6 +87,8 @@ struct MdbxArtifactCatalogOptions final {
     std::shared_ptr<MdbxStorageContext> context;
     std::filesystem::path raw_cas_root;
     FileRawBlobStoreOptions raw_cas_options{};
+    /// Maximum size accepted by read_body(). Use read_body_range() for larger bodies.
+    std::uint64_t max_full_body_bytes = 64U * 1024U * 1024U;
     ArtifactCatalogFaultInjector fault_injector;
 };
 
@@ -105,8 +113,15 @@ public:
         const ArtifactBindingId& binding_id) const;
     [[nodiscard]] ArtifactCatalogResult read_source_revision(
         const SourceRevisionId& source_revision_id) const;
+    [[nodiscard]] ArtifactCatalogCollectionResult read_source_revision_bindings(
+        const SourceRevisionId& source_revision_id) const;
     [[nodiscard]] ArtifactCatalogReadResult read_body(
         const ArtifactBindingId& binding_id) const;
+    [[nodiscard]] ArtifactCatalogReadResult read_body_range(
+        const ArtifactBindingId& binding_id,
+        std::uint64_t offset,
+        std::uint64_t length
+    ) const;
 
     /// Reconciles durable intents after a process or publication failure.
     /// Missing CAS bodies remain pending and are safe to retry with ingest().

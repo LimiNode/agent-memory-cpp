@@ -1627,7 +1627,12 @@ with `FileRawBlobStore`. It persists versioned artifact, binding,
 source-revision-index, ingest-intent and body-state receipt rows. The catalog
 owns logical SHA-256 identity and decoded byte size; the file CAS owns the
 immutable Raw bytes. A codec or physical encoding descriptor must not change
-`ArtifactId`.
+`ArtifactId`. A source revision may have multiple immutable bindings (for
+example original bytes, extracted text and a page image); the MDBX revision
+index therefore uses a length-prefixed composite `(SourceRevisionId,
+ArtifactBindingId)` key. A single-binding convenience lookup fails closed when
+the revision is ambiguous; callers that need all roles use the enumeration
+API.
 
 Publication is intentionally a recoverable protocol, not a distributed
 transaction:
@@ -1644,11 +1649,18 @@ rejected before a binding is considered readable. The adapter reports
 unreferenced catalog artifacts as GC candidates but never deletes CAS files;
 destructive GC requires a separate reachability proof and retention policy.
 
+Full-body materialization is bounded by an explicit catalog budget. Larger
+artifacts must use the bounded range API; range reads retain Raw CAS digest
+verification and report corruption or missing bodies as a non-success status.
+
 The durability boundary is explicit: an MDBX backup contains catalog rows and
 a CAS backup contains immutable files. They must be backed up and restored as
 coordinated artifacts with matching schema/identity descriptors, but no claim
 is made that a file-system operation and an MDBX commit are one atomic backup
 unit. Restore must verify every referenced CAS digest before enabling reads.
+Process-crash and power-loss durability remain NOT VERIFIED by the fault
+injection tests; the current Raw CAS layer does not claim file or directory
+`fsync` durability.
 
 ## 9. Non-Goals
 

@@ -20,7 +20,7 @@ namespace agent_memory {
 namespace {
 
 constexpr std::string_view kSchemaKey = "schema";
-constexpr std::string_view kSchemaVersion = "agent_memory.artifact_catalog.v1";
+constexpr std::string_view kSchemaVersion = "agent_memory.artifact_catalog.v2";
 constexpr std::string_view kArtifactVersion = "agent_memory.artifact.v1";
 constexpr std::string_view kBindingVersion = "agent_memory.artifact_binding.v1";
 constexpr std::string_view kIntentVersion = "agent_memory.artifact_intent.v1";
@@ -102,6 +102,26 @@ std::string table_name(const std::string& prefix, std::string_view suffix) {
     return prefix + "_artifact_" + std::string{suffix};
 }
 
+std::string revision_prefix(const SourceRevisionId& source_revision_id) {
+    Writer writer;
+    writer.u64(static_cast<std::uint64_t>(source_revision_id.value().size()));
+    writer.bytes(reinterpret_cast<const std::uint8_t*>(source_revision_id.value().data()),
+                 source_revision_id.value().size());
+    return std::move(writer).finish();
+}
+
+std::string revision_key(
+    const SourceRevisionId& source_revision_id,
+    const ArtifactBindingId& binding_id) {
+    auto key = revision_prefix(source_revision_id);
+    Writer writer;
+    writer.u64(static_cast<std::uint64_t>(binding_id.value().size()));
+    writer.bytes(reinterpret_cast<const std::uint8_t*>(binding_id.value().data()),
+                 binding_id.value().size());
+    key += std::move(writer).finish();
+    return key;
+}
+
 bool known_retention(ArtifactRetentionClass value) noexcept {
     return value == ArtifactRetentionClass::ReferenceOnly ||
            value == ArtifactRetentionClass::SourceOriginal ||
@@ -137,6 +157,16 @@ ArtifactCatalogStatus map_raw_status(RawBlobStatus status) noexcept {
         return ArtifactCatalogStatus::Ok;
     }
     return ArtifactCatalogStatus::IoError;
+}
+
+ArtifactCatalogStatus probe_status(
+    RawBlobStatus status,
+    const std::optional<RawBlobMetadata>& metadata,
+    std::uint64_t expected_size) noexcept {
+    if(status != RawBlobStatus::Ok) return map_raw_status(status);
+    if(!metadata || metadata->size_bytes != expected_size)
+        return ArtifactCatalogStatus::Corrupt;
+    return ArtifactCatalogStatus::Ok;
 }
 
 void encode_digest(Writer& writer, const BlobDigest& digest) {
@@ -285,6 +315,7 @@ public:
           intents(context->connection(), table_name(prefix, "intents")),
           receipts(context->connection(), table_name(prefix, "receipts")),
           cas(std::move(options.raw_cas_root), options.raw_cas_options),
+          max_full_body_bytes(options.max_full_body_bytes),
           fault_injector(std::move(options.fault_injector)) {
         if(cas.root().empty()) throw std::invalid_argument("artifact catalog requires a Raw CAS root");
         initialize_schema();
@@ -293,6 +324,22 @@ public:
 
     void inject(ArtifactCatalogFaultPoint point) const {
         if(fault_injector) fault_injector(point);
+    }
+
+    static bool same_intent(
+        const Intent& stored,
+        const ArtifactCatalogIngestRequest& request,
+        const Artifact& artifact) noexcept {
+        return stored.artifact.id == artifact.id &&
+            stored.artifact.digest.value == artifact.digest.value &&
+            stored.artifact.size_bytes == artifact.size_bytes &&
+            stored.request.source_revision_id == request.source_revision_id &&
+            stored.request.binding_id == request.binding_id &&
+            stored.request.role == request.role &&
+            stored.request.retention == request.retention &&
+            stored.request.media_type == request.media_type &&
+            stored.request.original_name == request.original_name &&
+            stored.request.bound_at_ms == request.bound_at_ms;
     }
 
     static ArtifactCatalogRecord record_from(const Artifact& artifact,
@@ -316,7 +363,8 @@ public:
         const auto artifact_payload = artifacts.find(binding.artifact_id.value(), txn);
         if(!artifact_payload) throw std::runtime_error("artifact binding references missing artifact");
         const auto artifact = decode_artifact(*artifact_payload);
-        const auto revision_binding = revisions.find(binding.source_revision_id.value(), txn);
+        const auto revision_binding = revisions.find(
+            revision_key(binding.source_revision_id, binding.id), txn);
         if(!revision_binding || *revision_binding != binding.id.value())
             throw std::runtime_error("artifact source revision index mismatch");
         const auto receipt = receipts.find(binding.id.value(), txn);
@@ -342,15 +390,13 @@ public:
                existing->binding.role != intent.request.role ||
                existing->binding.retention != intent.request.retention ||
                existing->binding.media_type != intent.request.media_type ||
-               existing->binding.original_name != intent.request.original_name)
+               existing->binding.original_name != intent.request.original_name ||
+               existing->binding.bound_at_ms != intent.request.bound_at_ms)
                 throw std::runtime_error("artifact binding identity conflict");
             intents.insert_or_assign(intent.request.binding_id.value(),
                                      encode_intent(Intent{intent.request, intent.artifact, 1U}), txn);
             return;
         }
-        const auto existing_revision = revisions.find(intent.request.source_revision_id.value(), txn);
-        if(existing_revision && *existing_revision != intent.request.binding_id.value())
-            throw std::runtime_error("source revision already has another artifact binding");
         const auto existing_artifact = artifacts.find(intent.artifact.id.value(), txn);
         if(existing_artifact) {
             const auto stored = decode_artifact(*existing_artifact);
@@ -371,7 +417,10 @@ public:
             intent.request.bound_at_ms};
         validate_record(intent.artifact, binding);
         bindings.insert_or_assign(binding.id.value(), encode_binding(binding), txn);
-        revisions.insert_or_assign(binding.source_revision_id.value(), binding.id.value(), txn);
+        revisions.insert_or_assign(
+            revision_key(binding.source_revision_id, binding.id),
+            binding.id.value(),
+            txn);
         intents.insert_or_assign(binding.id.value(),
                                  encode_intent(Intent{intent.request, intent.artifact, 1U}), txn);
     }
@@ -448,6 +497,7 @@ public:
     mdbxc::KeyValueTable<std::string, std::string> intents;
     mdbxc::KeyValueTable<std::string, std::string> receipts;
     FileRawBlobStore cas;
+    std::uint64_t max_full_body_bytes;
     ArtifactCatalogFaultInjector fault_injector;
 };
 
@@ -471,10 +521,13 @@ ArtifactCatalogResult MdbxArtifactCatalog::ingest(
     const Artifact artifact{artifact_id_for_digest(digest), digest,
                             static_cast<std::uint64_t>(request.body.size())};
     Intent intent{request, artifact, 0U};
+    std::optional<Intent> pending_intent;
 
     {
         auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
         const auto existing = m_impl->load_binding(request.binding_id, txn);
+        if(const auto pending = m_impl->intents.find(request.binding_id.value(), txn))
+            pending_intent = decode_intent(*pending);
         txn.commit();
         if(existing) {
             if(existing->artifact.id != artifact.id ||
@@ -482,24 +535,42 @@ ArtifactCatalogResult MdbxArtifactCatalog::ingest(
                existing->binding.role != request.role ||
                existing->binding.retention != request.retention ||
                existing->binding.media_type != request.media_type ||
-               existing->binding.original_name != request.original_name)
+               existing->binding.original_name != request.original_name ||
+               existing->binding.bound_at_ms != request.bound_at_ms)
                 return failure(ArtifactCatalogStatus::Conflict, "artifact binding already points elsewhere");
             const auto probe = m_impl->cas.probe(existing->artifact.id);
-            if(probe.status != RawBlobStatus::Ok || !probe.metadata ||
-               probe.metadata->size_bytes != existing->artifact.size_bytes)
-                return failure(map_raw_status(probe.status),
+            const auto probe_result = probe_status(
+                probe.status, probe.metadata, existing->artifact.size_bytes);
+            if(probe_result != ArtifactCatalogStatus::Ok)
+                return failure(probe_result,
                                "existing artifact binding has no verified Raw CAS body");
-            return ArtifactCatalogResult{ArtifactCatalogStatus::Ok, *existing, {}};
+            auto result = *existing;
+            if(!result.receipt_finalized) {
+                if(!pending_intent || !Impl::same_intent(*pending_intent, request, artifact))
+                    return failure(ArtifactCatalogStatus::Corrupt,
+                                   "catalog binding has an unfinalized receipt without its intent");
+                m_impl->finalize(*pending_intent);
+                result.receipt_finalized = true;
+            }
+            return ArtifactCatalogResult{ArtifactCatalogStatus::Ok, std::move(result), {}};
         }
     }
 
-    m_impl->inject(ArtifactCatalogFaultPoint::BeforeIntent);
-    {
+    if(pending_intent) {
+        if(!Impl::same_intent(*pending_intent, request, artifact))
+            return failure(ArtifactCatalogStatus::Conflict,
+                           "binding id already has a different pending ingest intent");
+        intent = *pending_intent;
+    }
+
+    const bool created_intent = !pending_intent.has_value();
+    if(created_intent) {
+        m_impl->inject(ArtifactCatalogFaultPoint::BeforeIntent);
         auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
         m_impl->intents.insert_or_assign(request.binding_id.value(), encode_intent(intent), txn);
         txn.commit();
+        m_impl->inject(ArtifactCatalogFaultPoint::AfterIntent);
     }
-    m_impl->inject(ArtifactCatalogFaultPoint::AfterIntent);
     m_impl->inject(ArtifactCatalogFaultPoint::BeforeCasPublication);
     const auto stored = m_impl->cas.put(request.body);
     if(stored.status != RawBlobStatus::Ok || !stored.metadata)
@@ -548,25 +619,67 @@ ArtifactCatalogResult MdbxArtifactCatalog::read_binding(
         }
     }
     const auto probe = m_impl->cas.probe(record.artifact.id);
-    if(probe.status != RawBlobStatus::Ok || !probe.metadata ||
-       probe.metadata->size_bytes != record.artifact.size_bytes)
-        return failure(map_raw_status(probe.status),
+    const auto probe_result = probe_status(
+        probe.status, probe.metadata, record.artifact.size_bytes);
+    if(probe_result != ArtifactCatalogStatus::Ok)
+        return failure(probe_result,
                        "catalog binding has no verified Raw CAS body");
     return ArtifactCatalogResult{ArtifactCatalogStatus::Ok, std::move(record), {}};
 }
 
+ArtifactCatalogCollectionResult MdbxArtifactCatalog::read_source_revision_bindings(
+    const SourceRevisionId& source_revision_id) const {
+    if(source_revision_id.empty())
+        return ArtifactCatalogCollectionResult{
+            ArtifactCatalogStatus::InvalidArgument, {}, "empty source revision id"};
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    ArtifactCatalogCollectionResult result;
+    auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+    const auto prefix = revision_prefix(source_revision_id);
+    auto upper = prefix;
+    upper.push_back(static_cast<char>(0xff));
+    m_impl->revisions.for_each_range(
+        prefix,
+        upper,
+        [&](const std::string& key, const std::string& binding_id) {
+            if(key.size() <= prefix.size() || key.compare(0, prefix.size(), prefix) != 0)
+                throw std::runtime_error("artifact revision index key is outside its prefix");
+            const ArtifactBindingId id(binding_id);
+            const auto record = m_impl->load_binding(id, txn);
+            if(!record || record->binding.source_revision_id != source_revision_id)
+                throw std::runtime_error("artifact revision index binding mismatch");
+            result.records.push_back(*record);
+            return true;
+        },
+        txn);
+    txn.commit();
+    for(const auto& record : result.records) {
+        const auto probe = m_impl->cas.probe(record.artifact.id);
+        const auto status = probe_status(
+            probe.status, probe.metadata, record.artifact.size_bytes);
+        if(status != ArtifactCatalogStatus::Ok) {
+            result.records.clear();
+            result.status = status;
+            result.diagnostic = "source revision binding has no verified Raw CAS body";
+            return result;
+        }
+    }
+    result.status = result.records.empty() ? ArtifactCatalogStatus::NotFound
+                                           : ArtifactCatalogStatus::Ok;
+    if(result.records.empty()) result.diagnostic = "source revision was not found";
+    return result;
+}
+
 ArtifactCatalogResult MdbxArtifactCatalog::read_source_revision(
     const SourceRevisionId& source_revision_id) const {
-    if(source_revision_id.empty()) return failure(ArtifactCatalogStatus::InvalidArgument, "empty source revision id");
-    std::optional<std::string> binding;
-    {
-        std::lock_guard<std::mutex> lock(m_impl->mutex);
-        auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-        binding = m_impl->revisions.find(source_revision_id.value(), txn);
-        txn.commit();
-    }
-    if(!binding) return failure(ArtifactCatalogStatus::NotFound, "source revision was not found");
-    return read_binding(ArtifactBindingId(*binding));
+    const auto collection = read_source_revision_bindings(source_revision_id);
+    if(collection.status != ArtifactCatalogStatus::Ok || collection.records.empty())
+        return failure(collection.status, collection.diagnostic);
+    if(collection.records.size() != 1U)
+        return failure(ArtifactCatalogStatus::Conflict,
+                       "source revision has multiple bindings; enumerate them explicitly");
+    return ArtifactCatalogResult{
+        ArtifactCatalogStatus::Ok, collection.records.front(), {}};
 }
 
 ArtifactCatalogReadResult MdbxArtifactCatalog::read_body(
@@ -574,21 +687,46 @@ ArtifactCatalogReadResult MdbxArtifactCatalog::read_body(
     const auto record = read_binding(binding_id);
     if(record.status != ArtifactCatalogStatus::Ok || !record.record)
         return read_failure(record.status, record.diagnostic);
-    const auto limit = m_impl->cas.max_read_range_bytes();
-    if(limit == 0U) return read_failure(ArtifactCatalogStatus::InvalidArgument, "Raw CAS read budget is zero");
+    const auto cas_limit = m_impl->cas.max_read_range_bytes();
+    if(record.record->artifact.size_bytes > m_impl->max_full_body_bytes ||
+       record.record->artifact.size_bytes > cas_limit)
+        return read_failure(ArtifactCatalogStatus::InvalidArgument,
+                            "full-body materialization exceeds the catalog or CAS range budget");
+    if(record.record->artifact.size_bytes >
+       static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))
+        return read_failure(ArtifactCatalogStatus::InvalidArgument,
+                            "full-body materialization exceeds size_t");
     std::string bytes;
     bytes.reserve(static_cast<std::size_t>(record.record->artifact.size_bytes));
-    std::uint64_t offset = 0;
-    while(offset < record.record->artifact.size_bytes) {
-        const auto length = std::min(limit, record.record->artifact.size_bytes - offset);
-        const auto part = m_impl->cas.read_range(record.record->artifact.id, offset, length);
-        if(part.status != RawBlobStatus::Ok)
-            return read_failure(map_raw_status(part.status),
-                                part.diagnostic);
-        bytes.append(part.bytes);
-        offset += length;
-    }
+    const auto part = m_impl->cas.read_range(
+        record.record->artifact.id, 0, record.record->artifact.size_bytes);
+    if(part.status != RawBlobStatus::Ok)
+        return read_failure(map_raw_status(part.status), part.diagnostic);
+    bytes = part.bytes;
     return ArtifactCatalogReadResult{ArtifactCatalogStatus::Ok, std::move(bytes), {}};
+}
+
+ArtifactCatalogReadResult MdbxArtifactCatalog::read_body_range(
+    const ArtifactBindingId& binding_id,
+    std::uint64_t offset,
+    std::uint64_t length) const {
+    const auto record = read_binding(binding_id);
+    if(record.status != ArtifactCatalogStatus::Ok || !record.record)
+        return read_failure(record.status, record.diagnostic);
+    if(offset > record.record->artifact.size_bytes ||
+       length > record.record->artifact.size_bytes - offset)
+        return read_failure(ArtifactCatalogStatus::InvalidArgument,
+                            "artifact body range is outside the catalog body");
+    if(length > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))
+        return read_failure(ArtifactCatalogStatus::InvalidArgument,
+                            "artifact body range exceeds size_t");
+    const auto part = m_impl->cas.read_range(record.record->artifact.id, offset, length);
+    if(part.status != RawBlobStatus::Ok)
+        return read_failure(map_raw_status(part.status), part.diagnostic);
+    if(part.bytes.size() != static_cast<std::size_t>(length))
+        return read_failure(ArtifactCatalogStatus::Corrupt,
+                            "Raw CAS range returned an unexpected size");
+    return ArtifactCatalogReadResult{ArtifactCatalogStatus::Ok, part.bytes, {}};
 }
 
 void MdbxArtifactCatalog::recover() {
