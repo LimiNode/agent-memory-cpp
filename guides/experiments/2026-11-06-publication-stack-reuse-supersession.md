@@ -8,7 +8,9 @@ historical coordinator API a production dependency.
 
 The audit covers the coordinator sequence `#544 -> #549 -> #550 -> #551 ->
 #552 -> #553 -> #554`, plus the separate legacy-writer gate in `#555`. It was
-performed against `main@d99b1158bb9d7f959a2bb31c4b631d523290d1c` and compares
+performed against `main@4e79a6a4acc9fe4c7762a35b9812b7d6bcf51fe3` (including
+#579 typed revision-bound retrieval, #582 release-profile and #583 artifact
+identity contracts) and compares
 the historical files with the current B3 publication substrate, the typed
 revision-bound retrieval slice (`#579`), the first-agent snapshot admission
 work, and the planned ArtifactCatalog/File CAS and ResourceImporter recovery
