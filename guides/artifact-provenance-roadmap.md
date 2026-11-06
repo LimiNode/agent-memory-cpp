@@ -648,6 +648,7 @@ primary model/repository documentation instead.
 
 | Capability | Status | Boundary |
 |---|---|---|
+| Artifact identity/retention value types | Contract + domain tests | `src/agent_memory/domain/Artifact.hpp` validates typed ids, SHA-256 digest identity and body-state transition rules; no durable catalog or blob store is implied. |
 | `Artifact`/`Representation`/`ExtractionReport`/typed locators | Contract only | Owned here; existing catalog and evidence records remain the source of truth. |
 | Provider/recipe/admission boundary | Contract | This subsection; exact public provider ABI is deferred. |
 | Concrete OCR, parser, VLM and region-fallback adapters | Research candidate | External or optional adapters; no core runtime dependency is implied. |
