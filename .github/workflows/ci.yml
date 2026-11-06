@@ -501,6 +501,14 @@ jobs:
       - name: Init flat MDBX submodules
         run: git submodule update --init external/libmdbx external/mdbx-containers
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install research evaluator dependencies
+        run: python -m pip install -r tools/requirements-tools.txt
+
       - name: Configure
         run: >
           cmake -S . -B build-lexical-quality
@@ -510,6 +518,7 @@ jobs:
           -DAGENT_MEMORY_BUILD_TESTS=ON
           -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
           -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build executable quality runner
         run: >
