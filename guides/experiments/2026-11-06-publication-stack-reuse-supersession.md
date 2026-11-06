@@ -47,7 +47,7 @@ write transaction or a File CAS publication protocol.
 | #552 | `REUSE SELECTIVELY` | Projection/lexical evidence is useful, but separate callbacks must not publish or advance a frontier independently. |
 | #553 | `REQUIRES REDESIGN` | Pinned-reader shape is useful, while the historical proof is insufficient for a production snapshot guarantee. |
 | #554 | `RESEARCH-ONLY` | Corrective negative cases and audit terminology are valuable evidence; the implementation remains tied to superseded historical participants. |
-| #555 | `REUSE AS-IS AFTER RESTACK` | Keep the activation-gate document as an operational prerequisite, restacked and updated with the final writer epoch/CAS receipts. |
+| #555 | `REUSE SELECTIVELY — UPDATE AND REVALIDATE` | Keep the operational gate, but update it after the writer epoch and CAS publication contract are fixed; its historical wording is not sufficient as-is. |
 
 ## Release decision and coordination
 
@@ -57,6 +57,23 @@ content and ArtifactCatalog/File CAS contracts; (2) define one writer epoch and
 transaction owner; (3) implement a minimal adapter with crash-recovery and
 mixed-writer counterexamples; (4) compare reads against B3 admission and the
 #535 oracle; and only then (5) consider a production writer.
+
+The first release may choose a controlled single-writer deployment. In that
+profile, the required guarantee is a durable writer epoch, an admission receipt
+and an explicit startup/quiescence procedure for all other writers. It is not a
+claim that arbitrary legacy writers are automatically safe. If arbitrary
+writers must remain supported, legacy-writer fencing and mixed-writer negative
+tests are P0 release gates.
+
+Current B3 admission is a post-publication validation/current-read contract;
+it is not a cross-family atomic publication guarantee. A future adapter must
+keep File CAS writes outside the MDBX transaction, record a recoverable CAS
+publication state, and atomically publish only the MDBX reference/frontier
+after the CAS object is durable. The historical rollback/fault fixtures that
+are reusable are the missing-row, stale-generation, digest-mismatch,
+partial-update and rollback counterexamples. Their assertions should be
+ported to the new typed contracts, without copying historical participant
+classes or serializers.
 
 This matrix must be reviewed with the first agent before any historical code is
 restacked or selected. In particular, the coordinator must not own File CAS

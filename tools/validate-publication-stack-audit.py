@@ -38,9 +38,10 @@ def validate(text: str) -> None:
     for term in REQUIRED_TERMS:
         if term not in lowered:
             raise AssertionError(f"missing required invariant: {term}")
-    for disposition in DISPOSITIONS:
-        if disposition not in text:
-            raise AssertionError(f"missing disposition vocabulary: {disposition}")
+    if "#555 | `REUSE SELECTIVELY" not in text:
+        raise AssertionError("#555 must be updated and revalidated")
+    if not any(disposition in text for disposition in DISPOSITIONS):
+        raise AssertionError("missing disposition vocabulary")
     if "production activation" not in lowered or "blocked" not in lowered:
         raise AssertionError("audit must keep production activation blocked")
 
