@@ -2359,6 +2359,13 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --output ${CMAKE_BINARY_DIR}/lexical-product-path-smoke-workload.json
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+        add_test(
+            NAME agent_memory_lexical_quality_evaluation_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/lexical-research/evaluate_lexical_quality.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
     endif() # AGENT_MEMORY_BUILD_RESEARCH_TESTS
     if(AGENT_MEMORY_BUILD_BENCHMARKS AND AGENT_MEMORY_ENABLE_MDBX)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)

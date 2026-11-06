@@ -488,6 +488,49 @@ jobs:
           python tools/validate-segmented-lexical-benchmark.py \
             --binary build-mdbx-benchmark/bin/agent_memory_segmented_lexical_benchmark
 
+  lexical-quality-baseline:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: Executable lexical quality baseline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Init flat MDBX submodules
+        run: git submodule update --init external/libmdbx external/mdbx-containers
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-lexical-quality
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_ENABLE_MDBX=ON
+          -DAGENT_MEMORY_MDBX_DEPS_MODE=BUNDLED
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+
+      - name: Build executable quality runner
+        run: >
+          cmake --build build-lexical-quality --config Release --target
+          agent_memory_mdbx_lexical_quality_baseline_test
+
+      - name: Run executable quality baseline and evaluator
+        run: >
+          ctest --test-dir build-lexical-quality --build-config Release
+          --output-on-failure -R
+          "agent_memory_(lexical_quality_evaluation_self_test|lexical_product_path_workload_self_test|mdbx_lexical_quality_baseline_test|lexical_quality_evaluation)$"
+
+      - name: Upload executable lexical quality receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: executable-lexical-quality-baseline
+          path: |
+            build-lexical-quality/tests/lexical-quality-baseline-receipt.json
+            build-lexical-quality/tests/lexical-quality-baseline-summary.json
+          if-no-files-found: error
+
   native-mih-benchmark:
     if: needs.changes.outputs.research == 'true'
     needs: changes
