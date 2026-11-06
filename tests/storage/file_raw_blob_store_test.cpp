@@ -125,7 +125,12 @@ int main() {
     const std::string body = "normalized bytes\nsecond line\n";
     const auto stored = store.put(body);
     if(stored.status != RawBlobStatus::Ok || !stored.metadata) {
+        std::error_code root_error;
+        const auto canonical_root = std::filesystem::weakly_canonical(root, root_error);
         std::cerr << "raw CAS put diagnostic: root=" << root.string()
+                  << " absolute=" << std::filesystem::absolute(root).string()
+                  << " canonical=" << canonical_root.string()
+                  << " canonical_error=" << root_error.message()
                   << " status=" << static_cast<int>(stored.status)
                   << " detail=" << stored.diagnostic << '\n';
     }
