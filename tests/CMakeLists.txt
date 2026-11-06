@@ -1100,4 +1100,16 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             COMMAND agent_memory_mdbx_lexical_quality_scope_conformance_test
         )
     endif()
+    add_executable(agent_memory_mdbx_unit_projections_coownership_test
+        infrastructure/mdbx/mdbx_unit_projections_coownership_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_unit_projections_coownership_test
+        PRIVATE
+            agent_memory::agent_memory
+            mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_unit_projections_coownership_test
+        COMMAND agent_memory_mdbx_unit_projections_coownership_test
+    )
 endif()
