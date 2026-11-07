@@ -525,7 +525,6 @@ jobs:
           cmake --build build-lexical-quality --config Release --target
           agent_memory_mdbx_lexical_quality_baseline_test
           agent_memory_mdbx_lexical_quality_freshness_conformance_test
-          agent_memory_mdbx_lexical_quality_freshness_conformance_test
 
       - name: Run executable quality baseline and evaluator
         env:
