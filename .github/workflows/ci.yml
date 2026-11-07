@@ -432,6 +432,62 @@ jobs:
           python tools/validate-segmented-lexical-benchmark.py \
             --binary build-mdbx-benchmark/bin/agent_memory_segmented_lexical_benchmark
 
+  lexical-quality-baseline:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: Executable lexical quality baseline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Init flat MDBX submodules
+        run: git submodule update --init external/libmdbx external/mdbx-containers
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install research evaluator dependencies
+        run: python -m pip install -r tools/requirements-tools.txt
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-lexical-quality
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_ENABLE_MDBX=ON
+          -DAGENT_MEMORY_MDBX_DEPS_MODE=BUNDLED
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
+
+      - name: Build executable quality runner
+        run: >
+          cmake --build build-lexical-quality --config Release --target
+          agent_memory_mdbx_lexical_quality_baseline_test
+          agent_memory_mdbx_lexical_quality_freshness_conformance_test
+          agent_memory_mdbx_lexical_quality_scope_conformance_test
+
+      - name: Run executable quality baseline and evaluator
+        env:
+          AGENT_MEMORY_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >
+          ctest --test-dir build-lexical-quality --build-config Release
+          --output-on-failure -R
+          "agent_memory_(lexical_quality_evaluation_self_test|lexical_product_path_workload_self_test|mdbx_lexical_quality_baseline_test|lexical_quality_evaluation|mdbx_lexical_quality_freshness_conformance_test|mdbx_lexical_quality_scope_conformance_test)$"
+
+      - name: Upload executable lexical quality receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: executable-lexical-quality-baseline
+          path: |
+            build-lexical-quality/tests/lexical-quality-baseline-receipt.json
+            build-lexical-quality/tests/lexical-quality-baseline-summary.json
+          if-no-files-found: error
+
   native-mih-benchmark:
     if: needs.changes.outputs.research == 'true'
     needs: changes
