@@ -26,10 +26,28 @@ AM_ID_COMPARE(EvidenceAnchorId)
 bool is_valid_span(const Utf8ByteSpan& span, std::uint64_t body_size) noexcept {
     return span.offset <= body_size && span.length <= body_size - span.offset;
 }
+
+bool is_canonical_artifact_id(const ArtifactId& id) noexcept {
+    const auto& value = id.value();
+    constexpr std::string_view prefix = "sha256:";
+    if(value.size() != prefix.size() + 64U ||
+       value.compare(0, prefix.size(), prefix) != 0) {
+        return false;
+    }
+    for(std::size_t i = prefix.size(); i < value.size(); ++i) {
+        const auto c = static_cast<unsigned char>(value[i]);
+        if(!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool is_valid_representation(const Representation& value) noexcept {
     if(value.id.empty() || value.source_revision_id.empty() || value.processor_id.empty() || value.processor_version.empty()) return false;
     if(value.retention == RepresentationRetention::ExternalReferenceOnly && value.output_artifact_id) return false;
-    if(value.retention == RepresentationRetention::Retained && !value.output_artifact_id) return false;
+    if(value.retention == RepresentationRetention::Retained &&
+       (!value.output_artifact_id || !is_canonical_artifact_id(*value.output_artifact_id))) return false;
     return true;
 }
 bool is_valid_table(const TableRepresentation& value) {
@@ -40,8 +58,10 @@ bool is_valid_table(const TableRepresentation& value) {
         if(column.id.empty() || !columns.insert(column.id).second) return false;
     }
     std::unordered_set<std::string> rows;
+    std::unordered_set<std::uint64_t> ordinals;
     for(const auto& row : value.rows) {
-        if(row.row_key.empty() || !rows.insert(row.row_key).second) return false;
+        if(row.row_key.empty() || !rows.insert(row.row_key).second ||
+           !ordinals.insert(row.ordinal).second) return false;
         std::unordered_set<std::string> cells;
         for(const auto& cell : row.cells) {
             if(cell.column_id.empty() || !columns.count(cell.column_id) ||
@@ -53,7 +73,7 @@ bool is_valid_table(const TableRepresentation& value) {
 bool is_valid_image(const ImageRepresentation& value) noexcept {
     return is_valid_representation(value.representation) &&
         value.representation.kind == RepresentationKind::Image &&
-        !value.binding_id.empty() && (value.caption || value.alt_text || value.placement_span);
+        !value.binding_id.empty();
 }
 bool is_valid_transcript(const TranscriptRepresentation& value) noexcept {
     if(!is_valid_representation(value.representation) ||
@@ -82,13 +102,24 @@ bool is_valid_locator(const TypedLocator& value) noexcept {
 }
 
 namespace {
-void put(std::string& out, std::string_view text) { out += std::to_string(text.size()); out.push_back(':'); out.append(text.data(), text.size()); }
+void ensure_capacity(const std::string& out, std::size_t additional) {
+    if(additional > kMaxTypedLocatorBytes - out.size())
+        throw std::length_error("typed locator exceeds size budget");
+}
+void put(std::string& out, std::string_view text) {
+    const auto length = std::to_string(text.size());
+    ensure_capacity(out, length.size() + 1U + text.size());
+    out += length; out.push_back(':'); out.append(text.data(), text.size());
+}
 std::string get(std::string_view in, std::size_t& p) {
     if(p >= in.size()) throw std::runtime_error("locator string is truncated"); std::size_t n = 0; bool digit = false;
     while(p < in.size() && in[p] != ':') { const auto c = static_cast<unsigned char>(in[p++]); if(c < '0' || c > '9') throw std::runtime_error("locator length is invalid"); digit = true; const auto d = static_cast<std::size_t>(c - '0'); if(n > (std::numeric_limits<std::size_t>::max() - d) / 10U) throw std::runtime_error("locator length overflows"); n = n * 10U + d; }
     if(!digit || p >= in.size()) throw std::runtime_error("locator length is missing"); ++p; if(n > in.size() - p) throw std::runtime_error("locator string is truncated"); auto result = std::string(in.substr(p, n)); p += n; return result;
 }
-void put_u64(std::string& out, std::uint64_t value) { for(int s = 56; s >= 0; s -= 8) out.push_back(static_cast<char>((value >> s) & 0xffU)); }
+void put_u64(std::string& out, std::uint64_t value) {
+    ensure_capacity(out, 8U);
+    for(int s = 56; s >= 0; s -= 8) out.push_back(static_cast<char>((value >> s) & 0xffU));
+}
 std::uint64_t get_u64(std::string_view in, std::size_t& p) { if(p > in.size() || in.size() - p < 8U) throw std::runtime_error("locator integer is truncated"); std::uint64_t v = 0; for(int i=0;i<8;++i) v = (v << 8U) | static_cast<unsigned char>(in[p++]); return v; }
 void put_span(std::string& out, Utf8ByteSpan span) { put_u64(out, span.offset); put_u64(out, span.length); }
 Utf8ByteSpan get_span(std::string_view in, std::size_t& p) { return {get_u64(in,p), get_u64(in,p)}; }
@@ -105,7 +136,10 @@ std::string serialize_typed_locator(const TypedLocator& value) {
         else if constexpr(std::is_same_v<T, ImageLocator>) { out.push_back('I'); put(out, locator.binding_id.value()); put_opt(out, locator.caption); put_opt(out, locator.alt_text); put_u64(out, locator.placement_span ? 1U : 0U); if(locator.placement_span) put_span(out, *locator.placement_span); }
         else if constexpr(std::is_same_v<T, TranscriptLocator>) { out.push_back('R'); put(out, locator.source_revision_id.value()); put_u64(out, locator.start_ms); put_u64(out, locator.end_ms); put_opt(out, locator.speaker_id); }
         else { out.push_back('V'); put(out, locator.external_video_id); put(out, locator.url); put_u64(out, locator.start_ms); put_u64(out, locator.end_ms); }
-    }, value); return out;
+    }, value);
+    if(out.size() > kMaxTypedLocatorBytes)
+        throw std::length_error("typed locator exceeds size budget");
+    return out;
 }
 
 TypedLocator deserialize_typed_locator(std::string_view bytes) {
