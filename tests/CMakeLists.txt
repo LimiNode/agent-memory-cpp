@@ -485,6 +485,16 @@ target_link_libraries(agent_memory_resource_indexer_test
 
 add_test(NAME agent_memory_resource_indexer_test COMMAND agent_memory_resource_indexer_test)
 
+add_executable(agent_memory_typed_representation_locator_test
+    domain/typed_representation_locator_test.cpp
+)
+target_link_libraries(agent_memory_typed_representation_locator_test
+    PRIVATE agent_memory::agent_memory
+)
+add_test(NAME agent_memory_typed_representation_locator_test
+    COMMAND agent_memory_typed_representation_locator_test
+)
+
 add_executable(agent_memory_tokenizer_contracts_test
     lexical/tokenizer_contracts_test.cpp
 )
