@@ -84,64 +84,54 @@ int main() {
     expect(published.status == ArtifactCatalogStatus::Ok && published.record,
            "artifact catalog ingest failed");
 
-    MdbxVerifiedArtifactHydration hydration(catalog);
-    VerifiedHydrationRequest read;
+    MdbxArtifactMaterializer hydration(catalog);
+    VerifiedArtifactMaterializationRequest read;
     read.source_revision_id = request.source_revision_id;
     read.binding_id = request.binding_id;
-    read.expected_scope = "workspace-a";
-    read.binding_scope = "workspace-a";
-    read.current_source_revision_id = request.source_revision_id;
     read.expected_artifact_id = published.record->artifact.id;
     read.expected_digest = published.record->artifact.digest;
     read.offset = 2;
     read.length = 10;
-    const auto hydrated = hydration.hydrate(read);
-    expect(hydrated.status == VerifiedHydrationStatus::Hydrated,
+    const auto hydrated = hydration.materialize(read);
+    expect(hydrated.status == VerifiedArtifactMaterializationStatus::Materialized,
            "exact source hydration did not succeed");
     expect(hydrated.bytes == request.body.substr(2, 10),
            "hydration returned the wrong byte range");
     expect(hydrated.source_revision_id == request.source_revision_id,
            "hydration lost source revision identity");
 
-    auto wrong_scope = read;
-    wrong_scope.binding_scope = "workspace-b";
-    const auto wrong_scope_result = hydration.hydrate(wrong_scope);
-    expect(wrong_scope_result.status == VerifiedHydrationStatus::WrongScope &&
-               wrong_scope_result.bytes.empty(),
-           "wrong-scope hydration exposed bytes");
-
     auto stale = read;
-    stale.current_source_revision_id = SourceRevisionId("article@2");
-    const auto stale_result = hydration.hydrate(stale);
-    expect(stale_result.status == VerifiedHydrationStatus::Stale && stale_result.bytes.empty(),
-           "stale hydration exposed bytes");
+    stale.source_revision_id = SourceRevisionId("article@2");
+    const auto stale_result = hydration.materialize(stale);
+    expect(stale_result.status == VerifiedArtifactMaterializationStatus::Stale && stale_result.bytes.empty(),
+           "binding revision mismatch exposed bytes");
 
     auto forged_digest = read;
     forged_digest.expected_digest->value[0] ^= 0x01U;
-    const auto forged_result = hydration.hydrate(forged_digest);
-    expect(forged_result.status == VerifiedHydrationStatus::Corrupt && forged_result.bytes.empty(),
+    const auto forged_result = hydration.materialize(forged_digest);
+    expect(forged_result.status == VerifiedArtifactMaterializationStatus::Corrupt && forged_result.bytes.empty(),
            "forged digest was accepted");
 
     auto forged_artifact = read;
     forged_artifact.expected_artifact_id =
         ArtifactId("sha256:" + std::string(64, '0'));
-    const auto forged_artifact_result = hydration.hydrate(forged_artifact);
-    expect(forged_artifact_result.status == VerifiedHydrationStatus::Corrupt &&
+    const auto forged_artifact_result = hydration.materialize(forged_artifact);
+    expect(forged_artifact_result.status == VerifiedArtifactMaterializationStatus::Corrupt &&
                forged_artifact_result.bytes.empty(),
            "forged artifact identity was accepted");
 
     auto out_of_range = read;
     out_of_range.offset = published.record->artifact.size_bytes;
     out_of_range.length = 1;
-    const auto out_of_range_result = hydration.hydrate(out_of_range);
-    expect(out_of_range_result.status == VerifiedHydrationStatus::InvalidArgument &&
+    const auto out_of_range_result = hydration.materialize(out_of_range);
+    expect(out_of_range_result.status == VerifiedArtifactMaterializationStatus::InvalidArgument &&
                out_of_range_result.bytes.empty(),
            "out-of-range hydration was accepted");
 
     auto missing = read;
     missing.binding_id = ArtifactBindingId("missing-binding");
-    const auto missing_result = hydration.hydrate(missing);
-    expect(missing_result.status == VerifiedHydrationStatus::Missing && missing_result.bytes.empty(),
+    const auto missing_result = hydration.materialize(missing);
+    expect(missing_result.status == VerifiedArtifactMaterializationStatus::Missing && missing_result.bytes.empty(),
            "missing binding did not fail closed");
 
     TempTree summary_tree;
@@ -162,26 +152,26 @@ int main() {
         const auto record = pending.read_binding(ArtifactBindingId("article-body@1"));
         expect(record.status == ArtifactCatalogStatus::Ok && record.record,
                "pending receipt fixture is not readable");
-        MdbxVerifiedArtifactHydration pending_hydration(pending);
+        MdbxArtifactMaterializer pending_hydration(pending);
         auto summary_read = read;
         summary_read.expected_artifact_id = record.record->artifact.id;
         summary_read.expected_digest = record.record->artifact.digest;
-        const auto summary = pending_hydration.hydrate(summary_read);
-        expect(summary.status == VerifiedHydrationStatus::SummaryOnly &&
+        const auto summary = pending_hydration.materialize(summary_read);
+        expect(summary.status == VerifiedArtifactMaterializationStatus::Missing &&
                    summary.bytes.empty(),
-               "unfinalized body was not reported as summary-only");
+               "unfinalized body was not reported as unavailable");
     }
     {
         MdbxArtifactCatalog recovered(options(summary_tree));
         const auto record = recovered.read_binding(ArtifactBindingId("article-body@1"));
         expect(record.status == ArtifactCatalogStatus::Ok && record.record,
                "recovery lost the pending binding");
-        MdbxVerifiedArtifactHydration recovered_hydration(recovered);
+        MdbxArtifactMaterializer recovered_hydration(recovered);
         auto recovered_read = read;
         recovered_read.expected_artifact_id = record.record->artifact.id;
         recovered_read.expected_digest = record.record->artifact.digest;
-        const auto recovered_result = recovered_hydration.hydrate(recovered_read);
-        expect(recovered_result.status == VerifiedHydrationStatus::Hydrated &&
+        const auto recovered_result = recovered_hydration.materialize(recovered_read);
+        expect(recovered_result.status == VerifiedArtifactMaterializationStatus::Materialized &&
                    recovered_result.bytes == std::string("normalized source bytes\n").substr(2, 10),
                "recovery did not restore verified hydration");
     }
@@ -196,12 +186,12 @@ int main() {
         std::filesystem::remove(
             cas_path(missing_catalog.raw_cas(), published_missing.record->artifact.id), error);
         expect(!error, "failed to remove CAS body");
-        MdbxVerifiedArtifactHydration missing_hydration(missing_catalog);
+        MdbxArtifactMaterializer missing_hydration(missing_catalog);
         auto missing_body_read = read;
         missing_body_read.expected_artifact_id = published_missing.record->artifact.id;
         missing_body_read.expected_digest = published_missing.record->artifact.digest;
-        const auto missing_body_result = missing_hydration.hydrate(missing_body_read);
-        expect(missing_body_result.status == VerifiedHydrationStatus::Missing &&
+        const auto missing_body_result = missing_hydration.materialize(missing_body_read);
+        expect(missing_body_result.status == VerifiedArtifactMaterializationStatus::Missing &&
                    missing_body_result.bytes.empty(),
                "missing CAS body did not fail closed");
     }
@@ -217,12 +207,12 @@ int main() {
             std::ios::binary | std::ios::trunc);
         body << "tampered";
         expect(body.good(), "failed to corrupt CAS body");
-        MdbxVerifiedArtifactHydration corrupt_hydration(corrupt_catalog);
+        MdbxArtifactMaterializer corrupt_hydration(corrupt_catalog);
         auto corrupt_read = read;
         corrupt_read.expected_artifact_id = published_corrupt.record->artifact.id;
         corrupt_read.expected_digest = published_corrupt.record->artifact.digest;
-        const auto corrupt_result = corrupt_hydration.hydrate(corrupt_read);
-        expect(corrupt_result.status == VerifiedHydrationStatus::Corrupt &&
+        const auto corrupt_result = corrupt_hydration.materialize(corrupt_read);
+        expect(corrupt_result.status == VerifiedArtifactMaterializationStatus::Corrupt &&
                    corrupt_result.bytes.empty(),
                "corrupt CAS body was accepted");
     }
