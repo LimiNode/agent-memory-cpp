@@ -1,6 +1,7 @@
 #include <agent_memory/infrastructure/mdbx/MdbxPersistentLexicalCandidateAdapter.hpp>
 #include <agent_memory/lexical/FlatLexicalIndex.hpp>
 #include <agent_memory/lexical/StandardTokenizer.hpp>
+#include <agent_memory/retrieval/OriginalProjection.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 
@@ -8,6 +9,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <map>
 #include <stdexcept>
 #include <vector>
 
@@ -36,7 +38,8 @@ FlatLexicalUnitInput unit(
     return FlatLexicalUnitInput{
         scope, KnowledgeUnitId{id}, ProjectionKind::Original,
         ResourceId{resource}, revision, revision,
-        ProjectionVersionRef{revision, revision, 1, "recipe-v1"},
+        ProjectionVersionRef{revision, revision, 1,
+                             "m0.original.primary_text.v1"},
         std::move(tokens)
     };
 }
@@ -56,6 +59,148 @@ MdbxPersistentLexicalIndexOptions options(
 
 void require(bool value, const char* message) {
     if(!value) throw std::runtime_error(message);
+}
+
+class TestUnits final : public IKnowledgeUnitStore {
+public:
+    void upsert(KnowledgeUnitEnvelope value) override {
+        values[value.id.value()] = std::move(value);
+    }
+    bool erase(const KnowledgeUnitId& id) override {
+        return values.erase(id.value()) != 0;
+    }
+    std::vector<KnowledgeUnitId> scan_by_scope_and_kind(
+        const ScopeId& scope, KnowledgeUnitKind kind
+    ) const override {
+        std::vector<KnowledgeUnitId> result;
+        for(const auto& entry : values) {
+            if(entry.second.scope_id == scope && entry.second.kind == kind) {
+                result.emplace_back(entry.first);
+            }
+        }
+        return result;
+    }
+    std::vector<KnowledgeUnitId> scan_by_scope(
+        const ScopeId& scope
+    ) const override {
+        std::vector<KnowledgeUnitId> result;
+        for(const auto& entry : values) {
+            if(entry.second.scope_id == scope) result.emplace_back(entry.first);
+        }
+        return result;
+    }
+    KnowledgeUnitEnvelope create_or_get_unit(
+        KnowledgeUnitCreateRequest
+    ) override { throw std::logic_error("unused"); }
+    std::optional<KnowledgeUnitEnvelope> find(
+        const KnowledgeUnitId& id
+    ) const override {
+        const auto found = values.find(id.value());
+        return found == values.end()
+            ? std::nullopt : std::optional<KnowledgeUnitEnvelope>{found->second};
+    }
+    std::optional<KnowledgeUnitId> find_by_content_key(
+        const KnowledgeUnitKey&
+    ) const override { return std::nullopt; }
+    KnowledgeUnitEnvelope update_mutable_fields(
+        const KnowledgeUnitId&, KnowledgeUnitMutablePatch
+    ) override { throw std::logic_error("unused"); }
+private:
+    std::map<std::uint64_t, KnowledgeUnitEnvelope> values;
+};
+
+class TestProjections final : public IProjectionStore {
+public:
+    void put(SearchProjection value) override {
+        values.push_back(std::move(value));
+    }
+    std::vector<SearchProjection> list(
+        const ScopeId& scope,
+        const KnowledgeUnitId& id,
+        std::optional<ProjectionKind> kind
+    ) const override {
+        std::vector<SearchProjection> result;
+        for(const auto& value : values) {
+            if(value.scope_id == scope && value.unit_id == id &&
+               (!kind || value.kind == *kind)) result.push_back(value);
+        }
+        return result;
+    }
+    bool delete_revision(
+        const ScopeId&, const KnowledgeUnitId&, ProjectionKind, std::uint64_t
+    ) override { return false; }
+private:
+    std::vector<SearchProjection> values;
+};
+
+class TestManifests final : public IResourceManifestStorage {
+public:
+    void upsert_manifest(ResourceManifest value) override {
+        values[value.revision.resource_id.value()] = std::move(value);
+    }
+    std::optional<ResourceManifest> find_manifest(
+        const ResourceId& id
+    ) const override {
+        const auto found = values.find(id.value());
+        return found == values.end()
+            ? std::nullopt : std::optional<ResourceManifest>{found->second};
+    }
+    bool erase_manifest(const ResourceId& id) override {
+        return values.erase(id.value()) != 0;
+    }
+private:
+    std::map<std::string, ResourceManifest> values;
+};
+
+SourceRefSummary source_ref(const ResourceId& resource) {
+    SourceRefSummary value;
+    value.resource_id = resource;
+    value.uri = "memory://" + resource.value();
+    value.resource_revision = ResourceRevisionRef{resource, 1, ResourceBodyDigest{}};
+    value.preview = "shared evidence";
+    value.quote_hash = compute_quote_hash(value.preview);
+    value.excerpt = TextRange{0, value.preview.size()};
+    value.confidence = 1.0;
+    return value;
+}
+
+KnowledgeUnitEnvelope admitted_unit(
+    const ScopeId& scope,
+    const KnowledgeUnitId& id,
+    const ResourceId& resource,
+    const std::string& text
+) {
+    KnowledgeUnitEnvelope value;
+    value.id = id;
+    value.kind = KnowledgeUnitKind::Chunk;
+    value.scope_id = scope;
+    value.primary_text = text;
+    value.display_text = text;
+    value.sources = {source_ref(resource)};
+    value.revision = 1;
+    value.content_hash_recipe_version = 2;
+    return value;
+}
+
+ResourceManifest admitted_manifest(
+    const ResourceId& resource,
+    const KnowledgeUnitId& id,
+    std::uint64_t generation = 1
+) {
+    ResourceManifest value;
+    value.revision.resource_id = resource;
+    value.revision.generation = generation;
+    value.revision.body_digest = ResourceBodyDigest{};
+    value.records = {
+        {DerivedRecordKind::Custom, {},
+         "knowledge_unit:" + std::to_string(id.value()), 0},
+        {DerivedRecordKind::Custom, {},
+         "original_projection:" + std::to_string(id.value()), 0}
+    };
+    value.schema = ResourceManifestSchema{
+        "agent_memory.m0_resource_importer.raw_chunks_original@agent_memory", 1};
+    value.payload_version = ResourceManifestPayloadVersion::V6;
+    return value;
 }
 
 } // namespace
@@ -109,10 +254,90 @@ int main() {
             require(baseline_ids == persistent_ids,
                     "persistent candidates changed baseline membership");
 
+            TestUnits units;
+            TestProjections projections;
+            TestManifests manifests;
+            const auto admitted_first = admitted_unit(
+                scope, KnowledgeUnitId{1}, ResourceId{"resource-a"},
+                "alpha shared evidence");
+            const auto admitted_second = admitted_unit(
+                scope, KnowledgeUnitId{2}, ResourceId{"resource-b"},
+                "beta shared evidence");
+            units.upsert(admitted_first);
+            units.upsert(admitted_second);
+            projections.put(make_original_projection(
+                admitted_first, admitted_first.revision));
+            projections.put(make_original_projection(
+                admitted_second, admitted_second.revision));
+            manifests.upsert_manifest(admitted_manifest(
+                ResourceId{"resource-a"}, admitted_first.id));
+            manifests.upsert_manifest(admitted_manifest(
+                ResourceId{"resource-b"}, admitted_second.id));
+            const auto current = admit_persistent_lexical_candidates(
+                scope, initial, units, projections, manifests, tokenizer);
+            require(current.completeness == RevisionBoundCompleteness::Complete &&
+                        current.admitted_count == 2,
+                    "current persistent candidates were not admitted");
+            for(const auto& result : current.results) {
+                require(result.freshness == RevisionBoundFreshness::Current &&
+                            result.materialization == RevisionBoundMaterialization::SummaryOnly &&
+                            !result.text.empty(),
+                        "current admission must retain canonical text");
+            }
+            MdbxPersistentLexicalCandidateAdapter posting_bounded{
+                index, tokenizer, PersistentLexicalCandidateOptions{8, 1, 4}};
+            const auto posting_truncated = posting_bounded.generate(query);
+            require(posting_truncated.completeness ==
+                        PersistentLexicalCandidateCompleteness::Truncated,
+                    "posting budget did not report truncation");
+
+            auto forged_scope = initial;
+            forged_scope.candidates.front().scope_id = ScopeId{"other-scope"};
+            const auto scope_rejected = admit_persistent_lexical_candidates(
+                scope, forged_scope, units, projections, manifests, tokenizer);
+            require(scope_rejected.stale_count == 1 &&
+                        scope_rejected.results.front().text.empty(),
+                    "forged candidate scope was not rejected");
+
+            auto forged_projection = initial;
+            forged_projection.candidates.front().projection_version.derivation_generation = 9;
+            const auto projection_rejected = admit_persistent_lexical_candidates(
+                scope, forged_projection, units, projections, manifests, tokenizer);
+            require(projection_rejected.stale_count == 1 &&
+                        projection_rejected.results.front().text.empty(),
+                    "forged projection version was not rejected");
+
+            auto stale_source = initial;
+            manifests.upsert_manifest(admitted_manifest(
+                ResourceId{"resource-b"}, admitted_second.id, 2));
+            const auto stale_rejected = admit_persistent_lexical_candidates(
+                scope, stale_source, units, projections, manifests, tokenizer);
+            require(stale_rejected.stale_count == 1 &&
+                        stale_rejected.results.front().text.empty(),
+                    "source-generation drift was not rejected");
+            manifests.upsert_manifest(admitted_manifest(
+                ResourceId{"resource-b"}, admitted_second.id));
+
+            auto truncated = initial;
+            truncated.completeness = PersistentLexicalCandidateCompleteness::Truncated;
+            const auto truncated_result = admit_persistent_lexical_candidates(
+                scope, truncated, units, projections, manifests, tokenizer);
+            require(truncated_result.completeness == RevisionBoundCompleteness::BudgetExceeded,
+                    "truncated candidate response was not marked incomplete");
+            PersistentLexicalCandidateResponse unsupported;
+            unsupported.completeness = PersistentLexicalCandidateCompleteness::UnsupportedQuery;
+            unsupported.diagnostic = "metadata filters are unsupported";
+            const auto unsupported_result = admit_persistent_lexical_candidates(
+                scope, unsupported, units, projections, manifests, tokenizer);
+            require(unsupported_result.completeness == RevisionBoundCompleteness::UnsupportedQuery &&
+                        !unsupported_result.diagnostic.empty(),
+                    "unsupported candidate response lost its diagnostic");
+
             index.upsert(unit(scope, 1, 2, "resource-a", {"updated"}),
                          FlatLexicalExpectedState{
                              KnowledgeUnitId{1}, 1, 1,
-                             ProjectionVersionRef{1, 1, 1, "recipe-v1"}
+                             ProjectionVersionRef{1, 1, 1,
+                                                  "m0.original.primary_text.v1"}
                          });
             query.text = "alpha";
             require(adapter.generate(query).candidates.empty(),

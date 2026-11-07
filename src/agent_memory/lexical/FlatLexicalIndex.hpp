@@ -226,6 +226,17 @@ namespace agent_memory {
             const TokenId& token_id
         ) const;
 
+        /// \brief Returns at most the first bounded postings for one token.
+        ///
+        /// Unlike postings(), this helper does not reserve or materialize the
+        /// complete posting list. It is intended for bounded candidate
+        /// consumers; callers must treat a prefix as incomplete unless they
+        /// separately know that the list is exhausted.
+        [[nodiscard]] std::vector<FlatLexicalPosting> postings_prefix(
+            const TokenId& token_id,
+            std::size_t max_postings
+        ) const;
+
         /// \brief Partitions one ordered posting list into bounded segments.
         ///
         /// The returned partitions preserve posting order and collectively
