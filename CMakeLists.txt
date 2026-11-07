@@ -50,6 +50,7 @@ add_library(agent_memory STATIC
     src/agent_memory/facts/Fact.cpp
     src/agent_memory/ingestion/ResourceIndexer.cpp
     src/agent_memory/ingestion/ResourceImporter.cpp
+    src/agent_memory/ingestion/StructuralSegmentSet.cpp
     src/agent_memory/index/AggregateBinarySignature.cpp
     src/agent_memory/index/AsymmetricBinarySignatureScorer.cpp
     src/agent_memory/index/AutoencoderBinaryEncoder.cpp
