@@ -1,6 +1,6 @@
 # Persistent lexical candidate parity (Track C)
 
-Date: 2026-11-07  
+Date: 2026-11-07
 Base: `main` at `cdd552e96fb093b369443d9f883aa0ca94fe61cf`
 
 ## Hypothesis
