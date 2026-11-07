@@ -106,38 +106,54 @@ std::vector<RevisionBoundRetrievalResult> RevisionBoundLexicalRetriever::retriev
 RevisionBoundRetrievalResponse RevisionBoundLexicalRetriever::retrieve_detailed(
     const RetrievalQuery& query
 ) const {
-    RevisionBoundRetrievalResponse response;
     if(!query.metadata_filters.empty()) {
+        RevisionBoundRetrievalResponse response;
         response.completeness = RevisionBoundCompleteness::UnsupportedQuery;
         response.diagnostic =
             "revision-bound lexical retrieval does not support metadata filters in M0";
         return response;
     }
     if(query.limit > m_options.max_candidates) {
+        RevisionBoundRetrievalResponse response;
         response.completeness = RevisionBoundCompleteness::BudgetExceeded;
         response.diagnostic =
             "revision-bound lexical query limit exceeds max_candidates budget";
         return response;
     }
 
-    std::vector<RevisionBoundRetrievalResult> results;
     ProjectionAwareLexicalRetrieval legacy;
     try {
         legacy = m_legacy.retrieve_with_candidates(query);
     } catch(const ProjectionAwareLexicalRetrievalBudgetExceeded& error) {
+        RevisionBoundRetrievalResponse response;
         response.completeness = RevisionBoundCompleteness::BudgetExceeded;
         response.diagnostic = error.what();
         return response;
     }
     legacy.validate_candidate_pairing();
-    response.candidate_count = legacy.candidates.size();
-    results.reserve(legacy.candidates.size());
+    std::vector<float> scores;
+    scores.reserve(legacy.legacy.chunks.size());
+    for(const auto& chunk : legacy.legacy.chunks) scores.push_back(chunk.score);
+    return admit_candidates(legacy.candidates, scores);
+}
+
+RevisionBoundRetrievalResponse RevisionBoundLexicalRetriever::admit_candidates(
+    const std::vector<ProjectionAwareLexicalCandidate>& candidates,
+    const std::vector<float>& scores
+) const {
+    if(candidates.size() != scores.size()) {
+        throw std::logic_error("revision-bound candidate channels are unpaired");
+    }
+    RevisionBoundRetrievalResponse response;
+    response.candidate_count = candidates.size();
+    std::vector<RevisionBoundRetrievalResult> results;
+    results.reserve(candidates.size());
     for(std::size_t candidate_index = 0;
-        candidate_index < legacy.candidates.size(); ++candidate_index) {
-        const auto& hit = legacy.legacy.chunks[candidate_index];
-        const auto& identity = legacy.candidates[candidate_index];
+        candidate_index < candidates.size(); ++candidate_index) {
+        const auto score = scores[candidate_index];
+        const auto& identity = candidates[candidate_index];
         if(!is_valid_revision_bound_candidate_identity(identity)) {
-            results.push_back(unavailable(m_scope_id, hit.score));
+            results.push_back(unavailable(m_scope_id, score));
             continue;
         }
 
@@ -146,25 +162,25 @@ RevisionBoundRetrievalResponse RevisionBoundLexicalRetriever::retrieve_detailed(
         if(!unit || unit->scope_id != m_scope_id ||
            unit->lifecycle_state != KnowledgeUnitLifecycleState::Active) {
             results.push_back(stale(
-                m_scope_id, hit.score, unit_id, identity.unit_revision));
+                m_scope_id, score, unit_id, identity.unit_revision));
             continue;
         }
         if(!matches_revision_bound_candidate_identity(identity, *unit)) {
             results.push_back(stale(
-                m_scope_id, hit.score, unit_id, unit->revision));
+                m_scope_id, score, unit_id, unit->revision));
             continue;
         }
         if(!has_current_original_projection(
                 *unit, *m_projection_store, *m_manifest_store, m_options)) {
             results.push_back(stale(
-                m_scope_id, hit.score, unit_id, unit->revision));
+                m_scope_id, score, unit_id, unit->revision));
             continue;
         }
         if(unit->sources.size() != 1 ||
            !is_valid_source_ref_summary(unit->sources.front()) ||
            unit->sources.front().reference_mode != SourceReferenceMode::RevisionBoundQuote ||
            !unit->sources.front().resource_revision) {
-            auto unavailable_result = unavailable(m_scope_id, hit.score);
+            auto unavailable_result = unavailable(m_scope_id, score);
             unavailable_result.knowledge_unit_id = unit_id;
             unavailable_result.freshness = RevisionBoundFreshness::Current;
             unavailable_result.unit_revision = unit->revision;
@@ -182,7 +198,7 @@ RevisionBoundRetrievalResponse RevisionBoundLexicalRetriever::retrieve_detailed(
            !manifest->revision.body_digest ||
            !same_digest(*manifest->revision.body_digest, source_revision.body_digest)) {
             auto stale_result = stale(
-                m_scope_id, hit.score, unit_id, unit->revision);
+                m_scope_id, score, unit_id, unit->revision);
             stale_result.source = source;
             stale_result.root_resource_id = source_revision.resource_id;
             stale_result.root_generation = source_revision.generation;
@@ -200,7 +216,7 @@ RevisionBoundRetrievalResponse RevisionBoundLexicalRetriever::retrieve_detailed(
         result.root_generation = manifest->revision.generation;
         result.root_digest = manifest->revision.body_digest;
         result.source = source;
-        result.score = hit.score;
+        result.score = score;
         result.text = unit->primary_text;
         // M0 stores only a bounded inline citation summary. The provenance is
         // verified, but a full canonical byte hydration is not implied.

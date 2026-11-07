@@ -1,0 +1,164 @@
+#include "MdbxPersistentLexicalCandidateAdapter.hpp"
+
+#if AGENT_MEMORY_HAS_MDBX
+
+#include <algorithm>
+#include <map>
+#include <stdexcept>
+#include <utility>
+
+namespace agent_memory {
+namespace {
+
+struct AccumulatedCandidate final {
+    PersistentLexicalCandidate candidate;
+    float score = 0.0F;
+};
+
+} // namespace
+
+MdbxPersistentLexicalCandidateAdapter::MdbxPersistentLexicalCandidateAdapter(
+    MdbxPersistentLexicalIndex& index,
+    ITokenizer& tokenizer,
+    PersistentLexicalCandidateOptions options
+) : m_index(&index), m_tokenizer(&tokenizer), m_options(std::move(options)) {
+    if(m_options.max_candidates == 0 ||
+       m_options.max_postings_per_term == 0 ||
+       m_options.max_query_terms == 0) {
+        throw std::invalid_argument("persistent candidate limits must be non-zero");
+    }
+}
+
+PersistentLexicalCandidateResponse
+MdbxPersistentLexicalCandidateAdapter::generate(const RetrievalQuery& query) const {
+    PersistentLexicalCandidateResponse response;
+    const auto snapshot = m_index->read_snapshot();
+    response.frontier = snapshot.frontier;
+    if(query.limit == 0 || !query.has_text() || !query.metadata_filters.empty()) {
+        response.completeness = PersistentLexicalCandidateCompleteness::UnsupportedQuery;
+        response.diagnostic = query.metadata_filters.empty()
+            ? "empty persistent lexical query"
+            : "persistent lexical candidate generation does not support metadata filters";
+        return response;
+    }
+
+    const auto tokens = m_tokenizer->tokenize(query.text);
+    if(tokens.tokens.empty() || tokens.tokens.size() > m_options.max_query_terms) {
+        response.completeness = PersistentLexicalCandidateCompleteness::UnsupportedQuery;
+        response.diagnostic = tokens.tokens.empty()
+            ? "query produced no normalized terms"
+            : "query term count exceeds persistent candidate budget";
+        return response;
+    }
+
+    std::map<KnowledgeUnitId, AccumulatedCandidate> accumulated;
+    for(const auto& token : tokens.tokens) {
+        const auto token_id = snapshot.index.find_token_id(token.text);
+        if(!token_id) continue;
+        const auto postings = snapshot.index.postings(*token_id);
+        const auto posting_limit = std::min(
+            postings.size(), m_options.max_postings_per_term);
+        if(posting_limit != postings.size()) {
+            response.completeness = PersistentLexicalCandidateCompleteness::Truncated;
+        }
+        for(std::size_t index = 0; index < posting_limit; ++index) {
+            ++response.examined_postings;
+            const auto& posting = postings[index];
+            auto found = accumulated.find(posting.unit_id);
+            if(found == accumulated.end()) {
+                if(accumulated.size() >= m_options.max_candidates) {
+                    response.completeness = PersistentLexicalCandidateCompleteness::Truncated;
+                    continue;
+                }
+                PersistentLexicalCandidate candidate;
+                candidate.identity.knowledge_unit_id = posting.unit_id;
+                candidate.identity.unit_revision =
+                    posting.projection_version.unit_revision_at_build;
+                candidate.identity.projection_kind =
+                    snapshot.frontier.index_descriptor.ref.projection_kind;
+                candidate.scope_id = snapshot.frontier.index_descriptor.ref.scope_id;
+                candidate.resource_id = posting.resource_id;
+                candidate.resource_generation = posting.resource_generation;
+                candidate.projection_version = posting.projection_version;
+                found = accumulated.emplace(
+                    posting.unit_id,
+                    AccumulatedCandidate{std::move(candidate), 0.0F}
+                ).first;
+            }
+            found->second.score += static_cast<float>(posting.term_frequency);
+        }
+    }
+
+    response.candidates.reserve(accumulated.size());
+    for(auto& entry : accumulated) {
+        entry.second.candidate.identity.score = entry.second.score;
+        response.candidates.push_back(std::move(entry.second.candidate));
+    }
+    std::stable_sort(
+        response.candidates.begin(), response.candidates.end(),
+        [](const auto& lhs, const auto& rhs) {
+            if(lhs.identity.score != rhs.identity.score) {
+                return lhs.identity.score > rhs.identity.score;
+            }
+            return lhs.identity.knowledge_unit_id.value() <
+                rhs.identity.knowledge_unit_id.value();
+        }
+    );
+    if(response.candidates.size() > query.limit) {
+        response.candidates.resize(query.limit);
+    }
+    return response;
+}
+
+RevisionBoundRetrievalResponse admit_persistent_lexical_candidates(
+    const ScopeId& scope_id,
+    const PersistentLexicalCandidateResponse& candidates,
+    IKnowledgeUnitStore& unit_store,
+    IProjectionStore& projection_store,
+    IResourceManifestStorage& manifest_store,
+    ITokenizer& tokenizer,
+    ProjectionAwareLexicalRetrieverOptions options
+) {
+    RevisionBoundLexicalRetriever admission(
+        unit_store, projection_store, manifest_store, scope_id, tokenizer,
+        std::move(options));
+    std::vector<ProjectionAwareLexicalCandidate> identities;
+    std::vector<float> scores;
+    identities.reserve(candidates.candidates.size());
+    scores.reserve(candidates.candidates.size());
+    for(const auto& candidate : candidates.candidates) {
+        identities.push_back(candidate.identity);
+        scores.push_back(candidate.identity.score);
+    }
+    auto result = admission.admit_candidates(identities, scores);
+    // The canonical admission owns freshness. The persistent observations are
+    // additionally checked here so an old resource-generation observation
+    // cannot be mistaken for the admitted source revision.
+    for(std::size_t index = 0; index < candidates.candidates.size() &&
+                                index < result.results.size(); ++index) {
+        const auto& candidate = candidates.candidates[index];
+        auto& admitted = result.results[index];
+        if(admitted.freshness == RevisionBoundFreshness::Current &&
+           (admitted.root_resource_id != candidate.resource_id ||
+            admitted.root_generation != candidate.resource_generation)) {
+            admitted.freshness = RevisionBoundFreshness::Stale;
+            admitted.materialization = RevisionBoundMaterialization::Unavailable;
+            admitted.text.clear();
+            if(result.admitted_count != 0) --result.admitted_count;
+            ++result.stale_count;
+        }
+    }
+    if(candidates.completeness == PersistentLexicalCandidateCompleteness::Truncated) {
+        result.completeness = RevisionBoundCompleteness::BudgetExceeded;
+        result.diagnostic = "persistent lexical candidate window was truncated";
+    } else if(candidates.completeness ==
+              PersistentLexicalCandidateCompleteness::UnsupportedQuery) {
+        result.completeness = RevisionBoundCompleteness::UnsupportedQuery;
+        result.diagnostic = candidates.diagnostic;
+    }
+    return result;
+}
+
+} // namespace agent_memory
+
+#endif // AGENT_MEMORY_HAS_MDBX
