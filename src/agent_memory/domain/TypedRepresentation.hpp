@@ -22,8 +22,16 @@ class SegmentSetId final { public: SegmentSetId() = default; explicit SegmentSet
 class SegmentId final { public: SegmentId() = default; explicit SegmentId(std::string value); const std::string& value() const noexcept; bool empty() const noexcept; private: std::string m_value; };
 class EvidenceAnchorId final { public: EvidenceAnchorId() = default; explicit EvidenceAnchorId(std::string value); const std::string& value() const noexcept; bool empty() const noexcept; private: std::string m_value; };
 
-template<typename Id> bool operator==(const Id& lhs, const Id& rhs) noexcept { return lhs.value() == rhs.value(); }
-template<typename Id> bool operator!=(const Id& lhs, const Id& rhs) noexcept { return !(lhs == rhs); }
+bool operator==(const RepresentationId&, const RepresentationId&) noexcept;
+bool operator!=(const RepresentationId&, const RepresentationId&) noexcept;
+bool operator==(const SegmentSetId&, const SegmentSetId&) noexcept;
+bool operator!=(const SegmentSetId&, const SegmentSetId&) noexcept;
+bool operator==(const SegmentId&, const SegmentId&) noexcept;
+bool operator!=(const SegmentId&, const SegmentId&) noexcept;
+bool operator==(const EvidenceAnchorId&, const EvidenceAnchorId&) noexcept;
+bool operator!=(const EvidenceAnchorId&, const EvidenceAnchorId&) noexcept;
+
+inline constexpr std::size_t kMaxTypedLocatorBytes = 1U * 1024U * 1024U;
 
 struct Utf8ByteSpan final { std::uint64_t offset = 0; std::uint64_t length = 0; };
 
@@ -100,7 +108,7 @@ using TypedLocator = std::variant<TextLocator, TableCellLocator, ImageLocator, T
 
 [[nodiscard]] bool is_valid_span(const Utf8ByteSpan& span, std::uint64_t body_size) noexcept;
 [[nodiscard]] bool is_valid_representation(const Representation& value) noexcept;
-[[nodiscard]] bool is_valid_table(const TableRepresentation& value) noexcept;
+[[nodiscard]] bool is_valid_table(const TableRepresentation& value);
 [[nodiscard]] bool is_valid_image(const ImageRepresentation& value) noexcept;
 [[nodiscard]] bool is_valid_transcript(const TranscriptRepresentation& value) noexcept;
 [[nodiscard]] bool is_valid_video_reference(const ExternalVideoReference& value) noexcept;
