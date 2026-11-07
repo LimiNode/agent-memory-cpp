@@ -152,6 +152,8 @@ def validate_receipt(
     for row in observed:
         if row.get("status") not in CASE_STATUSES or not isinstance(row.get("observed"), str):
             raise AssertionError("execution receipt observed result is malformed")
+        if row["status"] != fixture_cases[row["case_id"]]["status"]:
+            raise AssertionError("execution receipt status disagrees with fixture case")
         if (fixture_cases[row["case_id"]]["status"] in {"NOT_IMPLEMENTED", "NOT_VERIFIED"}
                 and row["status"] == "PASS"):
             raise AssertionError("unsupported fixture case cannot be reported as PASS")
@@ -380,6 +382,14 @@ def self_test(data: dict[str, Any], fixture_digest: str) -> None:
         pass
     else:
         raise AssertionError("forged execution receipt digest was accepted")
+    forged_receipt = copy.deepcopy(receipt)
+    forged_receipt["observed_results"][0]["status"] = "NOT_IMPLEMENTED"
+    try:
+        validate(data, forged_receipt, fixture_digest, "a" * 40)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("receipt status mismatch was accepted")
     forged_receipt = copy.deepcopy(receipt)
     forged_receipt["observed_results"][2]["status"] = "PASS"
     try:
