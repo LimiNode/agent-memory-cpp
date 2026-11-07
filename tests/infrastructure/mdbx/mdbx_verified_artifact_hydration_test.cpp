@@ -103,7 +103,7 @@ int main() {
     auto stale = read;
     stale.source_revision_id = SourceRevisionId("article@2");
     const auto stale_result = hydration.materialize(stale);
-    expect(stale_result.status == VerifiedArtifactMaterializationStatus::Stale && stale_result.bytes.empty(),
+    expect(stale_result.status == VerifiedArtifactMaterializationStatus::BindingRevisionMismatch && stale_result.bytes.empty(),
            "binding revision mismatch exposed bytes");
 
     auto forged_digest = read;

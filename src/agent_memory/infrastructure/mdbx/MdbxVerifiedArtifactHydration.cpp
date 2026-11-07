@@ -43,13 +43,10 @@ VerifiedArtifactMaterializationResult MdbxArtifactMaterializer::materialize(
     const auto catalog = m_catalog.read_binding(request.binding_id);
     if(catalog.status != ArtifactCatalogStatus::Ok || !catalog.record)
         return fail(map_catalog(catalog.status), request, catalog.diagnostic);
-    if(!catalog.record)
-        return fail(VerifiedArtifactMaterializationStatus::Corrupt, request,
-                    "catalog returned Ok without a binding record");
     const auto& record = *catalog.record;
     if(record.binding.source_revision_id != request.source_revision_id)
-        return fail(VerifiedArtifactMaterializationStatus::Stale, request,
-                    "binding is attached to another source revision");
+        return fail(VerifiedArtifactMaterializationStatus::BindingRevisionMismatch, request,
+                    "binding is attached to another source revision; this is not a currentness decision");
     if(request.expected_artifact_id && record.artifact.id != *request.expected_artifact_id)
         return fail(VerifiedArtifactMaterializationStatus::Corrupt, request,
                     "artifact identity mismatch");
