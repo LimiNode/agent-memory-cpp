@@ -1073,5 +1073,18 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         set_tests_properties(agent_memory_lexical_quality_evaluation
             PROPERTIES DEPENDS agent_memory_mdbx_lexical_quality_baseline_test
         )
+
+        add_executable(agent_memory_mdbx_lexical_quality_freshness_conformance_test
+            infrastructure/mdbx/mdbx_lexical_quality_freshness_conformance_test.cpp
+        )
+        target_link_libraries(agent_memory_mdbx_lexical_quality_freshness_conformance_test
+            PRIVATE
+                agent_memory::agent_memory
+                mdbx_containers::mdbx_containers
+        )
+        add_test(
+            NAME agent_memory_mdbx_lexical_quality_freshness_conformance_test
+            COMMAND agent_memory_mdbx_lexical_quality_freshness_conformance_test
+        )
     endif()
 endif()

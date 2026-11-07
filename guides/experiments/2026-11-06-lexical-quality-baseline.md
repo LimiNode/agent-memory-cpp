@@ -11,10 +11,28 @@ computes Recall@5 and nDCG@5 only for complete judged retrieval queries.
 
 The fixture remains independent of the retriever. `incomplete_qrels` is
 excluded from aggregates; `judged_zero_relevant` is checked as a no-answer
-control; wrong-scope and stale-derived hits are counted separately. The
-business-niche query is marked `NOT_AVAILABLE_EXHAUSTIVE_ENUMERATION` because a
-ranked top-K result cannot prove exhaustive coverage.
+control; actual scope leaks, permitted irrelevant hits, and no-answer failures
+are reported as separate statuses. The business-niche query is marked
+`NOT_AVAILABLE_EXHAUSTIVE_ENUMERATION` because a ranked top-K result cannot
+prove exhaustive coverage.
+
+The Original projection admits only source-grounded `title`, `heading`,
+`body`, `code`, and `tags` fields. `summary` and `question` are derived views
+and are not concatenated into Original. Documents whose `source_kind` starts
+with `derived_` are excluded until a source-bound publication producer and
+generation-aware admission path is available.
+
+The stale-derived fixture is therefore reported as
+`NOT_IMPLEMENTED_FRESHNESS_CONFORMANCE`; its `derived_revision` label alone is
+not evidence of an admitted stale publication. The separate executable
+`agent_memory_mdbx_lexical_quality_freshness_conformance_test` exercises a real
+source update (A@1 to A@2) through snapshot final admission and must pass
+before stale-rejection claims are made.
 
 The receipt records the exact fixture SHA-256, retrieval path, query IDs,
-returned document IDs and producer scores. It does not claim persistent-index
-parity, derived-summary retrieval, stable p99 latency, or production quality.
+returned document IDs and producer scores, plus the exact CI source HEAD when
+run in pull-request CI. The previous receipt's metrics (Recall@5 0.9286 and
+nDCG@5 0.9696) are historical evidence from the old concatenated-field
+methodology and must not be compared as equivalent to the corrected run.
+This baseline does not claim persistent-index parity, derived-summary
+retrieval, stable p99 latency, or production quality.
