@@ -26,6 +26,8 @@ int main() {
     const auto first = build_structural_segment_set(source, "source@7", options);
     const auto second = build_structural_segment_set(source, "source@7", options);
     expect(first.identity == second.identity, "segment identity is not deterministic");
+    expect(first.identity.normalized_body_digest == sha256(first.normalized_utf8),
+           "normalized body digest is not the retained UTF-8 digest");
     expect(first.normalized_utf8.find('\r') == std::string::npos,
            "line endings were not normalized");
     expect(std::any_of(first.segments.begin(), first.segments.end(), [](const auto& segment) {
@@ -56,6 +58,10 @@ int main() {
     options.max_segment_bytes = 8;
     const auto rechunked = build_structural_segment_set(source, "source@7", options);
     expect(rechunked.identity != first.identity, "rechunking reused SegmentSet identity");
+    expect(rechunked.identity.normalized_body_digest == first.identity.normalized_body_digest,
+           "rechunking changed normalized body identity");
+    expect(rechunked.identity.segment_set_fingerprint != first.identity.segment_set_fingerprint,
+           "rechunking did not change SegmentSet fingerprint");
     expect(rechunked.segments.size() > first.segments.size(), "rechunking did not enforce budget");
     for(const auto& segment : rechunked.segments) {
         if(segment.kind == StructuralSegmentKind::Paragraph)
@@ -69,6 +75,17 @@ int main() {
         static_cast<void>(build_structural_segment_set("Привет 😀 e\xCC\x81", "source@utf8", tiny));
     } catch(const std::invalid_argument&) { tiny_budget_rejected = true; }
     expect(tiny_budget_rejected, "a budget smaller than one UTF-8 code point was accepted");
+
+    const auto tail = build_structural_segment_set(
+        "First sentence. Second fragment without punctuation", "source@tail");
+    const auto tail_paragraph = std::find_if(
+        tail.segments.begin(), tail.segments.end(), [](const auto& segment) {
+            return segment.kind == StructuralSegmentKind::Paragraph;
+        });
+    expect(tail_paragraph != tail.segments.end() &&
+               tail_paragraph->sentence_ranges.size() == 2U &&
+               tail_paragraph->sentence_ranges.back().length > 0U,
+           "final sentence fragment without punctuation was dropped");
 
     bool rejected = false;
     try { static_cast<void>(build_structural_segment_set("\xff", "source@bad")); }

@@ -8,12 +8,13 @@ its normalized byte range; display/index text may intentionally differ (for
 example, a heading omits `#` and an image is a typed placeholder). Paragraph
 rows retain sentence ranges relative to the row text.
 
-The recipe is versioned and the identity digest includes the normalized source,
-recipe descriptor, and explicit segment budgets. A source revision is therefore
-not a SegmentSet, and changing the chunk budget intentionally creates a new
-SegmentSet identity. This slice does not claim Markdown/CommonMark
-completeness or semantic quality; it is deterministic structural infrastructure
-for later ingestion experiments.
+The exact normalized UTF-8 bytes have their own `normalized_body_digest`.
+The derived `segment_set_fingerprint` separately includes that body digest, the
+versioned recipe and explicit segment budgets. A source revision is therefore
+not a SegmentSet, and changing the chunk budget creates a new SegmentSet
+identity without changing content identity. This slice does not claim
+Markdown/CommonMark completeness or semantic quality; it is deterministic
+structural infrastructure for later ingestion experiments.
 
 The implementation enforces source and segment-count budgets. Paragraphs may be
 split into UTF-8-safe retrieval continuations under the explicit segment-byte

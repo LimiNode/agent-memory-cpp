@@ -52,14 +52,18 @@ struct SegmentSetIdentity final {
     std::string source_revision_id;
     std::string recipe_id = "markdown.structural.v1";
     std::uint32_t recipe_version = 1;
-    std::array<std::uint8_t, 32> normalized_digest{};
+    /// SHA-256 of the exact retained normalized UTF-8 bytes.
+    std::array<std::uint8_t, 32> normalized_body_digest{};
+    /// Identity of the derived SegmentSet, including recipe and chunk policy.
+    std::array<std::uint8_t, 32> segment_set_fingerprint{};
 
     friend bool operator==(const SegmentSetIdentity& lhs,
                            const SegmentSetIdentity& rhs) noexcept {
         return lhs.source_revision_id == rhs.source_revision_id &&
             lhs.recipe_id == rhs.recipe_id &&
             lhs.recipe_version == rhs.recipe_version &&
-            lhs.normalized_digest == rhs.normalized_digest;
+            lhs.normalized_body_digest == rhs.normalized_body_digest &&
+            lhs.segment_set_fingerprint == rhs.segment_set_fingerprint;
     }
     friend bool operator!=(const SegmentSetIdentity& lhs,
                            const SegmentSetIdentity& rhs) noexcept {

@@ -134,6 +134,10 @@ std::size_t utf8_prefix(std::string_view value, std::size_t maximum) {
     return end;
 }
 
+std::string digest_bytes(const std::array<std::uint8_t, 32>& digest) {
+    return std::string(reinterpret_cast<const char*>(digest.data()), digest.size());
+}
+
 void add_segment(StructuralSegmentSet& set, StructuralSegment segment,
                  const SegmentSetOptions& options, bool bounded) {
     if(segment.text.empty()) return;
@@ -177,9 +181,13 @@ StructuralSegmentSet build_structural_segment_set(
     if(set.normalized_utf8.size() > options.max_source_bytes || !valid_utf8(set.normalized_utf8))
         throw std::invalid_argument("normalized structural source exceeds its budget");
     set.identity.source_revision_id = std::move(source_revision_id);
-    std::string descriptor = "markdown.structural.v1\n" + std::to_string(options.max_segment_bytes) +
-        ":" + std::to_string(options.max_segments) + "\n" + set.normalized_utf8;
-    set.identity.normalized_digest = sha256(descriptor);
+    set.identity.normalized_body_digest = sha256(set.normalized_utf8);
+    std::string descriptor = set.identity.recipe_id + "\n" +
+        std::to_string(set.identity.recipe_version) + "\n" +
+        std::to_string(options.max_segment_bytes) + ":" +
+        std::to_string(options.max_segments) + "\n" +
+        digest_bytes(set.identity.normalized_body_digest);
+    set.identity.segment_set_fingerprint = sha256(descriptor);
 
     const auto source_lines = lines(set.normalized_utf8);
     std::vector<std::string> headings;
@@ -254,7 +262,8 @@ StructuralSegmentSet build_structural_segment_set(
             end = next.end; ++index;
         }
         StructuralSegment segment{StructuralSegmentKind::Paragraph, 0, {start, end - start}, heading_path(headings), paragraph, paragraph, {}};
-        for(std::size_t sentence = 0, begin = 0; sentence < paragraph.size(); ++sentence) {
+        std::size_t begin = 0;
+        for(std::size_t sentence = 0; sentence < paragraph.size(); ++sentence) {
             if(paragraph[sentence] == '.' || paragraph[sentence] == '!' || paragraph[sentence] == '?') {
                 auto boundary = sentence + 1U;
                 while(boundary < paragraph.size() && std::isspace(static_cast<unsigned char>(paragraph[boundary]))) ++boundary;
@@ -262,7 +271,10 @@ StructuralSegmentSet build_structural_segment_set(
                 begin = boundary;
             }
         }
-        if(segment.sentence_ranges.empty() && !paragraph.empty()) segment.sentence_ranges.push_back({0, paragraph.size()});
+        if(begin < paragraph.size())
+            segment.sentence_ranges.push_back({begin, paragraph.size() - begin});
+        if(segment.sentence_ranges.empty() && !paragraph.empty())
+            segment.sentence_ranges.push_back({0, paragraph.size()});
         add_segment(set, std::move(segment), options, true);
     }
     return set;
