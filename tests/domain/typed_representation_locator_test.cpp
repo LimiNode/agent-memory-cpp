@@ -1,6 +1,7 @@
 #include <agent_memory/domain/TypedRepresentation.hpp>
 
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -33,12 +34,36 @@ int main() {
     table.columns = {{"amount", "Amount"}};
     table.rows = {{"row-a", 0, {{"amount", "42", {1, 2}}}}};
     expect(is_valid_table(table), "typed table rejected");
+    auto duplicate_column = table;
+    duplicate_column.columns.push_back({"amount", "Duplicate"});
+    expect(!is_valid_table(duplicate_column), "duplicate table column accepted");
+    auto unknown_cell = table;
+    unknown_cell.rows.front().cells.push_back({"missing", "x", {0, 1}});
+    expect(!is_valid_table(unknown_cell), "cell referencing unknown column accepted");
+    auto duplicate_row = table;
+    duplicate_row.rows.push_back({"row-a", 1, {}});
+    expect(!is_valid_table(duplicate_row), "duplicate table row key accepted");
+    auto duplicate_cell = table;
+    duplicate_cell.rows.front().cells.push_back({"amount", "duplicate", {0, 1}});
+    expect(!is_valid_table(duplicate_cell), "duplicate table cell accepted");
+    auto wrong_table_kind = table;
+    wrong_table_kind.representation.kind = RepresentationKind::Image;
+    expect(!is_valid_table(wrong_table_kind), "table with mismatched representation kind accepted");
 
     TranscriptRepresentation transcript_rep;
     transcript_rep.representation = Representation{RepresentationId{"transcript"}, SourceRevisionId{"source@1"}, RepresentationKind::Transcript, RepresentationRetention::Retained, ArtifactId{"sha256:transcript"}, "asr", "1"};
     transcript_rep.intervals = {{0, 1000, "hello", std::nullopt, {0, 5}, AlignmentProvenance{"asr", "1", "forced-align", 0.9}}};
     expect(is_valid_transcript(transcript_rep), "transcript representation rejected");
     expect(!is_valid_transcript(TranscriptRepresentation{transcript_rep.representation, {{2, 1, "bad", std::nullopt, {0, 1}}}}), "inverted transcript interval accepted");
+    auto non_finite = transcript_rep;
+    non_finite.intervals.front().alignment->confidence =
+        std::numeric_limits<double>::quiet_NaN();
+    expect(!is_valid_transcript(non_finite), "NaN alignment confidence accepted");
+
+    bool invalid_version = false;
+    try { static_cast<void>(deserialize_typed_locator("TL0")); }
+    catch(const std::exception&) { invalid_version = true; }
+    expect(invalid_version, "unknown locator codec version accepted");
 
     std::cout << "typed representation locators: PASS\n";
     return 0;
