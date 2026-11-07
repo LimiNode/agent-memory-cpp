@@ -135,6 +135,16 @@ public:
         const RetrievalQuery& query
     ) const;
 
+    /// \brief Admits candidates produced by another bounded lexical backend.
+    ///
+    /// The backend owns ranking and candidate completeness; this method owns
+    /// only canonical scope, lifecycle, revision, projection, and manifest
+    /// admission. The two vectors must be parallel and equally sized.
+    [[nodiscard]] RevisionBoundRetrievalResponse admit_candidates(
+        const std::vector<ProjectionAwareLexicalCandidate>& candidates,
+        const std::vector<float>& scores
+    ) const;
+
 private:
     ProjectionAwareLexicalRetriever m_legacy;
     IKnowledgeUnitStore* m_unit_store;
