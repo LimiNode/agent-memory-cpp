@@ -15,9 +15,8 @@
 
 namespace agent_memory {
 
-enum class VerifiedHydrationStatus : std::uint8_t {
-    Hydrated,
-    SummaryOnly,
+enum class VerifiedArtifactMaterializationStatus : std::uint8_t {
+    Materialized,
     Missing,
     Corrupt,
     Stale,
@@ -27,24 +26,18 @@ enum class VerifiedHydrationStatus : std::uint8_t {
     InvalidArgument
 };
 
-struct VerifiedHydrationRequest final {
+struct VerifiedArtifactMaterializationRequest final {
     SourceRevisionId source_revision_id;
     ArtifactBindingId binding_id;
-    /// Scope is supplied by the caller because Raw ArtifactCatalog bindings
-    /// are intentionally scope-neutral. Both values must match before bytes
-    /// can be exposed.
-    std::string expected_scope;
-    std::string binding_scope;
-    std::optional<SourceRevisionId> current_source_revision_id;
     std::optional<ArtifactId> expected_artifact_id;
     std::optional<BlobDigest> expected_digest;
     std::uint64_t offset = 0;
     std::uint64_t length = 0;
-    bool allow_summary_only = true;
 };
 
-struct VerifiedHydrationResult final {
-    VerifiedHydrationStatus status = VerifiedHydrationStatus::InvalidArgument;
+struct VerifiedArtifactMaterializationResult final {
+    VerifiedArtifactMaterializationStatus status =
+        VerifiedArtifactMaterializationStatus::InvalidArgument;
     SourceRevisionId source_revision_id;
     ArtifactBindingId binding_id;
     ArtifactId artifact_id;
@@ -53,15 +46,19 @@ struct VerifiedHydrationResult final {
     std::string diagnostic;
 };
 
-/// \brief Hydrates bytes only after exact identity, freshness, scope, receipt
-/// and Raw CAS integrity checks have passed.
-class MdbxVerifiedArtifactHydration final {
+/// \brief Materializes bytes after exact binding identity and Raw CAS checks.
+///
+/// This adapter is deliberately not an authorization or current-revision
+/// reader. Callers must obtain trusted scope/freshness admission separately;
+/// the future authoritative path must consume a real snapshot admission
+/// context rather than caller-provided matching strings.
+class MdbxArtifactMaterializer final {
 public:
-    explicit MdbxVerifiedArtifactHydration(const MdbxArtifactCatalog& catalog)
+    explicit MdbxArtifactMaterializer(const MdbxArtifactCatalog& catalog)
         : m_catalog(catalog) {}
 
-    [[nodiscard]] VerifiedHydrationResult hydrate(
-        const VerifiedHydrationRequest& request) const;
+    [[nodiscard]] VerifiedArtifactMaterializationResult materialize(
+        const VerifiedArtifactMaterializationRequest& request) const;
 
 private:
     const MdbxArtifactCatalog& m_catalog;
