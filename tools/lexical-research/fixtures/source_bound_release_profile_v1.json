@@ -1,0 +1,104 @@
+{
+  "fixture_id": "source_bound_release_profile_v1",
+  "status": "CONTRACT_ONLY_NOT_EVALUATED",
+  "original_projection_fields": ["title", "heading", "body", "code", "tags"],
+  "sources": [
+    {
+      "source_id": "source:article-mdbx",
+      "kind": "technical_article",
+      "revisions": [
+        {"id": "source:article-mdbx@1", "body_digest": "sha256:article-v1"},
+        {"id": "source:article-mdbx@2", "body_digest": "sha256:article-v2"}
+      ]
+    },
+    {
+      "source_id": "source:telegram-image",
+      "kind": "telegram_post",
+      "revisions": [
+        {"id": "source:telegram-image@1", "body_digest": "sha256:telegram-v1"}
+      ]
+    },
+    {
+      "source_id": "source:timed-transcript",
+      "kind": "timed_transcript",
+      "revisions": [
+        {"id": "source:timed-transcript@1", "body_digest": "sha256:transcript-v1"}
+      ]
+    }
+  ],
+  "representations": [
+    {
+      "id": "repr:article-original-v1",
+      "source_revision_id": "source:article-mdbx@1",
+      "view": "original",
+      "input_source_revision_id": "source:article-mdbx@1",
+      "producer": "source-import",
+      "recipe_fingerprint": "recipe:original-v1",
+      "publication_generation": 1,
+      "evidence_locator": {"kind": "body_range", "offset": 0, "length": 128}
+    },
+    {
+      "id": "repr:article-summary-v1",
+      "source_revision_id": "source:article-mdbx@1",
+      "view": "summary",
+      "input_source_revision_id": "source:article-mdbx@1",
+      "producer": "summary-extractor-v0",
+      "recipe_fingerprint": "recipe:summary-v1",
+      "publication_generation": 1,
+      "evidence_locator": {"kind": "body_range", "offset": 32, "length": 48}
+    },
+    {
+      "id": "repr:article-summary-v2",
+      "source_revision_id": "source:article-mdbx@2",
+      "view": "summary",
+      "input_source_revision_id": "source:article-mdbx@2",
+      "producer": "summary-extractor-v0",
+      "recipe_fingerprint": "recipe:summary-v1",
+      "publication_generation": 2,
+      "evidence_locator": {"kind": "body_range", "offset": 16, "length": 64}
+    },
+    {
+      "id": "repr:telegram-original-v1",
+      "source_revision_id": "source:telegram-image@1",
+      "view": "original",
+      "input_source_revision_id": "source:telegram-image@1",
+      "producer": "source-import",
+      "recipe_fingerprint": "recipe:original-v1",
+      "publication_generation": 1,
+      "evidence_locator": {"kind": "artifact", "artifact_id": "artifact:telegram-image"}
+    },
+    {
+      "id": "repr:transcript-original-v1",
+      "source_revision_id": "source:timed-transcript@1",
+      "view": "original",
+      "input_source_revision_id": "source:timed-transcript@1",
+      "producer": "source-import",
+      "recipe_fingerprint": "recipe:original-v1",
+      "publication_generation": 1,
+      "evidence_locator": {"kind": "time_range_ms", "start": 12000, "length": 4000}
+    }
+  ],
+  "original_documents": [
+    {"id": "doc:article-original-v1", "representation_id": "repr:article-original-v1", "fields": ["title", "heading", "body", "code", "tags"]},
+    {"id": "doc:telegram-original-v1", "representation_id": "repr:telegram-original-v1", "fields": ["title", "heading", "body", "code", "tags"]},
+    {"id": "doc:transcript-original-v1", "representation_id": "repr:transcript-original-v1", "fields": ["title", "heading", "body", "code", "tags"]}
+  ],
+  "lifecycle_transitions": [
+    {
+      "source_id": "source:article-mdbx",
+      "from_revision_id": "source:article-mdbx@1",
+      "to_revision_id": "source:article-mdbx@2",
+      "stale_representation_id": "repr:article-summary-v1",
+      "current_representation_id": "repr:article-summary-v2",
+      "expected": "REJECT_STALE_OLD_GENERATION"
+    }
+  ],
+  "cases": [
+    {"id": "case:original-lexical", "capability": "original_lexical", "status": "PARTIAL", "expected": "source-grounded fields only"},
+    {"id": "case:summary-candidate", "capability": "derived_summary_candidate", "status": "NOT_IMPLEMENTED", "expected": "candidate carries source revision, producer and generation"},
+    {"id": "case:stale-summary", "capability": "derived_freshness_admission", "status": "NOT_IMPLEMENTED", "expected": "repr:article-summary-v1 rejected after source:article-mdbx@2 becomes current"},
+    {"id": "case:telegram-artifact", "capability": "verified_artifact_hydration", "status": "NOT_IMPLEMENTED", "expected": "typed artifact locator and digest-verified materialization"},
+    {"id": "case:transcript-citation", "capability": "timestamp_citation", "status": "NOT_IMPLEMENTED", "expected": "time-range evidence anchor survives reopen"},
+    {"id": "case:update-delete-reopen", "capability": "source_revision_lifecycle", "status": "NOT_IMPLEMENTED", "expected": "old projection is stale or deleted and never reappears after reopen"}
+  ]
+}
