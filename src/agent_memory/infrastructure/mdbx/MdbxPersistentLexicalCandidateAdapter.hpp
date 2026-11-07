@@ -49,6 +49,8 @@ struct PersistentLexicalCandidateResponse final {
     PersistentLexicalCandidateCompleteness completeness =
         PersistentLexicalCandidateCompleteness::Complete;
     std::size_t examined_postings = 0;
+    /// Diagnostic snapshot observation only; admission re-reads canonical
+    /// stores and does not treat this frontier as authoritative evidence.
     LexicalReadFrontier frontier;
     std::string diagnostic;
 };
