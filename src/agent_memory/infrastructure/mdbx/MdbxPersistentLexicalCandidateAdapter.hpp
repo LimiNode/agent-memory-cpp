@@ -22,7 +22,8 @@ namespace agent_memory {
 enum class PersistentLexicalCandidateCompleteness : std::uint8_t {
     Complete,
     Truncated,
-    UnsupportedQuery
+    UnsupportedQuery,
+    InconsistentSnapshot
 };
 
 /// \brief Candidate identity emitted by the persistent index only.

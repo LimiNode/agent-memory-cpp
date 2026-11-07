@@ -46,6 +46,17 @@ namespace agent_memory {
         AfterPostingApplication
     };
 
+    /// \brief Deliberate statistics corruption points for adapter conformance tests.
+    ///
+    /// These hooks mutate only a materialized test view. They never alter the
+    /// durable logical unit rows and must not be used by production callers.
+    enum class FlatLexicalStatisticsFaultPoint : std::uint8_t {
+        None,
+        RemoveTokenStatistics,
+        DocumentFrequencyTooHigh,
+        DocumentFrequencyTooLow
+    };
+
     /// \brief One active token occurrence aggregate for a unit.
     struct FlatLexicalPosting final {
         TokenId token_id;
@@ -204,6 +215,17 @@ namespace agent_memory {
             FlatLexicalUpsertFailurePoint point
         ) noexcept;
 
+        /// \brief Corrupts one token's aggregate statistics in this test view.
+        ///
+        /// Physical postings are intentionally left untouched so consumers can
+        /// prove that a DF/statistics mismatch is rejected by candidate
+        /// generation. Missing token statistics are likewise observable only in
+        /// the materialized view.
+        void apply_statistics_fault_for_testing(
+            const TokenId& token_id,
+            FlatLexicalStatisticsFaultPoint point
+        ) noexcept;
+
         /// \brief Removes one active unit contribution idempotently.
         [[nodiscard]] bool erase(const KnowledgeUnitId& unit_id);
 
@@ -236,6 +258,11 @@ namespace agent_memory {
             const TokenId& token_id,
             std::size_t max_postings
         ) const;
+
+        /// \brief Returns the physical posting count without materialization.
+        [[nodiscard]] std::size_t posting_count(
+            const TokenId& token_id
+        ) const noexcept;
 
         /// \brief Partitions one ordered posting list into bounded segments.
         ///
@@ -274,6 +301,12 @@ namespace agent_memory {
 
     [[nodiscard]] bool is_valid_flat_lexical_unit_input(
         const FlatLexicalUnitInput& input
+    ) noexcept;
+
+    /// \brief Checks that collection DF agrees with physical posting count.
+    [[nodiscard]] bool is_consistent_flat_lexical_posting_count(
+        std::uint64_t declared_document_frequency,
+        std::size_t physical_posting_count
     ) noexcept;
 
     [[nodiscard]] bool is_valid_flat_lexical_posting_segment(

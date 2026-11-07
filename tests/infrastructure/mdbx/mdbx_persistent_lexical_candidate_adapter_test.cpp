@@ -7,7 +7,10 @@
 
 #include <array>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <stdexcept>
@@ -60,6 +63,58 @@ MdbxPersistentLexicalIndexOptions options(
 void require(bool value, const char* message) {
     if(!value) throw std::runtime_error(message);
 }
+
+class TestMdbxWorkspace final {
+public:
+    TestMdbxWorkspace() {
+        const auto base = std::filesystem::temp_directory_path();
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        for(std::uint64_t attempt = 0; attempt < 1000; ++attempt) {
+            const auto sequence = next_sequence.fetch_add(1);
+            const auto candidate = base /
+                ("agent_memory_candidate_adapter_" +
+                 std::to_string(stamp) + "_" + std::to_string(sequence));
+            std::error_code error;
+            if(!std::filesystem::create_directory(candidate, error)) continue;
+            m_root = candidate;
+            m_database = m_root / "database.mdbx";
+            m_marker = m_root / "owner.marker";
+            std::ofstream marker(m_marker, std::ios::binary);
+            marker << "agent-memory-candidate-adapter-owner-v1";
+            if(!marker) throw std::runtime_error("failed to create workspace marker");
+            m_foreign = base / (candidate.filename().string() + ".foreign");
+            return;
+        }
+        throw std::runtime_error("failed to allocate exclusive MDBX workspace");
+    }
+
+    ~TestMdbxWorkspace() noexcept {
+        try {
+            std::ifstream marker(m_marker, std::ios::binary);
+            std::string value;
+            std::getline(marker, value);
+            if(value == "agent-memory-candidate-adapter-owner-v1") {
+                std::error_code error;
+                std::filesystem::remove_all(m_root, error);
+            }
+        } catch(...) {
+        }
+    }
+
+    [[nodiscard]] const std::filesystem::path& database_path() const noexcept {
+        return m_database;
+    }
+    [[nodiscard]] const std::filesystem::path& foreign_path() const noexcept {
+        return m_foreign;
+    }
+
+private:
+    inline static std::atomic<std::uint64_t> next_sequence{0};
+    std::filesystem::path m_root;
+    std::filesystem::path m_database;
+    std::filesystem::path m_marker;
+    std::filesystem::path m_foreign;
+};
 
 class TestUnits final : public IKnowledgeUnitStore {
 public:
@@ -206,15 +261,20 @@ ResourceManifest admitted_manifest(
 } // namespace
 
 int main() {
+    std::filesystem::path foreign_path;
     try {
-        const auto path = std::filesystem::temp_directory_path() /
-            "agent_memory_persistent_candidate_adapter_test.mdbx";
-        std::error_code error;
-        std::filesystem::remove(path, error);
-        const ScopeId scope{"candidate-scope"};
         {
-            auto context = MdbxStorageContext::open(path.string());
-            MdbxPersistentLexicalIndex index{options(path, context, scope)};
+            TestMdbxWorkspace workspace;
+            foreign_path = workspace.foreign_path();
+            {
+                std::ofstream foreign(foreign_path, std::ios::binary);
+                foreign << "foreign-sentinel-v1";
+            }
+            const auto path = workspace.database_path();
+            const ScopeId scope{"candidate-scope"};
+            {
+                auto context = MdbxStorageContext::open(path.string());
+                MdbxPersistentLexicalIndex index{options(path, context, scope)};
             index.upsert(unit(scope, 1, 1, "resource-a", {"alpha", "shared"}));
             index.upsert(unit(scope, 2, 1, "resource-b", {"beta", "shared", "shared"}));
             StandardTokenizer tokenizer;
@@ -290,6 +350,51 @@ int main() {
             require(posting_truncated.completeness ==
                         PersistentLexicalCandidateCompleteness::Truncated,
                     "posting budget did not report truncation");
+            require(baseline.postings_prefix(*baseline_token, 1).size() == 1,
+                    "bounded posting prefix did not cap physical consumption");
+            require(is_consistent_flat_lexical_posting_count(2, 2) &&
+                        !is_consistent_flat_lexical_posting_count(2, 1) &&
+                        !is_consistent_flat_lexical_posting_count(1, 2),
+                    "posting/statistics consistency seam accepted a mismatch");
+
+            const auto shared_persistent_token = index.read_snapshot().index
+                .find_token_id("shared");
+            require(shared_persistent_token.has_value(),
+                    "persistent shared token was not materialized");
+            const auto physical_shared_postings = index.read_snapshot().index
+                .posting_count(*shared_persistent_token);
+            require(physical_shared_postings == 2,
+                    "persistent physical posting count changed unexpectedly");
+
+            index.set_statistics_fault_for_testing(
+                *shared_persistent_token,
+                FlatLexicalStatisticsFaultPoint::RemoveTokenStatistics);
+            const auto missing_statistics_generated = adapter.generate(query);
+            require(missing_statistics_generated.completeness ==
+                        PersistentLexicalCandidateCompleteness::InconsistentSnapshot &&
+                        missing_statistics_generated.candidates.empty(),
+                    "generate accepted a token with missing statistics");
+
+            index.set_statistics_fault_for_testing(
+                *shared_persistent_token,
+                FlatLexicalStatisticsFaultPoint::DocumentFrequencyTooHigh);
+            const auto df_too_high_generated = adapter.generate(query);
+            require(df_too_high_generated.completeness ==
+                        PersistentLexicalCandidateCompleteness::InconsistentSnapshot &&
+                        df_too_high_generated.candidates.empty(),
+                    "generate accepted DF greater than physical postings");
+
+            index.set_statistics_fault_for_testing(
+                *shared_persistent_token,
+                FlatLexicalStatisticsFaultPoint::DocumentFrequencyTooLow);
+            const auto df_too_low_generated = adapter.generate(query);
+            require(df_too_low_generated.completeness ==
+                        PersistentLexicalCandidateCompleteness::InconsistentSnapshot &&
+                        df_too_low_generated.candidates.empty(),
+                    "generate accepted DF lower than physical postings");
+            require(index.read_snapshot().index.posting_count(
+                        *shared_persistent_token) == physical_shared_postings,
+                    "statistics fault changed physical persistent postings");
 
             auto forged_scope = initial;
             forged_scope.candidates.front().scope_id = ScopeId{"other-scope"};
@@ -333,6 +438,54 @@ int main() {
                         !unsupported_result.diagnostic.empty(),
                     "unsupported candidate response lost its diagnostic");
 
+            auto unsupported_with_candidates = initial;
+            unsupported_with_candidates.completeness =
+                PersistentLexicalCandidateCompleteness::UnsupportedQuery;
+            const auto malformed_unsupported = admit_persistent_lexical_candidates(
+                scope, unsupported_with_candidates,
+                units, projections, manifests, tokenizer);
+            require(malformed_unsupported.completeness ==
+                        RevisionBoundCompleteness::InconsistentSnapshot &&
+                        malformed_unsupported.results.empty(),
+                    "unsupported response with candidates was not rejected");
+
+            auto conflicting_observations = initial;
+            conflicting_observations.candidates.push_back(
+                conflicting_observations.candidates.front());
+            conflicting_observations.candidates.back().resource_generation = 2;
+            const auto conflict_result = admit_persistent_lexical_candidates(
+                scope, conflicting_observations,
+                units, projections, manifests, tokenizer);
+            require(conflict_result.completeness ==
+                        RevisionBoundCompleteness::InconsistentSnapshot &&
+                        conflict_result.results.empty(),
+                    "conflicting unit observations were not rejected");
+
+            PersistentLexicalCandidateResponse missing_statistics;
+            missing_statistics.completeness =
+                PersistentLexicalCandidateCompleteness::InconsistentSnapshot;
+            missing_statistics.diagnostic =
+                "persistent lexical token is missing collection statistics";
+            const auto missing_statistics_result = admit_persistent_lexical_candidates(
+                scope, missing_statistics,
+                units, projections, manifests, tokenizer);
+            require(missing_statistics_result.completeness ==
+                        RevisionBoundCompleteness::InconsistentSnapshot &&
+                        missing_statistics_result.results.empty(),
+                    "missing statistics outcome was not fail-closed");
+
+            PersistentLexicalCandidateResponse df_mismatch;
+            df_mismatch.completeness =
+                PersistentLexicalCandidateCompleteness::InconsistentSnapshot;
+            df_mismatch.diagnostic =
+                "persistent lexical posting/statistics counts disagree";
+            const auto df_mismatch_result = admit_persistent_lexical_candidates(
+                scope, df_mismatch, units, projections, manifests, tokenizer);
+            require(df_mismatch_result.completeness ==
+                        RevisionBoundCompleteness::InconsistentSnapshot &&
+                        df_mismatch_result.results.empty(),
+                    "DF/physical mismatch outcome was not fail-closed");
+
             index.upsert(unit(scope, 1, 2, "resource-a", {"updated"}),
                          FlatLexicalExpectedState{
                              KnowledgeUnitId{1}, 1, 1,
@@ -359,25 +512,36 @@ int main() {
             require(bounded.generate(query).completeness ==
                         PersistentLexicalCandidateCompleteness::Complete,
                     "single-posting candidate was incorrectly truncated");
-        }
+            }
 
-        {
-            auto context = MdbxStorageContext::open(path.string());
-            MdbxPersistentLexicalIndex reopened{options(path, context, scope)};
-            StandardTokenizer tokenizer;
-            MdbxPersistentLexicalCandidateAdapter adapter{reopened, tokenizer};
-            RetrievalQuery query;
-            query.text = "updated";
-            query.limit = 4;
-            const auto result = adapter.generate(query);
-            require(result.candidates.size() == 1 &&
-                        result.candidates.front().identity.unit_revision == 2,
-                    "reopen lost the current persistent candidate");
+            {
+                auto context = MdbxStorageContext::open(path.string());
+                MdbxPersistentLexicalIndex reopened{options(path, context, scope)};
+                StandardTokenizer tokenizer;
+                MdbxPersistentLexicalCandidateAdapter adapter{reopened, tokenizer};
+                RetrievalQuery query;
+                query.text = "updated";
+                query.limit = 4;
+                const auto result = adapter.generate(query);
+                require(result.candidates.size() == 1 &&
+                            result.candidates.front().identity.unit_revision == 2,
+                        "reopen lost the current persistent candidate");
+            }
         }
-        std::filesystem::remove(path, error);
+        {
+            std::ifstream foreign(foreign_path, std::ios::binary);
+            std::string value;
+            std::getline(foreign, value);
+            require(value == "foreign-sentinel-v1",
+                    "exclusive workspace cleanup modified a foreign file");
+        }
+        std::error_code error;
+        std::filesystem::remove(foreign_path, error);
         std::cout << "persistent lexical candidate adapter: PASS\n";
         return 0;
     } catch(const std::exception& error) {
+        std::error_code cleanup_error;
+        if(!foreign_path.empty()) std::filesystem::remove(foreign_path, cleanup_error);
         std::cerr << "persistent lexical candidate adapter: " << error.what() << '\n';
         return 1;
     }
