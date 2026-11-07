@@ -6,6 +6,7 @@ option(AGENT_MEMORY_ENABLE_HNSW_BENCHMARK "Enable the research-only hnswlib cand
 option(AGENT_MEMORY_NEUROUTE_ENABLE_AVX2 "Enable opt-in NeuRoute AVX2 benchmark kernels" OFF)
 option(AGENT_MEMORY_ENABLE_WARNINGS "Enable compiler warnings for agent-memory-cpp" ON)
 option(AGENT_MEMORY_ENABLE_MDBX "Enable MDBX-backed storage dependencies" OFF)
+option(AGENT_MEMORY_ENABLE_ZSTD "Enable the optional framed Zstd codec" OFF)
 option(AGENT_MEMORY_ENABLE_JSON "Enable JSON dataset loader for retrieval eval (PR #27). Requires nlohmann_json." ON)
 
 set(AGENT_MEMORY_MDBX_CONTAINERS_SOURCE_DIR "" CACHE PATH
