@@ -7,23 +7,48 @@
       "source_id": "source:article-mdbx",
       "kind": "technical_article",
       "revisions": [
-        {"id": "source:article-mdbx@1", "body_digest": "sha256:article-v1"},
-        {"id": "source:article-mdbx@2", "body_digest": "sha256:article-v2"}
+        {
+          "id": "source:article-mdbx@1",
+          "frozen_body": "Article MDBX source revision one with crash recovery details.",
+          "body_digest": "sha256:12ed520755c8447db6f1241a3566809d142360b3e17afc7c3f31458f33fed43c"
+        },
+        {
+          "id": "source:article-mdbx@2",
+          "frozen_body": "Article MDBX source revision two with updated replay fence details.",
+          "body_digest": "sha256:aad17120271844d505ee355d48ba3f3cc4a19c9240e9188291ede2e37cde83dc"
+        }
       ]
     },
     {
       "source_id": "source:telegram-image",
       "kind": "telegram_post",
       "revisions": [
-        {"id": "source:telegram-image@1", "body_digest": "sha256:telegram-v1"}
+        {
+          "id": "source:telegram-image@1",
+          "frozen_body": "Telegram source post retains the binary image artifact bytes.",
+          "body_digest": "sha256:f2398cc490b83aed4cb1617041054521481bd62db9ae03581f0f61243d2b7372"
+        }
       ]
     },
     {
       "source_id": "source:timed-transcript",
       "kind": "timed_transcript",
       "revisions": [
-        {"id": "source:timed-transcript@1", "body_digest": "sha256:transcript-v1"}
+        {
+          "id": "source:timed-transcript@1",
+          "duration_ms": 60000,
+          "frozen_body": "Transcript source revision contains the twelve second import event.",
+          "body_digest": "sha256:6a8578455a509b438fa73afce2a4afd39f7791facda71a61249bd7a6b7930652"
+        }
       ]
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "sha256:d4f5ce33d4008a25a8a601149ada8fe648a8e6f450f38edea8a06aa35cbc6411",
+      "media_type": "image/png",
+      "bytes_hex": "00010203faff",
+      "retained": true
     }
   ],
   "representations": [
@@ -35,7 +60,7 @@
       "producer": "source-import",
       "recipe_fingerprint": "recipe:original-v1",
       "publication_generation": 1,
-      "evidence_locator": {"kind": "body_range", "offset": 0, "length": 128}
+      "evidence_locator": {"kind": "body_range", "offset": 0, "length": 16}
     },
     {
       "id": "repr:article-summary-v1",
@@ -45,7 +70,7 @@
       "producer": "summary-extractor-v0",
       "recipe_fingerprint": "recipe:summary-v1",
       "publication_generation": 1,
-      "evidence_locator": {"kind": "body_range", "offset": 32, "length": 48}
+      "evidence_locator": {"kind": "body_range", "offset": 3, "length": 16}
     },
     {
       "id": "repr:article-summary-v2",
@@ -55,7 +80,18 @@
       "producer": "summary-extractor-v0",
       "recipe_fingerprint": "recipe:summary-v1",
       "publication_generation": 2,
-      "evidence_locator": {"kind": "body_range", "offset": 16, "length": 64}
+      "evidence_locator": {"kind": "body_range", "offset": 4, "length": 20}
+    },
+    {
+      "id": "repr:article-telegram-fact-v1",
+      "source_revision_id": "source:article-mdbx@1",
+      "view": "fact",
+      "requires_multi_input": true,
+      "input_source_revision_ids": ["source:article-mdbx@1", "source:telegram-image@1"],
+      "producer": "fact-extractor-v0",
+      "recipe_fingerprint": "recipe:fact-v1",
+      "publication_generation": 1,
+      "evidence_locator": {"kind": "body_range", "offset": 5, "length": 12}
     },
     {
       "id": "repr:telegram-original-v1",
@@ -65,7 +101,7 @@
       "producer": "source-import",
       "recipe_fingerprint": "recipe:original-v1",
       "publication_generation": 1,
-      "evidence_locator": {"kind": "artifact", "artifact_id": "artifact:telegram-image"}
+      "evidence_locator": {"kind": "artifact", "artifact_id": "sha256:d4f5ce33d4008a25a8a601149ada8fe648a8e6f450f38edea8a06aa35cbc6411"}
     },
     {
       "id": "repr:transcript-original-v1",
@@ -75,7 +111,7 @@
       "producer": "source-import",
       "recipe_fingerprint": "recipe:original-v1",
       "publication_generation": 1,
-      "evidence_locator": {"kind": "time_range_ms", "start": 12000, "length": 4000}
+      "evidence_locator": {"kind": "time_range_ms", "start_ms": 12000, "duration_ms": 4000}
     }
   ],
   "original_documents": [
