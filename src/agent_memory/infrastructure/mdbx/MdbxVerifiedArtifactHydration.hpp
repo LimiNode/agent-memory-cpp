@@ -3,7 +3,7 @@
 #define AGENT_MEMORY_HEADER_INFRASTRUCTURE_MDBX_MDBX_VERIFIED_ARTIFACT_HYDRATION_HPP_INCLUDED
 
 /// \file MdbxVerifiedArtifactHydration.hpp
-/// \brief Exact-revision, scope-checked hydration over ArtifactCatalog + Raw CAS.
+/// \brief Integrity-verified byte materialization over ArtifactCatalog + Raw CAS.
 
 #include "MdbxArtifactCatalog.hpp"
 
@@ -19,8 +19,7 @@ enum class VerifiedArtifactMaterializationStatus : std::uint8_t {
     Materialized,
     Missing,
     Corrupt,
-    Stale,
-    WrongScope,
+    BindingRevisionMismatch,
     Unavailable,
     Unsupported,
     InvalidArgument
@@ -51,7 +50,8 @@ struct VerifiedArtifactMaterializationResult final {
 /// This adapter is deliberately not an authorization or current-revision
 /// reader. Callers must obtain trusted scope/freshness admission separately;
 /// the future authoritative path must consume a real snapshot admission
-/// context rather than caller-provided matching strings.
+/// context rather than caller-provided matching strings. In particular,
+/// `Materialized` says nothing about authorization or currentness.
 class MdbxArtifactMaterializer final {
 public:
     explicit MdbxArtifactMaterializer(const MdbxArtifactCatalog& catalog)
