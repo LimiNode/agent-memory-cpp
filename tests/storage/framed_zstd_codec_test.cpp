@@ -30,7 +30,18 @@ int main() {
     expect(decode_framed_zstd(raw.bytes, options).bytes == body, "raw fallback did not round-trip");
     const auto range = decode_framed_zstd_range(first.bytes, 3, 11, options);
     expect(range.bytes == body.substr(3, 11), "framed range decode returned wrong bytes");
-    expect(range.artifact_id == first.artifact_id, "range decode lost logical identity");
+    expect(range.declared_artifact_id == first.artifact_id,
+           "range decode lost declared logical identity");
+    expect(range.integrity == FramedZstdRangeIntegrity::UnverifiedPartial &&
+               !range.verified_artifact_id,
+           "range decode claimed whole-artifact verification");
+    auto tampered_range = encode_framed_zstd(body, true, options).bytes;
+    const std::size_t first_payload = 70U;
+    tampered_range[first_payload] ^= 0x01;
+    const auto tampered = decode_framed_zstd_range(tampered_range, 0, 4, options);
+    expect(tampered.integrity == FramedZstdRangeIntegrity::UnverifiedPartial &&
+               tampered.bytes != body.substr(0, 4),
+           "tampered partial bytes were treated as verified");
     bool range_rejected = false;
     try { static_cast<void>(decode_framed_zstd_range(first.bytes, body.size() + 1U, 0, options)); }
     catch(const std::runtime_error&) { range_rejected = true; }

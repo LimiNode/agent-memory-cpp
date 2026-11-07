@@ -12,6 +12,14 @@ budgets, a decoded SHA-256 digest, and independently decodable frames. Decode
 fails closed on unknown versions, truncation, frame-size violations, malformed
 raw fallback, decompression errors, trailing bytes, or digest mismatch.
 
+`decode_framed_zstd_range()` is intentionally a narrow experimental API. Its
+result carries the header's `declared_artifact_id` and the explicit
+`UnverifiedPartial` integrity status; `verified_artifact_id` is empty. A valid
+frame can still contain bytes different from the declared whole-artifact
+digest. Only full `decode_framed_zstd()` computes and checks the complete
+decoded SHA-256 and can establish logical identity. A caller must not promote a
+partial range to `Hydrated` or use it as authoritative citation material.
+
 `ArtifactId` is always derived from decoded bytes. Compression level, frame
 size, and the explicit raw fallback for already-compressed media affect only
 the physical descriptor and payload. This slice does not replace
