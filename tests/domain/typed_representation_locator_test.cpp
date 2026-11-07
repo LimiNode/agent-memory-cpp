@@ -64,6 +64,16 @@ int main() {
     try { static_cast<void>(deserialize_typed_locator("TL0")); }
     catch(const std::exception&) { invalid_version = true; }
     expect(invalid_version, "unknown locator codec version accepted");
+    auto truncated = serialize_typed_locator(text);
+    truncated.pop_back();
+    bool truncated_rejected = false;
+    try { static_cast<void>(deserialize_typed_locator(truncated)); }
+    catch(const std::exception&) { truncated_rejected = true; }
+    expect(truncated_rejected, "truncated locator codec input accepted");
+    bool oversized_rejected = false;
+    try { static_cast<void>(deserialize_typed_locator(std::string(kMaxTypedLocatorBytes + 1U, 'x'))); }
+    catch(const std::exception&) { oversized_rejected = true; }
+    expect(oversized_rejected, "oversized locator codec input accepted");
 
     std::cout << "typed representation locators: PASS\n";
     return 0;
