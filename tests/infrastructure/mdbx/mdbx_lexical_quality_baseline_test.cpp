@@ -75,8 +75,6 @@ std::string normalized_document(const Json& document) {
         + document.at("body").get<std::string>() + "\n"
         + document.at("code").get<std::string>() + "\n";
     for(const auto& tag : document.at("tags")) result += tag.get<std::string>() + " ";
-    result += "\n" + document.at("summary").get<std::string>() + "\n"
-        + document.at("question").get<std::string>();
     return result;
 }
 
@@ -127,6 +125,13 @@ int main(int argc, char** argv) {
                 ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
             MdbxResourceImporter importer{std::move(options)};
             for(const auto& document : fixture.at("documents")) {
+                const auto source_kind = document.at("source_kind").get<std::string>();
+                if(source_kind.rfind("derived_", 0) == 0) {
+                    // Derived views require an admitted producer, recipe and
+                    // generation. They are intentionally not injected into
+                    // the Original projection by this baseline.
+                    continue;
+                }
                 ObservedResource resource;
                 resource.scope_id = ScopeId{document.at("scope_id").get<std::string>()};
                 resource.resource_id = ResourceId{document.at("id").get<std::string>()};
@@ -191,10 +196,11 @@ int main(int argc, char** argv) {
             {"retrieval_path", "ProjectionAwareLexicalRetriever::retrieve_with_candidates"},
             {"fixture_id", fixture.at("fixture_id")},
             {"fixture_sha256", sha256_hex(fixture_bytes)},
-            {"document_count", fixture.at("documents").size()},
+            {"document_count", unit_to_document.size()},
             {"query_count", fixture.at("queries").size()},
             {"source_commit", source_commit()},
             {"build_platform", build_platform()},
+            {"freshness_status", "NOT_IMPLEMENTED_FRESHNESS_CONFORMANCE"},
             {"score_semantics", "producer score returned by ProjectionAwareLexicalRetriever; no score recomputation"},
             {"runs", std::move(runs)}
         };

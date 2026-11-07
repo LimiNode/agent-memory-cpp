@@ -475,7 +475,7 @@ jobs:
         run: >
           ctest --test-dir build-lexical-quality --build-config Release
           --output-on-failure -R
-          "agent_memory_(lexical_quality_evaluation_self_test|lexical_product_path_workload_self_test|mdbx_lexical_quality_baseline_test|lexical_quality_evaluation)$"
+          "agent_memory_(lexical_quality_evaluation_self_test|lexical_product_path_workload_self_test|mdbx_lexical_quality_baseline_test|lexical_quality_evaluation|mdbx_lexical_quality_freshness_conformance_test)$"
 
       - name: Upload executable lexical quality receipt
         uses: actions/upload-artifact@v4
