@@ -107,7 +107,15 @@ MdbxPersistentLexicalCandidateAdapter::generate(const RetrievalQuery& query) con
         }
         const auto postings = snapshot.index.postings_prefix(
             *token_id, posting_limit);
-        for(std::size_t index = 0; index < posting_limit; ++index) {
+        if(postings.size() != posting_limit) {
+            // The flat snapshot normally keeps DF and physical membership in
+            // lockstep. If a future reader observes a torn/corrupt pair, do
+            // not index past the returned vector or claim completeness.
+            response.completeness = PersistentLexicalCandidateCompleteness::Truncated;
+            response.diagnostic =
+                "persistent lexical posting/statistics counts disagree";
+        }
+        for(std::size_t index = 0; index < postings.size(); ++index) {
             ++response.examined_postings;
             const auto& posting = postings[index];
             auto found = accumulated.find(posting.unit_id);
