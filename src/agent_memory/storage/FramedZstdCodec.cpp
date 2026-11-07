@@ -248,7 +248,8 @@ FramedZstdRange decode_framed_zstd_range(std::string_view encoded_bytes,
     if(frame_count != expected_count || offset > decoded_size || length > decoded_size - offset)
         throw std::runtime_error("framed zstd range or frame count is invalid");
     FramedZstdRange result;
-    result.artifact_id = artifact_id_for_digest(declared_digest);
+    result.declared_artifact_id = artifact_id_for_digest(declared_digest);
+    result.verified_artifact_id.reset();
     result.descriptor = descriptor_from(frame_bytes, level, (flags & kRawFlag) != 0U);
     result.offset = offset;
     result.bytes.reserve(static_cast<std::size_t>(length));

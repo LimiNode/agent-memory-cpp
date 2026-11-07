@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -43,8 +44,16 @@ struct FramedZstdDecoded final {
     std::string bytes;
 };
 
+enum class FramedZstdRangeIntegrity : std::uint8_t {
+    UnverifiedPartial
+};
+
 struct FramedZstdRange final {
-    ArtifactId artifact_id;
+    /// Identity declared by the physical header; it is not verified by a range read.
+    ArtifactId declared_artifact_id;
+    /// Always empty for this narrow range API. Full decode is required to set it.
+    std::optional<ArtifactId> verified_artifact_id;
+    FramedZstdRangeIntegrity integrity = FramedZstdRangeIntegrity::UnverifiedPartial;
     FramedZstdDescriptor descriptor;
     std::uint64_t offset = 0;
     std::string bytes;
@@ -70,8 +79,10 @@ struct FramedZstdRange final {
 
 /// \brief Decodes one logical byte range, materializing only overlapping frames.
 ///
-/// Integrity of each materialized frame is checked. Callers requiring
-/// whole-artifact digest verification must use `decode_framed_zstd()`.
+/// The returned range is explicitly `UnverifiedPartial`: successful frame
+/// decompression does not prove the bytes match the declared whole-artifact
+/// digest. Callers requiring authoritative identity must use
+/// `decode_framed_zstd()` and verify its decoded digest.
 [[nodiscard]] FramedZstdRange decode_framed_zstd_range(
     std::string_view encoded_bytes,
     std::uint64_t offset,
