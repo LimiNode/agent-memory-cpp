@@ -17,6 +17,10 @@ resource generation, projection kind, and projection version observed by that
 snapshot. It does not return canonical text. `admit_persistent_lexical_candidates`
 passes the identity and score channels through `RevisionBoundLexicalRetriever`,
 then checks the observed resource generation against the admitted manifest.
+Posting reads use a bounded prefix API; the candidate limit therefore does not
+materialize a complete high-document-frequency posting list. The persistent
+flat snapshot itself is still reconstructed in memory by the existing
+`read_snapshot()` baseline.
 
 The adapter is not enabled by default and does not add a second publication
 coordinator or a new resource-revision authority. Metadata filters, empty
@@ -58,6 +62,9 @@ Result: 2/2 tests passed on MinGW C++17 with MDBX enabled.
 - The candidate score is term-frequency accumulation, not BM25/BM25+/BM25L
   parity. Ranking differences must be reported until a shared scorer consumes
   the persistent statistics.
+- The bounded prefix applies to per-term posting consumption; snapshot
+  reconstruction remains an O(N) flat baseline and is not a serving-scale
+  memory result.
 - Candidate generation and canonical admission are separate reads. The
   generic admission seam is revision-bound but not a shared MDBX transaction;
   snapshot-consistent durable composition remains a follow-up to the existing

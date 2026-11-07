@@ -15,6 +15,47 @@ struct AccumulatedCandidate final {
     float score = 0.0F;
 };
 
+bool same_projection_version(
+    const ProjectionVersionRef& left,
+    const ProjectionVersionRef& right
+) {
+    return left.unit_revision_at_build == right.unit_revision_at_build &&
+           left.projection_revision == right.projection_revision &&
+           left.derivation_generation == right.derivation_generation &&
+           left.derivation_fingerprint == right.derivation_fingerprint;
+}
+
+bool matches_current_projection_observation(
+    const PersistentLexicalCandidate& candidate,
+    const RevisionBoundRetrievalResult& admitted,
+    IProjectionStore& projection_store
+) {
+    if(candidate.scope_id != admitted.scope_id ||
+       candidate.identity.projection_kind != ProjectionKind::Original ||
+       !is_valid_projection_version(candidate.projection_version)) {
+        return false;
+    }
+    const auto projections = projection_store.list(
+        admitted.scope_id,
+        candidate.identity.knowledge_unit_id,
+        ProjectionKind::Original
+    );
+    for(const auto& projection : projections) {
+        if(projection.scope_id != admitted.scope_id ||
+           projection.unit_id != candidate.identity.knowledge_unit_id ||
+           projection.kind != ProjectionKind::Original ||
+           !is_valid_search_projection(projection) ||
+           projection.body != admitted.text ||
+           projection.version.unit_revision_at_build != admitted.unit_revision ||
+           !same_projection_version(
+                projection.version, candidate.projection_version)) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
 } // namespace
 
 MdbxPersistentLexicalCandidateAdapter::MdbxPersistentLexicalCandidateAdapter(
@@ -55,12 +96,17 @@ MdbxPersistentLexicalCandidateAdapter::generate(const RetrievalQuery& query) con
     for(const auto& token : tokens.tokens) {
         const auto token_id = snapshot.index.find_token_id(token.text);
         if(!token_id) continue;
-        const auto postings = snapshot.index.postings(*token_id);
-        const auto posting_limit = std::min(
-            postings.size(), m_options.max_postings_per_term);
-        if(posting_limit != postings.size()) {
+        const auto token_stats = snapshot.index.find_token_stats(*token_id);
+        if(!token_stats) continue;
+        const auto posting_count = token_stats->document_frequency;
+        const auto posting_limit = posting_count > m_options.max_postings_per_term
+            ? m_options.max_postings_per_term
+            : static_cast<std::size_t>(posting_count);
+        if(posting_count > m_options.max_postings_per_term) {
             response.completeness = PersistentLexicalCandidateCompleteness::Truncated;
         }
+        const auto postings = snapshot.index.postings_prefix(
+            *token_id, posting_limit);
         for(std::size_t index = 0; index < posting_limit; ++index) {
             ++response.examined_postings;
             const auto& posting = postings[index];
@@ -140,7 +186,9 @@ RevisionBoundRetrievalResponse admit_persistent_lexical_candidates(
         auto& admitted = result.results[index];
         if(admitted.freshness == RevisionBoundFreshness::Current &&
            (admitted.root_resource_id != candidate.resource_id ||
-            admitted.root_generation != candidate.resource_generation)) {
+            admitted.root_generation != candidate.resource_generation ||
+            !matches_current_projection_observation(
+                candidate, admitted, projection_store))) {
             admitted.freshness = RevisionBoundFreshness::Stale;
             admitted.materialization = RevisionBoundMaterialization::Unavailable;
             admitted.text.clear();

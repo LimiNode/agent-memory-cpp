@@ -904,6 +904,27 @@ std::vector<FlatLexicalPosting> FlatLexicalIndex::postings(
     return result;
 }
 
+std::vector<FlatLexicalPosting> FlatLexicalIndex::postings_prefix(
+    const TokenId& token_id,
+    const std::size_t max_postings
+) const {
+    if(max_postings == 0) {
+        return {};
+    }
+    std::vector<FlatLexicalPosting> result;
+    const auto found = m_postings.find(token_id);
+    if(found == m_postings.end()) {
+        return result;
+    }
+    const auto limit = std::min(max_postings, found->second.size());
+    result.reserve(limit);
+    auto entry = found->second.begin();
+    for(std::size_t index = 0; index < limit; ++index, ++entry) {
+        result.push_back(entry->second);
+    }
+    return result;
+}
+
 std::vector<FlatLexicalPostingSegment> FlatLexicalIndex::posting_segments(
     const TokenId& token_id,
     const std::size_t max_postings_per_segment
