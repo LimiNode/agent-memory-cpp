@@ -268,6 +268,23 @@ jobs:
       - name: Self-test R3A corpus acquisition validator
         run: python tools/lexical-research/prepare_r3a_corpus.py --self-test
 
+      - name: Validate source-bound release contract and receipt
+        env:
+          AGENT_MEMORY_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python tools/lexical-research/validate_source_bound_release_fixture.py --self-test
+          python tools/lexical-research/validate_source_bound_release_fixture.py \
+            --expected-source-commit "$AGENT_MEMORY_SOURCE_COMMIT" \
+            --write-receipt build/source-bound-release-profile-v1.receipt.json \
+            --receipt build/source-bound-release-profile-v1.receipt.json
+
+      - name: Upload source-bound release receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-bound-release-profile-receipt
+          path: build/source-bound-release-profile-v1.receipt.json
+          if-no-files-found: error
+
       - name: Verify frozen R3A corpus manifest
         run: >-
           python tools/lexical-research/prepare_r3a_corpus.py --root . --verify
