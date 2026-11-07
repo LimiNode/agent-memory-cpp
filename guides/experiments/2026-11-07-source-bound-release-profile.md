@@ -60,9 +60,27 @@ Run the contract and its negative controls with:
 python tools/lexical-research/validate_source_bound_release_fixture.py --self-test
 ```
 
-The validator rejects a derived field admitted into `Original` and a
-representation whose producer recipe is missing. It validates identity and
-lineage only; runtime retrieval and hydration remain separate executable gates.
+The validator rejects a derived field admitted into `Original`, forged body or
+artifact digests, out-of-bounds evidence, cross-source lifecycle transitions,
+and incomplete multi-input representations. It validates identity and lineage
+only; runtime retrieval and hydration remain separate executable gates.
+
+An execution receipt is a separate schema and must bind the exact source HEAD
+and frozen fixture bytes. CI can emit a truthful non-executed receipt while
+the runtime cases remain unsupported:
+
+```text
+python tools/lexical-research/validate_source_bound_release_fixture.py \
+  --expected-source-commit "$AGENT_MEMORY_SOURCE_COMMIT" \
+  --write-receipt build/source-bound-release-profile-v1.receipt.json \
+  --receipt build/source-bound-release-profile-v1.receipt.json
+```
+
+`NOT_EXECUTED` receipts have empty `executed_case_ids` and
+`observed_results`. An `EXECUTED` receipt must cover every case and may not
+report `PASS` for a fixture case still marked `NOT_IMPLEMENTED` or
+`NOT_VERIFIED`. A contract-only fixture cannot claim `PASS` without such an
+exact-source execution receipt.
 
 ## Follow-up
 
