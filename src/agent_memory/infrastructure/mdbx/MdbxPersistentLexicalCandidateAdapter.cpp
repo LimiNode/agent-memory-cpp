@@ -25,6 +25,17 @@ bool same_projection_version(
            left.derivation_fingerprint == right.derivation_fingerprint;
 }
 
+bool same_candidate_observation(
+    const PersistentLexicalCandidate& left,
+    const PersistentLexicalCandidate& right
+) {
+    return left.scope_id == right.scope_id &&
+           left.resource_id == right.resource_id &&
+           left.resource_generation == right.resource_generation &&
+           left.identity.projection_kind == right.identity.projection_kind &&
+           same_projection_version(left.projection_version, right.projection_version);
+}
+
 bool matches_current_projection_observation(
     const PersistentLexicalCandidate& candidate,
     const RevisionBoundRetrievalResult& admitted,
@@ -97,8 +108,23 @@ MdbxPersistentLexicalCandidateAdapter::generate(const RetrievalQuery& query) con
         const auto token_id = snapshot.index.find_token_id(token.text);
         if(!token_id) continue;
         const auto token_stats = snapshot.index.find_token_stats(*token_id);
-        if(!token_stats) continue;
+        if(!token_stats) {
+            response.completeness =
+                PersistentLexicalCandidateCompleteness::InconsistentSnapshot;
+            response.diagnostic =
+                "persistent lexical token is missing collection statistics";
+            return response;
+        }
         const auto posting_count = token_stats->document_frequency;
+        const auto physical_posting_count = snapshot.index.posting_count(*token_id);
+        if(!is_consistent_flat_lexical_posting_count(
+                posting_count, physical_posting_count)) {
+            response.completeness =
+                PersistentLexicalCandidateCompleteness::InconsistentSnapshot;
+            response.diagnostic =
+                "persistent lexical posting/statistics counts disagree";
+            return response;
+        }
         const auto posting_limit = posting_count > m_options.max_postings_per_term
             ? m_options.max_postings_per_term
             : static_cast<std::size_t>(posting_count);
@@ -138,6 +164,20 @@ MdbxPersistentLexicalCandidateAdapter::generate(const RetrievalQuery& query) con
                     posting.unit_id,
                     AccumulatedCandidate{std::move(candidate), 0.0F}
                 ).first;
+            } else if(!same_candidate_observation(
+                          found->second.candidate, PersistentLexicalCandidate{
+                              found->second.candidate.identity,
+                              snapshot.frontier.index_descriptor.ref.scope_id,
+                              posting.resource_id,
+                              posting.resource_generation,
+                              posting.projection_version
+                          })) {
+                response.candidates.clear();
+                response.completeness =
+                    PersistentLexicalCandidateCompleteness::InconsistentSnapshot;
+                response.diagnostic =
+                    "persistent lexical postings disagree for one knowledge unit";
+                return response;
             }
             found->second.score += static_cast<float>(posting.term_frequency);
         }
@@ -173,6 +213,35 @@ RevisionBoundRetrievalResponse admit_persistent_lexical_candidates(
     ITokenizer& tokenizer,
     ProjectionAwareLexicalRetrieverOptions options
 ) {
+    if(candidates.completeness ==
+           PersistentLexicalCandidateCompleteness::InconsistentSnapshot) {
+        RevisionBoundRetrievalResponse result;
+        result.completeness = RevisionBoundCompleteness::InconsistentSnapshot;
+        result.diagnostic = candidates.diagnostic;
+        return result;
+    }
+    if(candidates.completeness ==
+           PersistentLexicalCandidateCompleteness::UnsupportedQuery &&
+       !candidates.candidates.empty()) {
+        RevisionBoundRetrievalResponse result;
+        result.completeness = RevisionBoundCompleteness::InconsistentSnapshot;
+        result.diagnostic =
+            "unsupported persistent lexical response carried candidates";
+        return result;
+    }
+    std::map<KnowledgeUnitId, PersistentLexicalCandidate> observations;
+    for(const auto& candidate : candidates.candidates) {
+        const auto found = observations.find(candidate.identity.knowledge_unit_id);
+        if(found == observations.end()) {
+            observations.emplace(candidate.identity.knowledge_unit_id, candidate);
+        } else if(!same_candidate_observation(found->second, candidate)) {
+            RevisionBoundRetrievalResponse result;
+            result.completeness = RevisionBoundCompleteness::InconsistentSnapshot;
+            result.diagnostic =
+                "persistent lexical response has conflicting unit observations";
+            return result;
+        }
+    }
     RevisionBoundLexicalRetriever admission(
         unit_store, projection_store, manifest_store, scope_id, tokenizer,
         std::move(options));

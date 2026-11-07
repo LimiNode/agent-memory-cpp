@@ -119,6 +119,13 @@ bool is_valid_flat_lexical_unit_input(
     return true;
 }
 
+bool is_consistent_flat_lexical_posting_count(
+    const std::uint64_t declared_document_frequency,
+    const std::size_t physical_posting_count
+) noexcept {
+    return declared_document_frequency == physical_posting_count;
+}
+
 bool is_valid_flat_lexical_posting_segment(
     const FlatLexicalPostingSegment& segment
 ) noexcept {
@@ -825,6 +832,34 @@ void FlatLexicalIndex::set_failure_injection_for_testing(
     m_failure_injection = point;
 }
 
+void FlatLexicalIndex::apply_statistics_fault_for_testing(
+    const TokenId& token_id,
+    const FlatLexicalStatisticsFaultPoint point
+) noexcept {
+    const auto found = m_token_stats.find(token_id);
+    if(found == m_token_stats.end()) {
+        return;
+    }
+    switch(point) {
+    case FlatLexicalStatisticsFaultPoint::None:
+        return;
+    case FlatLexicalStatisticsFaultPoint::RemoveTokenStatistics:
+        m_token_stats.erase(found);
+        return;
+    case FlatLexicalStatisticsFaultPoint::DocumentFrequencyTooHigh:
+        if(found->second.document_frequency !=
+           std::numeric_limits<std::uint64_t>::max()) {
+            ++found->second.document_frequency;
+        }
+        return;
+    case FlatLexicalStatisticsFaultPoint::DocumentFrequencyTooLow:
+        if(found->second.document_frequency != 0) {
+            --found->second.document_frequency;
+        }
+        return;
+    }
+}
+
 bool FlatLexicalIndex::erase(const KnowledgeUnitId& unit_id) {
     if(m_units.find(unit_id) == m_units.end()) {
         return false;
@@ -923,6 +958,11 @@ std::vector<FlatLexicalPosting> FlatLexicalIndex::postings_prefix(
         result.push_back(entry->second);
     }
     return result;
+}
+
+std::size_t FlatLexicalIndex::posting_count(const TokenId& token_id) const noexcept {
+    const auto found = m_postings.find(token_id);
+    return found == m_postings.end() ? 0U : found->second.size();
 }
 
 std::vector<FlatLexicalPostingSegment> FlatLexicalIndex::posting_segments(

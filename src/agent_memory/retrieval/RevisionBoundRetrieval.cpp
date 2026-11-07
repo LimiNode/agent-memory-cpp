@@ -100,6 +100,9 @@ std::vector<RevisionBoundRetrievalResult> RevisionBoundLexicalRetriever::retriev
     if(response.completeness == RevisionBoundCompleteness::BudgetExceeded) {
         throw ProjectionAwareLexicalRetrievalBudgetExceeded(response.diagnostic);
     }
+    if(response.completeness == RevisionBoundCompleteness::InconsistentSnapshot) {
+        throw RevisionBoundInconsistentSnapshot(response.diagnostic);
+    }
     return response.results;
 }
 

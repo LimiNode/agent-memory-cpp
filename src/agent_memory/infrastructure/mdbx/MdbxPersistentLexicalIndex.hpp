@@ -114,6 +114,17 @@ public:
         MdbxPersistentLexicalIndexFaultPoint point
     ) noexcept;
 
+    /// \brief Arms one materialized-view statistics corruption for conformance tests.
+    ///
+    /// The durable payload remains unchanged. On the next read snapshot, only
+    /// the selected token's aggregate statistics are mutated, allowing a
+    /// candidate consumer to prove fail-closed handling of missing statistics
+    /// and both DF mismatch directions.
+    void set_statistics_fault_for_testing(
+        TokenId token_id,
+        FlatLexicalStatisticsFaultPoint point
+    ) noexcept;
+
 private:
     class Impl;
     std::unique_ptr<Impl> m_impl;

@@ -588,6 +588,9 @@ public:
     std::size_t max_layout_versions;
     MdbxPersistentLexicalIndexFaultPoint failure =
         MdbxPersistentLexicalIndexFaultPoint::None;
+    TokenId statistics_fault_token;
+    FlatLexicalStatisticsFaultPoint statistics_fault =
+        FlatLexicalStatisticsFaultPoint::None;
 };
 
 MdbxPersistentLexicalIndex::MdbxPersistentLexicalIndex(
@@ -743,6 +746,11 @@ MdbxPersistentLexicalIndexSnapshot MdbxPersistentLexicalIndex::read_snapshot() c
         m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY));
     const auto state = m_impl->read_state(*transaction);
     auto index = rebuild_index(state);
+    if(m_impl->statistics_fault != FlatLexicalStatisticsFaultPoint::None) {
+        index.apply_statistics_fault_for_testing(
+            m_impl->statistics_fault_token, m_impl->statistics_fault);
+        m_impl->statistics_fault = FlatLexicalStatisticsFaultPoint::None;
+    }
     auto frontier = make_frontier(state, index);
     std::shared_ptr<void> transaction_owner{std::move(transaction)};
     return MdbxPersistentLexicalIndexSnapshot{
@@ -753,6 +761,14 @@ void MdbxPersistentLexicalIndex::set_failure_injection_for_testing(
     const MdbxPersistentLexicalIndexFaultPoint point
 ) noexcept {
     m_impl->failure = point;
+}
+
+void MdbxPersistentLexicalIndex::set_statistics_fault_for_testing(
+    const TokenId token_id,
+    const FlatLexicalStatisticsFaultPoint point
+) noexcept {
+    m_impl->statistics_fault_token = token_id;
+    m_impl->statistics_fault = point;
 }
 
 } // namespace agent_memory
