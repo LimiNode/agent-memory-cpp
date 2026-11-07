@@ -43,6 +43,22 @@ def validate_receipt(
     if expected_source_commit is not None and source_commit != expected_source_commit:
         raise AssertionError("receipt source commit does not match the executed source HEAD")
     queries = {query["id"]: query for query in fixture["queries"]}
+    if len(queries) != len(fixture["queries"]):
+        raise AssertionError("fixture contains duplicate query IDs")
+    judgments_by_query: dict[str, dict[str, int]] = {query_id: {} for query_id in queries}
+    for judgment in fixture.get("judgments", []):
+        query_id = judgment.get("query_id")
+        item_id = judgment.get("item_id")
+        if query_id not in queries:
+            raise AssertionError("judgment references an unknown query")
+        if item_id not in queries[query_id].get("eligible_document_ids", []):
+            raise AssertionError("judgment references an ineligible document")
+        if item_id in judgments_by_query[query_id]:
+            raise AssertionError("fixture contains duplicate or conflicting judgments")
+        grade = judgment.get("relevance_grade")
+        if not isinstance(grade, int) or grade < 0:
+            raise AssertionError("judgment relevance grade is malformed")
+        judgments_by_query[query_id][item_id] = grade
     run_list = receipt.get("runs", [])
     run_ids = [run.get("query_id") for run in run_list]
     if len(run_ids) != len(set(run_ids)):
@@ -59,6 +75,8 @@ def validate_receipt(
     stale_hit_violations = 0
     for query_id, query in queries.items():
         run = runs[query_id]
+        if run.get("scope_id") != query["scope_id"]:
+            raise AssertionError(f"{query_id} receipt scope does not match fixture scope")
         returned = run.get("returned", [])
         ids = [item.get("document_id") for item in returned]
         if len(ids) != len(set(ids)) or any(item_id not in documents for item_id in ids):
@@ -73,11 +91,13 @@ def validate_receipt(
                for item in returned):
             raise AssertionError(f"{query_id} has invalid producer score")
         state = fixture["query_states"][query_id]
-        grades = {
-            judgment["item_id"]: judgment["relevance_grade"]
-            for judgment in fixture["judgments"]
-            if judgment["query_id"] == query_id
-        }
+        grades = judgments_by_query[query_id]
+        eligible = set(query.get("eligible_document_ids", []))
+        judged = set(grades)
+        if state == "complete_qrels" and judged != eligible:
+            raise AssertionError(f"{query_id} complete qrels do not cover the eligible pool")
+        if state == "incomplete_qrels" and judged >= eligible:
+            raise AssertionError(f"{query_id} is marked incomplete but covers the eligible pool")
         row: dict[str, object] = {"returned_count": len(ids)}
         if state == "incomplete_qrels":
             row["status"] = "EXCLUDED_INCOMPLETE_QRELS"
@@ -86,7 +106,7 @@ def validate_receipt(
         elif state == "judged_zero_relevant" and query["class"] == "wrong_scope":
             row["forbidden_hits"] = forbidden_hits
             row["scope_mismatch_hits"] = scope_mismatch_hits
-            if forbidden_hits:
+            if forbidden_hits or scope_mismatch_hits:
                 row["status"] = "FAIL_SCOPE_LEAK"
             elif ids:
                 row["status"] = "PERMITTED_IRRELEVANT_HIT"
@@ -153,7 +173,7 @@ def main() -> int:
             "fixture_sha256": "0" * 64,
             "source_commit": "UNPINNED",
             "runs": [
-                {"query_id": query["id"], "returned": []}
+                {"query_id": query["id"], "scope_id": query["scope_id"], "returned": []}
                 for query in fixture["queries"]
             ],
         }
@@ -200,6 +220,38 @@ def main() -> int:
         bad_summary = validate_receipt(fixture, bad)
         if bad_summary["aggregate"]["scope_leak_violations"] != 1:
             raise AssertionError("cross-scope mutation was not classified")
+        scope_tampered = json.loads(json.dumps(sample))
+        scope_tampered["runs"][0]["scope_id"] = "private"
+        try:
+            validate_receipt(fixture, scope_tampered)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("receipt scope tampering was accepted")
+        duplicate_judgment = json.loads(json.dumps(fixture))
+        duplicate_judgment["judgments"].append({
+            "query_id": "q:exact-mdbx",
+            "item_id": "doc:article-mdbx",
+            "relevance_grade": 3,
+        })
+        try:
+            validate_receipt(duplicate_judgment, sample)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("duplicate judgment was accepted")
+        incomplete_judgment = json.loads(json.dumps(fixture))
+        incomplete_judgment["judgments"] = [
+            judgment for judgment in incomplete_judgment["judgments"]
+            if not (judgment["query_id"] == "q:exact-mdbx" and
+                    judgment["item_id"] == "doc:article-mdbx")
+        ]
+        try:
+            validate_receipt(incomplete_judgment, sample)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("incomplete complete_qrels was accepted")
         print("lexical_quality_evaluation=PASS")
         return 0
     if args.receipt is None:
@@ -214,7 +266,7 @@ def main() -> int:
     if args.output:
         args.output.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary["aggregate"], sort_keys=True))
-    return 0
+    return 2 if summary["aggregate"]["scope_leak_violations"] else 0
 
 
 if __name__ == "__main__":

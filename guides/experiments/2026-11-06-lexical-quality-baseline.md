@@ -29,6 +29,18 @@ not evidence of an admitted stale publication. The separate executable
 source update (A@1 to A@2) through snapshot final admission and must pass
 before stale-rejection claims are made.
 
+Access control has a separate strict conformance executable,
+`agent_memory_mdbx_lexical_quality_scope_conformance_test`. It imports public
+and private resources, runs a public-scope query, and exits non-zero if any
+cross-scope candidate is returned. The evaluator also classifies every
+scope-mismatched document as `FAIL_SCOPE_LEAK` and exits non-zero when the
+receipt contains an access violation. Permitted same-scope irrelevant hits
+remain informational quality warnings.
+
+The evaluator validates receipt scope metadata and rejects duplicate or
+conflicting judgments and incomplete pools declared as complete. Incomplete
+qrels remain explicitly excluded from quality aggregates.
+
 The receipt records the exact fixture SHA-256, retrieval path, query IDs,
 returned document IDs and producer scores, plus the exact CI source HEAD when
 run in pull-request CI. The previous receipt's metrics (Recall@5 0.9286 and
