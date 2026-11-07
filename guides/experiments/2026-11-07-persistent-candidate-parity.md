@@ -20,7 +20,8 @@ then checks the observed resource generation against the admitted manifest.
 Posting reads use a bounded prefix API; the candidate limit therefore does not
 materialize a complete high-document-frequency posting list. The persistent
 flat snapshot itself is still reconstructed in memory by the existing
-`read_snapshot()` baseline.
+`read_snapshot()` baseline. The returned `LexicalReadFrontier` is diagnostic
+metadata only; generic admission does not trust it as canonical evidence.
 
 The adapter is not enabled by default and does not add a second publication
 coordinator or a new resource-revision authority. Metadata filters, empty
