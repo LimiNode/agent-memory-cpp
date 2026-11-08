@@ -102,15 +102,28 @@ int main() {
             std::to_string(envelope.id.value());
         const auto projection_key = std::string{"original_projection:"} +
             std::to_string(envelope.id.value());
+        const auto has_key = [&manifest](const std::string& key) {
+            for(const auto& record : manifest.records) {
+                if(record.kind == agent_memory::DerivedRecordKind::Custom &&
+                   record.key == key) {
+                    return true;
+                }
+            }
+            return false;
+        };
         auto ordinal = static_cast<std::uint32_t>(manifest.records.size());
-        manifest.records.push_back(agent_memory::DerivedRecordRef{
-            agent_memory::DerivedRecordKind::Custom, agent_memory::ChunkId{},
-            unit_key, ordinal
-        });
-        manifest.records.push_back(agent_memory::DerivedRecordRef{
-            agent_memory::DerivedRecordKind::Custom, agent_memory::ChunkId{},
-            projection_key, ordinal + 1U
-        });
+        if(!has_key(unit_key)) {
+            manifest.records.push_back(agent_memory::DerivedRecordRef{
+                agent_memory::DerivedRecordKind::Custom, agent_memory::ChunkId{},
+                unit_key, ordinal++
+            });
+        }
+        if(!has_key(projection_key)) {
+            manifest.records.push_back(agent_memory::DerivedRecordRef{
+                agent_memory::DerivedRecordKind::Custom, agent_memory::ChunkId{},
+                projection_key, ordinal
+            });
+        }
         manifests.upsert_manifest_if_unchanged(
             std::move(manifest), expected_manifest);
 
