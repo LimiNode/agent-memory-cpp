@@ -271,6 +271,23 @@ binding identity and expected digest. Only that final revalidation may authorize
 `Hydrated`. The earlier admission snapshot is retained for diagnostics and
 bounded work, not treated as completion-time authority.
 
+More precisely, the operation linearizes at the final authoritative MDBX
+snapshot observation that confirms the complete metadata set. An update
+published before that observation must be detected and rejected. An update
+published after that observation does not invalidate an already completed
+operation; it is visible to the next operation. `CurrentAtCompletion` does not
+promise that the source remains current after the linearization point or after
+the result is returned to the caller.
+
+The final observation must be one consistent metadata snapshot containing the
+KnowledgeUnit lifecycle/revision, Original projection and publication identity,
+ResourceManifest frontier and source generation/digest,
+ResourceArtifactBinding, and ArtifactCatalog binding/body state. Independent
+sequential reads from adapters that each open their own MDBX transaction do not
+constitute this proof. If an existing adapter cannot perform a transaction-
+bound read, the functional implementation must add a narrow read-only seam or
+shared transaction view; it must not create a second freshness authority.
+
 If the product later needs a reproducible historical read, it may expose an
 internal or separately named `SnapshotCurrent` result tied to an explicit
 frontier. That result must not be silently presented as current at completion.
