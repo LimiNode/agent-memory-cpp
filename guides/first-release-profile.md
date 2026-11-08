@@ -11,6 +11,10 @@ connectors. HTML, video and other acquisition artifacts may be retained or
 discarded according to the selected retention policy; they are not silently
 replaced by a synthetic search projection.
 
+The external capability comparison and the corresponding release/post-release
+decisions are recorded in
+[`ragflow-capability-and-release-roadmap.md`](ragflow-capability-and-release-roadmap.md).
+
 ## Required guarantees
 
 1. A canonical normalized UTF-8 representation has a stable logical source
@@ -79,10 +83,15 @@ remain part of the normalized representation when supplied by the connector.
 The conservative inventory in
 [`retrieval-roadmap-coverage.md`](retrieval-roadmap-coverage.md) currently
 supports the durable raw UTF-8 importer, revision-aware Original publication
-and bounded lexical retrieval substrate. Snapshot-consistent MDBX admission,
-structural product chunking, derived multi-view retrieval, byte-verified
-hydration and install/export are separate gates. A roadmap contract or an API
-sketch must not be reported as an implemented release capability.
+and bounded lexical retrieval substrate. PR #603 also provides a bounded,
+executable article-to-citation conformance slice: it composes structural
+segments, snapshot admission, the typed resource-to-artifact join and
+byte-verified Raw range materialization. That slice is evidence for the article
+path, not a general product ingestion or public Hydrated API. Snapshot-
+consistent admission, structural product chunking, derived multi-view
+retrieval, complete source-backed hydration and install/export remain separate
+release gates. A roadmap contract or an API sketch must not be reported as an
+implemented release capability.
 
 The first release therefore remains a Technical Preview until the following
 vertical evidence exists:

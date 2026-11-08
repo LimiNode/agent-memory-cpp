@@ -1,0 +1,269 @@
+# RAGFlow capability comparison and release roadmap
+
+**Status:** documentation-only architecture audit, based on `main` at
+`36577361d1c1b15d92541779de932a9c84220f8c`.
+
+This guide records which ideas observed in RAGFlow are useful for
+`agent-memory-cpp`, which are already covered by existing contracts, and which
+remain future work. It is not an implementation claim and does not activate
+production retrieval, OCR, ASR, an LLM, or an agent runtime.
+
+The comparison uses the public RAGFlow project and release documentation as
+external design input:
+
+- [RAGFlow repository](https://github.com/infiniflow/ragflow)
+- [RAGFlow documentation](https://ragflow.io/docs/)
+
+The repository's source-level evidence remains authoritative for this project:
+[`first-release-profile.md`](first-release-profile.md),
+[`retrieval-roadmap-coverage.md`](retrieval-roadmap-coverage.md),
+[`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md),
+[`canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md),
+and [`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md).
+
+## 1. What #603 actually delivered
+
+PR #603 is an executable article-to-citation conformance slice. Its scope is
+smaller than a complete retrieval and hydration subsystem:
+
+```text
+normalized Markdown
+  -> StructuralSegmentSet
+  -> Original projection publication
+  -> snapshot-consistent lexical admission
+  -> ResourceRevision -> SourceRevision -> ArtifactBinding join
+  -> verified Raw CAS range materialization
+```
+
+The merged code provides the typed persisted join
+([`ResourceArtifactBinding`](../src/agent_memory/storage/ResourceArtifactBinding.hpp)
+and
+[`MdbxResourceArtifactBindingStore`](../src/agent_memory/infrastructure/mdbx/MdbxResourceArtifactBindingStore.hpp))
+and an MDBX regression test
+([`mdbx_article_to_citation_vertical_test.cpp`](../tests/infrastructure/mdbx/mdbx_article_to_citation_vertical_test.cpp))
+covering `A@1 -> A@2`, stale-candidate rejection, reopen, digest mismatch, and
+missing CAS bytes. The test composes the publication and admission operations
+itself. It is not yet a product ingestion API and it does not establish a
+universal `Hydrated` result.
+
+The following are deliberately **not** implemented by #603:
+
+- one authoritative public admission-plus-hydration operation;
+- atomic publication of manifest, projection, join and CAS retention;
+- crash recovery, backup/restore and retention collection for the whole path;
+- general table, image, Telegram or timed-transcript ingestion;
+- derived Summary/Concept publication;
+- production retrieval activation.
+
+In particular, `Current` and a successful materializer lookup must not be
+combined mechanically into `Hydrated`. Hydration is valid only when both
+statuses refer to the same trusted source revision, scope, locator and digest.
+
+## 2. Source-level comparison
+
+The table distinguishes an external RAGFlow capability from the closest
+existing project boundary. “Implemented” means executable project code, not a
+roadmap statement or a DTO-only test.
+
+| Capability observed in RAGFlow | Closest agent-memory-cpp source | Current status | Decision |
+|---|---|---|---|
+| Parser/layout pipeline for PDF, scans and office documents | External connector boundary; [`StructuralSegmentSet`](../src/agent_memory/ingestion/StructuralSegmentSet.hpp) and [`TypedRepresentation`](../src/agent_memory/domain/TypedRepresentation.hpp) | Contract/experimental text path only; no parser dependency in the core | **ADAPT** as an interchange contract; **DEFER** parser implementations |
+| Parent-child chunks and parent-context retrieval | [`StructuralSegmentSet`](../src/agent_memory/ingestion/StructuralSegmentSet.hpp), typed locators, retrieval execution roadmap | Not a product path; child identity and bounded context policy are not yet wired to retrieval | **ADAPT** after authoritative hydration |
+| Table/image context windows | [`TableRepresentation`](../src/agent_memory/domain/TypedRepresentation.hpp), artifact/provenance contracts, canonical content roadmap | Contracts exist, but no general enrichment or exact cell/image product vertical | **ADAPT** with retrieval enrichment separate from canonical bytes |
+| Knowledge Compilation / derived articles | `Summary`, `Fact`, `CompiledArticle`, linked-derived-knowledge contract | Payload concepts and provenance contracts exist; durable multi-input producer path is incomplete | **ADAPT**, using the existing publication substrate |
+| Agentic evidence sufficiency evaluation | `ContextBuilder` and evaluation guides | Evaluation contracts are documented; no universal evaluator in the core | **ADAPT** at host/evaluation layer |
+| OCR, ASR and multimodal extraction | Artifact/provenance and embedding adapter boundaries | No OCR/ASR runtime in the library | **DEFER** to external connectors |
+| Complex tables and merged-cell semantics | `TableRepresentation` and typed locators | Simple table contract only; merged cells and header relationships are missing | **ADAPT** as a later additive representation revision |
+| Graph/navigation views | Relation and linked-derived-knowledge guides | Optional views; manifest/provenance remains authoritative | **REJECT** graph-as-source-of-truth |
+| Universal orchestration or planning loop | Host/runtime integration roadmap | Explicitly outside the static library | **REJECT** in core |
+
+The comparison does not import RAGFlow's service topology into this library.
+The core remains a C++17 static library with storage, indexing, retrieval,
+ingestion and context contracts separated from host orchestration.
+
+## 3. Capability inventory and release boundary
+
+The following status vocabulary is normative for this audit:
+
+- `IMPLEMENTED` — executable code and a relevant conformance test exist;
+- `PARTIAL` — a bounded vertical or adapter exists, but the product contract is
+  incomplete;
+- `CONTRACT_ONLY` — interfaces or design rules exist without a complete path;
+- `ROADMAP_ONLY` — planned, with no executable implementation;
+- `DEFERRED` — intentionally outside the first release or core library.
+
+| Capability | Status at current `main` | Release classification | Evidence / next bounded gate |
+|---|---|---|---|
+| Raw and normalized article storage | `IMPLEMENTED` for the bounded importer/storage slices | Required foundation | `MdbxResourceImporter`, canonical-content tests |
+| Article structural segments | `PARTIAL` — executable in #603's vertical test | Release gate, not general ingest yet | Move composition into a product ingestion path |
+| Revision-bound lexical admission | `IMPLEMENTED` for the existing MDBX slice ([`RevisionBoundRetrieval`](../src/agent_memory/retrieval/RevisionBoundRetrieval.hpp)) | Required foundation | snapshot/frontier and current-read conformance tests |
+| Typed resource/artifact join | `IMPLEMENTED` | Required foundation | #603 join store and reopen regression |
+| Authoritative source-backed hydration | `PARTIAL` — verified article range materialization only | Release blocker | Phase 2 API and external installed-consumer fixture |
+| Table cell identity and exact cell hydration | `CONTRACT_ONLY` | Release blocker | S0 table fixture and typed cell locator gate |
+| Retained Telegram image vertical | `ROADMAP_ONLY` | Release blocker | retained-image bytes, update/stale/reopen fixture |
+| Timed transcript evidence | `ROADMAP_ONLY` | Release blocker | timed SegmentSet, alignment provenance and exact read |
+| Derived Summary/Concept publication | `CONTRACT_ONLY` | Release blocker | exact input revisions, producer recipe and stale propagation |
+| Crash-safe publication/recovery and retention | `CONTRACT_ONLY` | Release blocker | staged publication, reopen, backup/restore and collection matrix |
+| Installed external C++17 consumer | `PARTIAL` — packaging lanes exist | Release blocker | clean external consumer reproducing the supported profile |
+| Parent-child retrieval/context expansion | `ROADMAP_ONLY` | Post-release enhancement | bounded child/parent fixture after hydration |
+| Table/image retrieval enrichment | `CONTRACT_ONLY` | Post-release enhancement | separate derived projection with immutable evidence anchors |
+| Evidence sufficiency evaluator | `CONTRACT_ONLY` | Post-release enhancement | host-level evaluator with supported/missing/conflicting states |
+| Layout-aware parser adapters | `CONTRACT_ONLY` | Post-release enhancement | versioned parser interchange fixture |
+| Merged-cell semantics | `ROADMAP_ONLY` | Post-release enhancement | additive table representation revision |
+| Knowledge compilation profiles | `CONTRACT_ONLY` | Post-release enhancement | shared producer contract and rebuild fixture |
+
+The green CI for #603 does not promote any `PARTIAL`, `CONTRACT_ONLY` or
+`ROADMAP_ONLY` row to `IMPLEMENTED`.
+
+## 4. Decisions for RAGFlow-inspired mechanisms
+
+### 4.1 Parent-child retrieval and structural expansion
+
+Adopt the idea, but keep it bounded and revision-aware. A candidate child and
+its expanded parent context must share one admitted source revision, scope and
+frontier. The expansion budget must be explicit in bytes, segments and tokens.
+The citation remains attached to the original typed locator; expansion is a
+read-time context view and does not rewrite canonical bytes.
+
+Two approaches remain possible:
+
+1. retrieval-time expansion from an admitted child to its parent structure;
+2. a versioned context-enriched search projection.
+
+The first is the default recommendation because it avoids duplicating
+canonical text and keeps invalidation local. A projection is justified only by
+measurements showing that bounded read-time expansion is insufficient.
+
+### 4.2 Table and image context windows
+
+Keep two independent mechanisms:
+
+- retrieval enrichment, a derived searchable projection containing heading,
+  header and nearby explanatory context;
+- context expansion, a post-retrieval read of neighboring canonical segments.
+
+For tables, preserve cell/row/column identity, heading path, header context and
+an exact cell locator. For images, retain an `ArtifactBinding` when bytes are
+kept, or an explicit external-only reference when they are not. Context text
+must never become proof that image bytes were retained.
+
+### 4.3 Layout-aware parser interchange
+
+Treat DeepDoc, Docling, MinerU and similar systems as external producers. The
+future interchange record needs page/slide identity, region coordinates and
+coordinate system, reading order, layout type, confidence, parser/model
+fingerprint, normalized UTF-8 byte-span mappings, and diagnostics for unmapped
+or ambiguous regions. OCR engines and parser runtimes are not release
+dependencies of the C++ core.
+
+### 4.4 Evidence sufficiency
+
+Separate retrieval completeness from evidence sufficiency. The future evaluator
+belongs in `ContextBuilder` or host integration and should classify claims as
+supported, unsupported, conflicting or unknown, with provenance and coverage
+limits. BM25 score, hit count or retrieval completeness alone is not evidence
+sufficiency.
+
+### 4.5 Complex tables
+
+Extend `TableRepresentation` additively for merged cells, row/column spans,
+header relationships and typed cell values. Recognized text remains distinct
+from the canonical typed value. This is a later representation revision and is
+not part of the current documentation PR's implementation.
+
+### 4.6 Knowledge Compilation
+
+Do not create a parallel knowledge system. Map RAGFlow-style compilation onto
+the existing `Summary`, `Fact`, `QA`, `CompiledArticle`, `DomainMap`,
+`Relation` and Procedure/Skill concepts. Every future derived producer must
+record:
+
+- exact input revision set;
+- producer identity;
+- versioned recipe/model/config;
+- output identity and publication generation;
+- evidence lineage;
+- stale invalidation behavior;
+- reconstruction and rebuild semantics.
+
+## 5. Phase 2 engineering specification (planning only)
+
+The next functional PR should implement **authoritative source-backed
+hydration**. This section is a specification, not permission to implement it
+in this documentation PR.
+
+The API must consume a trusted admission/snapshot context produced by MDBX;
+caller-provided “current” flags, revisions or digests are not authority. It
+must resolve the exact chain
+`ResourceRevision -> SourceRevision -> ArtifactBinding`, validate scope and
+currentness, validate the typed locator and normalized-view bounds, and verify
+the complete CAS digest during a bounded Raw read.
+
+The result state must be explicit:
+
+`Hydrated`, `SummaryOnly`, `Stale`, `Missing`, `Corrupt`, `Unavailable`, and
+`Unsupported`.
+
+Required fail-closed cases include:
+
+- update or delete between admission and materialization;
+- CAS bytes disappearing or changing after admission;
+- forged or mismatched digest and locator;
+- wrong scope, inactive dependency or historical revision substitution;
+- reopen with the same evidence and with missing/corrupt evidence.
+
+The contract must state which guarantees come from the MDBX read snapshot and
+which come from the file-backed CAS. A snapshot does not lock a separate CAS
+file; the digest check is therefore mandatory. The implementation must be
+exercised by a clean external installed C++17 consumer, not only by an
+in-repository test that manually assembles private stores.
+
+Dependencies and exclusions:
+
+- reuse the existing manifest, projection, artifact catalog and typed join;
+- do not add a second storage authority or an implicit coordinator;
+- keep atomic publication/recovery as a separate staged-publication slice;
+- coordinate with second-agent work on #601/#602 without modifying those PRs;
+- do not activate production retrieval in the hydration PR.
+
+After this gate, qualify structured product ingestion, derived Summary/Concept
+publication, table/article, retained Telegram image, timed transcript and full
+release evidence as separate slices.
+
+## 6. PCA12 preservation boundary
+
+The documentation file originally drafted alongside #603 was removed before
+merge because editing `guides/experiments/README.md` made the historical PCA12
+preservation validator classify a protected active path as changed. The
+validator was not disabled or weakened, and no historical research material
+was rewritten.
+
+The safe documentation pattern is a new independent guide with links to
+existing contracts. Before opening this PR, run:
+
+```text
+python tools/validate-pca12-residual-preservation.py
+python tools/validate-historical-research-preservation.py
+git diff --check
+```
+
+The first command must report the expected divergent/residual coverage and the
+second must complete without changing or reclassifying protected files. This
+PR intentionally leaves the experiment index untouched.
+
+## 7. Acceptance and ownership
+
+This documentation PR is complete only when:
+
+1. the source-level comparison and capability matrix remain consistent with
+   executable code;
+2. every RAGFlow-inspired item has an explicit ADOPT, ADAPT, DEFER or REJECT
+   decision;
+3. release blockers and post-release enhancements are separated;
+4. the #603 implemented/planned boundary is explicit;
+5. the Phase 2 hydration specification has testable fail-closed criteria;
+6. docs, preservation and whitespace checks pass;
+7. no runtime feature, parser dependency or production activation is claimed.
+
+The next review should inspect this document for conflicts with existing ADRs
+and roadmap contracts before a separate implementation PR is authorized.
