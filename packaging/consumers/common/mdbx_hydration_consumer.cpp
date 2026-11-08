@@ -108,7 +108,7 @@ int main() {
         });
         manifest.records.push_back(agent_memory::DerivedRecordRef{
             agent_memory::DerivedRecordKind::Custom, agent_memory::ChunkId{},
-            projection_key, ordinal
+            projection_key, ordinal + 1U
         });
         manifests.upsert_manifest_if_unchanged(
             std::move(manifest), expected_manifest);
@@ -149,11 +149,17 @@ int main() {
         request.source_range = source.excerpt;
         const auto result = hydrator.hydrate(request);
         (void)imported;
-        return result.status ==
-                   agent_memory::AuthoritativeArticleHydrationStatus::Hydrated &&
-               result.bytes == body.substr(
-                   static_cast<std::size_t>(source.excerpt.offset),
-                   static_cast<std::size_t>(source.excerpt.length)) ? 0 : 1;
+        if(result.status !=
+               agent_memory::AuthoritativeArticleHydrationStatus::Hydrated ||
+           result.bytes != body.substr(
+               static_cast<std::size_t>(source.excerpt.offset),
+               static_cast<std::size_t>(source.excerpt.length))) {
+            throw std::runtime_error(
+                "hydration failed: status=" +
+                std::to_string(static_cast<int>(result.status)) +
+                " diagnostic=" + result.diagnostic);
+        }
+        return 0;
     } catch(...) {
         return 1;
     }
