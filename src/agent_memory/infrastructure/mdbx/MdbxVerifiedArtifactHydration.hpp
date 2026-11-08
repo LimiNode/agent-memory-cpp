@@ -10,6 +10,7 @@
 #if AGENT_MEMORY_HAS_MDBX
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 
@@ -20,6 +21,7 @@ enum class VerifiedArtifactMaterializationStatus : std::uint8_t {
     Missing,
     Corrupt,
     BindingRevisionMismatch,
+    VerificationBudgetExceeded,
     Unavailable,
     Unsupported,
     InvalidArgument
@@ -32,6 +34,8 @@ struct VerifiedArtifactMaterializationRequest final {
     std::optional<BlobDigest> expected_digest;
     std::uint64_t offset = 0;
     std::uint64_t length = 0;
+    std::uint64_t verification_budget_bytes =
+        (std::numeric_limits<std::uint64_t>::max)();
 };
 
 struct VerifiedArtifactMaterializationResult final {
@@ -51,7 +55,9 @@ struct VerifiedArtifactMaterializationResult final {
 /// reader. Callers must obtain trusted scope/freshness admission separately;
 /// the future authoritative path must consume a real snapshot admission
 /// context rather than caller-provided matching strings. In particular,
-/// `Materialized` says nothing about authorization or currentness.
+/// `Materialized` says nothing about authorization or currentness. The
+/// verification budget bounds the physical CAS bytes scanned, not merely the
+/// returned range.
 class MdbxArtifactMaterializer final {
 public:
     explicit MdbxArtifactMaterializer(const MdbxArtifactCatalog& catalog)

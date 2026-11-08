@@ -207,6 +207,7 @@ int main() {
             std::ios::binary | std::ios::trunc);
         body << "tampered";
         expect(body.good(), "failed to corrupt CAS body");
+        body.close();
         MdbxArtifactMaterializer corrupt_hydration(corrupt_catalog);
         auto corrupt_read = read;
         corrupt_read.expected_artifact_id = published_corrupt.record->artifact.id;

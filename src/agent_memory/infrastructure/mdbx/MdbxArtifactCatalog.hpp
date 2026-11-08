@@ -28,6 +28,7 @@ namespace agent_memory {
 enum class ArtifactCatalogStatus : std::uint8_t {
     Ok,
     InvalidArgument,
+    VerificationBudgetExceeded,
     NotFound,
     Conflict,
     Corrupt,
@@ -116,6 +117,11 @@ public:
     [[nodiscard]] ArtifactCatalogResult read_binding(
         const ArtifactBindingId& binding_id) const;
 
+    /// Reads binding metadata without probing or scanning the Raw CAS body.
+    /// Callers must perform a bounded digest-verified read separately.
+    [[nodiscard]] ArtifactCatalogResult read_binding_metadata(
+        const ArtifactBindingId& binding_id) const;
+
     /// Reads catalog metadata from a caller-owned read transaction. CAS bytes
     /// are intentionally not probed here; the caller must perform the bounded
     /// digest-verified read separately and then revalidate this metadata.
@@ -133,6 +139,15 @@ public:
         const ArtifactBindingId& binding_id,
         std::uint64_t offset,
         std::uint64_t length
+    ) const;
+    /// Reads a range only after a complete CAS digest scan bounded by the
+    /// supplied physical-byte budget. Metadata is read without a preliminary
+    /// unbounded CAS probe.
+    [[nodiscard]] ArtifactCatalogReadResult read_body_range(
+        const ArtifactBindingId& binding_id,
+        std::uint64_t offset,
+        std::uint64_t length,
+        std::uint64_t verification_budget_bytes
     ) const;
 
     /// Reconciles durable intents after a process or publication failure.

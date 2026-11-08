@@ -62,6 +62,7 @@ enum class AuthoritativeArticleHydrationDiagnostic : std::uint8_t {
     MetadataChanged,
     PersistedMetadataCorrupt,
     SourceQuoteMismatch,
+    SourceSpanMismatch,
     ArtifactProfileUnsupported,
     InvalidUtf8,
     CatalogReceiptIncomplete,

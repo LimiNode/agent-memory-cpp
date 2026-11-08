@@ -415,6 +415,10 @@ MetadataCheck read_metadata(
             return failure(AuthoritativeArticleHydrationStatus::InvalidArgument,
                            AuthoritativeArticleHydrationDiagnostic::InvalidRequest,
                            catalog_result.diagnostic);
+        case ArtifactCatalogStatus::VerificationBudgetExceeded:
+            return failure(AuthoritativeArticleHydrationStatus::InvalidArgument,
+                           AuthoritativeArticleHydrationDiagnostic::VerificationBudgetExceeded,
+                           catalog_result.diagnostic);
         case ArtifactCatalogStatus::IoError:
             return failure(AuthoritativeArticleHydrationStatus::Unavailable,
                            AuthoritativeArticleHydrationDiagnostic::IoFailure,
@@ -441,6 +445,7 @@ MetadataCheck read_metadata(
                        "artifact catalog publication receipt is not finalized");
     }
     if(catalog_record.binding.role != kSourceOriginalRole ||
+       catalog_record.binding.retention != ArtifactRetentionClass::SourceOriginal ||
        !is_supported_markdown_media_type(catalog_record.binding.media_type)) {
         return failure(AuthoritativeArticleHydrationStatus::Unsupported,
                        AuthoritativeArticleHydrationDiagnostic::ArtifactProfileUnsupported,
@@ -700,7 +705,8 @@ MdbxAuthoritativeArticleHydrator::hydrate(
             metadata.catalog.artifact.id,
             metadata.catalog.artifact.digest,
             request.source_range.offset,
-            request.source_range.length
+            request.source_range.length,
+            m_impl->max_verified_cas_bytes
         });
     if(materialized.status != VerifiedArtifactMaterializationStatus::Materialized) {
         AuthoritativeArticleHydrationStatus status =
@@ -726,6 +732,10 @@ MdbxAuthoritativeArticleHydrator::hydrate(
         case VerifiedArtifactMaterializationStatus::InvalidArgument:
             status = AuthoritativeArticleHydrationStatus::InvalidArgument;
             code = AuthoritativeArticleHydrationDiagnostic::InvalidRequest;
+            break;
+        case VerifiedArtifactMaterializationStatus::VerificationBudgetExceeded:
+            status = AuthoritativeArticleHydrationStatus::InvalidArgument;
+            code = AuthoritativeArticleHydrationDiagnostic::VerificationBudgetExceeded;
             break;
         case VerifiedArtifactMaterializationStatus::Unavailable:
             status = AuthoritativeArticleHydrationStatus::Unavailable;
@@ -754,6 +764,13 @@ MdbxAuthoritativeArticleHydrator::hydrate(
             AuthoritativeArticleHydrationStatus::Corrupt,
             AuthoritativeArticleHydrationDiagnostic::InvalidUtf8,
             "hydrated Raw Markdown span is not valid UTF-8");
+    }
+    if(metadata.unit.primary_text != materialized.bytes) {
+        return result_from_request(
+            request,
+            AuthoritativeArticleHydrationStatus::Corrupt,
+            AuthoritativeArticleHydrationDiagnostic::SourceSpanMismatch,
+            "hydrated source span does not match the authoritative Chunk primary text");
     }
 
     {

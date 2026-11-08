@@ -25,6 +25,8 @@ VerifiedArtifactMaterializationStatus map_catalog(ArtifactCatalogStatus status) 
     case ArtifactCatalogStatus::NotFound: return VerifiedArtifactMaterializationStatus::Missing;
     case ArtifactCatalogStatus::Corrupt: return VerifiedArtifactMaterializationStatus::Corrupt;
     case ArtifactCatalogStatus::InvalidArgument: return VerifiedArtifactMaterializationStatus::InvalidArgument;
+    case ArtifactCatalogStatus::VerificationBudgetExceeded:
+        return VerifiedArtifactMaterializationStatus::VerificationBudgetExceeded;
     case ArtifactCatalogStatus::Conflict: return VerifiedArtifactMaterializationStatus::Unsupported;
     case ArtifactCatalogStatus::IoError: return VerifiedArtifactMaterializationStatus::Unavailable;
     case ArtifactCatalogStatus::Ok: return VerifiedArtifactMaterializationStatus::Corrupt;
@@ -40,7 +42,7 @@ VerifiedArtifactMaterializationResult MdbxArtifactMaterializer::materialize(
         return fail(VerifiedArtifactMaterializationStatus::InvalidArgument, request,
                     "materialization identity is incomplete");
 
-    const auto catalog = m_catalog.read_binding(request.binding_id);
+    const auto catalog = m_catalog.read_binding_metadata(request.binding_id);
     if(catalog.status != ArtifactCatalogStatus::Ok || !catalog.record)
         return fail(map_catalog(catalog.status), request, catalog.diagnostic);
     const auto& record = *catalog.record;
@@ -60,7 +62,8 @@ VerifiedArtifactMaterializationResult MdbxArtifactMaterializer::materialize(
                     "retained body is unavailable; no summary evidence is present");
     }
     const auto body = m_catalog.read_body_range(
-        request.binding_id, request.offset, request.length);
+        request.binding_id, request.offset, request.length,
+        request.verification_budget_bytes);
     if(body.status != ArtifactCatalogStatus::Ok)
         return fail(map_catalog(body.status), request, body.diagnostic);
     VerifiedArtifactMaterializationResult result;
