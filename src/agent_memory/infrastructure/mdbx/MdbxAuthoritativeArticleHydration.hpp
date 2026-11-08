@@ -58,7 +58,13 @@ enum class AuthoritativeArticleHydrationDiagnostic : std::uint8_t {
     LocatorMismatch,
     RangeOutOfBounds,
     BudgetExceeded,
+    VerificationBudgetExceeded,
     MetadataChanged,
+    PersistedMetadataCorrupt,
+    SourceQuoteMismatch,
+    ArtifactProfileUnsupported,
+    InvalidUtf8,
+    CatalogReceiptIncomplete,
     IoFailure
 };
 
@@ -73,6 +79,9 @@ struct MdbxAuthoritativeArticleHydrationOptions final {
         "agent_memory.m0_resource_importer.raw_chunks_original@agent_memory";
     std::uint32_t expected_manifest_schema_version = 1;
     std::uint64_t max_range_bytes = 64U * 1024U;
+    /// Maximum complete Raw CAS object that may be scanned for verification.
+    /// This is separate from the returned-range budget.
+    std::uint64_t max_verified_cas_bytes = 64U * 1024U * 1024U;
 };
 
 /// Candidate/request values are claims. Authority is re-read from MDBX.
@@ -109,8 +118,12 @@ struct MdbxAuthoritativeArticleHydrationResult final {
 ///
 /// The final MDBX observation is the operation's linearization point. A
 /// returned Hydrated value does not promise that the source remains current
-/// after that point. This class is a bounded product slice, not a coordinator,
-/// multimodal API, or production retrieval activation.
+/// after that point. The returned-range budget and the complete-object
+/// verification budget are independent: a small citation may still require a
+/// bounded full-object scan. The Raw Markdown profile admits only Chunk units,
+/// source-original Markdown bindings, valid UTF-8 spans, and citation previews
+/// that match the verified CAS prefix. This class is a bounded product slice,
+/// not a coordinator, multimodal API, or production retrieval activation.
 class MdbxAuthoritativeArticleHydrator final {
 public:
     explicit MdbxAuthoritativeArticleHydrator(

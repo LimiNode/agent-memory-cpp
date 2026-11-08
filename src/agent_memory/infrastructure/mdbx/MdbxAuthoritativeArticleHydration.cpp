@@ -7,11 +7,13 @@
 #include "MdbxProjectionStore.hpp"
 #include "MdbxResourceArtifactBindingStore.hpp"
 #include "MdbxResourceManifestStorage.hpp"
+#include "MdbxStorageErrors.hpp"
 #include "MdbxVerifiedArtifactHydration.hpp"
 
 #include <mdbx_containers/common.hpp>
 
 #include <algorithm>
+#include <string_view>
 #include <limits>
 #include <mutex>
 #include <stdexcept>
@@ -19,6 +21,51 @@
 
 namespace agent_memory {
 namespace {
+
+constexpr const char* kSourceOriginalRole = "source-original";
+constexpr const char* kMarkdownMediaType = "text/markdown";
+constexpr const char* kMarkdownMediaTypeAlt = "text/x-markdown";
+
+bool is_valid_utf8(std::string_view bytes) noexcept {
+    std::size_t position = 0;
+    while(position < bytes.size()) {
+        const auto lead = static_cast<unsigned char>(bytes[position++]);
+        std::size_t continuation = 0;
+        std::uint32_t code_point = 0;
+        if(lead <= 0x7fU) {
+            continue;
+        } else if(lead >= 0xc2U && lead <= 0xdfU) {
+            continuation = 1;
+            code_point = lead & 0x1fU;
+        } else if(lead >= 0xe0U && lead <= 0xefU) {
+            continuation = 2;
+            code_point = lead & 0x0fU;
+        } else if(lead >= 0xf0U && lead <= 0xf4U) {
+            continuation = 3;
+            code_point = lead & 0x07U;
+        } else {
+            return false;
+        }
+        if(continuation > bytes.size() - position) return false;
+        for(std::size_t index = 0; index < continuation; ++index) {
+            const auto byte = static_cast<unsigned char>(bytes[position++]);
+            if((byte & 0xc0U) != 0x80U) return false;
+            code_point = (code_point << 6U) | (byte & 0x3fU);
+        }
+        if((continuation == 1 && code_point < 0x80U) ||
+           (continuation == 2 && code_point < 0x800U) ||
+           (continuation == 3 && code_point < 0x10000U) ||
+           code_point > 0x10ffffU ||
+           (code_point >= 0xd800U && code_point <= 0xdfffU)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool is_supported_markdown_media_type(const std::optional<std::string>& value) {
+    return value && (*value == kMarkdownMediaType || *value == kMarkdownMediaTypeAlt);
+}
 
 struct AuthoritativeMetadata final {
     KnowledgeUnitEnvelope unit;
@@ -241,6 +288,11 @@ MetadataCheck read_metadata(
                        AuthoritativeArticleHydrationDiagnostic::UnitRevisionMismatch,
                        "candidate unit revision is no longer current");
     }
+    if(unit->kind != KnowledgeUnitKind::Chunk) {
+        return failure(AuthoritativeArticleHydrationStatus::Unsupported,
+                       AuthoritativeArticleHydrationDiagnostic::ArtifactProfileUnsupported,
+                       "only Chunk knowledge units are supported by the Raw Markdown profile");
+    }
 
     const OriginalProjectionListReader read_projections =
         [&projections, &transaction](
@@ -378,11 +430,21 @@ MetadataCheck read_metadata(
     const auto& catalog_record = *catalog_result.record;
     if(catalog_record.binding.source_revision_id != join->source_revision_id ||
        catalog_record.binding.artifact_id != catalog_record.artifact.id ||
-       catalog_record.body_state != BindingBodyState::Materialized ||
-       !catalog_record.receipt_finalized) {
+       catalog_record.body_state != BindingBodyState::Materialized) {
         return failure(AuthoritativeArticleHydrationStatus::Corrupt,
                        AuthoritativeArticleHydrationDiagnostic::BindingMismatch,
                        "artifact catalog binding is inconsistent with the typed join");
+    }
+    if(!catalog_record.receipt_finalized) {
+        return failure(AuthoritativeArticleHydrationStatus::Unavailable,
+                       AuthoritativeArticleHydrationDiagnostic::CatalogReceiptIncomplete,
+                       "artifact catalog publication receipt is not finalized");
+    }
+    if(catalog_record.binding.role != kSourceOriginalRole ||
+       !is_supported_markdown_media_type(catalog_record.binding.media_type)) {
+        return failure(AuthoritativeArticleHydrationStatus::Unsupported,
+                       AuthoritativeArticleHydrationDiagnostic::ArtifactProfileUnsupported,
+                       "artifact binding is outside the supported Raw Markdown profile");
     }
     if(revision.body_digest.algorithm != ResourceBodyDigestAlgorithm::Sha256 ||
        catalog_record.artifact.digest.algorithm != BlobDigestAlgorithm::Sha256 ||
@@ -432,6 +494,7 @@ public:
                            ? "agent_memory"
                            : std::move(options.table_prefix)),
           max_range_bytes(options.max_range_bytes),
+          max_verified_cas_bytes(options.max_verified_cas_bytes),
           admission_options(make_admission_options(
               options.expected_manifest_schema_id,
               options.expected_manifest_schema_version)),
@@ -443,8 +506,8 @@ public:
               context, table_prefix, options.max_dbs,
               require_cas_root(std::move(options.raw_cas_root)),
               options.raw_cas_options)) {
-        if(max_range_bytes == 0) throw std::invalid_argument(
-            "authoritative article hydrator requires a positive range budget");
+        if(max_range_bytes == 0 || max_verified_cas_bytes == 0) throw std::invalid_argument(
+            "authoritative article hydrator requires positive read budgets");
     }
 
     static std::shared_ptr<MdbxStorageContext> require_context(
@@ -531,6 +594,7 @@ public:
     std::shared_ptr<MdbxStorageContext> context;
     std::string table_prefix;
     std::uint64_t max_range_bytes;
+    std::uint64_t max_verified_cas_bytes;
     ProjectionAwareLexicalRetrieverOptions admission_options;
     MdbxKnowledgeUnitStore units;
     MdbxProjectionStore projections;
@@ -603,6 +667,12 @@ MdbxAuthoritativeArticleHydrator::hydrate(
             m_impl->manifests, m_impl->joins, m_impl->catalog, transaction,
             m_impl->admission_options);
         transaction.commit();
+    } catch(const MdbxPersistedMetadataError& error) {
+        return result_from_request(
+            request,
+            AuthoritativeArticleHydrationStatus::Corrupt,
+            AuthoritativeArticleHydrationDiagnostic::PersistedMetadataCorrupt,
+            error.what());
     } catch(const std::exception& error) {
         return result_from_request(
             request,
@@ -616,6 +686,13 @@ MdbxAuthoritativeArticleHydrator::hydrate(
     }
 
     const auto& metadata = *admitted.metadata;
+    if(metadata.catalog.artifact.size_bytes > m_impl->max_verified_cas_bytes) {
+        return result_from_request(
+            request,
+            AuthoritativeArticleHydrationStatus::InvalidArgument,
+            AuthoritativeArticleHydrationDiagnostic::VerificationBudgetExceeded,
+            "complete Raw CAS object exceeds the verification budget");
+    }
     const auto materialized = MdbxArtifactMaterializer(m_impl->catalog).materialize(
         VerifiedArtifactMaterializationRequest{
             metadata.join.source_revision_id,
@@ -660,6 +737,25 @@ MdbxAuthoritativeArticleHydrator::hydrate(
         return result_from_request(request, status, code, materialized.diagnostic);
     }
 
+    const auto& source = metadata.source;
+    if(source.preview.size() > materialized.bytes.size() ||
+       materialized.bytes.compare(0, source.preview.size(), source.preview) != 0 ||
+       source.quote_hash != compute_quote_hash(
+           std::string_view(materialized.bytes).substr(0, source.preview.size()))) {
+        return result_from_request(
+            request,
+            AuthoritativeArticleHydrationStatus::Corrupt,
+            AuthoritativeArticleHydrationDiagnostic::SourceQuoteMismatch,
+            "hydrated source span does not match the persisted citation preview");
+    }
+    if(!is_valid_utf8(materialized.bytes)) {
+        return result_from_request(
+            request,
+            AuthoritativeArticleHydrationStatus::Corrupt,
+            AuthoritativeArticleHydrationDiagnostic::InvalidUtf8,
+            "hydrated Raw Markdown span is not valid UTF-8");
+    }
+
     {
         std::lock_guard<std::mutex> lock(m_impl->hook_mutex);
         if(m_impl->before_final_hook) m_impl->before_final_hook();
@@ -674,6 +770,12 @@ MdbxAuthoritativeArticleHydrator::hydrate(
             m_impl->manifests, m_impl->joins, m_impl->catalog, transaction,
             m_impl->admission_options);
         transaction.commit();
+    } catch(const MdbxPersistedMetadataError& error) {
+        return result_from_request(
+            request,
+            AuthoritativeArticleHydrationStatus::Corrupt,
+            AuthoritativeArticleHydrationDiagnostic::PersistedMetadataCorrupt,
+            error.what());
     } catch(const std::exception& error) {
         return result_from_request(
             request,
