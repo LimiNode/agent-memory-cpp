@@ -1,7 +1,8 @@
 # Persistent lexical candidate parity (Track C)
 
 Date: 2026-11-07
-Base: `main` at `cdd552e96fb093b369443d9f883aa0ca94fe61cf`
+Initial research base: `main` at `cdd552e96fb093b369443d9f883aa0ca94fe61cf`
+Current integration base: `main` at `36577361d1c1b15d92541779de932a9c84220f8c`
 
 ## Hypothesis
 
@@ -41,6 +42,9 @@ index and the dependency-free `FlatLexicalIndex` rebuild control. It verifies:
 - erase removes candidates;
 - reopen preserves the current candidate set;
 - a bounded one-posting query remains `Complete`.
+- missing token statistics and both DF/physical-posting mismatches fail closed;
+- short posting-window reads classify as `InconsistentSnapshot`;
+- duplicate unit observations and conflicting unit revisions are rejected.
 
 Commands:
 
