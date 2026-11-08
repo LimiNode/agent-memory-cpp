@@ -1,8 +1,11 @@
 #include <agent_memory/infrastructure/mdbx/MdbxArtifactCatalog.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxAuthoritativeArticleHydration.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxProjectionStore.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxResourceArtifactBindingStore.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxResourceImporter.hpp>
+#include <agent_memory/retrieval/OriginalProjection.hpp>
 
 #include <filesystem>
 #include <random>
@@ -57,7 +60,7 @@ int main() {
         importer_options.publication_profile =
             agent_memory::ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
         agent_memory::MdbxResourceImporter importer(std::move(importer_options));
-        importer.import(agent_memory::ObservedResource{
+        const auto imported = importer.import(agent_memory::ObservedResource{
             scope, resource, "https://example.test/consumer.md", body,
             agent_memory::SourceTextOrigin::OriginalText, std::nullopt, 1
         });
@@ -77,6 +80,38 @@ int main() {
         }
         if(envelope.id.empty()) return 1;
         const auto& source = envelope.sources.front();
+
+        agent_memory::MdbxProjectionStore projections(
+            agent_memory::MdbxProjectionStoreOptions{
+                {}, prefix, false, agent_memory::kDefaultMdbxMaxDbs, context
+            });
+        projections.put(agent_memory::make_original_projection(
+            envelope, envelope.revision));
+        agent_memory::MdbxResourceManifestStorage manifests(
+            agent_memory::MdbxResourceManifestStorageOptions{
+                {}, prefix, false, agent_memory::kDefaultMdbxMaxDbs, context
+            });
+        const auto expected_manifest = manifests.find_manifest(resource);
+        if(!expected_manifest) return 1;
+        auto manifest = *expected_manifest;
+        manifest.schema = agent_memory::ResourceManifestSchema{
+            "agent_memory.m0_resource_importer.raw_chunks_original@agent_memory", 1
+        };
+        const auto unit_key = std::string{"knowledge_unit:"} +
+            std::to_string(envelope.id.value());
+        const auto projection_key = std::string{"original_projection:"} +
+            std::to_string(envelope.id.value());
+        auto ordinal = static_cast<std::uint32_t>(manifest.records.size());
+        manifest.records.push_back(agent_memory::DerivedRecordRef{
+            agent_memory::DerivedRecordKind::Custom, agent_memory::ChunkId{},
+            unit_key, ordinal
+        });
+        manifest.records.push_back(agent_memory::DerivedRecordRef{
+            agent_memory::DerivedRecordKind::Custom, agent_memory::ChunkId{},
+            projection_key, ordinal
+        });
+        manifests.upsert_manifest_if_unchanged(
+            std::move(manifest), expected_manifest);
 
         agent_memory::MdbxArtifactCatalog catalog(
             agent_memory::MdbxArtifactCatalogOptions{
@@ -113,6 +148,7 @@ int main() {
         request.scope_id = scope;
         request.source_range = source.excerpt;
         const auto result = hydrator.hydrate(request);
+        (void)imported;
         return result.status ==
                    agent_memory::AuthoritativeArticleHydrationStatus::Hydrated &&
                result.bytes == body.substr(
