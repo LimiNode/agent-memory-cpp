@@ -773,8 +773,15 @@ ArtifactCatalogReadResult MdbxArtifactCatalog::read_body_range(
     if(length > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))
         return read_failure(ArtifactCatalogStatus::InvalidArgument,
                             "artifact body range exceeds size_t");
+    if(length > m_impl->cas.max_read_range_bytes())
+        return read_failure(ArtifactCatalogStatus::InvalidArgument,
+                            "artifact body range exceeds the configured CAS range budget");
     const auto part = m_impl->cas.read_range_bounded(
         record.record->artifact.id, offset, length, verification_budget_bytes);
+    if(part.status == RawBlobStatus::InvalidArgument) {
+        return read_failure(ArtifactCatalogStatus::Corrupt,
+                            "Raw CAS body is shorter than its catalog metadata");
+    }
     if(part.status != RawBlobStatus::Ok)
         return read_failure(map_raw_status(part.status), part.diagnostic);
     if(part.bytes.size() != static_cast<std::size_t>(length))

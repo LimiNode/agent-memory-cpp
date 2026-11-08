@@ -437,7 +437,7 @@ RawBlobReadResult FileRawBlobStore::read_range_bounded(
             "complete CAS verification exceeds the configured byte budget");
     }
     if(offset > physical_size || length > physical_size - offset) {
-        return read_failure(RawBlobStatus::Corrupt,
+        return read_failure(RawBlobStatus::InvalidArgument,
                             "CAS body is shorter than its catalog metadata");
     }
     std::ifstream input(path, std::ios::binary);

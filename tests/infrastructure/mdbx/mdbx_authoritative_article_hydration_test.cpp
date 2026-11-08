@@ -687,6 +687,73 @@ int main() {
         hydrator_second.reset();
         context.reset();
 
+        Fixture revision_fixture;
+        revision_fixture.table_prefix = "agent_memory";
+        prepare(revision_fixture);
+        auto revision_context = MdbxStorageContext::open(
+            revision_fixture.path.string());
+        auto revision_hydrator = make_hydrator(revision_context, revision_fixture);
+        revision_hydrator->set_before_final_revalidation_hook_for_testing(
+            [revision_context, &revision_fixture] {
+                auto importer = make_importer(
+                    revision_context, revision_fixture.table_prefix);
+                const auto imported = importer.import(ObservedResource{
+                    revision_fixture.scope,
+                    revision_fixture.resource,
+                    "https://example.test/article.md",
+                    revision_fixture.body + "\nA@2 changed",
+                    SourceTextOrigin::OriginalText,
+                    std::nullopt,
+                    1
+                });
+                expect(imported.revision.generation == 2,
+                       "resource update did not publish generation A@2");
+            });
+        const auto changed_revision = revision_hydrator->hydrate(
+            request_for(revision_fixture));
+        expect(changed_revision.status != AuthoritativeArticleHydrationStatus::Hydrated &&
+                   changed_revision.bytes.empty(),
+               "A@1 hydration survived publication of A@2");
+        revision_hydrator->set_before_final_revalidation_hook_for_testing({});
+        revision_hydrator.reset();
+
+        Fixture manifest_fixture;
+        prepare(manifest_fixture);
+        auto manifest_context = MdbxStorageContext::open(
+            manifest_fixture.path.string());
+        auto manifest_hydrator = make_hydrator(
+            manifest_context, manifest_fixture);
+        manifest_hydrator->set_before_final_revalidation_hook_for_testing(
+            [manifest_context, &manifest_fixture] {
+                MdbxResourceManifestStorage manifests(
+                    MdbxResourceManifestStorageOptions{
+                        {}, manifest_fixture.table_prefix, false,
+                        kDefaultMdbxMaxDbs, manifest_context
+                    });
+                const auto expected = manifests.find_manifest(
+                    manifest_fixture.resource);
+                expect(expected.has_value(),
+                       "manifest disappeared before final revalidation");
+                auto changed = *expected;
+                ++changed.revision.content_hash;
+                manifests.upsert_manifest_if_unchanged(
+                    std::move(changed), expected);
+            });
+        const auto changed_manifest = manifest_hydrator->hydrate(
+            request_for(manifest_fixture));
+        expect(changed_manifest.status != AuthoritativeArticleHydrationStatus::Hydrated &&
+                   changed_manifest.bytes.empty(),
+               "manifest mutation before final snapshot was admitted");
+        manifest_hydrator->set_before_final_revalidation_hook_for_testing({});
+        manifest_hydrator.reset();
+        manifest_context.reset();
+        revision_context.reset();
+        std::error_code revision_error;
+        std::filesystem::remove(revision_fixture.path, revision_error);
+        std::filesystem::remove_all(revision_fixture.cas_root, revision_error);
+        std::filesystem::remove(manifest_fixture.path, revision_error);
+        std::filesystem::remove_all(manifest_fixture.cas_root, revision_error);
+
         context = MdbxStorageContext::open(fixture.path.string());
         auto reopened_hydrator = make_hydrator(context, fixture);
         const auto reopened = reopened_hydrator->hydrate(request);
