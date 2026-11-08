@@ -26,6 +26,28 @@ enum class PersistentLexicalCandidateCompleteness : std::uint8_t {
     InconsistentSnapshot
 };
 
+namespace persistent_lexical_candidate_detail {
+
+/// \brief Classifies one bounded posting-window read.
+///
+/// A short read is an inconsistent snapshot even when the caller requested a
+/// bounded prefix. Truncation is reserved for a complete prefix that was
+/// deliberately capped by the configured posting budget.
+[[nodiscard]] inline PersistentLexicalCandidateCompleteness classify_posting_window(
+    const std::size_t expected,
+    const std::size_t actual,
+    const bool budget_limited
+) noexcept {
+    if(actual != expected) {
+        return PersistentLexicalCandidateCompleteness::InconsistentSnapshot;
+    }
+    return budget_limited
+        ? PersistentLexicalCandidateCompleteness::Truncated
+        : PersistentLexicalCandidateCompleteness::Complete;
+}
+
+} // namespace persistent_lexical_candidate_detail
+
 /// \brief Candidate identity emitted by the persistent index only.
 ///
 /// The resource and projection fields are observations from the same lexical

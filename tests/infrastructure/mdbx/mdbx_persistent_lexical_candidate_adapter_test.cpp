@@ -356,6 +356,14 @@ int main() {
                         !is_consistent_flat_lexical_posting_count(2, 1) &&
                         !is_consistent_flat_lexical_posting_count(1, 2),
                     "posting/statistics consistency seam accepted a mismatch");
+            require(
+                persistent_lexical_candidate_detail::classify_posting_window(3, 2, false) ==
+                    PersistentLexicalCandidateCompleteness::InconsistentSnapshot &&
+                persistent_lexical_candidate_detail::classify_posting_window(3, 3, true) ==
+                    PersistentLexicalCandidateCompleteness::Truncated &&
+                persistent_lexical_candidate_detail::classify_posting_window(3, 3, false) ==
+                    PersistentLexicalCandidateCompleteness::Complete,
+                "posting-window completeness classification is unsound");
 
             const auto shared_persistent_token = index.read_snapshot().index
                 .find_token_id("shared");

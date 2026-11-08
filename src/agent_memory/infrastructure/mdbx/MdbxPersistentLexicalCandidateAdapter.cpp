@@ -134,7 +134,12 @@ MdbxPersistentLexicalCandidateAdapter::generate(const RetrievalQuery& query) con
         }
         const auto postings = snapshot.index.postings_prefix(
             *token_id, posting_limit);
-        if(postings.size() != posting_limit) {
+        const auto window_completeness =
+            persistent_lexical_candidate_detail::classify_posting_window(
+                posting_limit, postings.size(),
+                posting_count > m_options.max_postings_per_term);
+        if(window_completeness ==
+           PersistentLexicalCandidateCompleteness::InconsistentSnapshot) {
             // The flat snapshot normally keeps DF and physical membership in
             // lockstep. If a future reader observes a torn/corrupt pair, do
             // not index past the returned vector or claim completeness.
@@ -144,6 +149,9 @@ MdbxPersistentLexicalCandidateAdapter::generate(const RetrievalQuery& query) con
             response.diagnostic =
                 "persistent lexical posting/statistics counts disagree";
             return response;
+        }
+        if(window_completeness == PersistentLexicalCandidateCompleteness::Truncated) {
+            response.completeness = window_completeness;
         }
         for(std::size_t index = 0; index < postings.size(); ++index) {
             ++response.examined_postings;
