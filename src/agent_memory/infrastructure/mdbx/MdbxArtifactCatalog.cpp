@@ -627,6 +627,25 @@ ArtifactCatalogResult MdbxArtifactCatalog::read_binding(
     return ArtifactCatalogResult{ArtifactCatalogStatus::Ok, std::move(record), {}};
 }
 
+ArtifactCatalogResult MdbxArtifactCatalog::read_binding_in_transaction(
+    const ArtifactBindingId& binding_id,
+    const mdbxc::Transaction& transaction
+) const {
+    if(binding_id.empty())
+        return failure(ArtifactCatalogStatus::InvalidArgument,
+                       "empty artifact binding id");
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    try {
+        const auto record = m_impl->load_binding(binding_id, transaction);
+        if(!record)
+            return failure(ArtifactCatalogStatus::NotFound,
+                           "artifact binding was not found");
+        return ArtifactCatalogResult{ArtifactCatalogStatus::Ok, *record, {}};
+    } catch(const std::exception& error) {
+        return failure(ArtifactCatalogStatus::Corrupt, error.what());
+    }
+}
+
 ArtifactCatalogCollectionResult MdbxArtifactCatalog::read_source_revision_bindings(
     const SourceRevisionId& source_revision_id) const {
     if(source_revision_id.empty())

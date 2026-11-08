@@ -1003,6 +1003,16 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         NAME agent_memory_mdbx_verified_artifact_hydration_test
         COMMAND agent_memory_mdbx_verified_artifact_hydration_test
     )
+    add_executable(agent_memory_mdbx_authoritative_article_hydration_test
+        infrastructure/mdbx/mdbx_authoritative_article_hydration_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_authoritative_article_hydration_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_authoritative_article_hydration_test
+        COMMAND agent_memory_mdbx_authoritative_article_hydration_test
+    )
     add_executable(agent_memory_mdbx_shared_unit_projections_conformance_test
         infrastructure/mdbx/mdbx_shared_unit_projections_conformance_test.cpp
     )

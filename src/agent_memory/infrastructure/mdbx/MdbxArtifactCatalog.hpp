@@ -11,6 +11,10 @@
 #if AGENT_MEMORY_HAS_MDBX
 #include "MdbxStorageContext.hpp"
 
+namespace mdbxc {
+class Transaction;
+}
+
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -111,6 +115,14 @@ public:
         const ArtifactCatalogIngestRequest& request);
     [[nodiscard]] ArtifactCatalogResult read_binding(
         const ArtifactBindingId& binding_id) const;
+
+    /// Reads catalog metadata from a caller-owned read transaction. CAS bytes
+    /// are intentionally not probed here; the caller must perform the bounded
+    /// digest-verified read separately and then revalidate this metadata.
+    [[nodiscard]] ArtifactCatalogResult read_binding_in_transaction(
+        const ArtifactBindingId& binding_id,
+        const mdbxc::Transaction& transaction
+    ) const;
     [[nodiscard]] ArtifactCatalogResult read_source_revision(
         const SourceRevisionId& source_revision_id) const;
     [[nodiscard]] ArtifactCatalogCollectionResult read_source_revision_bindings(

@@ -15,6 +15,10 @@
 
 #include "MdbxStorageContext.hpp"
 
+namespace mdbxc {
+class Transaction;
+}
+
 namespace agent_memory {
 
 struct MdbxResourceArtifactBindingStoreOptions final {
@@ -50,6 +54,14 @@ public:
 
     [[nodiscard]] std::optional<ResourceArtifactBinding> find(
         const ResourceRevisionRef& revision
+    ) const;
+
+    /// Reads one join from a caller-owned read transaction. The transaction
+    /// must remain active on its creating thread; this seam is used to verify
+    /// resource and artifact metadata from one stable MDBX snapshot.
+    [[nodiscard]] std::optional<ResourceArtifactBinding> find_in_transaction(
+        const ResourceRevisionRef& revision,
+        const mdbxc::Transaction& transaction
     ) const;
 
 private:

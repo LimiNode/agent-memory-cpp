@@ -180,11 +180,21 @@ void MdbxResourceArtifactBindingStore::put(ResourceArtifactBinding binding) {
 
 std::optional<ResourceArtifactBinding>
 MdbxResourceArtifactBindingStore::find(const ResourceRevisionRef& revision) const {
-    const auto key = key_for(revision);
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-    const auto value = m_impl->table.find(key, txn);
+    const auto value = m_impl->table.find(key_for(revision), txn);
     txn.commit();
+    if(!value) return std::nullopt;
+    return decode(revision, *value);
+}
+
+std::optional<ResourceArtifactBinding>
+MdbxResourceArtifactBindingStore::find_in_transaction(
+    const ResourceRevisionRef& revision,
+    const mdbxc::Transaction& transaction
+) const {
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    const auto value = m_impl->table.find(key_for(revision), transaction);
     if(!value) return std::nullopt;
     return decode(revision, *value);
 }
