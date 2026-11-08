@@ -36,10 +36,13 @@ evidence locator. Retained artifacts are connected through an explicit
 does not by itself establish source ownership.
 
 The table case uses stable table, column, row and cell identifiers and checks
-an exact canonical cell value. It is a contract-only locator; merged cells and
-general layout geometry remain roadmap items. The transcript case binds a
-normalized text range to a bounded time interval, alignment provenance and an
-external video identity. The external identity is not evidence that video
+an exact canonical cell value. Its versioned table representation has a
+canonical digest over the ordered column/row/cell records, source revision,
+producer, recipe and publication generation; changing a cell under the same
+digest is rejected. It is a contract-only locator; merged cells and general
+layout geometry remain roadmap items. The transcript case binds the decoded
+`import event` text range to a bounded time interval, alignment provenance and
+an external video identity. The external identity is not evidence that video
 bytes are retained locally.
 
 `Original` admits only `title`, `heading`, `body`, `code` and `tags`. Summary,

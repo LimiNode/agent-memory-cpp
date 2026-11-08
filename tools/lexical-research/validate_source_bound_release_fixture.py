@@ -16,6 +16,7 @@ ORIGINAL_FIELDS = {"title", "heading", "body", "code", "tags"}
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 CASE_STATUSES = {"PASS", "PARTIAL", "NOT_IMPLEMENTED", "NOT_VERIFIED"}
 RECEIPT_STATUSES = {"EXECUTED", "NOT_EXECUTED"}
+ARTIFACT_BINDING_ROLES = {"retained_source_artifact", "retained_derived_artifact"}
 
 
 def digest_bytes(payload: bytes) -> str:
@@ -29,10 +30,13 @@ def require_digest(value: Any, expected: str, message: str) -> None:
         raise AssertionError(f"{message} does not match frozen bytes")
 
 
-def source_indexes(data: dict[str, Any]) -> tuple[set[str], dict[str, dict[str, Any]], dict[str, str]]:
+def source_indexes(
+    data: dict[str, Any],
+) -> tuple[set[str], dict[str, dict[str, Any]], dict[str, str], dict[str, str]]:
     source_ids: set[str] = set()
     revisions: dict[str, dict[str, Any]] = {}
     revision_sources: dict[str, str] = {}
+    revision_kinds: dict[str, str] = {}
     for source in data.get("sources", []):
         source_id = source.get("source_id")
         if not isinstance(source_id, str) or source_id in source_ids:
@@ -56,7 +60,8 @@ def source_indexes(data: dict[str, Any]) -> tuple[set[str], dict[str, dict[str, 
                 raise AssertionError("source revision duration is invalid")
             revisions[revision_id] = revision
             revision_sources[revision_id] = source_id
-    return source_ids, revisions, revision_sources
+            revision_kinds[revision_id] = source.get("kind", "")
+    return source_ids, revisions, revision_sources, revision_kinds
 
 
 def artifact_index(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -88,7 +93,7 @@ def artifact_binding_index(
         artifact_id = binding.get("artifact_id")
         if (not isinstance(binding_id, str) or binding_id in bindings or
                 revision_id not in revisions or artifact_id not in artifacts or
-                not isinstance(binding.get("role"), str) or not binding["role"]):
+                binding.get("role") not in ARTIFACT_BINDING_ROLES):
             raise AssertionError("artifact binding is malformed or unbound")
         bindings[binding_id] = binding
     return bindings
@@ -117,10 +122,14 @@ def table_index(
             raise AssertionError("table columns are not stable")
         row_ids = [row.get("id") for row in rows]
         if (any(not isinstance(value, str) or not value for value in row_ids) or
-                len(row_ids) != len(set(row_ids))):
+                len(row_ids) != len(set(row_ids)) or
+                any(not isinstance(row.get("ordinal"), int) or isinstance(row.get("ordinal"), bool)
+                    for row in rows)):
             raise AssertionError("table rows are not stable")
         cells: dict[str, dict[str, Any]] = {}
         for row in rows:
+            if not isinstance(row.get("cells"), list) or not row["cells"]:
+                raise AssertionError("table row lacks canonical cells")
             for cell in row.get("cells", []):
                 cell_id = cell.get("id")
                 if (not isinstance(cell_id, str) or not cell_id or cell_id in cells or
@@ -130,8 +139,57 @@ def table_index(
                 cells[cell_id] = {**cell, "row_id": row["id"]}
         if not cells:
             raise AssertionError("table declaration lacks cells")
+        for field in ("representation_id", "representation_version", "producer",
+                      "recipe_fingerprint", "publication_generation", "canonical_digest"):
+            if field not in table:
+                raise AssertionError("table representation identity is incomplete")
+        if (not isinstance(table["representation_id"], str) or not table["representation_id"] or
+                not isinstance(table["representation_version"], int) or
+                isinstance(table["representation_version"], bool) or
+                table["representation_version"] < 1 or
+                not isinstance(table["producer"], str) or not table["producer"] or
+                not isinstance(table["recipe_fingerprint"], str) or not table["recipe_fingerprint"] or
+                not isinstance(table["publication_generation"], int) or
+                isinstance(table["publication_generation"], bool) or
+                table["publication_generation"] < 1):
+            raise AssertionError("table representation identity is malformed")
         tables[table_id] = {**table, "cells": cells}
     return tables
+
+
+def canonical_table_digest(table: dict[str, Any]) -> str:
+    columns = sorted(table["columns"], key=lambda column: (column["ordinal"], column["id"]))
+    column_order = {column["id"]: index for index, column in enumerate(columns)}
+    rows = sorted(table["rows"], key=lambda row: (row["ordinal"], row["id"]))
+    canonical = {
+        "table_id": table["table_id"],
+        "source_revision_id": table["source_revision_id"],
+        "representation_id": table["representation_id"],
+        "representation_version": table["representation_version"],
+        "producer": table["producer"],
+        "recipe_fingerprint": table["recipe_fingerprint"],
+        "publication_generation": table["publication_generation"],
+        "columns": [{"id": column["id"], "ordinal": column["ordinal"]} for column in columns],
+        "rows": [
+            {
+                "id": row["id"],
+                "ordinal": row["ordinal"],
+                "cells": [
+                    {
+                        "id": cell["id"],
+                        "column_id": cell["column_id"],
+                        "value": cell["value"],
+                    }
+                    for cell in sorted(
+                        row["cells"],
+                        key=lambda cell: (column_order[cell["column_id"]], cell["id"]),
+                    )
+                ],
+            }
+            for row in rows
+        ],
+    }
+    return digest_bytes(json.dumps(canonical, ensure_ascii=False, separators=(",", ":")).encode())
 
 
 def alignment_index(
@@ -146,7 +204,9 @@ def alignment_index(
                 not isinstance(alignment.get("external_video_id"), str) or
                 not alignment["external_video_id"] or
                 not isinstance(alignment.get("provenance"), str) or
-                not alignment["provenance"]):
+                not alignment["provenance"] or
+                not isinstance(alignment.get("normalized_text"), str) or
+                not alignment["normalized_text"]):
             raise AssertionError("timed transcript alignment is malformed")
         for field in ("text_offset", "text_length", "start_ms", "duration_ms"):
             value = alignment.get(field)
@@ -179,6 +239,7 @@ def validate_locator(
     bindings: dict[str, dict[str, Any]],
     tables: dict[str, dict[str, Any]],
     alignments: dict[str, dict[str, Any]],
+    source_kind: str,
 ) -> None:
     if not isinstance(locator, dict):
         raise AssertionError("evidence locator must be typed")
@@ -199,6 +260,10 @@ def validate_locator(
                 binding["artifact_id"] != artifact_id or
                 artifact_id not in artifacts or artifacts[artifact_id].get("retained") is not True):
             raise AssertionError("artifact evidence locator is not bound to this source revision")
+        if source_kind == "telegram_post" and (
+                binding["role"] != "retained_source_artifact" or
+                artifacts[artifact_id].get("media_type") != "image/png"):
+            raise AssertionError("Telegram Original artifact is not a retained PNG source artifact")
     elif kind == "time_range_ms":
         start = locator.get("start_ms")
         duration = locator.get("duration_ms")
@@ -212,6 +277,7 @@ def validate_locator(
         if (alignment is None or alignment["source_revision_id"] != revision["id"] or
                 alignment["text_offset"] != locator.get("text_offset") or
                 alignment["text_length"] != locator.get("text_length") or
+                alignment["normalized_text"] != locator.get("expected_text") or
                 alignment["start_ms"] != start or alignment["duration_ms"] != duration or
                 alignment["external_video_id"] != locator.get("external_video_id") or
                 not isinstance(external_video, dict) or
@@ -224,10 +290,18 @@ def validate_locator(
                 not isinstance(text_length, int) or isinstance(text_length, bool) or
                 text_offset < 0 or text_length <= 0 or text_offset + text_length > body_length):
             raise AssertionError("transcript text locator is out of bounds")
+        decoded_text = revision["frozen_body"].encode()[text_offset:text_offset + text_length].decode("utf-8")
+        if decoded_text != locator.get("expected_text"):
+            raise AssertionError("transcript text locator does not identify the expected decoded span")
     elif kind == "table_cell":
         table = tables.get(locator.get("table_id"))
         if table is None or table["source_revision_id"] != revision["id"]:
             raise AssertionError("table cell locator is not bound to this source revision")
+        if (locator.get("table_representation_id") != table["representation_id"] or
+                locator.get("table_representation_version") != table["representation_version"] or
+                locator.get("table_digest") != table["canonical_digest"] or
+                table["canonical_digest"] != canonical_table_digest(table)):
+            raise AssertionError("table cell locator is not bound to the immutable table representation")
         cell = table["cells"].get(locator.get("cell_id"))
         if (cell is None or cell["row_id"] != locator.get("row_id") or
                 cell["column_id"] != locator.get("column_id") or
@@ -306,7 +380,7 @@ def validate(
         raise AssertionError("fixture must not claim measured retrieval")
     if set(data.get("original_projection_fields", [])) != ORIGINAL_FIELDS:
         raise AssertionError("Original field contract changed")
-    source_ids, revisions, revision_sources = source_indexes(data)
+    source_ids, revisions, revision_sources, revision_kinds = source_indexes(data)
     artifacts = artifact_index(data)
     bindings = artifact_binding_index(data, revisions, artifacts)
     tables = table_index(data, revisions)
@@ -341,8 +415,11 @@ def validate(
             raise AssertionError("publication generation must be an integer")
         validate_locator(
             representation["evidence_locator"], revisions[revision_id], artifacts,
-            bindings, tables, alignments
+            bindings, tables, alignments, revision_kinds[revision_id]
         )
+        if (representation["evidence_locator"].get("kind") == "table_cell" and
+                representation["evidence_locator"].get("table_representation_id") != representation_id):
+            raise AssertionError("table locator is not bound to its representation identity")
         if representation["view"] == "original" and (
             len(inputs) != 1 or inputs[0] != revision_id or representation["producer"] != "source-import"
         ):
@@ -469,6 +546,34 @@ def self_test(data: dict[str, Any], fixture_digest: str) -> None:
     else:
         raise AssertionError("wrong canonical table cell was accepted")
 
+    forged_table_content = copy.deepcopy(data)
+    forged_table_content["tables"][0]["rows"][0]["cells"][1]["value"] = "FAIL"
+    forged_table_content["representations"][-1]["evidence_locator"]["expected_value"] = "FAIL"
+    try:
+        validate(forged_table_content)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("table content changed under the same representation digest")
+
+    wrong_artifact_role = copy.deepcopy(data)
+    wrong_artifact_role["artifact_bindings"][0]["role"] = "retained_derived_artifact"
+    try:
+        validate(wrong_artifact_role)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("derived artifact role was accepted for Telegram Original")
+
+    wrong_artifact_media = copy.deepcopy(data)
+    wrong_artifact_media["artifacts"][0]["media_type"] = "application/octet-stream"
+    try:
+        validate(wrong_artifact_media)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("non-PNG media type was accepted for Telegram Original")
+
     wrong_alignment = copy.deepcopy(data)
     wrong_alignment["representations"][5]["evidence_locator"]["external_video_id"] = "video:other"
     try:
@@ -477,6 +582,15 @@ def self_test(data: dict[str, Any], fixture_digest: str) -> None:
         pass
     else:
         raise AssertionError("cross-video transcript alignment was accepted")
+
+    wrong_decoded_span = copy.deepcopy(data)
+    wrong_decoded_span["representations"][5]["evidence_locator"]["expected_text"] = "twelve second"
+    try:
+        validate(wrong_decoded_span)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("wrong decoded transcript span was accepted")
 
     empty_producer = copy.deepcopy(data)
     empty_producer["representations"][0]["producer"] = ""

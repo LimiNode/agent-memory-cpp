@@ -133,8 +133,9 @@
       "publication_generation": 1,
       "evidence_locator": {
         "kind": "time_range_ms",
-        "text_offset": 49,
+        "text_offset": 54,
         "text_length": 12,
+        "expected_text": "import event",
         "start_ms": 12000,
         "duration_ms": 4000,
         "alignment_id": "alignment:transcript-video-v1",
@@ -152,6 +153,9 @@
       "evidence_locator": {
         "kind": "table_cell",
         "table_id": "table:release-gates-v1",
+        "table_representation_id": "repr:table-original-v1",
+        "table_representation_version": 1,
+        "table_digest": "sha256:40f02b754b1e88a17dbe9b384ffcff80f95f1e3f40778938dc06ca71a9f70a8a",
         "column_id": "column:status",
         "row_id": "row:601",
         "cell_id": "cell:601-status",
@@ -163,6 +167,12 @@
     {
       "table_id": "table:release-gates-v1",
       "source_revision_id": "source:table-article@1",
+      "representation_id": "repr:table-original-v1",
+      "representation_version": 1,
+      "producer": "source-import",
+      "recipe_fingerprint": "recipe:table-v1",
+      "publication_generation": 1,
+      "canonical_digest": "sha256:40f02b754b1e88a17dbe9b384ffcff80f95f1e3f40778938dc06ca71a9f70a8a",
       "columns": [
         {"id": "column:pr", "ordinal": 0},
         {"id": "column:status", "ordinal": 1}
@@ -183,8 +193,9 @@
     {
       "alignment_id": "alignment:transcript-video-v1",
       "source_revision_id": "source:timed-transcript@1",
-      "text_offset": 49,
+      "text_offset": 54,
       "text_length": 12,
+      "normalized_text": "import event",
       "start_ms": 12000,
       "duration_ms": 4000,
       "external_video_id": "video:release-demo-v1",
