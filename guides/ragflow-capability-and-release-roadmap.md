@@ -14,6 +14,30 @@ external design input:
 - [RAGFlow repository](https://github.com/infiniflow/ragflow)
 - [RAGFlow documentation](https://ragflow.io/docs/)
 
+For reproducibility, the external baseline is RAGFlow `v1.0.0`, tag commit
+[`db1cd5929a7885a3074547791f5ecc4d2f891739`](https://github.com/infiniflow/ragflow/tree/db1cd5929a7885a3074547791f5ecc4d2f891739),
+released on 2026-11-06. The source and documentation points used by this audit
+are:
+
+- [v1.0.0 release notes](https://github.com/infiniflow/ragflow/releases/tag/v1.0.0);
+- [chunk parsing and knowledge fragments](https://github.com/infiniflow/ragflow/blob/v1.0.0/docs/guides/dataset/chunk_parsing_results_and_knowledge_fragment_management.md)
+  and [chunker configuration](https://github.com/infiniflow/ragflow/blob/v1.0.0/docs/guides/agent/ingestion_pipeline/configure_chunker_component.md)
+  for chunk/parent context behavior;
+- [parser component configuration](https://github.com/infiniflow/ragflow/blob/v1.0.0/docs/guides/agent/ingestion_pipeline/configure_parser_component.md)
+  and the tagged [DeepDoc PDF parser](https://github.com/infiniflow/ragflow/tree/v1.0.0/internal/deepdoc/parser/pdf)
+  for external layout/parser evidence;
+- [Knowledge Compilation overview](https://github.com/infiniflow/ragflow/blob/v1.0.0/docs/guides/knowledge_compilation/overview.md)
+  for compilation behavior;
+- the tagged [agentic evidence registry](https://github.com/infiniflow/ragflow/blob/v1.0.0/internal/agentic_rag/evidence_registry.go)
+  and [compiled evidence implementation](https://github.com/infiniflow/ragflow/blob/v1.0.0/internal/agentic_rag/compiled_evidence.go)
+  for evidence handling;
+- the tagged [DeepDoc table parser](https://github.com/infiniflow/ragflow/tree/v1.0.0/internal/deepdoc/parser/pdf/table)
+  for table/layout behavior.
+
+These links establish what the tagged external project documents or implements;
+the ADAPT/DEFER decisions below are this project's architectural proposals and
+are not claims about RAGFlow internals.
+
 The repository's source-level evidence remains authoritative for this project:
 [`first-release-profile.md`](first-release-profile.md),
 [`retrieval-roadmap-coverage.md`](retrieval-roadmap-coverage.md),
@@ -134,6 +158,42 @@ The first is the default recommendation because it avoids duplicating
 canonical text and keeps invalidation local. A projection is justified only by
 measurements showing that bounded read-time expansion is insufficient.
 
+Identity is structural, not textual: identical child text does not imply the
+same child segment, and identical parent text does not imply the same parent.
+A segment identity must include the permitted `RepresentationId`,
+`SegmentSetId` and structural coordinates/locator, together with its source
+revision and scope. Text hashes may be integrity evidence, but are not a
+primary identity key.
+
+The future conformance slice must include negative regressions for:
+
+- identical child text in two sections of one document;
+- identical parent text in two documents in one scope;
+- identical content in different scopes;
+- a source-revision update;
+- rechunking that creates a new `SegmentSet` while preserving historical
+  evidence anchors.
+
+Each case must prove independent parent relationships, exact source locators,
+freshness rejection and absence of cross-scope substitution.
+
+### 4.1.1 Context-expansion evaluation gate
+
+Before selecting a production mechanism, compare these three modes on the same
+corpus, queries and admissible source revisions:
+
+1. baseline retrieval without expansion;
+2. retrieval-time parent/neighbor expansion;
+3. a versioned context-enriched search projection.
+
+The modes must use the same scope and freshness rules and the same final
+context byte/token budget. The receipt must report retrieval quality (Recall@k
+and nDCG@k where qrels apply), exact citation correctness, context bytes and
+tokens, read latency, memory cost, stale/cross-scope rejection, and segment
+identity preservation. No mode is declared superior in advance. A projection
+is admitted only when its measured gain justifies its write, storage and
+invalidation cost.
+
 ### 4.2 Table and image context windows
 
 Keep two independent mechanisms:
@@ -192,17 +252,64 @@ The next functional PR should implement **authoritative source-backed
 hydration**. This section is a specification, not permission to implement it
 in this documentation PR.
 
-The API must consume a trusted admission/snapshot context produced by MDBX;
-caller-provided “current” flags, revisions or digests are not authority. It
-must resolve the exact chain
-`ResourceRevision -> SourceRevision -> ArtifactBinding`, validate scope and
-currentness, validate the typed locator and normalized-view bounds, and verify
-the complete CAS digest during a bounded Raw read.
+The API must consume a trusted admission context produced by MDBX;
+caller-provided `current` flags, revisions or digests are not authority. The
+context may carry the admitted frontier, resource generation, source revision,
+binding identity and digest, but it is an evidence record, not a portable live
+snapshot token. The current
+[`RevisionBoundRetrieval`](../src/agent_memory/retrieval/RevisionBoundRetrieval.hpp)
+adapter ends its read transaction before returning a result, so a returned
+`Current` cannot by itself authorize a later CAS read.
+
+The public `Hydrated` contract should therefore use **CurrentAtCompletion** as
+its linearization point: after resolving
+`ResourceRevision -> SourceRevision -> ArtifactBinding`, validating scope,
+currentness, typed locator and normalized-view bounds, and reading the bounded
+Raw bytes with a complete digest check, the implementation opens a fresh
+authoritative MDBX read transaction and revalidates the resource frontier,
+binding identity and expected digest. Only that final revalidation may authorize
+`Hydrated`. The earlier admission snapshot is retained for diagnostics and
+bounded work, not treated as completion-time authority.
+
+If the product later needs a reproducible historical read, it may expose an
+internal or separately named `SnapshotCurrent` result tied to an explicit
+frontier. That result must not be silently presented as current at completion.
+
+If an update or delete occurs between admission and CAS read, final
+revalidation returns `Stale` (or `Missing` when the authoritative record is
+gone) and the candidate bytes are discarded. A missing CAS object returns
+`Missing`; a digest mismatch returns `Corrupt`. A CAS file is read into owned
+memory and hashed before returning, so a caller never receives a lazy file
+handle whose contents can change after validation. A bounded retry may repeat
+admission and materialization, but exhaustion returns `Unavailable` and never a
+false `Hydrated`.
 
 The result state must be explicit:
 
 `Hydrated`, `SummaryOnly`, `Stale`, `Missing`, `Corrupt`, `Unavailable`, and
 `Unsupported`.
+
+The future public result should also preserve a diagnostic code. The proposed
+mapping is:
+
+| Authoritative condition | Result state | Diagnostic meaning |
+|---|---|---|
+| Caller request is malformed or locator arguments are invalid | call-level `InvalidArgument`; no result | request was not admissible |
+| No exact resource/artifact binding exists | `Missing` | authority has no binding for the requested revision |
+| Binding points at a different revision, or final frontier changed | `Stale` | a newer/deleted authoritative state won |
+| Binding record is internally inconsistent | `Corrupt` | stored provenance failed validation |
+| CAS object absent | `Missing` | retained bytes are unavailable |
+| CAS bytes fail the authoritative digest | `Corrupt` | retained bytes cannot prove the binding |
+| Locator kind or representation is not supported | `Unsupported` | no safe materializer exists |
+| MDBX/CAS I/O or bounded retry exhaustion | `Unavailable` | operation could not establish a safe result |
+
+The existing [`VerifiedArtifactMaterializationStatus`](../src/agent_memory/infrastructure/mdbx/MdbxVerifiedArtifactHydration.hpp)
+already exposes `BindingRevisionMismatch` and `InvalidArgument`; neither must
+be collapsed into a generic `Unavailable`. `BindingRevisionMismatch` is
+`Stale` when authority has advanced and `Corrupt` when the stored binding
+itself is malformed. The same distinction must remain visible in logs or a
+typed diagnostic field even when a transport wrapper exposes only the result
+state.
 
 Required fail-closed cases include:
 

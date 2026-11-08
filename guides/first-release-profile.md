@@ -87,11 +87,13 @@ and bounded lexical retrieval substrate. PR #603 also provides a bounded,
 executable article-to-citation conformance slice: it composes structural
 segments, snapshot admission, the typed resource-to-artifact join and
 byte-verified Raw range materialization. That slice is evidence for the article
-path, not a general product ingestion or public Hydrated API. Snapshot-
-consistent admission, structural product chunking, derived multi-view
-retrieval, complete source-backed hydration and install/export remain separate
-release gates. A roadmap contract or an API sketch must not be reported as an
-implemented release capability.
+path, not a general product ingestion or public Hydrated API. Limited
+snapshot-consistent MDBX admission is implemented in this bounded slice;
+authoritative cross-store hydration, in which admission and CAS materialization
+are revalidated as one public result, remains a separate release blocker.
+Structural product chunking, derived multi-view retrieval and install/export
+remain separate release gates. A roadmap contract or an API sketch must not be
+reported as an implemented release capability.
 
 The first release therefore remains a Technical Preview until the following
 vertical evidence exists:
