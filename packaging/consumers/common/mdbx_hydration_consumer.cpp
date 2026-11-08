@@ -8,6 +8,7 @@
 #include <agent_memory/retrieval/OriginalProjection.hpp>
 
 #include <filesystem>
+#include <iostream>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -160,7 +161,8 @@ int main() {
                 " diagnostic=" + result.diagnostic);
         }
         return 0;
-    } catch(...) {
+    } catch(const std::exception& error) {
+        std::cerr << error.what() << '\n';
         return 1;
     }
 }
