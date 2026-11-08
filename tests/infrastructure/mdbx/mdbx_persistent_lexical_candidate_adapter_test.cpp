@@ -461,6 +461,29 @@ int main() {
                         conflict_result.results.empty(),
                     "conflicting unit observations were not rejected");
 
+            auto duplicate_observations = initial;
+            duplicate_observations.candidates.push_back(
+                duplicate_observations.candidates.front());
+            const auto duplicate_result = admit_persistent_lexical_candidates(
+                scope, duplicate_observations,
+                units, projections, manifests, tokenizer);
+            require(duplicate_result.completeness ==
+                        RevisionBoundCompleteness::InconsistentSnapshot &&
+                        duplicate_result.results.empty(),
+                    "duplicate unit observations were not rejected");
+
+            auto conflicting_revision = initial;
+            conflicting_revision.candidates.push_back(
+                conflicting_revision.candidates.front());
+            conflicting_revision.candidates.back().identity.unit_revision = 99;
+            const auto revision_conflict_result = admit_persistent_lexical_candidates(
+                scope, conflicting_revision,
+                units, projections, manifests, tokenizer);
+            require(revision_conflict_result.completeness ==
+                        RevisionBoundCompleteness::InconsistentSnapshot &&
+                        revision_conflict_result.results.empty(),
+                    "conflicting unit revisions were not rejected");
+
             PersistentLexicalCandidateResponse missing_statistics;
             missing_statistics.completeness =
                 PersistentLexicalCandidateCompleteness::InconsistentSnapshot;

@@ -57,6 +57,14 @@ struct PersistentLexicalCandidateResponse final {
 };
 
 /// \brief Generates bounded, non-authoritative candidates from one pinned view.
+///
+/// The MDBX adapter reconstructs a FlatLexicalIndex in memory for each read
+/// snapshot. Its posting prefix is bounded, but total reconstruction is not a
+/// bounded-memory or production-scale performance qualification. Statistics
+/// fault injection mutates only that reconstructed test view; it does not
+/// qualify corruption of durable MDBX postings. Admission remains responsible
+/// for revalidating canonical stores and does not claim a universal snapshot
+/// across unrelated authorities.
 class MdbxPersistentLexicalCandidateAdapter final {
 public:
     MdbxPersistentLexicalCandidateAdapter(

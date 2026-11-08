@@ -32,6 +32,7 @@ bool same_candidate_observation(
     return left.scope_id == right.scope_id &&
            left.resource_id == right.resource_id &&
            left.resource_generation == right.resource_generation &&
+           left.identity.unit_revision == right.identity.unit_revision &&
            left.identity.projection_kind == right.identity.projection_kind &&
            same_projection_version(left.projection_version, right.projection_version);
 }
@@ -137,9 +138,12 @@ MdbxPersistentLexicalCandidateAdapter::generate(const RetrievalQuery& query) con
             // The flat snapshot normally keeps DF and physical membership in
             // lockstep. If a future reader observes a torn/corrupt pair, do
             // not index past the returned vector or claim completeness.
-            response.completeness = PersistentLexicalCandidateCompleteness::Truncated;
+            response.candidates.clear();
+            response.completeness =
+                PersistentLexicalCandidateCompleteness::InconsistentSnapshot;
             response.diagnostic =
                 "persistent lexical posting/statistics counts disagree";
+            return response;
         }
         for(std::size_t index = 0; index < postings.size(); ++index) {
             ++response.examined_postings;
@@ -234,11 +238,13 @@ RevisionBoundRetrievalResponse admit_persistent_lexical_candidates(
         const auto found = observations.find(candidate.identity.knowledge_unit_id);
         if(found == observations.end()) {
             observations.emplace(candidate.identity.knowledge_unit_id, candidate);
-        } else if(!same_candidate_observation(found->second, candidate)) {
+        } else {
             RevisionBoundRetrievalResponse result;
             result.completeness = RevisionBoundCompleteness::InconsistentSnapshot;
             result.diagnostic =
-                "persistent lexical response has conflicting unit observations";
+                same_candidate_observation(found->second, candidate)
+                    ? "persistent lexical response contains duplicate unit observations"
+                    : "persistent lexical response has conflicting unit observations";
             return result;
         }
     }

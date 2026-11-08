@@ -79,6 +79,10 @@ struct MdbxPersistentLexicalIndexSnapshot final {
 /// the dependency-free FlatLexicalIndex oracle. A publication replaces the
 /// payload in one writable MDBX transaction, so an aborted write leaves the
 /// previous complete snapshot visible after reopen.
+///
+/// Read snapshots therefore have O(active logical state) reconstruction cost;
+/// bounded prefix reads do not imply bounded materialization memory or
+/// production-scale serving performance.
 class MdbxPersistentLexicalIndex final {
 public:
     explicit MdbxPersistentLexicalIndex(
