@@ -102,6 +102,7 @@ add_library(agent_memory STATIC
     src/agent_memory/storage/IDocumentStorage.cpp
     src/agent_memory/storage/CanonicalContentStore.cpp
     src/agent_memory/storage/FileRawBlobStore.cpp
+    src/agent_memory/storage/FramedZstdCodec.cpp
     src/agent_memory/storage/IKnowledgeUnitStore.cpp
     src/agent_memory/storage/IProjectionStore.cpp
     src/agent_memory/storage/IDerivedPublicationStore.cpp
@@ -126,6 +127,7 @@ target_compile_definitions(agent_memory
         AGENT_MEMORY_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
         AGENT_MEMORY_VERSION_MINOR=${PROJECT_VERSION_MINOR}
         AGENT_MEMORY_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+        AGENT_MEMORY_ENABLE_ZSTD=$<BOOL:${AGENT_MEMORY_ENABLE_ZSTD}>
 )
 
 set_target_properties(agent_memory PROPERTIES
@@ -175,6 +177,19 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         PRIVATE
             agent_memory_mdbx_dependency
     )
+endif()
+
+if(AGENT_MEMORY_ENABLE_ZSTD)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/zstd/build/cmake/CMakeLists.txt")
+        message(FATAL_ERROR "AGENT_MEMORY_ENABLE_ZSTD requires initialized external/zstd")
+    endif()
+    # Plain variables intentionally scope the embedded dependency defaults
+    # without overwriting a parent project's cache entries.
+    set(ZSTD_BUILD_PROGRAMS OFF)
+    set(ZSTD_BUILD_TESTS OFF)
+    set(ZSTD_BUILD_CONTRIB OFF)
+    add_subdirectory(external/zstd/build/cmake ${CMAKE_BINARY_DIR}/zstd EXCLUDE_FROM_ALL)
+    target_link_libraries(agent_memory PRIVATE libzstd_static)
 endif()
 
 agent_memory_provide_json(AGENT_MEMORY_JSON_TARGET)

@@ -495,6 +495,18 @@ add_test(NAME agent_memory_structural_segment_set_test
     COMMAND agent_memory_structural_segment_set_test
 )
 
+if(AGENT_MEMORY_ENABLE_ZSTD)
+    add_executable(agent_memory_framed_zstd_codec_test
+        storage/framed_zstd_codec_test.cpp
+    )
+    target_link_libraries(agent_memory_framed_zstd_codec_test
+        PRIVATE agent_memory::agent_memory
+    )
+    add_test(NAME agent_memory_framed_zstd_codec_test
+        COMMAND agent_memory_framed_zstd_codec_test
+    )
+endif()
+
 add_executable(agent_memory_tokenizer_contracts_test
     lexical/tokenizer_contracts_test.cpp
 )

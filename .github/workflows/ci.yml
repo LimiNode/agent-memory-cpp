@@ -321,6 +321,45 @@ jobs:
       - name: Test
         run: ctest --test-dir build --build-config Release --output-on-failure
 
+  zstd:
+    if: needs.changes.outputs.storage == 'true'
+    needs: changes
+    name: Framed Zstd (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Init Zstd submodule
+        run: git submodule update --init external/zstd
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-zstd
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_ENABLE_ZSTD=ON
+          -DAGENT_MEMORY_ENABLE_MDBX=OFF
+          -DAGENT_MEMORY_ENABLE_JSON=OFF
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=OFF
+
+      - name: Build focused codec test
+        run: cmake --build build-zstd --config Release --target agent_memory_framed_zstd_codec_test
+
+      - name: Test focused codec
+        run: ctest --test-dir build-zstd --build-config Release -R agent_memory_framed_zstd_codec_test --output-on-failure
+
   mdbx:
     if: needs.changes.outputs.storage == 'true'
     needs: changes
@@ -1124,6 +1163,7 @@ jobs:
       - changes
       - docs
       - cmake
+      - zstd
       - mdbx
       - mdbx-benchmark
       - native-mih-benchmark
@@ -1147,6 +1187,7 @@ jobs:
           FULL_REQUIRED: ${{ needs.changes.outputs.full }}
           DOCS_RESULT: ${{ needs.docs.result }}
           CORE_RESULT: ${{ needs.cmake.result }}
+          ZSTD_RESULT: ${{ needs.zstd.result }}
           STORAGE_RESULT: ${{ needs.mdbx.result }}
           MDBX_BENCHMARK_RESULT: ${{ needs.mdbx-benchmark.result }}
           MIH_RESULT: ${{ needs.native-mih-benchmark.result }}
@@ -1180,6 +1221,7 @@ jobs:
 
           check_required "$DOCS_REQUIRED" "$DOCS_RESULT" "documentation checks"
           check_required "$CORE_REQUIRED" "$CORE_RESULT" "core CMake/CTest"
+          check_required "$STORAGE_REQUIRED" "$ZSTD_RESULT" "Framed Zstd"
           check_required "$STORAGE_REQUIRED" "$STORAGE_RESULT" "MDBX storage"
           check_required "$RESEARCH_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
           check_required "$RESEARCH_REQUIRED" "$MIH_RESULT" "native MIH"
