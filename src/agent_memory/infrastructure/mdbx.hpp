@@ -22,6 +22,7 @@
 #include "mdbx/MdbxProjectionStore.hpp"
 #include "mdbx/MdbxDerivedPublicationStore.hpp"
 #include "mdbx/MdbxArtifactCatalog.hpp"
+#include "mdbx/MdbxResourceArtifactBindingStore.hpp"
 #include "mdbx/MdbxVerifiedArtifactHydration.hpp"
 
 #endif

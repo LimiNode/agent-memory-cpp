@@ -14,6 +14,7 @@
 #include "storage/IResourceManifestStorage.hpp"
 #include "storage/IKnowledgeUnitStore.hpp"
 #include "storage/IProjectionStore.hpp"
+#include "storage/ResourceArtifactBinding.hpp"
 #include "storage/IDerivedPublicationStore.hpp"
 #include "storage/DerivedPublicationAdmission.hpp"
 

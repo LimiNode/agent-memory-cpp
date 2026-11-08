@@ -7,6 +7,8 @@ next.
 
 The location and lifecycle rules for source bundles, raw artifacts, and
 temporary worktrees are in [research workspace layout](research-workspace-layout.md).
+The executable text-first citation qualification path is documented in
+[`article-to-citation-vertical.md`](../article-to-citation-vertical.md).
 The active bounded research program is the [codec closure protocol](2026-09-25-codec-closure-protocol.md).
 
 The separate [memory feedback stability gate (F0)](2026-10-07-memory-feedback-stability-protocol.md)

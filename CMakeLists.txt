@@ -106,6 +106,7 @@ add_library(agent_memory STATIC
     src/agent_memory/storage/FramedZstdCodec.cpp
     src/agent_memory/storage/IKnowledgeUnitStore.cpp
     src/agent_memory/storage/IProjectionStore.cpp
+    src/agent_memory/storage/ResourceArtifactBinding.cpp
     src/agent_memory/storage/IDerivedPublicationStore.cpp
     src/agent_memory/storage/DerivedPublicationAdmission.cpp
     src/agent_memory/storage/IResourceIndexRecordOwnerStorage.cpp
@@ -156,6 +157,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxProjectionStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxDerivedPublicationStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxArtifactCatalog.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxResourceArtifactBindingStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxVerifiedArtifactHydration.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCurrentDerivedPublicationReader.cpp
             src/agent_memory/infrastructure/mdbx/MdbxSnapshotRevisionBoundRetriever.cpp
