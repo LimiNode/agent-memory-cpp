@@ -37,18 +37,38 @@
         {
           "id": "source:timed-transcript@1",
           "duration_ms": 60000,
+          "external_video": {"provider": "youtube", "video_id": "video:release-demo-v1"},
           "frozen_body": "Transcript source revision contains the twelve second import event.",
           "body_digest": "sha256:6a8578455a509b438fa73afce2a4afd39f7791facda71a61249bd7a6b7930652"
+        }
+      ]
+    },
+    {
+      "source_id": "source:table-article",
+      "kind": "technical_article_table",
+      "revisions": [
+        {
+          "id": "source:table-article@1",
+          "frozen_body": "Table-bearing article source revision with release gate outcomes.",
+          "body_digest": "sha256:0b4be162dca86069a55bbddf34677f8746425d1d8c2866af44645f3b08efea02"
         }
       ]
     }
   ],
   "artifacts": [
     {
-      "artifact_id": "sha256:d4f5ce33d4008a25a8a601149ada8fe648a8e6f450f38edea8a06aa35cbc6411",
+      "artifact_id": "sha256:431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460",
       "media_type": "image/png",
-      "bytes_hex": "00010203faff",
+      "bytes_hex": "89504e470d0a1a0a0000000d4948445200000001000000010804000000b51c0c020000000b4944415478da6364f80f00010501012718e3660000000049454e44ae426082",
       "retained": true
+    }
+  ],
+  "artifact_bindings": [
+    {
+      "binding_id": "binding:telegram-image-v1",
+      "source_revision_id": "source:telegram-image@1",
+      "artifact_id": "sha256:431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460",
+      "role": "retained_source_artifact"
     }
   ],
   "representations": [
@@ -101,7 +121,7 @@
       "producer": "source-import",
       "recipe_fingerprint": "recipe:original-v1",
       "publication_generation": 1,
-      "evidence_locator": {"kind": "artifact", "artifact_id": "sha256:d4f5ce33d4008a25a8a601149ada8fe648a8e6f450f38edea8a06aa35cbc6411"}
+      "evidence_locator": {"kind": "artifact", "binding_id": "binding:telegram-image-v1", "artifact_id": "sha256:431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460"}
     },
     {
       "id": "repr:transcript-original-v1",
@@ -111,13 +131,71 @@
       "producer": "source-import",
       "recipe_fingerprint": "recipe:original-v1",
       "publication_generation": 1,
-      "evidence_locator": {"kind": "time_range_ms", "start_ms": 12000, "duration_ms": 4000}
+      "evidence_locator": {
+        "kind": "time_range_ms",
+        "text_offset": 49,
+        "text_length": 12,
+        "start_ms": 12000,
+        "duration_ms": 4000,
+        "alignment_id": "alignment:transcript-video-v1",
+        "external_video_id": "video:release-demo-v1"
+      }
+    },
+    {
+      "id": "repr:table-original-v1",
+      "source_revision_id": "source:table-article@1",
+      "view": "original",
+      "input_source_revision_id": "source:table-article@1",
+      "producer": "source-import",
+      "recipe_fingerprint": "recipe:original-v1",
+      "publication_generation": 1,
+      "evidence_locator": {
+        "kind": "table_cell",
+        "table_id": "table:release-gates-v1",
+        "column_id": "column:status",
+        "row_id": "row:601",
+        "cell_id": "cell:601-status",
+        "expected_value": "SUCCESS"
+      }
+    }
+  ],
+  "tables": [
+    {
+      "table_id": "table:release-gates-v1",
+      "source_revision_id": "source:table-article@1",
+      "columns": [
+        {"id": "column:pr", "ordinal": 0},
+        {"id": "column:status", "ordinal": 1}
+      ],
+      "rows": [
+        {
+          "id": "row:601",
+          "ordinal": 0,
+          "cells": [
+            {"id": "cell:601-pr", "column_id": "column:pr", "value": "601"},
+            {"id": "cell:601-status", "column_id": "column:status", "value": "SUCCESS"}
+          ]
+        }
+      ]
+    }
+  ],
+  "alignments": [
+    {
+      "alignment_id": "alignment:transcript-video-v1",
+      "source_revision_id": "source:timed-transcript@1",
+      "text_offset": 49,
+      "text_length": 12,
+      "start_ms": 12000,
+      "duration_ms": 4000,
+      "external_video_id": "video:release-demo-v1",
+      "provenance": "import-alignment-v1"
     }
   ],
   "original_documents": [
     {"id": "doc:article-original-v1", "representation_id": "repr:article-original-v1", "fields": ["title", "heading", "body", "code", "tags"]},
     {"id": "doc:telegram-original-v1", "representation_id": "repr:telegram-original-v1", "fields": ["title", "heading", "body", "code", "tags"]},
-    {"id": "doc:transcript-original-v1", "representation_id": "repr:transcript-original-v1", "fields": ["title", "heading", "body", "code", "tags"]}
+    {"id": "doc:transcript-original-v1", "representation_id": "repr:transcript-original-v1", "fields": ["title", "heading", "body", "code", "tags"]},
+    {"id": "doc:table-original-v1", "representation_id": "repr:table-original-v1", "fields": ["title", "heading", "body", "code", "tags"]}
   ],
   "lifecycle_transitions": [
     {
@@ -134,7 +212,8 @@
     {"id": "case:summary-candidate", "capability": "derived_summary_candidate", "status": "NOT_IMPLEMENTED", "expected": "candidate carries source revision, producer and generation"},
     {"id": "case:stale-summary", "capability": "derived_freshness_admission", "status": "NOT_IMPLEMENTED", "expected": "repr:article-summary-v1 rejected after source:article-mdbx@2 becomes current"},
     {"id": "case:telegram-artifact", "capability": "verified_artifact_hydration", "status": "NOT_IMPLEMENTED", "expected": "typed artifact locator and digest-verified materialization"},
-    {"id": "case:transcript-citation", "capability": "timestamp_citation", "status": "NOT_IMPLEMENTED", "expected": "time-range evidence anchor survives reopen"},
+    {"id": "case:transcript-citation", "capability": "timestamp_citation", "status": "NOT_IMPLEMENTED", "expected": "normalized text range, alignment provenance and external video identity bind the time-range evidence anchor"},
+    {"id": "case:table-cell-hydration", "capability": "table_cell_hydration", "status": "NOT_IMPLEMENTED", "expected": "typed table cell locator resolves the exact canonical cell value"},
     {"id": "case:update-delete-reopen", "capability": "source_revision_lifecycle", "status": "NOT_IMPLEMENTED", "expected": "old projection is stale or deleted and never reappears after reopen"}
   ]
 }

@@ -26,11 +26,21 @@ as `NOT_IMPLEMENTED`; it does not synthesize a summary or question into the
 
 ## Fixture
 
-The fixture contains three release-shaped sources: a technical article, a
-Telegram post with binary bytes, and a timed transcript. The article has two
-source revisions and two independently published summary representations. Every
-representation records its exact input revision, producer, recipe fingerprint,
-publication generation and typed evidence locator.
+The fixture contains four release-shaped sources: a technical article, a
+Telegram post with a retained 1x1 PNG, a timed transcript, and a table-bearing
+article. The article has two source revisions and two independently published
+summary representations. Every representation records its exact input
+revision, producer, recipe fingerprint, publication generation and typed
+evidence locator. Retained artifacts are connected through an explicit
+`SourceRevision -> ArtifactBinding -> ArtifactId` relation; CAS byte identity
+does not by itself establish source ownership.
+
+The table case uses stable table, column, row and cell identifiers and checks
+an exact canonical cell value. It is a contract-only locator; merged cells and
+general layout geometry remain roadmap items. The transcript case binds a
+normalized text range to a bounded time interval, alignment provenance and an
+external video identity. The external identity is not evidence that video
+bytes are retained locally.
 
 `Original` admits only `title`, `heading`, `body`, `code` and `tags`. Summary,
 fact, entity and QA views remain separate records. A derived record without an
@@ -45,7 +55,8 @@ plausible.
 | Derived summary candidate | `NOT_IMPLEMENTED` | candidate carries exact input revision and generation |
 | Stale derived admission | `NOT_IMPLEMENTED` | A@1 summary is rejected after A@2 becomes current |
 | Binary artifact hydration | `NOT_IMPLEMENTED` | typed binding, digest verification and bounded materialization |
-| Timestamp citation | `NOT_IMPLEMENTED` | time-range locator survives reopen and resolves to source |
+| Timestamp citation | `NOT_IMPLEMENTED` | text range, alignment provenance, external video identity and time-range locator remain source-bound |
+| Exact table cell hydration | `NOT_IMPLEMENTED` | stable table/row/column/cell locator resolves to the canonical cell |
 | Update/delete/reopen lifecycle | `NOT_IMPLEMENTED` | stale or deleted projection never reappears |
 
 The installed Raw CAS consumer (#599/#600) proves a narrower artifact catalog
@@ -61,9 +72,10 @@ python tools/lexical-research/validate_source_bound_release_fixture.py --self-te
 ```
 
 The validator rejects a derived field admitted into `Original`, forged body or
-artifact digests, out-of-bounds evidence, cross-source lifecycle transitions,
-and incomplete multi-input representations. It validates identity and lineage
-only; runtime retrieval and hydration remain separate executable gates.
+artifact digests, cross-source artifact bindings, out-of-bounds evidence,
+cross-source lifecycle transitions, wrong transcript alignments, wrong table
+cells, and incomplete multi-input representations. It validates identity and
+lineage only; runtime retrieval and hydration remain separate executable gates.
 
 An execution receipt is a separate schema and must bind the exact source HEAD
 and frozen fixture bytes. CI can emit a truthful non-executed receipt while
@@ -80,7 +92,11 @@ python tools/lexical-research/validate_source_bound_release_fixture.py \
 `observed_results`. An `EXECUTED` receipt must cover every case and may not
 report `PASS` for a fixture case still marked `NOT_IMPLEMENTED` or
 `NOT_VERIFIED`. A contract-only fixture cannot claim `PASS` without such an
-exact-source execution receipt.
+exact-source execution receipt. Receipt validation proves structural
+consistency and exact fixture/source binding; it does not prove that an
+external runtime actually ran a case. Future `PASS` cases therefore require
+case-specific execution evidence tied to the executed test, inputs, commit and
+observed output.
 
 ## Follow-up
 
