@@ -36,11 +36,16 @@ evidence locator. Retained artifacts are connected through an explicit
 does not by itself establish source ownership.
 
 The table case uses stable table, column, row and cell identifiers and checks
-an exact canonical cell value. Its versioned table representation has a
-canonical digest over the ordered column/row/cell records, source revision,
-producer, recipe and publication generation; changing a cell under the same
-digest is rejected. It is a contract-only locator; merged cells and general
-layout geometry remain roadmap items. The transcript case binds the decoded
+an exact canonical cell value. The source `Original` and the canonical table
+structure are separate immutable representations: the latter carries its own
+representation ID/version and an explicit parent link to the former. Its
+canonical digest covers the ordered column/row/cell records, source revision,
+producer, recipe and publication generation; every declared table is checked,
+including tables not currently referenced by a locator. Changing a cell under
+the same digest is rejected. This establishes identity of the declared
+structure, not proof that a parser correctly extracted it from the source.
+It is a contract-only locator; merged cells and general layout geometry remain
+roadmap items. The transcript case binds the decoded
 `import event` text range to a bounded time interval, alignment provenance and
 an external video identity. The external identity is not evidence that video
 bytes are retained locally.
@@ -77,8 +82,10 @@ python tools/lexical-research/validate_source_bound_release_fixture.py --self-te
 The validator rejects a derived field admitted into `Original`, forged body or
 artifact digests, cross-source artifact bindings, out-of-bounds evidence,
 cross-source lifecycle transitions, wrong transcript alignments, wrong table
-cells, and incomplete multi-input representations. It validates identity and
-lineage only; runtime retrieval and hydration remain separate executable gates.
+cells, invalid or unreferenced table digests, conflicting table parent or
+recipe identity, and incomplete multi-input representations. It validates
+identity and lineage only; runtime retrieval and hydration remain separate
+executable gates.
 
 An execution receipt is a separate schema and must bind the exact source HEAD
 and frozen fixture bytes. CI can emit a truthful non-executed receipt while

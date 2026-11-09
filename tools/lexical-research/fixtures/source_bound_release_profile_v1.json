@@ -150,12 +150,24 @@
       "producer": "source-import",
       "recipe_fingerprint": "recipe:original-v1",
       "publication_generation": 1,
+      "evidence_locator": {"kind": "body_range", "offset": 0, "length": 16}
+    },
+    {
+      "id": "repr:table-structure-v1",
+      "source_revision_id": "source:table-article@1",
+      "view": "table_structure",
+      "input_source_revision_id": "source:table-article@1",
+      "parent_representation_id": "repr:table-original-v1",
+      "representation_version": 1,
+      "producer": "source-import",
+      "recipe_fingerprint": "recipe:table-v1",
+      "publication_generation": 1,
       "evidence_locator": {
         "kind": "table_cell",
         "table_id": "table:release-gates-v1",
-        "table_representation_id": "repr:table-original-v1",
+        "table_representation_id": "repr:table-structure-v1",
         "table_representation_version": 1,
-        "table_digest": "sha256:40f02b754b1e88a17dbe9b384ffcff80f95f1e3f40778938dc06ca71a9f70a8a",
+        "table_digest": "sha256:49133d580104f8db60435d68690699df9efe015fac0e9ddd174b86c9c463eb72",
         "column_id": "column:status",
         "row_id": "row:601",
         "cell_id": "cell:601-status",
@@ -167,12 +179,12 @@
     {
       "table_id": "table:release-gates-v1",
       "source_revision_id": "source:table-article@1",
-      "representation_id": "repr:table-original-v1",
+      "representation_id": "repr:table-structure-v1",
       "representation_version": 1,
       "producer": "source-import",
       "recipe_fingerprint": "recipe:table-v1",
       "publication_generation": 1,
-      "canonical_digest": "sha256:40f02b754b1e88a17dbe9b384ffcff80f95f1e3f40778938dc06ca71a9f70a8a",
+      "canonical_digest": "sha256:49133d580104f8db60435d68690699df9efe015fac0e9ddd174b86c9c463eb72",
       "columns": [
         {"id": "column:pr", "ordinal": 0},
         {"id": "column:status", "ordinal": 1}

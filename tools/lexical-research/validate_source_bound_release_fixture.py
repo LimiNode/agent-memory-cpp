@@ -103,6 +103,7 @@ def table_index(
     data: dict[str, Any], revisions: dict[str, dict[str, Any]]
 ) -> dict[str, dict[str, Any]]:
     tables: dict[str, dict[str, Any]] = {}
+    representation_ids: set[str] = set()
     for table in data.get("tables", []):
         table_id = table.get("table_id")
         revision_id = table.get("source_revision_id")
@@ -153,7 +154,18 @@ def table_index(
                 isinstance(table["publication_generation"], bool) or
                 table["publication_generation"] < 1):
             raise AssertionError("table representation identity is malformed")
-        tables[table_id] = {**table, "cells": cells}
+        if table["representation_id"] in representation_ids:
+            raise AssertionError("table representation identity is reused")
+        representation_ids.add(table["representation_id"])
+        if (any(column["ordinal"] < 0 for column in columns) or
+                len({column["ordinal"] for column in columns}) != len(columns) or
+                any(row["ordinal"] < 0 for row in rows) or
+                len({row["ordinal"] for row in rows}) != len(rows)):
+            raise AssertionError("table ordinals are not unique non-negative positions")
+        normalized = {**table, "cells": cells}
+        if table["canonical_digest"] != canonical_table_digest(normalized):
+            raise AssertionError("table canonical digest does not match declared structure")
+        tables[table_id] = normalized
     return tables
 
 
@@ -417,13 +429,37 @@ def validate(
             representation["evidence_locator"], revisions[revision_id], artifacts,
             bindings, tables, alignments, revision_kinds[revision_id]
         )
-        if (representation["evidence_locator"].get("kind") == "table_cell" and
-                representation["evidence_locator"].get("table_representation_id") != representation_id):
-            raise AssertionError("table locator is not bound to its representation identity")
+        if representation["evidence_locator"].get("kind") == "table_cell":
+            table = tables.get(representation["evidence_locator"].get("table_id"))
+            if (representation["evidence_locator"].get("table_representation_id") != representation_id or
+                    table is None or table["representation_id"] != representation_id or
+                    representation.get("view") != "table_structure"):
+                raise AssertionError("table locator is not bound to a structural representation")
+            if (representation.get("representation_version") != table["representation_version"] or
+                    representation.get("producer") != table["producer"] or
+                    representation.get("recipe_fingerprint") != table["recipe_fingerprint"] or
+                    representation.get("publication_generation") != table["publication_generation"]):
+                raise AssertionError("table representation metadata disagrees with its table")
+            parent_id = representation.get("parent_representation_id")
+            parent = representations.get(parent_id)
+            if (parent is None or parent.get("view") != "original" or
+                    parent.get("source_revision_id") != revision_id or
+                    parent.get("id") == representation_id):
+                raise AssertionError("structural table representation lacks its source Original")
         if representation["view"] == "original" and (
             len(inputs) != 1 or inputs[0] != revision_id or representation["producer"] != "source-import"
         ):
             raise AssertionError("Original representation is not a single source import")
+
+    for table in tables.values():
+        representation = representations.get(table["representation_id"])
+        if (representation is None or representation.get("view") != "table_structure" or
+                representation.get("source_revision_id") != table["source_revision_id"] or
+                representation.get("representation_version") != table["representation_version"] or
+                representation.get("producer") != table["producer"] or
+                representation.get("recipe_fingerprint") != table["recipe_fingerprint"] or
+                representation.get("publication_generation") != table["publication_generation"]):
+            raise AssertionError("table is not bound to its declared structural representation")
 
     document_ids: set[str] = set()
     for document in data.get("original_documents", []):
@@ -555,6 +591,35 @@ def self_test(data: dict[str, Any], fixture_digest: str) -> None:
         pass
     else:
         raise AssertionError("table content changed under the same representation digest")
+
+    unreferenced_table = copy.deepcopy(data)
+    extra_table = copy.deepcopy(unreferenced_table["tables"][0])
+    extra_table["table_id"] = "table:unreferenced-invalid-v1"
+    unreferenced_table["tables"].append(extra_table)
+    try:
+        validate(unreferenced_table)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("unreferenced table with an invalid canonical digest was accepted")
+
+    mismatched_table_parent = copy.deepcopy(data)
+    mismatched_table_parent["representations"][-1]["parent_representation_id"] = "repr:article-original-v1"
+    try:
+        validate(mismatched_table_parent)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("table structural representation with a mismatched parent was accepted")
+
+    conflicting_table_recipe = copy.deepcopy(data)
+    conflicting_table_recipe["representations"][-1]["recipe_fingerprint"] = "recipe:other-v1"
+    try:
+        validate(conflicting_table_recipe)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("conflicting table representation recipe was accepted")
 
     wrong_artifact_role = copy.deepcopy(data)
     wrong_artifact_role["artifact_bindings"][0]["role"] = "retained_derived_artifact"
