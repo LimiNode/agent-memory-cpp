@@ -35,13 +35,22 @@ enum class RevisionBoundMaterialization : std::uint8_t {
 enum class RevisionBoundCompleteness : std::uint8_t {
     Complete,
     BudgetExceeded,
-    UnsupportedQuery
+    UnsupportedQuery,
+    InconsistentSnapshot
 };
 
 /// \brief Explicit diagnostic for a query feature outside the M0 profile.
 class RevisionBoundUnsupportedQuery final : public std::runtime_error {
 public:
     explicit RevisionBoundUnsupportedQuery(const std::string& message)
+        : std::runtime_error(message) {}
+};
+
+/// \brief The producer supplied contradictory or structurally inconsistent
+/// snapshot evidence; no candidate may be returned as a product result.
+class RevisionBoundInconsistentSnapshot final : public std::runtime_error {
+public:
+    explicit RevisionBoundInconsistentSnapshot(const std::string& message)
         : std::runtime_error(message) {}
 };
 
@@ -133,6 +142,16 @@ public:
     /// Both entry points throw std::logic_error for an unpaired producer result.
     [[nodiscard]] RevisionBoundRetrievalResponse retrieve_detailed(
         const RetrievalQuery& query
+    ) const;
+
+    /// \brief Admits candidates produced by another bounded lexical backend.
+    ///
+    /// The backend owns ranking and candidate completeness; this method owns
+    /// only canonical scope, lifecycle, revision, projection, and manifest
+    /// admission. The two vectors must be parallel and equally sized.
+    [[nodiscard]] RevisionBoundRetrievalResponse admit_candidates(
+        const std::vector<ProjectionAwareLexicalCandidate>& candidates,
+        const std::vector<float>& scores
     ) const;
 
 private:

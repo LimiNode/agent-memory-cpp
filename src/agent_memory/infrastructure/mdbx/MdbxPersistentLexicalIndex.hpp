@@ -79,6 +79,10 @@ struct MdbxPersistentLexicalIndexSnapshot final {
 /// the dependency-free FlatLexicalIndex oracle. A publication replaces the
 /// payload in one writable MDBX transaction, so an aborted write leaves the
 /// previous complete snapshot visible after reopen.
+///
+/// Read snapshots therefore have O(active logical state) reconstruction cost;
+/// bounded prefix reads do not imply bounded materialization memory or
+/// production-scale serving performance.
 class MdbxPersistentLexicalIndex final {
 public:
     explicit MdbxPersistentLexicalIndex(
@@ -112,6 +116,17 @@ public:
     /// \brief Arms a deterministic pre-commit interruption for tests.
     void set_failure_injection_for_testing(
         MdbxPersistentLexicalIndexFaultPoint point
+    ) noexcept;
+
+    /// \brief Arms one materialized-view statistics corruption for conformance tests.
+    ///
+    /// The durable payload remains unchanged. On the next read snapshot, only
+    /// the selected token's aggregate statistics are mutated, allowing a
+    /// candidate consumer to prove fail-closed handling of missing statistics
+    /// and both DF mismatch directions.
+    void set_statistics_fault_for_testing(
+        TokenId token_id,
+        FlatLexicalStatisticsFaultPoint point
     ) noexcept;
 
 private:
