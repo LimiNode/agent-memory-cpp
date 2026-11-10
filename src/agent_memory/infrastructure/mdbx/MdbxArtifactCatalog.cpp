@@ -151,6 +151,8 @@ ArtifactCatalogStatus map_raw_status(RawBlobStatus status) noexcept {
         return ArtifactCatalogStatus::Corrupt;
     case RawBlobStatus::InvalidArgument:
         return ArtifactCatalogStatus::InvalidArgument;
+    case RawBlobStatus::VerificationBudgetExceeded:
+        return ArtifactCatalogStatus::VerificationBudgetExceeded;
     case RawBlobStatus::IoError:
         return ArtifactCatalogStatus::IoError;
     case RawBlobStatus::Ok:
@@ -627,6 +629,47 @@ ArtifactCatalogResult MdbxArtifactCatalog::read_binding(
     return ArtifactCatalogResult{ArtifactCatalogStatus::Ok, std::move(record), {}};
 }
 
+ArtifactCatalogResult MdbxArtifactCatalog::read_binding_metadata(
+    const ArtifactBindingId& binding_id) const {
+    if(binding_id.empty())
+        return failure(ArtifactCatalogStatus::InvalidArgument,
+                       "empty artifact binding id");
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    auto txn = m_impl->context->connection()->transaction(
+        mdbxc::TransactionMode::READ_ONLY);
+    try {
+        const auto loaded = m_impl->load_binding(binding_id, txn);
+        txn.commit();
+        if(!loaded)
+            return failure(ArtifactCatalogStatus::NotFound,
+                           "artifact binding was not found");
+        return ArtifactCatalogResult{
+            ArtifactCatalogStatus::Ok, *loaded, {}};
+    } catch(...) {
+        txn.rollback();
+        throw;
+    }
+}
+
+ArtifactCatalogResult MdbxArtifactCatalog::read_binding_in_transaction(
+    const ArtifactBindingId& binding_id,
+    const mdbxc::Transaction& transaction
+) const {
+    if(binding_id.empty())
+        return failure(ArtifactCatalogStatus::InvalidArgument,
+                       "empty artifact binding id");
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    try {
+        const auto record = m_impl->load_binding(binding_id, transaction);
+        if(!record)
+            return failure(ArtifactCatalogStatus::NotFound,
+                           "artifact binding was not found");
+        return ArtifactCatalogResult{ArtifactCatalogStatus::Ok, *record, {}};
+    } catch(const std::exception& error) {
+        return failure(ArtifactCatalogStatus::Corrupt, error.what());
+    }
+}
+
 ArtifactCatalogCollectionResult MdbxArtifactCatalog::read_source_revision_bindings(
     const SourceRevisionId& source_revision_id) const {
     if(source_revision_id.empty())
@@ -710,7 +753,17 @@ ArtifactCatalogReadResult MdbxArtifactCatalog::read_body_range(
     const ArtifactBindingId& binding_id,
     std::uint64_t offset,
     std::uint64_t length) const {
-    const auto record = read_binding(binding_id);
+    return read_body_range(
+        binding_id, offset, length,
+        (std::numeric_limits<std::uint64_t>::max)());
+}
+
+ArtifactCatalogReadResult MdbxArtifactCatalog::read_body_range(
+    const ArtifactBindingId& binding_id,
+    std::uint64_t offset,
+    std::uint64_t length,
+    std::uint64_t verification_budget_bytes) const {
+    const auto record = read_binding_metadata(binding_id);
     if(record.status != ArtifactCatalogStatus::Ok || !record.record)
         return read_failure(record.status, record.diagnostic);
     if(offset > record.record->artifact.size_bytes ||
@@ -720,7 +773,15 @@ ArtifactCatalogReadResult MdbxArtifactCatalog::read_body_range(
     if(length > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))
         return read_failure(ArtifactCatalogStatus::InvalidArgument,
                             "artifact body range exceeds size_t");
-    const auto part = m_impl->cas.read_range(record.record->artifact.id, offset, length);
+    if(length > m_impl->cas.max_read_range_bytes())
+        return read_failure(ArtifactCatalogStatus::InvalidArgument,
+                            "artifact body range exceeds the configured CAS range budget");
+    const auto part = m_impl->cas.read_range_bounded(
+        record.record->artifact.id, offset, length, verification_budget_bytes);
+    if(part.status == RawBlobStatus::InvalidArgument) {
+        return read_failure(ArtifactCatalogStatus::Corrupt,
+                            "Raw CAS body is shorter than its catalog metadata");
+    }
     if(part.status != RawBlobStatus::Ok)
         return read_failure(map_raw_status(part.status), part.diagnostic);
     if(part.bytes.size() != static_cast<std::size_t>(length))

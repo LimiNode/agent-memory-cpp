@@ -18,6 +18,7 @@ namespace agent_memory {
 enum class RawBlobStatus : std::uint8_t {
     Ok,
     InvalidArgument,
+    VerificationBudgetExceeded,
     NotFound,
     Corrupt,
     IoError
@@ -76,6 +77,16 @@ public:
         const ArtifactId& artifact_id,
         std::uint64_t offset,
         std::uint64_t length
+    ) const;
+
+    /// Reads and verifies a range while bounding the complete physical CAS
+    /// scan. The returned range is never exposed unless the whole object was
+    /// digest-verified within verification_budget_bytes.
+    [[nodiscard]] RawBlobReadResult read_range_bounded(
+        const ArtifactId& artifact_id,
+        std::uint64_t offset,
+        std::uint64_t length,
+        std::uint64_t verification_budget_bytes
     ) const;
 
     [[nodiscard]] const std::filesystem::path& root() const noexcept {

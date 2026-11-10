@@ -390,6 +390,17 @@ RawBlobReadResult FileRawBlobStore::read_range(
     std::uint64_t offset,
     std::uint64_t length
 ) const {
+    return read_range_bounded(
+        artifact_id, offset, length,
+        (std::numeric_limits<std::uint64_t>::max)());
+}
+
+RawBlobReadResult FileRawBlobStore::read_range_bounded(
+    const ArtifactId& artifact_id,
+    std::uint64_t offset,
+    std::uint64_t length,
+    std::uint64_t verification_budget_bytes
+) const {
     if(!is_canonical_artifact_id(artifact_id) ||
        length > m_options.max_read_range_bytes ||
        length > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()) ||
@@ -413,6 +424,22 @@ RawBlobReadResult FileRawBlobStore::read_range(
     if(!safe_regular_file(path)) {
         return read_failure(RawBlobStatus::NotFound, "CAS body was not found");
     }
+    std::error_code size_error;
+    const auto physical_size = std::filesystem::file_size(path, size_error);
+    if(size_error) {
+        return read_failure(
+            RawBlobStatus::IoError,
+            path_diagnostic("failed to inspect CAS body size", path, size_error));
+    }
+    if(verification_budget_bytes == 0 || physical_size > verification_budget_bytes) {
+        return read_failure(
+            RawBlobStatus::VerificationBudgetExceeded,
+            "complete CAS verification exceeds the configured byte budget");
+    }
+    if(offset > physical_size || length > physical_size - offset) {
+        return read_failure(RawBlobStatus::InvalidArgument,
+                            "CAS body is shorter than its catalog metadata");
+    }
     std::ifstream input(path, std::ios::binary);
     if(!input) {
         return read_failure(RawBlobStatus::IoError, "failed to open CAS body");
@@ -422,34 +449,52 @@ RawBlobReadResult FileRawBlobStore::read_range(
     std::string result_bytes;
     result_bytes.reserve(static_cast<std::size_t>(length));
     std::uint64_t position = 0;
-    while(input) {
-        input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    while(position < physical_size) {
+        const auto remaining = physical_size - position;
+        const auto requested = std::min<std::uint64_t>(
+            remaining, static_cast<std::uint64_t>(buffer.size()));
+        input.read(buffer.data(), static_cast<std::streamsize>(requested));
         const auto count = input.gcount();
-        if(count > 0) {
-            const auto count_u64 = static_cast<std::uint64_t>(count);
-            accumulator.update(std::string_view(buffer.data(), static_cast<std::size_t>(count)));
-            const auto end = position + count_u64;
-            const auto requested_end = offset + length;
-            const auto copy_begin = std::max(position, offset);
-            const auto copy_end = std::min(end, requested_end);
-            if(copy_begin < copy_end) {
-                const auto local_offset = static_cast<std::size_t>(copy_begin - position);
-                const auto copy_size = static_cast<std::size_t>(copy_end - copy_begin);
-                result_bytes.append(buffer.data() + local_offset, copy_size);
-            }
-            position = end;
+        if(count <= 0) {
+            return read_failure(RawBlobStatus::Corrupt,
+                                "CAS body changed before bounded verification completed");
+        }
+        const auto count_u64 = static_cast<std::uint64_t>(count);
+        accumulator.update(std::string_view(buffer.data(), static_cast<std::size_t>(count)));
+        const auto end = position + count_u64;
+        const auto requested_end = offset + length;
+        const auto copy_begin = std::max(position, offset);
+        const auto copy_end = std::min(end, requested_end);
+        if(copy_begin < copy_end) {
+            const auto local_offset = static_cast<std::size_t>(copy_begin - position);
+            const auto copy_size = static_cast<std::size_t>(copy_end - copy_begin);
+            result_bytes.append(buffer.data() + local_offset, copy_size);
+        }
+        position = end;
+        if(position > physical_size) {
+            return read_failure(RawBlobStatus::Corrupt,
+                                "CAS body grew during bounded verification");
         }
     }
-    if(!input.eof()) {
-        return read_failure(RawBlobStatus::IoError, "failed to read CAS body");
+    if(input.bad() || position != physical_size) {
+        return read_failure(RawBlobStatus::Corrupt,
+                            "CAS body changed during bounded verification");
+    }
+    std::error_code final_size_error;
+    const auto final_size = std::filesystem::file_size(path, final_size_error);
+    if(final_size_error) {
+        return read_failure(
+            RawBlobStatus::IoError,
+            path_diagnostic("failed to recheck CAS body size", path, final_size_error));
+    }
+    if(final_size != physical_size) {
+        return read_failure(RawBlobStatus::Corrupt,
+                            "CAS body size changed during bounded verification");
     }
     BlobDigest digest;
     digest.value = accumulator.finish();
     if(artifact_id_for_digest(digest) != artifact_id) {
         return read_failure(RawBlobStatus::Corrupt, "CAS body changed or failed digest verification");
-    }
-    if(offset > position || length > position - offset) {
-        return read_failure(RawBlobStatus::InvalidArgument, "CAS range is outside the body");
     }
     RawBlobReadResult result;
     result.status = RawBlobStatus::Ok;

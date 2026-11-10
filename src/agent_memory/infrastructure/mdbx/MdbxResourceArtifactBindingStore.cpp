@@ -1,4 +1,5 @@
 #include "MdbxResourceArtifactBindingStore.hpp"
+#include "MdbxStorageErrors.hpp"
 
 #if AGENT_MEMORY_HAS_MDBX
 
@@ -60,18 +61,18 @@ public:
         bool digit = false;
         while(m_position < m_value.size() && m_value[m_position] != ':') {
             const auto c = static_cast<unsigned char>(m_value[m_position++]);
-            if(c < '0' || c > '9') throw std::runtime_error("invalid binding length");
+            if(c < '0' || c > '9') throw MdbxPersistedMetadataError("invalid binding length");
             const auto d = static_cast<std::size_t>(c - '0');
             if(size > ((std::numeric_limits<std::size_t>::max)() - d) / 10U)
-                throw std::runtime_error("binding length overflow");
+                throw MdbxPersistedMetadataError("binding length overflow");
             size = size * 10U + d;
             digit = true;
         }
         if(!digit || m_position == m_value.size())
-            throw std::runtime_error("binding length delimiter missing");
+            throw MdbxPersistedMetadataError("binding length delimiter missing");
         ++m_position;
         if(size > m_value.size() - m_position)
-            throw std::runtime_error("binding field exceeds payload");
+            throw MdbxPersistedMetadataError("binding field exceeds payload");
         std::string result{m_value.data() + m_position, size};
         m_position += size;
         return result;
@@ -79,20 +80,20 @@ public:
 
     std::uint64_t u64() {
         const auto value = string();
-        if(value.empty()) throw std::runtime_error("empty binding integer");
+        if(value.empty()) throw MdbxPersistedMetadataError("empty binding integer");
         std::uint64_t result = 0;
         for(const auto c : value) {
-            if(c < '0' || c > '9') throw std::runtime_error("invalid binding integer");
+            if(c < '0' || c > '9') throw MdbxPersistedMetadataError("invalid binding integer");
             const auto digit = static_cast<std::uint64_t>(c - '0');
             if(result > ((std::numeric_limits<std::uint64_t>::max)() - digit) / 10U)
-                throw std::runtime_error("binding integer overflow");
+                throw MdbxPersistedMetadataError("binding integer overflow");
             result = result * 10U + digit;
         }
         return result;
     }
 
     void end() const {
-        if(m_position != m_value.size()) throw std::runtime_error("binding payload has trailing data");
+        if(m_position != m_value.size()) throw MdbxPersistedMetadataError("binding payload has trailing data");
     }
 
 private:
@@ -130,7 +131,7 @@ ResourceArtifactBinding decode(
     };
     reader.end();
     if(!is_valid_resource_artifact_binding(result))
-        throw std::runtime_error("invalid persisted resource artifact binding");
+        throw MdbxPersistedMetadataError("invalid persisted resource artifact binding");
     return result;
 }
 
@@ -180,11 +181,21 @@ void MdbxResourceArtifactBindingStore::put(ResourceArtifactBinding binding) {
 
 std::optional<ResourceArtifactBinding>
 MdbxResourceArtifactBindingStore::find(const ResourceRevisionRef& revision) const {
-    const auto key = key_for(revision);
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-    const auto value = m_impl->table.find(key, txn);
+    const auto value = m_impl->table.find(key_for(revision), txn);
     txn.commit();
+    if(!value) return std::nullopt;
+    return decode(revision, *value);
+}
+
+std::optional<ResourceArtifactBinding>
+MdbxResourceArtifactBindingStore::find_in_transaction(
+    const ResourceRevisionRef& revision,
+    const mdbxc::Transaction& transaction
+) const {
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    const auto value = m_impl->table.find(key_for(revision), transaction);
     if(!value) return std::nullopt;
     return decode(revision, *value);
 }

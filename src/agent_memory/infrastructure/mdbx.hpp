@@ -25,5 +25,6 @@
 #include "mdbx/MdbxArtifactCatalog.hpp"
 #include "mdbx/MdbxResourceArtifactBindingStore.hpp"
 #include "mdbx/MdbxVerifiedArtifactHydration.hpp"
+#include "mdbx/MdbxAuthoritativeArticleHydration.hpp"
 
 #endif

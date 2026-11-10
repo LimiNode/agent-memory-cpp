@@ -121,6 +121,13 @@ jobs:
           & (Join-Path $consumerBuild 'agent_memory_mdbx_installed_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'MDBX installed consumer failed' }
 
+          $hydrationBuild = Join-Path $repo '.build/packaging-consumer-mdbx-hydration'
+          cmake -S (Join-Path $repo 'packaging/consumers/mdbx-hydration-installed') -B $hydrationBuild -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$prefixPath"
+          cmake --build $hydrationBuild --parallel
+          & (Join-Path $hydrationBuild 'agent_memory_mdbx_hydration_installed_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'MDBX hydration installed consumer failed' }
+
   json-installed-consumer:
     name: JSON installed consumer (ubuntu-latest)
     runs-on: ubuntu-latest
