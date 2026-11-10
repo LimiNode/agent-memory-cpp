@@ -11,7 +11,9 @@ The executable now verifies:
 - two bindings attached to one source revision;
 - two source revisions reusing one SHA-256 artifact identity through CAS
   deduplication;
-- binary image bytes surviving publication and catalog reopen;
+- a deterministic valid 1x1 PNG byte payload surviving publication and catalog
+  reopen; the test treats it as opaque bytes and does not decode or render PNG
+  content;
 - digest verification rejecting a tampered image body with zero returned bytes.
 
 The test still does not claim source-authorized `Hydrated` retrieval, Zstd

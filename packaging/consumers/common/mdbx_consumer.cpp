@@ -141,10 +141,14 @@ int main() {
                     "bounded range read failed after reopen");
         }
 
-        std::string image_body{"\x89PNG\r\n\x1a\n"};
-        image_body.push_back('\0');
-        image_body.push_back('\x01');
-        image_body.push_back('\x02');
+        // This is a deterministic valid 1x1 PNG payload. The consumer treats
+        // it as opaque bytes; it does not claim to decode or render images.
+        const std::string image_body{
+            "\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d"
+            "\x49\x48\x44\x52\x00\x00\x00\x01\x00\x00\x00\x01"
+            "\x08\x04\x00\x00\x00\xb5\x1c\x0c\x02\x00\x00\x00\x0b"
+            "\x49\x44\x41\x54\x78\xda\x63\x64\xf8\x0f\x00\x01\x05\x01"
+            "\x01\x27\x18\xe3\x66\x00\x00\x00\x00\x49\x45\x4e\x44\xae\x42\x60\x82"};
         auto image_request = request;
         image_request.source_revision_id = agent_memory::SourceRevisionId{"image@1"};
         image_request.binding_id = agent_memory::ArtifactBindingId{"image-binding"};
