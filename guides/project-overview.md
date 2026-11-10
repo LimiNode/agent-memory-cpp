@@ -174,6 +174,16 @@ BM25, token dictionaries, postings, Unicode tokenization, raw resource stores,
 phrase/proximity, fuzzy search, BM25F, graph retrieval, hybrid retrieval, and
 planner-guided retrieval are tracked in `guides/lexical-search-roadmap.md`.
 
+## Action-Oriented Projection Experiment
+
+An optional future experiment will test typed `Action`/`Event`/`Claim`
+projections for questions about roles, obligations, conditions, and outcomes.
+The projections remain derived, revision-bound, and evidence-validated; they do
+not become a second source of truth or executable commands. The proposal and
+its evaluation gates are recorded in
+[`guides/experiments/2026-11-09-action-oriented-projection.md`](experiments/2026-11-09-action-oriented-projection.md).
+This lane does not expand the current Raw Markdown release scope.
+
 ## Affective Memory Backlog
 
 Optional affective-agent memory extensions are tracked in
