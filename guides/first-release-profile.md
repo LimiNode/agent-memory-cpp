@@ -83,7 +83,11 @@ remain part of the normalized representation when supplied by the connector.
 The conservative inventory in
 [`retrieval-roadmap-coverage.md`](retrieval-roadmap-coverage.md) currently
 supports the durable raw UTF-8 importer, revision-aware Original publication
-and bounded lexical retrieval substrate. PR #603 also provides a bounded,
+and bounded lexical retrieval substrate. PR #601 adds a bounded persistent
+lexical candidate parity seam, while PR #602 records the source-bound release
+qualification contract; neither enables a default serving backend or turns
+contract-only cases into implemented release capabilities. PR #603 also
+provides a bounded,
 executable article-to-citation conformance slice: it composes structural
 segments, snapshot admission, the typed resource-to-artifact join and
 byte-verified Raw range materialization. That slice is evidence for the article

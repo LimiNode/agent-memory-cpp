@@ -1,7 +1,7 @@
 # RAGFlow capability comparison and release roadmap
 
 **Status:** documentation-only architecture audit, based on `main` at
-`36577361d1c1b15d92541779de932a9c84220f8c`.
+`418e122e4e4f120cd5bee8bb799ec248af71fbe2`.
 
 This guide records which ideas observed in RAGFlow are useful for
 `agent-memory-cpp`, which are already covered by existing contracts, and which
@@ -44,6 +44,13 @@ The repository's source-level evidence remains authoritative for this project:
 [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md),
 [`canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md),
 and [`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md).
+
+This audit is evaluated against the merged baseline containing #601 (the
+bounded persistent lexical candidate parity seam), #602 (the source-bound
+release qualification contract), and #603 (the executable article-to-citation
+vertical). #601 and #602 are integration inputs, not open dependencies of this
+documentation PR. Their presence does not promote contract-only release cases
+or the optional candidate adapter to default production activation.
 
 ## 1. What #603 actually delivered
 
@@ -121,6 +128,7 @@ The following status vocabulary is normative for this audit:
 | Raw and normalized article storage | `IMPLEMENTED` for the bounded importer/storage slices | Required foundation | `MdbxResourceImporter`, canonical-content tests |
 | Article structural segments | `PARTIAL` — executable in #603's vertical test | Release gate, not general ingest yet | Move composition into a product ingestion path |
 | Revision-bound lexical admission | `IMPLEMENTED` for the existing MDBX slice ([`RevisionBoundRetrieval`](../src/agent_memory/retrieval/RevisionBoundRetrieval.hpp)) | Required foundation | snapshot/frontier and current-read conformance tests |
+| Persistent lexical candidate parity | `IMPLEMENTED` as the bounded #601 adapter; candidate scoring remains term-frequency-only and the adapter is not default-enabled | Required foundation, not production activation | share a scorer and transaction-bound composition before any serving claim |
 | Typed resource/artifact join | `IMPLEMENTED` | Required foundation | #603 join store and reopen regression |
 | Authoritative source-backed hydration | `PARTIAL` — verified article range materialization only | Release blocker | Phase 2 API and external installed-consumer fixture |
 | Table cell identity and exact cell hydration | `CONTRACT_ONLY` | Release blocker | S0 table fixture and typed cell locator gate |
@@ -347,7 +355,8 @@ Dependencies and exclusions:
 - reuse the existing manifest, projection, artifact catalog and typed join;
 - do not add a second storage authority or an implicit coordinator;
 - keep atomic publication/recovery as a separate staged-publication slice;
-- coordinate with second-agent work on #601/#602 without modifying those PRs;
+- treat merged #601/#602 as existing inputs; do not reinterpret their bounded
+  candidate or contract-only evidence as production activation;
 - do not activate production retrieval in the hydration PR.
 
 After this gate, qualify structured product ingestion, derived Summary/Concept
