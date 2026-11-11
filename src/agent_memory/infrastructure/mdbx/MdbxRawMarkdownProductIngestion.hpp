@@ -28,6 +28,7 @@ namespace agent_memory {
 
 /// \brief Outcome of the multi-authority import publication sequence.
 enum class RawMarkdownProductImportStatus : std::uint8_t {
+    /// Current in the final coherent MDBX metadata snapshot, not forever.
     Published,
     Incomplete,
     Conflict,
@@ -40,6 +41,9 @@ struct RawMarkdownProductIngestionOptions final {
     std::int64_t max_dbs = kDefaultMdbxMaxDbs;
     std::filesystem::path raw_cas_root;
     std::uint64_t max_full_body_bytes = 64U * 1024U * 1024U;
+    /// Forwarded unchanged to the existing importer fencing/recovery policy.
+    std::uint64_t importer_ownership_lease_ms = 30'000;
+    std::function<std::uint64_t()> importer_clock_ms;
     std::uint64_t max_verified_cas_bytes = 64U * 1024U * 1024U;
     std::uint64_t max_range_bytes = 64U * 1024U;
     std::size_t max_candidates = 64;
@@ -47,6 +51,12 @@ struct RawMarkdownProductIngestionOptions final {
     std::size_t max_indexed_projection_bytes = 8U * 1024U * 1024U;
     std::function<void(ResourceImporterFaultPoint)> importer_fault_injector;
     ArtifactCatalogFaultInjector catalog_fault_injector;
+    /// Test-only seam immediately after catalog completion and before the
+    /// typed join is published.
+    std::function<void()> before_join_publication_hook_for_testing;
+    /// Test-only seam immediately after the typed join and before the final
+    /// currentness observation.
+    std::function<void()> before_final_observation_hook_for_testing;
 };
 
 struct RawMarkdownProductImportResult final {
@@ -75,8 +85,11 @@ struct RawMarkdownProductHit final {
 ///
 /// The sequence is importer -> CAS/catalog -> typed join. Intermediate rows
 /// are permitted in the two durability domains, but this adapter reports
-/// `Incomplete` and hydration remains fail-closed until every authority
-/// agrees. Only `.md` and `.markdown` source URIs and original UTF-8 text are
+/// `Incomplete` on interruption or `Conflict` if superseded at the final
+/// coherent metadata snapshot. `Published` establishes currentness only in
+/// that snapshot, not future freshness, query-budget sufficiency or hydration.
+/// Hydration remains fail-closed until every authority agrees.
+/// Only `.md` and `.markdown` source URIs and original UTF-8 text are
 /// admitted. Production retrieval activation, multimodal codecs and graph or
 /// coordinator integrations are intentionally outside this slice.
 class MdbxRawMarkdownProductIngestion final {
@@ -91,11 +104,15 @@ public:
     MdbxRawMarkdownProductIngestion& operator=(
         const MdbxRawMarkdownProductIngestion&) = delete;
 
+    /// Identical replay requires the same bound_at_ms, including pending
+    /// catalog intents. Changing it conflicts with the original binding.
     [[nodiscard]] RawMarkdownProductImportResult import(
         ObservedResource resource,
         std::uint64_t bound_at_ms = 0
     );
 
+    /// Throws ProjectionAwareLexicalRetrievalBudgetExceeded rather than
+    /// returning a partial ranking when the configured index budget is exceeded.
     [[nodiscard]] std::vector<RawMarkdownProductHit> retrieve_and_hydrate(
         const ScopeId& scope_id,
         const RetrievalQuery& query,

@@ -3,14 +3,18 @@
 #if AGENT_MEMORY_HAS_MDBX
 
 #include "MdbxArtifactCatalog.hpp"
+#include "MdbxResourceManifestStorage.hpp"
 #include "MdbxResourceArtifactBindingStore.hpp"
 #include "MdbxResourceImporter.hpp"
+
+#include <mdbx_containers/common.hpp>
 
 #include <agent_memory/lexical/StandardTokenizer.hpp>
 #include <agent_memory/domain/Sha256.hpp>
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -82,6 +86,19 @@ BlobDigest blob_digest_for(const ResourceBodyDigest& digest) {
     return result;
 }
 
+bool same_digest(const ResourceBodyDigest& left, const ResourceBodyDigest& right) {
+    return left.algorithm == right.algorithm && left.bytes == right.bytes;
+}
+
+bool same_revision(const ResourceRevision& left, const ResourceRevision& right) {
+    return left.resource_id == right.resource_id &&
+        left.generation == right.generation &&
+        left.pipeline_config_hash == right.pipeline_config_hash &&
+        left.text_origin == right.text_origin &&
+        left.body_digest.has_value() == right.body_digest.has_value() &&
+        (!left.body_digest || same_digest(*left.body_digest, *right.body_digest));
+}
+
 } // namespace
 
 class MdbxRawMarkdownProductIngestion::Impl final {
@@ -90,6 +107,7 @@ public:
         : options_(std::move(options)),
           importer_(make_importer_options(options_)),
           catalog_(make_catalog_options(options_)),
+          manifests_(make_manifest_options(options_)),
           joins_(make_join_options(options_)),
           tokenizer_(),
           hydrator_(make_hydration_options(options_)) {
@@ -189,6 +207,9 @@ public:
                 source_revision,
                 binding
             };
+            if(options_.before_join_publication_hook_for_testing) {
+                options_.before_join_publication_hook_for_testing();
+            }
             try {
                 joins_.put(typed_join);
             } catch(const std::invalid_argument& error) {
@@ -201,6 +222,17 @@ public:
                 return result;
             }
             result.resource_artifact_binding = typed_join;
+            if(options_.before_final_observation_hook_for_testing) {
+                options_.before_final_observation_hook_for_testing();
+            }
+            std::string observation_diagnostic;
+            if(!observe_current_publication(
+                imported, source_revision, binding, typed_join, *retained.record,
+                observation_diagnostic)) {
+                result.status = RawMarkdownProductImportStatus::Conflict;
+                result.diagnostic = std::move(observation_diagnostic);
+                return result;
+            }
             result.status = RawMarkdownProductImportStatus::Published;
             return result;
         } catch(const std::invalid_argument& error) {
@@ -276,6 +308,8 @@ private:
         result.publication_profile =
             ResourceImportPublicationProfile::LexicalWithRawAndOriginalProjections;
         result.max_raw_body_bytes = options.max_full_body_bytes;
+        result.ownership_lease_ms = options.importer_ownership_lease_ms;
+        result.clock_ms = options.importer_clock_ms;
         result.fault_injector = options.importer_fault_injector;
         return result;
     }
@@ -292,6 +326,88 @@ private:
         result.raw_cas_options.max_read_range_bytes = options.max_range_bytes;
         result.max_full_body_bytes = options.max_full_body_bytes;
         result.fault_injector = options.catalog_fault_injector;
+        return result;
+    }
+
+    bool observe_current_publication(
+        const ResourceImportResult& imported,
+        const SourceRevisionId& source_revision,
+        const ArtifactBindingId& binding,
+        const ResourceArtifactBinding& expected_join,
+        const ArtifactCatalogRecord& expected_catalog,
+        std::string& diagnostic
+    ) const {
+        auto transaction = options_.context->connection()->transaction(
+            mdbxc::TransactionMode::READ_ONLY);
+        const auto manifest = manifests_.find_manifest_in_transaction(
+            imported.resource_id, transaction);
+        if(!manifest || manifest->state != ResourceManifestState::Active) {
+            diagnostic = "resource manifest is not active at product publication linearization";
+            return false;
+        }
+        if(!same_revision(manifest->revision, imported.revision) ||
+           manifest->schema.schema_id != publication_schema_id(options_.table_prefix) ||
+           manifest->schema.schema_version != 1U) {
+            diagnostic = "resource revision was superseded or has an unexpected publication profile";
+            return false;
+        }
+        std::set<std::pair<std::string, std::uint32_t>> bindings;
+        for(const auto& record : manifest->records) {
+            if(record.kind == DerivedRecordKind::Custom) {
+                bindings.emplace(record.key, record.ordinal);
+            }
+        }
+        for(std::size_t ordinal = 0; ordinal < imported.raw_units.size(); ++ordinal) {
+            const auto id = std::to_string(imported.raw_units[ordinal].value());
+            const auto index = static_cast<std::uint32_t>(ordinal);
+            if(bindings.find({"knowledge_unit:" + id, index}) == bindings.end() ||
+               bindings.find({"original_projection:" + id, index}) == bindings.end()) {
+                diagnostic = "resource manifest is missing the expected Original publication records";
+                return false;
+            }
+        }
+        const auto stored_join = joins_.find_in_transaction(
+            expected_join.resource_revision, transaction);
+        if(!stored_join || !(*stored_join == expected_join)) {
+            diagnostic = "typed resource/artifact join is missing or inconsistent";
+            return false;
+        }
+        const auto catalog = catalog_.read_binding_in_transaction(binding, transaction);
+        if(catalog.status != ArtifactCatalogStatus::Ok || !catalog.record) {
+            diagnostic = "artifact catalog receipt is not finalized at product publication linearization";
+            return false;
+        }
+        const auto& record = *catalog.record;
+        const auto expected_digest = blob_digest_for(*imported.revision.body_digest);
+        if(!record.receipt_finalized ||
+           record.body_state != BindingBodyState::Materialized ||
+           record.binding.id != binding ||
+           record.binding.source_revision_id != source_revision ||
+           record.binding.artifact_id != record.artifact.id ||
+           record.artifact.id != expected_catalog.artifact.id ||
+           record.artifact.size_bytes != expected_catalog.artifact.size_bytes ||
+           record.binding.role != expected_catalog.binding.role ||
+           record.binding.retention != expected_catalog.binding.retention ||
+           record.binding.media_type != expected_catalog.binding.media_type ||
+           record.binding.original_name != expected_catalog.binding.original_name ||
+           record.binding.bound_at_ms != expected_catalog.binding.bound_at_ms ||
+           record.artifact.digest.algorithm != expected_digest.algorithm ||
+           record.artifact.digest.value != expected_digest.value) {
+            diagnostic = "artifact catalog metadata is incomplete or inconsistent";
+            return false;
+        }
+        transaction.commit();
+        return true;
+    }
+
+    static MdbxResourceManifestStorageOptions make_manifest_options(
+        const RawMarkdownProductIngestionOptions& options
+    ) {
+        require_options(options);
+        MdbxResourceManifestStorageOptions result;
+        result.context = options.context;
+        result.table_prefix = options.table_prefix;
+        result.max_dbs = options.max_dbs;
         return result;
     }
 
@@ -337,6 +453,7 @@ private:
     RawMarkdownProductIngestionOptions options_;
     MdbxResourceImporter importer_;
     MdbxArtifactCatalog catalog_;
+    MdbxResourceManifestStorage manifests_;
     MdbxResourceArtifactBindingStore joins_;
     mutable StandardTokenizer tokenizer_;
     MdbxAuthoritativeArticleHydrator hydrator_;

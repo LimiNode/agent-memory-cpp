@@ -71,7 +71,8 @@ int main() {
                 if(!hit.hydration.bytes.empty() &&
                    hit.hydration.status ==
                        agent_memory::AuthoritativeArticleHydrationStatus::Hydrated) {
-                    hydrated = body.find(hit.hydration.bytes) != std::string::npos;
+                    hydrated = hit.hydration.bytes == body.substr(
+                        hit.hydration.source_range.offset, hit.hydration.source_range.length);
                 }
             }
             if(!hydrated) throw std::runtime_error("installed product hydration failed");
@@ -86,10 +87,17 @@ int main() {
                 scope,
                 agent_memory::RetrievalQuery{"authoritative", std::nullopt, 8, {}},
                 4096);
+            if(unavailable.size() != 1 ||
+               unavailable.front().candidate.knowledge_unit_id !=
+                   imported.resource->raw_units.front()) {
+                throw std::runtime_error("missing-CAS candidate was not observed");
+            }
             for(const auto& hit : unavailable) {
-                if(hit.hydration.status ==
-                       agent_memory::AuthoritativeArticleHydrationStatus::Hydrated ||
-                   !hit.hydration.bytes.empty()) {
+                if(hit.hydration.status !=
+                       agent_memory::AuthoritativeArticleHydrationStatus::Missing ||
+                   !hit.hydration.bytes.empty() ||
+                   hit.hydration.diagnostic_code !=
+                       agent_memory::AuthoritativeArticleHydrationDiagnostic::CasMissing) {
                     throw std::runtime_error(
                         "missing CAS unexpectedly exposed product bytes");
                 }
@@ -112,7 +120,8 @@ int main() {
             if(hit.hydration.status ==
                    agent_memory::AuthoritativeArticleHydrationStatus::Hydrated &&
                !hit.hydration.bytes.empty()) {
-                return body.find(hit.hydration.bytes) != std::string::npos ? 0 : 1;
+                return hit.hydration.bytes == body.substr(
+                    hit.hydration.source_range.offset, hit.hydration.source_range.length) ? 0 : 1;
             }
         }
         return 1;
