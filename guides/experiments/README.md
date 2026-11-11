@@ -20,10 +20,6 @@ The canonical three-mode serving comparison (full-flat packed 1M,
 Prototype-IVF/balanced cascade, and Modern R4) is defined in
 [2026-10-02-serving-mode-bakeoff.md](2026-10-02-serving-mode-bakeoff.md).
 
-The planning proposal for source-bound retrieval quality, including candidate,
-freshness, evidence, publication, and runtime-cost controls, is in
-[2026-11-11-source-bound-retrieval-quality-benchmark.md](2026-11-11-source-bound-retrieval-quality-benchmark.md).
-
 For the structured-memory and activation reference drawn from AH-MemoryHub,
 see [associative and heterarchical memory reference](2026-10-01-associative-heterarchical-memory-reference.md).
 For the cross-PR causal history and merge/evidence ledger, see
