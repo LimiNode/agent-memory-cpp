@@ -900,6 +900,17 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         COMMAND agent_memory_mdbx_article_to_citation_vertical_test
     )
 
+    add_executable(agent_memory_mdbx_raw_markdown_product_ingestion_test
+        infrastructure/mdbx/mdbx_raw_markdown_product_ingestion_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_raw_markdown_product_ingestion_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_raw_markdown_product_ingestion_test
+        COMMAND agent_memory_mdbx_raw_markdown_product_ingestion_test
+    )
+
     add_executable(agent_memory_mdbx_projection_store_test
         infrastructure/mdbx/mdbx_projection_store_test.cpp
     )

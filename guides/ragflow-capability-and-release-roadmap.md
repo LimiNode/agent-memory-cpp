@@ -52,7 +52,7 @@ vertical). #601 and #602 are integration inputs, not open dependencies of this
 documentation PR. Their presence does not promote contract-only release cases
 or the optional candidate adapter to default production activation.
 
-## 1. What #603 actually delivered
+## 1. What #603 and the Raw Markdown slice actually deliver
 
 PR #603 is an executable article-to-citation conformance slice. Its scope is
 smaller than a complete retrieval and hydration subsystem:
@@ -74,12 +74,17 @@ and an MDBX regression test
 ([`mdbx_article_to_citation_vertical_test.cpp`](../tests/infrastructure/mdbx/mdbx_article_to_citation_vertical_test.cpp))
 covering `A@1 -> A@2`, stale-candidate rejection, reopen, digest mismatch, and
 missing CAS bytes. The test composes the publication and admission operations
-itself. It is not yet a product ingestion API and it does not establish a
-universal `Hydrated` result.
+itself. `MdbxRawMarkdownProductIngestion` now supplies a bounded host-facing
+composition around those authorities for original `.md`/`.markdown` input:
+it derives revision-bound source/binding identities, performs idempotent
+catalog/join publication, admits a lexical candidate and calls the
+authoritative hydrator. This is an experimental Raw Markdown path, not a
+universal `Hydrated` API or a physically atomic cross-store transaction.
 
 The following are deliberately **not** implemented by #603:
 
-- one authoritative public admission-plus-hydration operation;
+- general authoritative admission-plus-hydration beyond the Raw Markdown
+  slice;
 - atomic publication of manifest, projection, join and CAS retention;
 - crash recovery, backup/restore and retention collection for the whole path;
 - general table, image, Telegram or timed-transcript ingestion;
@@ -130,7 +135,7 @@ The following status vocabulary is normative for this audit:
 | Revision-bound lexical admission | `IMPLEMENTED` for the existing MDBX slice ([`RevisionBoundRetrieval`](../src/agent_memory/retrieval/RevisionBoundRetrieval.hpp)) | Required foundation | snapshot/frontier and current-read conformance tests |
 | Persistent lexical candidate parity | `IMPLEMENTED` as the bounded #601 adapter; candidate scoring remains term-frequency-only and the adapter is not default-enabled | Required foundation, not production activation | share a scorer and transaction-bound composition before any serving claim |
 | Typed resource/artifact join | `IMPLEMENTED` | Required foundation | #603 join store and reopen regression |
-| Authoritative source-backed hydration | `PARTIAL` — verified article range materialization only | Release blocker | Phase 2 API and external installed-consumer fixture |
+| Authoritative source-backed hydration | `PARTIAL` — bounded Raw Markdown product path with installed consumer; general/multimodal API absent | Release blocker | extend revision-and-locator conformance beyond Markdown |
 | Table cell identity and exact cell hydration | `CONTRACT_ONLY` | Release blocker | S0 table fixture and typed cell locator gate |
 | Retained Telegram image vertical | `ROADMAP_ONLY` | Release blocker | retained-image bytes, update/stale/reopen fixture |
 | Timed transcript evidence | `ROADMAP_ONLY` | Release blocker | timed SegmentSet, alignment provenance and exact read |

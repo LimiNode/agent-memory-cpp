@@ -82,8 +82,11 @@ remain part of the normalized representation when supplied by the connector.
 
 The conservative inventory in
 [`retrieval-roadmap-coverage.md`](retrieval-roadmap-coverage.md) currently
-supports the durable raw UTF-8 importer, revision-aware Original publication
-and bounded lexical retrieval substrate. PR #601 adds a bounded persistent
+supports the durable raw UTF-8 importer, revision-aware Original publication,
+bounded lexical retrieval and an experimental Raw Markdown host path.
+`MdbxRawMarkdownProductIngestion` composes importer, File CAS/catalog, typed
+resource-artifact binding, lexical admission and authoritative article
+hydration. PR #601 adds a bounded persistent
 lexical candidate parity seam, while PR #602 records the source-bound release
 qualification contract; neither enables a default serving backend or turns
 contract-only cases into implemented release capabilities. PR #603 also
@@ -91,10 +94,10 @@ provides a bounded,
 executable article-to-citation conformance slice: it composes structural
 segments, snapshot admission, the typed resource-to-artifact join and
 byte-verified Raw range materialization. That slice is evidence for the article
-path, not a general product ingestion or public Hydrated API. Limited
-snapshot-consistent MDBX admission is implemented in this bounded slice;
-authoritative cross-store hydration, in which admission and CAS materialization
-are revalidated as one public result, remains a separate release blocker.
+path, not a general product ingestion or universal Hydrated API. The new
+composition is still bounded to original Markdown and keeps CAS and MDBX as
+separate durability domains; incomplete intermediate rows are fail-closed
+rather than presented as published product results.
 Structural product chunking, derived multi-view retrieval and install/export
 remain separate release gates. A roadmap contract or an API sketch must not be
 reported as an implemented release capability.
@@ -102,9 +105,10 @@ reported as an implemented release capability.
 The first release therefore remains a Technical Preview until the following
 vertical evidence exists:
 
-- normalized Markdown article: structural chunks, derived summary/concepts,
-  retrieval and exact normalized-text citation, with the canonical body
-  materialized from File CAS and a raw/framed-Zstd round trip checked;
+- normalized Markdown article: structural chunks, retrieval and exact
+  normalized-text citation through the experimental Raw Markdown product path,
+  with the canonical body materialized from File CAS and a raw/framed-Zstd
+  round trip checked; derived summary/concepts remain a separate gate;
 - table-bearing article: structural table representation, stable row/cell
   locators and exact cell hydration rather than a prose-only chunk;
 - Telegram text with retained image bytes: source revision update, stale
