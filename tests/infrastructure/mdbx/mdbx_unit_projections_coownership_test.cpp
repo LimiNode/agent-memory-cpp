@@ -375,6 +375,15 @@ int main() {
     try { static_cast<void>(projections.list(scope, unit)); }
     catch(const std::runtime_error&) { malformed_projection_rejected = true; }
     expect(malformed_projection_rejected, "malformed projection payload was accepted");
+    // Projection corruption must remain isolated to the projection owner.  A
+    // valid derived publication is read through its independent owner before
+    // the damaged projection row is restored; otherwise this test would only
+    // prove that repair is possible, not that co-ownership survives damage.
+    expect(publications.read(
+               scope, first_publication.publication_id, first_publication.inputs,
+               first_publication.dependency_frontier).status ==
+               DerivedPublicationReadStatus::StoredMatch,
+           "projection corruption contaminated the derived publication reader");
     auto restore_projection_transaction = context->connection()->transaction(
         mdbxc::TransactionMode::WRITABLE);
     table.insert_or_assign(encoded_key, *saved_projection, restore_projection_transaction);

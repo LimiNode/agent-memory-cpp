@@ -1,6 +1,6 @@
 # MDBX `_unit_projections` Co-ownership Conformance
 
-Status: executable conformance slice on `main` `92a2cefd`.
+Status: executable conformance slice on current `main` (updated at restack).
 
 This experiment qualifies the existing shared `_unit_projections` DBI without
 changing its name, key layout, payload codecs, or DBI manifest. The same
