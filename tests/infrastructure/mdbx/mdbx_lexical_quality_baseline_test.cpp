@@ -139,7 +139,8 @@ int main(int argc, char** argv) {
                     + document.at("id").get<std::string>();
                 resource.utf8_body = normalized_document(document);
                 const auto imported = importer.import(std::move(resource));
-                require(!imported.raw_units.empty(), "fixture document was not imported");
+                require(imported.raw_units.size() == 1,
+                    "fixture document must produce exactly one raw unit");
                 unit_to_document.emplace(imported.raw_units.front().value(),
                     document.at("id").get<std::string>());
             }
@@ -166,6 +167,8 @@ int main(int argc, char** argv) {
 
         Json runs = Json::array();
         for(const auto& query : fixture.at("queries")) {
+            require(query.at("scope_id").get<std::string>() == "public",
+                "quality fixture query scope is not supported by the public runner");
             RetrievalQuery request;
             request.text = query.at("text").get<std::string>();
             request.limit = 5;

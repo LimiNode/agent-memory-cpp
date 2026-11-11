@@ -24,7 +24,8 @@ generation-aware admission path is available.
 
 The stale-derived fixture is therefore reported as
 `NOT_IMPLEMENTED_FRESHNESS_CONFORMANCE`; its `derived_revision` label alone is
-not evidence of an admitted stale publication. The separate executable
+not evidence of an admitted stale publication. Its stale-hit count is reported
+as `NOT_EVALUATED`, not as a numerical zero. The separate executable
 `agent_memory_mdbx_lexical_quality_freshness_conformance_test` exercises a real
 source update (A@1 to A@2) through snapshot final admission and must pass
 before stale-rejection claims are made.
@@ -38,7 +39,9 @@ receipt contains an access violation. Permitted same-scope irrelevant hits
 remain informational quality warnings.
 
 The evaluator validates receipt scope metadata and rejects duplicate or
-conflicting judgments and incomplete pools declared as complete. Incomplete
+conflicting judgments and incomplete pools declared as complete. Explicit
+no-answer and scope-contract violations make the evaluator exit non-zero;
+permitted same-scope irrelevant hits remain diagnostic warnings. Incomplete
 qrels remain explicitly excluded from quality aggregates.
 
 The receipt records the exact fixture SHA-256, retrieval path, query IDs,

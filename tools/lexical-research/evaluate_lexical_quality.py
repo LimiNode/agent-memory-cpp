@@ -7,6 +7,9 @@ import argparse
 import hashlib
 import json
 import math
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures/independent_retrieval_quality_v1.json"
@@ -72,7 +75,6 @@ def validate_receipt(
     no_answer_violations = 0
     scope_leak_violations = 0
     permitted_irrelevant_hits = 0
-    stale_hit_violations = 0
     for query_id, query in queries.items():
         run = runs[query_id]
         if run.get("scope_id") != query["scope_id"]:
@@ -143,7 +145,7 @@ def validate_receipt(
         "no_answer_violations": no_answer_violations,
         "scope_leak_violations": scope_leak_violations,
         "permitted_irrelevant_hits": permitted_irrelevant_hits,
-        "stale_hit_violations": stale_hit_violations,
+        "stale_hit_status": "NOT_EVALUATED",
         "quality_status": (
             "ACCESS_CONTRACT_VIOLATION" if scope_leak_violations else
             "NO_ANSWER_CONTRACT_VIOLATION" if no_answer_violations else
@@ -154,6 +156,19 @@ def validate_receipt(
         "tail_claim": "not measured; no p99 or stability claim",
     }
     return summary
+
+
+def _expect_cli_failure(fixture_path: Path, receipt: dict, message: str) -> None:
+    with tempfile.TemporaryDirectory(prefix="lexical-quality-negative-") as directory:
+        receipt_path = Path(directory) / "mutated-receipt.json"
+        receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()),
+             "--fixture", str(fixture_path), "--receipt", str(receipt_path)],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode == 0:
+            raise AssertionError(message)
 
 
 def main() -> int:
@@ -170,7 +185,7 @@ def main() -> int:
             "receipt_id": "lexical_quality_baseline_v1",
             "execution_status": "EXECUTED",
             "fixture_id": fixture["fixture_id"],
-            "fixture_sha256": "0" * 64,
+            "fixture_sha256": hashlib.sha256(args.fixture.read_bytes()).hexdigest(),
             "source_commit": "UNPINNED",
             "runs": [
                 {"query_id": query["id"], "scope_id": query["scope_id"], "returned": []}
@@ -214,12 +229,22 @@ def main() -> int:
         irrelevant_summary = validate_receipt(fixture, irrelevant)
         if irrelevant_summary["aggregate"]["permitted_irrelevant_hits"] != 1:
             raise AssertionError("permitted irrelevant hit was not classified separately")
+        no_answer = json.loads(json.dumps(sample))
+        no_answer_run = next(run for run in no_answer["runs"] if run["query_id"] == "q:no-answer")
+        no_answer_run["returned"] = [{"document_id": "doc:article-mdbx", "score": 1.0}]
+        no_answer_summary = validate_receipt(fixture, no_answer)
+        if no_answer_summary["aggregate"]["no_answer_violations"] != 1:
+            raise AssertionError("no-answer mutation was not classified")
+        _expect_cli_failure(args.fixture, no_answer,
+                            "no-answer contract violation returned CLI success")
         bad = json.loads(json.dumps(sample))
         bad_run = bad["runs"][0]
         bad_run["returned"] = [{"document_id": "doc:private-tool", "score": 1.0}]
         bad_summary = validate_receipt(fixture, bad)
         if bad_summary["aggregate"]["scope_leak_violations"] != 1:
             raise AssertionError("cross-scope mutation was not classified")
+        _expect_cli_failure(args.fixture, bad,
+                            "scope-leak mutation returned CLI success")
         scope_tampered = json.loads(json.dumps(sample))
         scope_tampered["runs"][0]["scope_id"] = "private"
         try:
@@ -266,7 +291,10 @@ def main() -> int:
     if args.output:
         args.output.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary["aggregate"], sort_keys=True))
-    return 2 if summary["aggregate"]["scope_leak_violations"] else 0
+    return 2 if (
+        summary["aggregate"]["scope_leak_violations"] or
+        summary["aggregate"]["no_answer_violations"]
+    ) else 0
 
 
 if __name__ == "__main__":
