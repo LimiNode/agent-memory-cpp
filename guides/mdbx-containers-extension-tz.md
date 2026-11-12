@@ -1331,6 +1331,7 @@ reserves are intentionally absent because they declare no physical DBI:
 ```text
 dbi-profile-delta-review-projection-v1
 # name|owner|table_type|opens|wire_sync_support|replication_semantics|physical_key|migration_peak
+agent_memory_exact_index_generations|embeddings|KeyValueTable|ExactIndexGenerationStore|kv_supported|derived_rebuildable|IndexName,GenerationId,RowKind,Ordinal|1
 agent_memory_canonical_heads|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId|1
 agent_memory_canonical_revisions|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId,DocumentRevision|1
 agent_memory_canonical_bodies|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId,BodyRevision,PhysicalEncodingGeneration|1
@@ -1510,6 +1511,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | Canonical content C1 profile | 0 by default, +4 when enabled | +4 | KV supported / logical adapter required | Raw/plain immutable heads and revisions, logical body bindings, physical body generations and no-reuse ledgers. C2 compression and re-encoding are excluded. |
 | Durable lexical document-memory profile | 0 by default, +6 when enabled with canonical content C1 | +6 | KV supported / logical adapter required | Rebuildable M0 lexical catalog plus importer intent, fencing epoch and ResourceId-to-ScopeId binding tables; canonical bodies remain owned by C1. |
 | Raw artifact catalog profile | 0 by default, +6 when enabled | +6 | KV supported / logical adapter required | Artifact, binding, source-revision, ingest-intent, receipt and schema DBIs for the Raw-only provenance vertical; immutable bytes remain in the separate file CAS. |
+| Exact derived generation compatibility profile | 0 by default, +1 when enabled | +1 | KV supported / derived rebuildable | `agent_memory_exact_index_generations`; descriptor, rows, completion and active pointer. Not selected by the expanded reference below; selecting it raises that peak to 77 and leaves 19 slots. |
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
 | Durable global identity delta | 0 by default, +1 when `DurableGlobalIdentity` is enabled | +1 | KV supported / logical adapter required | `global_unit_id_to_local_id`; common import/export capability consumed by A0, not A-lane-owned; never raw-mirrored because its local target is environment-specific. |
 | Runtime sequence delta | 0 by default, +1 when sequence-time retrieval is enabled | +1 | KV-range if backed / logical adapter required | `runtime_sequence_index`; exports durable visibility receipts by global identity while producer-event acceleration rows are rebuilt after remapping. |

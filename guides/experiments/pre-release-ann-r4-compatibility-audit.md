@@ -20,6 +20,10 @@ production contract that binds an ANN candidate to those records and to an
 atomically published index generation. This audit therefore does not add an ANN
 backend, change a DBI, or claim that R4 is the default route.
 
+`RELEASE_BLOCKER` below denotes the agreed project-specific pre-release proof
+gate. Missing executable evidence is not a demonstrated incompatibility of the
+canonical data schema with future R4-derived storage.
+
 ## Evidence and scope
 
 The audit reconciled the following repository-owned documents and current

@@ -249,6 +249,21 @@ canonical:
     migration_peak: 1
 
 profile_deltas:
+  - name: exact_index_generations
+    dbis: 1
+    migration_peak: 1
+    default: false
+    names: [agent_memory_exact_index_generations]
+    note: Optional bounded FP32 derived generation compatibility profile. Descriptor, candidate rows, progress, completion and active pointer share one DBI; canonical stores remain separate authorities. Not selected by expanded_peak_reference.
+    dbi_entries:
+      - name: agent_memory_exact_index_generations
+        owner: embeddings
+        table_type: KeyValueTable
+        opens: ExactIndexGenerationStore
+        wire_sync_support: kv_supported
+        replication_semantics: derived_rebuildable
+        physical_key: [IndexName, GenerationId, RowKind, Ordinal]
+        migration_peak: 1
   - name: canonical_content_c1
     dbis: 4
     migration_peak: 4

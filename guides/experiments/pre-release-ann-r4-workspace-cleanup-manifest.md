@@ -197,3 +197,20 @@ the later-generation rebuild. The compatibility gate is incomplete until its
 inputs and before/after canonical snapshots can be reproduced from retained
 evidence. Workspace reduction is therefore a separate, reviewable operation,
 not a prerequisite hidden inside the ANN implementation.
+
+## Post-release queue (2026-11-12 handoff)
+
+The local `inventory.json` SHA-256 was rechecked and remains
+`98cd29d5ec7254b80cce5f192761e6d538293b2ac92d00d25fd72b2844809585`.
+No removal or relocation has been performed. Snapshot counts above are historical,
+not a claim about the now-expanded active worktree set.
+
+| Priority | Candidate | Remaining checks before a separate deletion approval |
+| --- | --- | --- |
+| 1 | Three standalone build roots named above (about 0.86 GiB combined) | Identify build owner and exact compiler/options; replay one clean build; confirm no running process or unique logs, databases, receipts, or frozen inputs; obtain owner disposition. |
+| 2 | Two duplicate BGE-M3 weight copies (4.23 GiB logical ceiling) | Rehash immediately before action; select one authoritative retained path; audit all recipe/receipt and active-process references; check hardlinks/allocated bytes; redirect references only with owner approval. |
+| 3 | Individually selected clean merged-PR worktrees | Recheck dirty state, local-only commits and stacked/open PR dependencies; enumerate untracked research evidence and exact archival copies. Clean Git status alone is insufficient. |
+
+These are review candidates, not safe-to-delete targets. The inventory itself,
+new OLD/NEW upgrade database, process-crash evidence and compatibility receipts
+remain protected. No worktree/branch/model/dataset/object cleanup is authorized.

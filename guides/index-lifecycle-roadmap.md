@@ -40,3 +40,88 @@ for a request and never mix postings or vectors from different generations.
 HNSW, compressed vectors, graph adjacency, lexical postings, and learned sparse
    views must each document their tombstone, update, serialization, and rebuild
    policy before entering a shipping milestone.
+
+## Durable exact generation compatibility profile
+
+The optional `MdbxExactIndexGenerationStore` owns derived lifecycle only. It
+does not publish canonical units, resources, projections, CAS or access policy.
+The existing `IVectorIndex` and its `ChunkId` contract remain unchanged.
+
+One additional opt-in DBI, `<prefix>_exact_index_generations`, contains immutable
+generation descriptors, numbered candidate rows, progress, completion manifests
+and one active pointer per index name. Schema v1 supports bounded FP32 exact
+reference vectors, dot product or negative squared L2, and no normalization.
+The descriptor includes model/space and recipe identity, dimension, scalar bit
+width, metric, codec, scope and Original projection family. It is stored once
+per generation. Unsupported encodings fail closed; this is not an ANN backend.
+
+A build declares its expected row count (1..1024), appends at most 32 rows per
+transaction, and completes only after every row is present and validated.
+Dimensions are bounded at 4096. Duplicate units are rejected. Completion binds
+the descriptor and ordered row payloads with SHA-256 and records an independently
+computed source frontier over immutable canonical/projection bindings. This
+frontier identifies exactly the selected inputs, not a claim of corpus coverage.
+An interrupted build remains unselectable; a new build uses a new generation ID.
+Completed generations cannot be appended or overwritten. A repeated begin with
+the identical descriptor/count is a no-op; conflicting reuse is rejected.
+
+Candidate identity is an explicit `KnowledgeUnitId` and unit revision, never a
+vector position or `ChunkId`. During append, existing unit/projection/manifest
+authorities are read in the same transaction. Each row captures the exact source
+resource revision and digest and a fingerprint of provenance and Original
+projection evidence. Completion and activation revalidate all bindings. Only
+the active-pointer update is claimed atomic in MDBX; external artifacts are not
+part of that transaction. Failed activation leaves the previous pointer intact.
+Rollback explicitly selects a retained complete compatible generation, provided
+its canonical inputs are still current.
+
+Pinning validates completion and returns an immutable in-memory copy of that
+generation. Later activation cannot change it. Each query independently checks
+current canonical admission in one MDBX snapshot, so a generation pin does not
+freeze canonical truth. Stale revisions, erased units, inactive manifests and
+changed provenance are excluded. Scope and a required host-owned authorization/
+hard-filter predicate run before scoring and top-K. No stored field can grant
+access. A missing predicate is rejected. This profile returns source-bound
+candidate envelopes, not CAS hydration or a claim of verified full source bytes.
+
+Rebuild paths remain distinct: topology rebuild consumes retained compatible
+embeddings; lossless re-encoding consumes exact FP32; re-embedding consumes exact
+retained text plus an immutable compatible model/recipe. This profile accepts
+explicit exact FP32 inputs and persists them for reopen. It does not implement
+an encoder or lossy decoding. A pinned snapshot's `retained_inputs()` copies
+the exact persisted vectors with canonical IDs/revisions for compatible rebuild;
+append revalidates freshness. These inputs must not be relabeled as a different
+model's embeddings. Missing exact vector inputs produce typed
+`RebuildUnavailable`; a changed model is a different descriptor/space, never a
+reinterpretation of old values. Identical rebuild means a new immutable
+generation from the same inputs, not rewriting the old generation.
+
+The pre-release compatibility gate requires separate installed OLD and NEW
+C++17 processes and canonical logical snapshot equality, not MDBX file-byte
+equality. Missing upgrade proof is an open project-specific gate, not evidence
+of a canonical schema incompatibility. Production R4 activation, performance,
+compaction/resume and external model/codebook publication remain deferred.
+
+### Consumer and conformance entry points
+
+Include `<agent_memory/infrastructure/mdbx/MdbxExactIndexGenerationStore.hpp>`
+with MDBX enabled. The focused `agent_memory_mdbx_exact_index_generation_test`
+demonstrates begin/append/complete/activate/pin/query and typed negative results.
+The `tests/installed-exact-generation` external C++17 consumer builds with
+`find_package(agent_memory CONFIG REQUIRED)`; it does not add library sources.
+
+`tools/run-exact-generation-upgrade.py` requires clean exact-revision OLD/NEW
+checkouts, installed dependency packages and a fresh artifact destination. It
+builds those packages itself, then runs OLD create, NEW upgrade, NEW interrupted
+build, NEW reopen, NEW uncommitted-pointer crash, NEW reopen, OLD verify as
+separate processes. OLD is pinned to the post-Raw-Markdown baseline
+`52004324bc0d2b07c3657245195db349dd391774`. The receipt records both commits,
+source/dependency trees, options/toolchains, executable and fixture digests,
+canonical logical snapshot and process exit codes. Synthetic SHA-derived
+reference vectors qualify lifecycle, not embedding quality. The packaging
+workflow retains the receipt, log and canonical snapshot as an artifact.
+
+Authorization callbacks run inside the query's read transaction and must not
+reenter this context or perform canonical writes. The store and test hook are
+not concurrently mutable. Independent queries use their own thread-owned read
+transactions. Generation snapshots own no live MDBX transaction.
