@@ -37,6 +37,14 @@ foreach(_index RANGE ${_last})
             "version request ${_version} failed (expected=${_should_be_found})\n"
             "${_stdout}\n${_stderr}")
     endif()
+    message(STATUS
+        "version request ${_version}: expected=${_should_be_found}, result=PASS")
+    if(_stdout)
+        message(STATUS "${_stdout}")
+    endif()
+    if(_stderr)
+        message(STATUS "${_stderr}")
+    endif()
 endforeach()
 
 message(STATUS "agent_memory package version policy: PASS")
