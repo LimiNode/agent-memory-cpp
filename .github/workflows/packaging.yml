@@ -37,7 +37,7 @@ jobs:
           cmake --install $packageBuild --prefix $packagePrefix
 
           $versionPolicyBuild = Join-Path $repo '.build/packaging-version-policy'
-          cmake -DAGENT_MEMORY_PACKAGE_PREFIX=$packagePrefix `
+          cmake "-DAGENT_MEMORY_PACKAGE_PREFIX=$packagePrefix" `
             "-DAGENT_MEMORY_VERSION_POLICY_SOURCE_DIR=$(Join-Path $repo 'packaging/version-policy')" `
             "-DAGENT_MEMORY_VERSION_POLICY_BUILD_ROOT=$versionPolicyBuild" `
             -P (Join-Path $repo 'packaging/version-policy/run.cmake')
@@ -45,7 +45,7 @@ jobs:
 
           $negativeVersionPolicyBuild = Join-Path $repo '.build/packaging-version-policy-negative'
           $missingPackagePrefix = Join-Path $repo '.build/packaging-prefix-does-not-exist'
-          cmake -DAGENT_MEMORY_PACKAGE_PREFIX=$missingPackagePrefix `
+          cmake "-DAGENT_MEMORY_PACKAGE_PREFIX=$missingPackagePrefix" `
             "-DAGENT_MEMORY_VERSION_POLICY_SOURCE_DIR=$(Join-Path $repo 'packaging/version-policy')" `
             "-DAGENT_MEMORY_VERSION_POLICY_BUILD_ROOT=$negativeVersionPolicyBuild" `
             -P (Join-Path $repo 'packaging/version-policy/run.cmake')
