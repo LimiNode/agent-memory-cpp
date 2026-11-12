@@ -15,7 +15,7 @@ activation is authorized by this document.
 | Internal persistence regression | #611; post-join interruption, readable completed product, identity-preserving replay and later stale rejection |
 | Local focused checks | #611: six MDBX tests, installed consumer, MDBX-off build, header probes, links, preservation and `git diff --check` PASS |
 | Dependency baseline | libmdbx `fc8b8e4697e0ef8b2cd5aee1f2d9fb0974fc665f`; mdbx-containers `4ab32b5eab3cdfce95d1a6c0f05f566019793ec4`; C++17/CMake 3.20+ |
-| Package version | `0.1.0`; #613 proposes ExactVersion policy and is still Draft/unreviewed |
+| Package version | `0.1.0`; #613 proposes ExactVersion policy and remains a separate Draft gate, not part of this frozen #611 candidate |
 
 The installed product evidence is Ubuntu MDBX in packaging CI, with an
 additional local Windows/MinGW run. Windows/macOS default CI lanes validate
@@ -53,6 +53,8 @@ the original path, prefix, profile and identities.
 
 Current decision: **release candidate frozen, publication blocked**. The next
 decision requires independent #612 review/outcome, the #613 package-version
-policy decision, a final exact-commit preflight and explicit release approval.
+policy decision, a final exact-commit preflight regenerated after any accepted
+integration, and explicit release approval. The post-#611 matrix is historical
+evidence, not final release evidence after a candidate-changing merge.
 Until then, do not create a tag, publish a package, enable production retrieval
 or merge unrelated research work.
