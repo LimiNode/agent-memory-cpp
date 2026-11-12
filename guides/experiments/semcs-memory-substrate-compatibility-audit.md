@@ -103,7 +103,7 @@ DerivationPublication {
   publication_id: opaque
   output: (artifact_id, occurrence_revision)
   ordered_unit_inputs: [(KnowledgeUnitId, unit_revision)]
-  ordered_source_inputs: [(SourceRevisionId, EvidenceAnchorId)]
+  ordered_source_inputs: [SourceEvidenceBinding]
   operation_id: string
   operation_version: string
   parameters_digest: BlobDigest
@@ -111,6 +111,11 @@ DerivationPublication {
   source_frontier: FrontierWitness
   publication_generation: uint64
   marker: committed|historical|stale|unavailable
+}
+
+SourceEvidenceBinding {
+  source_revision: ResourceRevisionRef # resource identity, generation, digest
+  evidence_anchor_id: opaque
 }
 ```
 
@@ -121,12 +126,19 @@ Required invariants:
 2. Ordered input bindings are canonicalized before hashing. Reordering inputs
    changes the publication digest unless the profile explicitly declares an
    unordered operation.
-3. Every parent is an exact retained revision. A current revision is never
-   substituted for a missing historical parent.
+3. Every unit parent is an exact retained revision. Every source evidence
+   binding resolves to an immutable source revision with the equivalent of the
+   full `ResourceRevisionRef` (resource identity, generation and digest). A
+   current revision is never substituted for a missing historical parent.
 4. A derivation publication is acyclic and immutable. Re-materialization creates
    a new output revision/generation.
-5. The publication marker is the sole active visibility point. Optional Relation
-   rows are views over the committed manifest and can be rebuilt or absent.
+5. The committed publication marker is the sole atomic storage-visibility point
+   for the complete record. It establishes `Committed` storage state, but does
+   not establish authoritative freshness, current claim support, host
+   authorization, semantic validity or `Admitted` use. `Current` requires an
+   authoritative frontier reader, and `Admitted` requires the external access
+   and policy decision. Optional Relation rows are views over the committed
+   manifest and can be rebuilt or absent.
 6. A payload digest proves bytes, not semantic equivalence. Equivalence is an
    external SCS/ADELIA assessment.
 7. Historical and current reads have separate authorization and freshness
@@ -136,6 +148,10 @@ Required invariants:
 This shape is compatible with the existing `DerivedPublicationInput`,
 `ResourceRevisionRef`, `BlobDigest`, `MdbxResourceFrontierSnapshot` and fenced
 publication concepts, but it is not fully represented by those current types.
+In particular, an opaque `SourceRevisionId` or `EvidenceAnchorId` is only a
+reference: it is not an authoritative revision binding until it resolves to
+the immutable source identity, generation and digest carried by
+`ResourceRevisionRef`.
 
 ## 4. Three graph semantics
 
