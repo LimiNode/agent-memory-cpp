@@ -160,6 +160,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxResourceArtifactBindingStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxVerifiedArtifactHydration.cpp
             src/agent_memory/infrastructure/mdbx/MdbxAuthoritativeArticleHydration.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxRawMarkdownProductIngestion.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCurrentDerivedPublicationReader.cpp
             src/agent_memory/infrastructure/mdbx/MdbxSnapshotRevisionBoundRetriever.cpp
             src/agent_memory/infrastructure/mdbx/MdbxFederatedCanonicalReader.cpp

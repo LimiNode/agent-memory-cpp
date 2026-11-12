@@ -127,6 +127,8 @@ jobs:
           cmake --build $hydrationBuild --parallel
           & (Join-Path $hydrationBuild 'agent_memory_mdbx_hydration_installed_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'MDBX hydration installed consumer failed' }
+          & (Join-Path $hydrationBuild 'agent_memory_mdbx_raw_markdown_product_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'MDBX Raw Markdown product consumer failed' }
 
   json-installed-consumer:
     name: JSON installed consumer (ubuntu-latest)
