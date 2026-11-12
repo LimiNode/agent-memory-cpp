@@ -131,6 +131,9 @@ def main() -> None:
                                        ("new", "crash", 23), ("new", "verify", 0), ("old", "verify", 0)):
             output = run([executables[label], mode, db, cas, snapshot], expected, capture=True)
             receipt["processes"].append({"library": label, "mode": mode, "exit": expected, "output": output})
+        for source, expected in ((old, OLD_COMMIT), (new, args.new_commit)):
+            if git(source, "rev-parse", "HEAD") != expected or git(source, "status", "--porcelain"):
+                raise RuntimeError(f"source changed during upgrade proof: {source}")
         receipt["canonical_snapshot_sha256"] = sha(snapshot)
         receipt["canonical_snapshot"] = snapshot.read_text()
         receipt["fixture_source_sha256"] = sha(new / "tests/installed-exact-generation/consumer.cpp")

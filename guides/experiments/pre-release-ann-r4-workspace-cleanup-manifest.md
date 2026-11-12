@@ -207,7 +207,7 @@ not a claim about the now-expanded active worktree set.
 
 | Priority | Candidate | Remaining checks before a separate deletion approval |
 | --- | --- | --- |
-| 1 | Three standalone build roots named above (about 0.86 GiB combined) | Identify build owner and exact compiler/options; replay one clean build; confirm no running process or unique logs, databases, receipts, or frozen inputs; obtain owner disposition. |
+| 1 | Historical `.build` snapshot and two standalone build roots named above (about 0.86 GiB combined at inventory time) | Identify build owner and exact compiler/options; replay one clean build; confirm no running process or unique logs, databases, receipts, or frozen inputs; obtain owner disposition. |
 | 2 | Two duplicate BGE-M3 weight copies (4.23 GiB logical ceiling) | Rehash immediately before action; select one authoritative retained path; audit all recipe/receipt and active-process references; check hardlinks/allocated bytes; redirect references only with owner approval. |
 | 3 | Individually selected clean merged-PR worktrees | Recheck dirty state, local-only commits and stacked/open PR dependencies; enumerate untracked research evidence and exact archival copies. Clean Git status alone is insufficient. |
 

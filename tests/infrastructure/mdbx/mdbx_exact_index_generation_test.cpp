@@ -46,6 +46,9 @@ int main() try {
         rejects(IndexGenerationFailure::NotFound, [&] { (void)store.pin(d); });
         rejects(IndexGenerationFailure::InvalidInput, [&] { store.begin("oversized", d, 1025); });
         store.begin("first", d, 2); store.begin("first", d, 2);
+        rejects(IndexGenerationFailure::Conflict, [&] { store.begin("first", d, 3); });
+        auto other_space = d; other_space.model_id = "other-space";
+        rejects(IndexGenerationFailure::Conflict, [&] { store.begin("first", other_space, 2); });
         rejects(IndexGenerationFailure::Incomplete, [&] { store.activate("first", d); });
         store.append("first", {{a, 1, {10, 0}}});
         rejects(IndexGenerationFailure::Incomplete, [&] { store.complete("first"); });
@@ -53,6 +56,16 @@ int main() try {
         rejects(IndexGenerationFailure::Conflict, [&] { store.append("first", {{a, 1, {1, 0}}}); });
         store.append("first", {{b, 1, {1, 0}}}); store.complete("first"); store.complete("first");
         store.activate("first", d); pinned = store.pin(d);
+        store.begin("atomic-batch", d, 2);
+        rejects(IndexGenerationFailure::RebuildUnavailable, [&] {
+            store.append("atomic-batch", {{a, 1, {10, 0}}, {b, 1, {}}});
+        });
+        rejects(IndexGenerationFailure::Incomplete, [&] { store.complete("atomic-batch"); });
+        store.append("atomic-batch", {{a, 1, {10, 0}}, {b, 1, {1, 0}}});
+        store.complete("atomic-batch");
+        rejects(IndexGenerationFailure::InvalidInput, [&] {
+            store.append("oversized-batch", std::vector<ExactIndexVectorInput>(33));
+        });
         expect(pinned->size() == 2 && pinned->source_frontier().size() == 32, "completion evidence missing");
         auto hits = store.query(*pinned, d.scope_id, {1, 0}, 1, allow);
         expect(hits.size() == 1 && hits[0].unit.id == a && hits[0].score == 10, "dot golden mismatch");
