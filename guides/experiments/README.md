@@ -26,6 +26,11 @@ For the cross-PR causal history and merge/evidence ledger, see
 [`research-timeline.md`](research-timeline.md). It is an index into the
 experiment notes, not a replacement for them.
 
+For the future SemCS/SCS integration boundary and its current compatibility
+gaps, see the [SemCS memory-substrate compatibility audit](semcs-memory-substrate-compatibility-audit.md).
+It is a research-only comparison and does not add a graph backend or change
+the Markdown Technical Preview release candidate.
+
 ## When to write or update a note
 
 Create or update an experiment note when a PR:
