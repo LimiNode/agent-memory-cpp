@@ -7,6 +7,13 @@ broader normalized-first profile in
 [`first-release-profile.md`](first-release-profile.md) remains a target and
 must not be reported as implemented merely because this preflight is green.
 
+The separate [Markdown candidate operations guide](markdown-technical-preview.md)
+adds installed-consumer and cold offline backup/restore qualification to the
+#607 baseline below. It does not turn this historical baseline into evidence
+of a release or cross-version compatibility. Those operational extensions
+describe the candidate branch until independently reviewed and integrated;
+the baseline commit and its recorded workflow results remain unchanged.
+
 ## Verification baseline
 
 | Item | Value |
@@ -44,7 +51,7 @@ Status vocabulary is deliberately conservative:
 | Capability | Current status | Evidence | Preview boundary / missing work |
 |---|---|---|---|
 | C++17 static library and public headers | Implemented/executable | CMake package, header self-sufficiency CI, installed consumers | No ABI or long-term compatibility promise yet |
-| MDBX storage context and table-prefix isolation | Implemented/executable | MDBX wiring and reopen tests | Backup/restore and migration tooling are not supplied |
+| MDBX storage context and table-prefix isolation | Implemented/executable | MDBX wiring and reopen tests; cold offline copy fixture in the candidate operations guide | Same-version copy procedure, not general backup/migration tooling |
 | Durable resource import and revision frontier | Implemented/executable for M0 lexical profile | `MdbxResourceImporter`, importer/recovery tests | General connector lifecycle and deletion/retirement are absent |
 | Raw UTF-8 Chunk persistence | Implemented/executable | Knowledge-unit importer tests and reopen path | Locator-rich table/image/transcript representations are not generalised |
 | Original projection and active manifest publication | Implemented/executable for the importer profile | Manifest/profile conformance and #607 product test | General projection lifecycle, compaction and full reindex protocol remain open |
@@ -81,8 +88,8 @@ The evidence is intentionally split between two qualification levels:
 
 | Qualification level | Executed scenario |
 |---|---|
-| Installed exported-package C++17 consumer | A@1 import, exact source-range hydration, same-version reopen, and missing-CAS rejection |
-| Internal MDBX conformance CTest | A@2 update and SHA-256, stale A@1 admission/hydration, corrupt CAS, lexical budget overflow, deterministic A@1/A@2 supersession, importer/catalog/before-join interruption and host replay |
+| Installed exported-package C++17 consumer, extended by the operational qualification slice | A@1 import, exact source-range hydration, same-version reopen, A@2 generation/SHA-256/bytes, stale A@1 admission/hydration, missing/corrupt CAS, typed lexical budget overflow; two-resource cold backup/restore with identity/evidence parity and incomplete/configuration controls |
+| Internal MDBX conformance CTest | A@2 update and SHA-256, stale A@1 admission/hydration, corrupt CAS, lexical budget overflow, deterministic A@1/A@2 supersession, importer/catalog/before-join interruption and host replay; post-join interruption with readable completed product, identity-preserving replay and later stale rejection |
 
 The internal test uses repository-private fixtures and is not presented as an
 installed-consumer result. Conversely, the installed consumer is the evidence
@@ -108,14 +115,15 @@ The current preview preserves the following identities:
   the authoritative hydration proof. A physical codec or representation must
   not change logical identity.
 
-The exercised reopen path can open a database written by the same commit after
-a clean restart and can replay the tested expired intents. This establishes
-same-version reopen only. It does **not** establish an offline backup/restore
-procedure, cross-version schema compatibility, or future derived-index
-rebuildability. Before an upgrade or release, a compatibility gate must verify
-schema versions, table-prefix configuration, digest algorithms, codec
+The #607 reopen path can open a database written by the same commit after
+a clean restart and can replay the tested expired intents. That baseline alone
+establishes same-version reopen only. The separate operational qualification
+adds the documented cold offline backup/restore procedure with all handles
+closed; neither establishes cross-version schema compatibility or future
+derived-index rebuildability. Before an upgrade or release, a compatibility
+gate must verify schema versions, table-prefix configuration, digest algorithms, codec
 generations, manifest profiles and an offline backup/restore replay. No
-migration tool or backup format is included in this preview, and no new
+migration tool or new backup format is included in this preview, and no new
 canonical schema is introduced by this document.
 
 ## Operational recovery boundaries
@@ -125,7 +133,7 @@ canonical schema is introduced by this document.
 | Importer interruption before manifest | Intent recovery after its existing lease and host replay | Arbitrary process-kill timing beyond the tested lease/reopen path |
 | Manifest visible before typed join | Candidate may be visible, but hydration is `Missing/BindingMissing` with zero bytes | Treating a low-level row as a product publication |
 | Catalog interruption before/after CAS or commit | Existing catalog recovery and replay where its intent is recoverable | Physical atomicity between MDBX and filesystem CAS |
-| Interruption after typed join before final observation | The adapter's exception path returns `Incomplete`; the focused suite covers the adjacent before-join boundary and supersession interleaving | No dedicated process-kill regression or second coordinator/rollback authority is claimed |
+| Interruption after typed join before final observation | Dedicated injected-fault test: caller receives `Incomplete`, completed product reads correctly, reopen/replay preserves identities; a later revision rejects old evidence | No process-kill regression or second coordinator/rollback authority is claimed |
 | Concurrent A@2 replacement | A@1 final observation returns `Conflict`; old admission/hydration is `Stale` | Perpetual freshness after a successful snapshot |
 | Missing or corrupt CAS | Candidate remains observable only with typed `CasMissing`/`CasCorrupt`; no source bytes | Automatic repair or retention collection |
 | Query budget exceeded | Typed budget exception and no partial ranking as a complete result | Unbounded scan, hidden truncation or implicit budget growth |
