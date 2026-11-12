@@ -3,6 +3,8 @@
 #include "exact_generation_fixture.hpp"
 
 #include <chrono>
+#include <cstdlib>
+#include <system_error>
 
 namespace {
 using namespace agent_memory;
@@ -56,6 +58,22 @@ int main() try {
         rejects(IndexGenerationFailure::Conflict, [&] { store.append("first", {{a, 1, {1, 0}}}); });
         store.append("first", {{b, 1, {1, 0}}}); store.complete("first"); store.complete("first");
         store.activate("first", d); pinned = store.pin(d);
+        MdbxExactIndexGenerationStore other_index(context, "other-index");
+        rejects(IndexGenerationFailure::Incompatible, [&] {
+            (void)other_index.query(*pinned, d.scope_id, {1, 0}, 8, allow);
+        });
+        other_index.begin("other-first", d, 2);
+        other_index.append("other-first", {{a, 1, {10, 0}}, {b, 1, {1, 0}}});
+        other_index.complete("other-first"); other_index.activate("other-first", d);
+        const auto other_pinned = other_index.pin(d);
+        rejects(IndexGenerationFailure::Incompatible, [&] {
+            (void)other_index.query(*pinned, d.scope_id, {1, 0}, 8, allow);
+        });
+        rejects(IndexGenerationFailure::Incompatible, [&] {
+            (void)store.query(other_pinned, d.scope_id, {1, 0}, 8, allow);
+        });
+        expect(store.query(*pinned, d.scope_id, {1, 0}, 1, allow).front().unit.id == a,
+               "valid snapshot was rejected after another index activation");
         mdbxc::KeyValueTable<std::string, std::string> canonical_rows(
             context->connection(), "agent_memory_knowledge_units");
         const auto row_a = canonical_rows.find(std::to_string(a.value()));
@@ -172,6 +190,11 @@ int main() try {
         expect(store.query(first, d.scope_id, {1, 0}, 8, allow).empty(), "erased unit remained admissible");
         std::cout << "PASS controls=" << controls << " canonical_snapshot_sha256=" << hash(canonical) << '\n';
     }
-    // Preserve this small test database as failure/reopen evidence; no cleanup.
+    const char* keep_test_data = std::getenv("AGENT_MEMORY_KEEP_EXACT_GENERATION_TEST_DATA");
+    if(!keep_test_data || std::string(keep_test_data) != "1") {
+        std::error_code cleanup_error;
+        std::filesystem::remove_all(path, cleanup_error);
+        if(cleanup_error) throw std::system_error(cleanup_error, "failed to remove exact-generation test data");
+    }
     return 0;
 } catch(const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

@@ -46,6 +46,10 @@ private:
 
 /// Producer supplies explicit canonical identity, never a vector position.
 /// An empty vector means exact retained input is unavailable, not a zero vector.
+/// The values carry host-asserted space provenance; model_id/recipe_id are not
+/// cryptographic model attestations. Callers must only append values produced
+/// for the descriptor's space. The store rejects malformed dimensions and
+/// non-finite values, but cannot identify an arbitrary external model mix-up.
 struct ExactIndexVectorInput final {
     KnowledgeUnitId unit_id;
     std::uint64_t unit_revision = 0;
@@ -62,9 +66,10 @@ public:
     [[nodiscard]] const ExactIndexSpaceDescriptor& descriptor() const;
     [[nodiscard]] const std::string& source_frontier() const;
     [[nodiscard]] std::size_t size() const;
-    /// Exact FP32 retained inputs, still bound to descriptor().model_id/recipe_id.
-    /// Use for compatible rebuild; never relabel as output of a different model.
-    /// Append revalidates canonical freshness when these inputs are reused.
+    /// Exact FP32 retained inputs from this snapshot's descriptor space.
+    /// Use only for a compatible rebuild with the same descriptor identity;
+    /// the returned values have no independent model attestation. Append
+    /// revalidates canonical freshness when these inputs are reused.
     [[nodiscard]] std::vector<ExactIndexVectorInput> retained_inputs() const;
 private:
     explicit ExactIndexGenerationSnapshot(std::shared_ptr<const ExactIndexGenerationData> data);

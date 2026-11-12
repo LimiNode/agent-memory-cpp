@@ -89,12 +89,16 @@ embeddings; lossless re-encoding consumes exact FP32; re-embedding consumes exac
 retained text plus an immutable compatible model/recipe. This profile accepts
 explicit exact FP32 inputs and persists them for reopen. It does not implement
 an encoder or lossy decoding. A pinned snapshot's `retained_inputs()` copies
-the exact persisted vectors with canonical IDs/revisions for compatible rebuild;
-append revalidates freshness. These inputs must not be relabeled as a different
-model's embeddings. Missing exact vector inputs produce typed
-`RebuildUnavailable`; a changed model is a different descriptor/space, never a
-reinterpretation of old values. Identical rebuild means a new immutable
-generation from the same inputs, not rewriting the old generation.
+the exact persisted vectors with canonical IDs/revisions and retains the
+original descriptor for compatible rebuild. The values are host-asserted
+inputs: `model_id` and `recipe_id` are identity assertions, not cryptographic
+model attestation. Callers must not mix spaces or relabel values as another
+model's embeddings; the store can enforce dimensions and finite FP32 values,
+but cannot identify an arbitrary external model mix-up. Missing exact vector
+inputs produce typed `RebuildUnavailable`; a changed model is a different
+descriptor/space, never a reinterpretation of old values. Identical rebuild
+means a new immutable generation from the same inputs, not rewriting the old
+generation.
 
 The pre-release compatibility gate requires separate installed OLD and NEW
 C++17 processes and canonical logical snapshot equality, not MDBX file-byte
@@ -109,6 +113,9 @@ with MDBX enabled. The focused `agent_memory_mdbx_exact_index_generation_test`
 demonstrates begin/append/complete/activate/pin/query and typed negative results.
 The `tests/installed-exact-generation` external C++17 consumer builds with
 `find_package(agent_memory CONFIG REQUIRED)`; it does not add library sources.
+The focused test removes its uniquely owned temporary MDBX/CAS directory after
+success. Set `AGENT_MEMORY_KEEP_EXACT_GENERATION_TEST_DATA=1` only when retaining
+that directory for a diagnostic run; failure paths retain it automatically.
 
 `tools/run-exact-generation-upgrade.py` requires clean exact-revision OLD/NEW
 checkouts, installed dependency packages and a fresh artifact destination. It

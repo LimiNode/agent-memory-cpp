@@ -158,6 +158,9 @@ struct ExactIndexGenerationData final {
     ExactIndexSpaceDescriptor descriptor;
     std::string frontier;
     std::vector<Row> rows;
+    const mdbxc::Connection* owner_connection = nullptr;
+    std::string owner_index;
+    std::string owner_prefix;
 };
 
 class MdbxExactIndexGenerationStore::Impl final {
@@ -248,6 +251,9 @@ public:
                                                  const mdbxc::Transaction& txn, bool check_current,
                                                  bool require_complete) const {
         auto data = std::make_shared<ExactIndexGenerationData>(); data->generation = generation;
+        data->owner_connection = context->connection().get();
+        data->owner_index = index;
+        data->owner_prefix = prefix;
         const auto encoded = required(key(generation, 'd'), txn);
         data->descriptor = decode_descriptor(encoded);
         const auto count = counts(generation, txn);
@@ -370,6 +376,9 @@ std::vector<ExactIndexHit> MdbxExactIndexGenerationStore::query(const ExactIndex
     const std::function<bool(const KnowledgeUnitEnvelope&)>& authorize) const {
     if(!authorize) fail(Failure::InvalidInput, "host authorization/hard filter is required");
     const auto& data = *snapshot.m_data;
+    if(data.owner_connection != m_impl->context->connection().get() ||
+       data.owner_index != m_impl->index || data.owner_prefix != m_impl->prefix)
+        fail(Failure::Incompatible, "snapshot belongs to another exact index or storage context");
     if(scope != data.descriptor.scope_id) fail(Failure::Incompatible, "query scope mismatch");
     validate_vector(vector, data.descriptor);
     std::vector<ExactIndexHit> result;
