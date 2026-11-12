@@ -360,7 +360,13 @@ rebuild requires compatible retained embeddings; lossless re-encoding requires
 exact source vectors; re-embedding requires retained exact source plus the
 immutable model/recipe. No lossy vector is an exact reconstruction.
 
-Release remains subject to final-head CI/packaging and independent review and
-integration of the Draft implementation. No release, tag, version change or
-cleanup is performed. The inventory hash and a small post-release review queue
-are recorded in the [cleanup manifest](pre-release-ann-r4-workspace-cleanup-manifest.md).
+Final-head verification for Draft PR #612 (`4e48427a5a43776c63bf5ac1df68ab803bebc09f`)
+completed successfully: [CI run 43169854015](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43169854015)
+and [packaging run 43169854220](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43169854220)
+both passed. The packaging run's `OLD to NEW exact generation upgrade` job passed
+and uploaded `exact-generation-upgrade-receipt` (artifact digest
+`sha256:7ecba05a398cdc529b0a2a7e2415344b8a32c336182a4b7b3a154021796dbc3a`).
+The workflow's `Full research CTest` is skipped and is not counted as evidence.
+Independent review and integration of the Draft implementation remain required.
+No release, tag, version change or cleanup is performed. The inventory hash and
+a small post-release review queue are recorded in the [cleanup manifest](pre-release-ann-r4-workspace-cleanup-manifest.md).
