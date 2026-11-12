@@ -119,7 +119,7 @@ document.
 | Importer interruption before manifest | Intent recovery after its existing lease and host replay | Arbitrary process-kill timing beyond the tested lease/reopen path |
 | Manifest visible before typed join | Candidate may be visible, but hydration is `Missing/BindingMissing` with zero bytes | Treating a low-level row as a product publication |
 | Catalog interruption before/after CAS or commit | Existing catalog recovery and replay where its intent is recoverable | Physical atomicity between MDBX and filesystem CAS |
-| Interruption after typed join before final observation | Host receives `Incomplete`; replay can reconcile; metadata remains fail-closed until complete | A second coordinator or rollback authority |
+| Interruption after typed join before final observation | The adapter's exception path returns `Incomplete`; the focused suite covers the adjacent before-join boundary and supersession interleaving | No dedicated process-kill regression or second coordinator/rollback authority is claimed |
 | Concurrent A@2 replacement | A@1 final observation returns `Conflict`; old admission/hydration is `Stale` | Perpetual freshness after a successful snapshot |
 | Missing or corrupt CAS | Candidate remains observable only with typed `CasMissing`/`CasCorrupt`; no source bytes | Automatic repair or retention collection |
 | Query budget exceeded | Typed budget exception and no partial ranking as a complete result | Unbounded scan, hidden truncation or implicit budget growth |
