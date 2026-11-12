@@ -72,7 +72,9 @@ def main() -> None:
     }
     with (artifacts / "upgrade.log").open("w", encoding="utf-8") as log:
         def run(command: list[str], expected: int = 0, capture: bool = False) -> str:
-            command = [str(x) for x in command]
+            # CMake embeds -D paths in generated install scripts; Windows
+            # backslashes there become escapes (for example \a). Use CMake paths.
+            command = [str(x).replace("\\", "/") for x in command]
             receipt["commands"].append(command)
             print("RUN", subprocess.list2cmdline(command), flush=True)
             log.write("\n$ " + subprocess.list2cmdline(command) + "\n"); log.flush()
