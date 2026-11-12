@@ -77,11 +77,16 @@ than repository-private test headers. The deterministic scenario is:
 8. Configure an index budget below the accepted projection and require the
    typed budget exception instead of a truncated ranking.
 
-The installed Raw Markdown consumer covers the source-range and missing-CAS
-parts. The focused MDBX product test covers the complete sequence, including
-corrupt CAS, budget overflow, deterministic A@1/A@2 interleaving, importer
-and catalog recovery, and the requirement that a host replays the original
-request to finish a product join after interruption.
+The evidence is intentionally split between two qualification levels:
+
+| Qualification level | Executed scenario |
+|---|---|
+| Installed exported-package C++17 consumer | A@1 import, exact source-range hydration, same-version reopen, and missing-CAS rejection |
+| Internal MDBX conformance CTest | A@2 update and SHA-256, stale A@1 admission/hydration, corrupt CAS, lexical budget overflow, deterministic A@1/A@2 supersession, importer/catalog/before-join interruption and host replay |
+
+The internal test uses repository-private fixtures and is not presented as an
+installed-consumer result. Conversely, the installed consumer is the evidence
+for the public package boundary, not for every internal fault-injection case.
 
 This is a qualification of the bounded profile, not a promise that every
 source profile in `first-release-profile.md` is available.
@@ -104,13 +109,14 @@ The current preview preserves the following identities:
   not change logical identity.
 
 The exercised reopen path can open a database written by the same commit after
-a clean restart and can replay the tested expired intents. This does **not**
-establish a general upgrade guarantee between future library versions. Before
-an upgrade or release, a compatibility gate must verify schema versions,
-table-prefix configuration, digest algorithms, codec generations, manifest
-profiles and a backup/restore replay. No migration tool or backup format is
-included in this preview, and no new canonical schema is introduced by this
-document.
+a clean restart and can replay the tested expired intents. This establishes
+same-version reopen only. It does **not** establish an offline backup/restore
+procedure, cross-version schema compatibility, or future derived-index
+rebuildability. Before an upgrade or release, a compatibility gate must verify
+schema versions, table-prefix configuration, digest algorithms, codec
+generations, manifest profiles and an offline backup/restore replay. No
+migration tool or backup format is included in this preview, and no new
+canonical schema is introduced by this document.
 
 ## Operational recovery boundaries
 
@@ -126,12 +132,19 @@ document.
 
 ## Release classification
 
-### RELEASE_BLOCKER
+### RELEASE_BLOCKER_FOR_BROAD_PROFILE
 
 - The broad normalized-first profile is not yet a single installable product:
   table/cell, retained-image and timed-transcript verticals are incomplete.
 - General crash-safe publication, backup/restore, migration and retention
   collection are not qualified as a release-wide guarantee.
+
+These are blockers only if the release claims the broad profile in
+`first-release-profile.md`; they are not blockers for a deliberately bounded
+Markdown-only preview whose unsupported inputs are not advertised.
+
+### RELEASE_BLOCKER_FOR_SHARED_UPGRADE_GATE
+
 - The second agent's ANN/R4 compatibility gate is still required before any
   release claim that includes derived-index persistence or future reindexing.
 
@@ -146,12 +159,14 @@ document.
 - Keep experimental retrieval disabled by default; do not describe the
   persistent lexical adapter as a general serving engine.
 
-### SAFE_TO_DEFER
+### SAFE_TO_DEFER_FOR_MARKDOWN_PREVIEW
 
 - Backup/restore tooling, migration commands and retention collection can be
   separate operational work after the bounded preview decision.
 - Table/image/transcript and derived-knowledge slices can follow as additive,
   independently reviewed verticals.
+- General ANN/R4 serving, graph navigation and multimodal ingestion can remain
+  outside this narrow preview contract.
 
 ### RESEARCH_ONLY
 
