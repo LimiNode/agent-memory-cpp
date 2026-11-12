@@ -56,6 +56,17 @@ int main() try {
         rejects(IndexGenerationFailure::Conflict, [&] { store.append("first", {{a, 1, {1, 0}}}); });
         store.append("first", {{b, 1, {1, 0}}}); store.complete("first"); store.complete("first");
         store.activate("first", d); pinned = store.pin(d);
+        mdbxc::KeyValueTable<std::string, std::string> canonical_rows(
+            context->connection(), "agent_memory_knowledge_units");
+        const auto row_a = canonical_rows.find(std::to_string(a.value()));
+        const auto row_b = canonical_rows.find(std::to_string(b.value()));
+        expect(row_a && row_b, "missing canonical rows for key-binding control");
+        canonical_rows.insert_or_assign(std::to_string(a.value()), *row_b);
+        store.begin("wrong-canonical-key", d, 1);
+        rejects(IndexGenerationFailure::StaleBinding, [&] {
+            store.append("wrong-canonical-key", {{a, 1, {1, 0}}});
+        });
+        canonical_rows.insert_or_assign(std::to_string(a.value()), *row_a);
         store.begin("atomic-batch", d, 2);
         rejects(IndexGenerationFailure::RebuildUnavailable, [&] {
             store.append("atomic-batch", {{a, 1, {10, 0}}, {b, 1, {}}});

@@ -217,7 +217,7 @@ public:
         KnowledgeUnitId id, std::uint64_t revision, const ExactIndexSpaceDescriptor& d,
         const mdbxc::Transaction& txn) const {
         auto unit = units.find_in_transaction(id, txn, 1024U * 1024U);
-        if(!unit || unit->revision != revision || unit->scope_id != d.scope_id ||
+        if(!unit || unit->id != id || unit->revision != revision || unit->scope_id != d.scope_id ||
            unit->lifecycle_state != KnowledgeUnitLifecycleState::Active || unit->sources.size() != 1 ||
            !is_valid_source_ref_summary(unit->sources.front()) ||
            unit->sources.front().reference_mode != SourceReferenceMode::RevisionBoundQuote ||
