@@ -360,7 +360,7 @@ rebuild requires compatible retained embeddings; lossless re-encoding requires
 exact source vectors; re-embedding requires retained exact source plus the
 immutable model/recipe. No lossy vector is an exact reconstruction.
 
-Final-head verification for Draft PR #612 (`a52f230aed397879d2dcff0a7e4c8975b1564d58`)
+Implementation-head verification for Draft PR #612 (`a52f230aed397879d2dcff0a7e4c8975b1564d58`)
 completed successfully: [CI run 43173105822](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43173105822)
 and [packaging run 43173105821](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43173105821)
 both passed. The packaging run's `OLD to NEW exact generation upgrade` job passed
