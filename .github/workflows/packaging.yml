@@ -36,6 +36,12 @@ jobs:
           cmake --build $packageBuild --parallel
           cmake --install $packageBuild --prefix $packagePrefix
 
+          $versionPolicyBuild = Join-Path $repo '.build/packaging-version-policy'
+          cmake -DAGENT_MEMORY_PACKAGE_PREFIX=$packagePrefix `
+            "-DAGENT_MEMORY_VERSION_POLICY_SOURCE_DIR=$(Join-Path $repo 'packaging/version-policy')" `
+            "-DAGENT_MEMORY_VERSION_POLICY_BUILD_ROOT=$versionPolicyBuild" `
+            -P (Join-Path $repo 'packaging/version-policy/run.cmake')
+
           $addBuild = Join-Path $repo '.build/packaging-consumer-add'
           cmake -S (Join-Path $repo 'packaging/consumers/add_subdirectory') -B $addBuild -G Ninja `
             -DCMAKE_BUILD_TYPE=Release "-DAGENT_MEMORY_SOURCE_DIR=$repo" `
