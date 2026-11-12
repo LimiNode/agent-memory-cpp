@@ -5,6 +5,11 @@ It is a release contract and a capability gap list, not evidence that every
 listed feature is already implemented. The implementation inventory remains
 the source of truth for release readiness.
 
+The evidence-backed status of the current bounded preview is recorded in
+[`technical-preview-preflight.md`](technical-preview-preflight.md). That
+preflight is narrower than this normalized-first target and does not promote
+the remaining contract-only source profiles to implemented capabilities.
+
 The profile is normalized-first and artifact-aware. It is suitable for
 articles, Telegram posts and normalized video transcripts supplied by external
 connectors. HTML, video and other acquisition artifacts may be retained or
