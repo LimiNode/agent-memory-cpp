@@ -37,3 +37,10 @@ minimal profile.
 `verify-consumer.cmake` is used by CI and local checks to configure, build and
 run each independent consumer. A successful configure/build/run is required;
 compile-only checks are insufficient for the MDBX profile.
+
+The installed Raw Markdown consumer additionally qualifies A@1/reopen/A@2,
+stale evidence rejection, missing/corrupt CAS, typed query-budget failure and
+two-resource cold MDBX+CAS backup/restore. It is standard C++17 and uses no
+repository-private headers. See the
+[candidate operations guide](../guides/markdown-technical-preview.md) for the
+exact cold-copy procedure, configuration inventory and unsupported guarantees.

@@ -433,6 +433,71 @@ int main() {
     }
 
     {
+        // The typed join has committed, but the original caller has not yet
+        // observed final publication. Incomplete is not a rollback promise.
+        auto context = MdbxStorageContext::open(database.string());
+        const ScopeId joined_scope{"postjoin"};
+        const ResourceId joined_resource{"postjoin"};
+        const ObservedResource observed{
+            joined_scope, joined_resource, "postjoin.md", "# joinedold\n",
+            SourceTextOrigin::OriginalText, std::nullopt, 1};
+        auto fault_options = options(database, cas, context);
+        fault_options.before_final_observation_hook_for_testing = [] {
+            throw std::runtime_error("interrupted after typed join");
+        };
+        auto interrupted = std::make_unique<MdbxRawMarkdownProductIngestion>(
+            std::move(fault_options));
+        const auto pending = interrupted->import(observed, 10);
+        expect(pending.status == RawMarkdownProductImportStatus::Incomplete &&
+               pending.resource && pending.source_revision_id && pending.artifact_binding_id &&
+               pending.resource_artifact_binding,
+               "post-join interruption lost publication identities or claimed completion");
+        const auto visible = interrupted->retrieve_and_hydrate(
+            joined_scope, RetrievalQuery{"joinedold", std::nullopt, 8, {}}, 4096);
+        expect(visible.size() == 1 &&
+               visible.front().hydration.status == AuthoritativeArticleHydrationStatus::Hydrated &&
+               visible.front().hydration.bytes == observed.utf8_body,
+               "completed typed join was not readable after caller interruption");
+        interrupted.reset();
+        context.reset();
+        context = MdbxStorageContext::open(database.string());
+        MdbxRawMarkdownProductIngestion recovered{options(database, cas, context)};
+        const auto replay = recovered.import(observed, 10);
+        assert_recovered(recovered, joined_scope, replay, observed.utf8_body);
+        expect(replay.resource->revision.generation == 1 &&
+               replay.resource->raw_units == pending.resource->raw_units &&
+               replay.source_revision_id == pending.source_revision_id &&
+               replay.artifact_binding_id == pending.artifact_binding_id &&
+               replay.resource_artifact_binding &&
+               *replay.resource_artifact_binding == *pending.resource_artifact_binding,
+               "post-join replay invented a revision or duplicate identity");
+        const auto updated = recovered.import(ObservedResource{
+            joined_scope, joined_resource, "postjoin.md", "# joinednew\n",
+            SourceTextOrigin::OriginalText, std::nullopt, 1}, 11);
+        expect(updated.status == RawMarkdownProductImportStatus::Published &&
+               updated.resource && updated.resource->revision.generation == 2,
+               "post-join replay fixture did not publish its replacement");
+        MdbxAuthoritativeArticleHydrationOptions hydration_options;
+        hydration_options.context = context;
+        hydration_options.table_prefix = "raw_catalog_test";
+        hydration_options.raw_cas_root = cas;
+        hydration_options.expected_manifest_schema_id =
+            "agent_memory.m0_resource_importer.raw_chunks_original@raw_catalog_test";
+        MdbxAuthoritativeArticleHydrator hydrator{std::move(hydration_options)};
+        MdbxAuthoritativeArticleHydrationRequest request;
+        request.candidate = {visible.front().candidate.knowledge_unit_id,
+                             visible.front().candidate.unit_revision,
+                             ProjectionKind::Original, 1.0F};
+        request.scope_id = joined_scope;
+        request.source_range = visible.front().hydration.source_range;
+        request.claimed_resource_revision = visible.front().hydration.resource_revision;
+        request.max_bytes = 4096;
+        const auto stale = hydrator.hydrate(request);
+        expect(stale.status == AuthoritativeArticleHydrationStatus::Stale && stale.bytes.empty(),
+               "superseded post-join evidence returned source bytes");
+    }
+
+    {
         auto context = MdbxStorageContext::open(database.string());
         const ScopeId scope{"before-cas-scope"};
         auto fault_options = options(database, cas, context);

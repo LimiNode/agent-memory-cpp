@@ -14,3 +14,5 @@ add_executable(agent_memory_mdbx_raw_markdown_product_consumer
 target_link_libraries(agent_memory_mdbx_raw_markdown_product_consumer
     PRIVATE agent_memory::agent_memory)
 target_compile_features(agent_memory_mdbx_raw_markdown_product_consumer PRIVATE cxx_std_17)
+set_target_properties(agent_memory_mdbx_raw_markdown_product_consumer PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
