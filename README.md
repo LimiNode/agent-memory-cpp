@@ -78,6 +78,11 @@ The [retrieval coverage audit](guides/retrieval-roadmap-coverage.md) is the stat
 
 Requirements: **C++17**, **CMake 3.20+** and a supported toolchain on Windows, Linux or macOS.
 
+The only frozen preview candidate is the bounded Raw Markdown source-backed
+path. See the [installed C++17 example and release-candidate matrix](guides/markdown-technical-preview.md)
+before treating any storage or retrieval capability as available; roadmap
+entries are not product claims.
+
 ~~~bash
 git clone --recursive https://github.com/LimiNode/agent-memory-cpp.git
 cd agent-memory-cpp
