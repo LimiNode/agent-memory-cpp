@@ -200,6 +200,14 @@ is established by same-version local backup/restore.
 
 ## Qualification and remaining release gates
 
+The operational fixtures are pinned at commit
+[`b975835e34bd1770a87934aedb6a0fca48179042`](https://github.com/LimiNode/agent-memory-cpp/commit/b975835e34bd1770a87934aedb6a0fca48179042).
+Local Release checks at that fixture revision: focused MDBX CTest 6/6;
+installed hydration and Raw Markdown consumers 2/2; installed product,
+hydration and umbrella header probes with MDBX on/off 6/6; MDBX-off library
+build. The host was Windows/MinGW GCC 15.2.0. Exact-head CI/packaging URLs and
+review status belong to the operational Draft PR, not the older #607 runs.
+
 The installed executable covers A@1 import and exact hydration, close/reopen,
 A@2 generation/digest/bytes, retained A@1 stale admission and hydration, typed
 query budget failure, cold backup/restore identity/evidence parity, full CAS
