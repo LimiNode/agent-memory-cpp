@@ -54,10 +54,10 @@ namespace agent_memory {
     private:
         struct StoredRecord final {
             VectorRecord record;
-            float inverse_norm = 0.0F;
+            double inverse_norm = 0.0;
         };
 
-        void validate_record_embedding(const Embedding& embedding);
+        void validate_record_embedding(const Embedding& embedding) const;
         void validate_query_embedding(const Embedding& embedding) const;
 
         ExactVectorIndexOptions m_options;
