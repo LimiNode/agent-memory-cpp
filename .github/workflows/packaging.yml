@@ -8,6 +8,37 @@ on:
   workflow_dispatch:
 
 jobs:
+  exact-generation-upgrade:
+    name: OLD to NEW exact generation upgrade
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prepare exact OLD source and flat dependencies
+        run: |
+          git submodule update --init external/libmdbx external/mdbx-containers
+          git worktree add --detach .worktrees/ann-upgrade-old 52004324bc0d2b07c3657245195db349dd391774
+          git -C .worktrees/ann-upgrade-old submodule update --init external/libmdbx external/mdbx-containers
+      - name: Build installed C++17 consumers and execute upgrade and crash controls
+        run: >
+          python tools/run-exact-generation-upgrade.py
+          --old-source .worktrees/ann-upgrade-old --new-source .
+          --new-commit "$(git rev-parse HEAD)"
+          --build-root .build/exact-upgrade
+          --artifacts .artifacts/exact-upgrade
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: exact-generation-upgrade-receipt
+          path: |
+            .artifacts/exact-upgrade/receipt.json
+            .artifacts/exact-upgrade/upgrade.log
+            .artifacts/exact-upgrade/canonical.snapshot
   minimal-consumers:
     name: minimal consumers (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

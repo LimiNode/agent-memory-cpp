@@ -54,6 +54,7 @@ ALLOWED_SELECTORS = {
     "SequenceReplay",
     "UpstreamSync",
     "RawArtifactCatalog",
+    "ExactIndexGenerationStore",
 }
 
 ALLOWED_WIRE_SYNC_SUPPORT = {

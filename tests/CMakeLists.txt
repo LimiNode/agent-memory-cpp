@@ -903,6 +903,15 @@ if(AGENT_MEMORY_ENABLE_MDBX)
     add_executable(agent_memory_mdbx_raw_markdown_product_ingestion_test
         infrastructure/mdbx/mdbx_raw_markdown_product_ingestion_test.cpp
     )
+
+    add_executable(agent_memory_mdbx_exact_index_generation_test
+        infrastructure/mdbx/mdbx_exact_index_generation_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_exact_index_generation_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(NAME agent_memory_mdbx_exact_index_generation_test
+        COMMAND agent_memory_mdbx_exact_index_generation_test)
     target_link_libraries(agent_memory_mdbx_raw_markdown_product_ingestion_test
         PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
     )

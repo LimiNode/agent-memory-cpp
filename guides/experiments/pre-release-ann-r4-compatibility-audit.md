@@ -20,6 +20,16 @@ production contract that binds an ANN candidate to those records and to an
 atomically published index generation. This audit therefore does not add an ANN
 backend, change a DBI, or claim that R4 is the default route.
 
+`RELEASE_BLOCKER` below denotes the agreed project-specific pre-release proof
+gate. Missing executable evidence is not a demonstrated incompatibility of the
+canonical data schema with future R4-derived storage.
+
+### Reading this dated audit after implementation
+
+The original audit and classification below describe their stated baseline.
+The executed implementation follow-up at the end of this note records the
+bounded exact-generation evidence; it does not promote R4 to production.
+
 ## Evidence and scope
 
 The audit reconciled the following repository-owned documents and current
@@ -251,3 +261,112 @@ old-to-new library execution, durable ANN conformance, or latency result was
 produced. The upgrade matrix is proposed, not passed. Local verification checks
 the changed Markdown links, whitespace, and consistency of the inventory
 snapshot; a documentation CI pass cannot close the compatibility blocker.
+
+## 2026-11-12 executed compatibility follow-up
+
+Implementation: [Draft PR #612](https://github.com/LimiNode/agent-memory-cpp/pull/612).
+Normative owner: the **Durable exact generation compatibility profile** in
+[`index-lifecycle-roadmap.md`](../index-lifecycle-roadmap.md). This section
+supersedes only the original audit's missing-executable-proof finding for the
+bounded exact reference profile, not the historical R4 measurements above.
+
+### Integration and frozen revisions
+
+The first agent integrated Raw Markdown as
+`52004324bc0d2b07c3657245195db349dd391774`; this agent did not edit or merge that
+PR. The documentation-only audit was restacked and squash-merged separately as
+`14e5d04c3ca86d5a6399ffdeb67a99f96ae9987f`. Its post-merge
+[CI 43164527621](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43164527621)
+and [packaging 43164527598](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43164527598)
+both succeeded. A subsequent review-thread query returned zero threads.
+
+The first successful two-installed-library proof used:
+
+- OLD: `52004324bc0d2b07c3657245195db349dd391774`;
+- NEW: `ffff88a90b6cf244510299928af2e4b0dacc9761`;
+- OLD source tree: `c4a33ff037c7b28ce0ce526836dd3ab1f6be0790`;
+- NEW source tree: `d877e6bbdff28c2c7c77be8a7fca1b2c7710241d`;
+- unchanged dependency tree: `b949d6822582edc1f445837442b91aabf5093ac6`.
+
+That proof passed both Windows GCC 15.2/MinGW with CMake 4.2.3 and the Ubuntu
+installed-consumer job in
+[packaging 43168878252](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43168878252).
+The latter's `OLD to NEW exact generation upgrade` job passed and retained
+`exact-generation-upgrade-receipt`. This is not a claim about unfinished sibling
+jobs in the general CI workflow. Later changes add a fail-closed canonical
+lookup-key/embedded-ID guard; final-head receipts must be read from the PR's
+exact-head packaging run, not inferred from this earlier commit.
+
+Local evidence is preserved at
+`E:\_repoz\agent-memory-cpp\.artifacts\ann-generation-upgrade-20261112-run3`.
+Its `receipt.json` SHA-256 is
+`1c6f9dcb51ce99408ede0a50aa5f1330b81672709b46bd4fee01445ae81d0da5`.
+The downloaded Ubuntu receipt has SHA-256
+`5ea5f96d169c9593c97e71404b43b19302b581580539f81748c5bfea450b115e`.
+Receipt differences include platform, paths, binary/toolchain hashes and exact
+commands; the canonical logical snapshot is identical on both hosts:
+
+```text
+bc29c115cbd644c83837853df9f382105154b178d10f35b3a9f0fab6cc5d97cc
+```
+
+### Executed behavior and counterexamples
+
+OLD creates three small Raw Markdown resources in two scopes with no derived
+generation DBI. NEW reads the OLD snapshot, derives deterministic reference
+FP32 vectors from SHA-256 of exact retained primary text, adds complete
+generations, activates, pins, rebuilds from persisted FP32 after reopen, and
+explicitly rolls back. SHA-derived vectors test identity/lifecycle, not semantic
+embedding quality. Both binaries are external C++17 `find_package` consumers;
+the raw snapshot inspector explicitly links the installed MDBX dependency.
+
+| Control | Executed outcome |
+| --- | --- |
+| OLD create / NEW upgrade | exits 0 / 0; OLD begins without ANN rows |
+| Process exits after committed partial build | exit 24; next process rejects incomplete activation |
+| Process exits after pointer write, before commit | exit 23; next process still selects generation-1 |
+| NEW verify after each interruption | exits 0 / 0; reopen/query and snapshot equality pass |
+| OLD verify after NEW augmentation | exit 0; all old data remains readable |
+| Canonical logical equality | all 22 preexisting named DBIs, including schema, IDs/revisions, manifest/projection and artifact joins, plus three immutable CAS files remain equal |
+| Focused final local conformance | 5/5 CTest; generation test contains 42 expected-failure controls, not 42 separate CTest cases |
+| Descriptor / binding failures | incompatible model, recipe, dimensions, metric, codec, schema and bit width rejected; corrupt row/checksum, stale revision, wrong scope and wrong canonical lookup key rejected |
+| Selection / policy | previous selection survives failed activation; complete pinned generation is immutable; deny/hard filter runs before top-K; ties use canonical unit ID |
+| Mutation isolation | failed batch append rolls back earlier rows; repeated identical begin is a no-op; conflicting identity reuse and writes to completed generations fail |
+| Lifecycle freshness | source A@1 -> A@2, missing source manifest, inactive and erased units cannot escape through the old generation |
+| Retained inputs | empty exact vector returns typed RebuildUnavailable; persisted FP32 supports compatible rebuild; lossy/model reinterpretation is not implemented |
+
+The five local CTest cases are the generation profile, Raw Markdown ingestion,
+projection store, resource-frontier snapshot and revision-bound snapshot
+retriever. MDBX-ON passed on GCC/MinGW; MDBX-OFF static C++17 passed on MSVC.
+Native MSVC MDBX-ON encountered an existing `mdbx-containers`
+`retrieve_all<std::map>` template-deduction failure, after fixing local compiler
+flags. No dependency source or unrelated lexical adapter was changed to mask
+it. DBI manifest validation and its mutation self-test, runner/YAML syntax and
+`git diff --check` passed. Early upgrade attempts exposed test-runner path and
+installed dependency wiring errors; their logs are retained and are not passes.
+
+### Interpretation and remaining release boundary
+
+The narrow non-destructive upgrade is executable evidence: an additive derived
+DBI suffices for this pinned OLD baseline, exact backend, Original projections
+and bounded fixture without rewriting canonical records. The implementation
+does not own canonical publication or access policy. Only MDBX pointer selection
+is claimed atomic; file CAS/model/codebook domains are not included.
+
+This does not establish production R4/THQ/IVF/HNSW readiness, competitive ANN
+quality/latency, arbitrary historical database migration, a general index
+manager, maintenance resumption, or cross-filesystem transactions. Topology
+rebuild requires compatible retained embeddings; lossless re-encoding requires
+exact source vectors; re-embedding requires retained exact source plus the
+immutable model/recipe. No lossy vector is an exact reconstruction.
+
+Implementation-head verification for Draft PR #612 (`a52f230aed397879d2dcff0a7e4c8975b1564d58`)
+completed successfully: [CI run 43173105822](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43173105822)
+and [packaging run 43173105821](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43173105821)
+both passed. The packaging run's `OLD to NEW exact generation upgrade` job passed
+and uploaded `exact-generation-upgrade-receipt` (artifact digest
+`sha256:42b26eca53a1d0412f198d2db0dc31caf58280caf09aa7bd4ec895c4c75c35b9`).
+The workflow's `Full research CTest` is skipped and is not counted as evidence.
+Independent review and integration of the Draft implementation remain required.
+No release, tag, version change or cleanup is performed. The inventory hash and
+a small post-release review queue are recorded in the [cleanup manifest](pre-release-ann-r4-workspace-cleanup-manifest.md).

@@ -14,6 +14,7 @@
 #include "mdbx/MdbxCurrentDerivedPublicationReader.hpp"
 #include "mdbx/MdbxSnapshotRevisionBoundRetriever.hpp"
 #include "mdbx/MdbxStorageContext.hpp"
+#include "mdbx/MdbxExactIndexGenerationStore.hpp"
 #include "mdbx/MdbxWorkspaceStorageRegistry.hpp"
 #include "mdbx/MdbxDurableLexicalDocumentMemory.hpp"
 #include "mdbx/MdbxPersistentLexicalIndex.hpp"

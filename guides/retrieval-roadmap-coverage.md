@@ -35,6 +35,7 @@ gates, not claims that the current raw importer already provides them.
 | Dense retrieval | `embedding.md`, `optimization-roadmap.md` | Contract only | embedder adapter and exact index path | exact dense MVP |
 | ExactVectorIndex | `optimization-roadmap.md` | Docs/tests only | canonical library integration | oracle benchmark |
 | ANN / HNSW | `optimization-roadmap.md` | Roadmap only | implementation and lifecycle | HNSW spike vs exact |
+| Durable exact generation compatibility | `index-lifecycle-roadmap.md` | Implemented, bounded reference profile | optional MDBX FP32 generations, canonical Original admission, complete-generation pins and rollback; NOT ANN/R4 activation | focused CTest plus installed OLD-to-NEW process receipt in packaging |
 | Vector compression | `binary-embeddings-roadmap.md`, `advanced-binary-techniques-roadmap.md` | Docs/tests only | codec/index integration | F32/F16/int8 matrix |
 | Rare-facet / multi-granularity retrieval | `evaluation-roadmap.md`, `advanced-binary-techniques-roadmap.md`, `knowledge-activation-roadmap.md` | Docs/tests only | equal-budget ASMS/MSBSE/AR0 comparison, rare-facet qrels and lifecycle fixtures | run baseline, projection, associative-expansion and composed-route benchmark |
 | Hybrid / RRF | `knowledge-base-roadmap.md`, `retrieval-execution-roadmap.md` | Contract only | route-local pools, hard-filter diagnostics and fusion trace | Gate H0 protocol, then RRF MVP |
