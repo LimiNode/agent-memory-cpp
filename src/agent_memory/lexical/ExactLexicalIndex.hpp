@@ -61,9 +61,6 @@ namespace agent_memory {
             std::map<std::string, std::vector<std::uint32_t>> positions_by_term;
         };
 
-        [[nodiscard]] TokenDictionaryEntry& get_or_create_token_entry(
-            const std::string& term
-        );
         [[nodiscard]] const TokenDictionaryEntry* find_token_entry(
             const std::string& term
         ) const noexcept;
