@@ -17,6 +17,16 @@ public:
         : std::runtime_error(message) {}
 };
 
+/// \brief Indicates that a guarded publication no longer owns its fence.
+///
+/// The diagnostic text is for operators only. Recovery must dispatch on this
+/// type, never on the wording returned by what().
+class MdbxPublicationFenceError final : public std::runtime_error {
+public:
+    explicit MdbxPublicationFenceError(const std::string& message)
+        : std::runtime_error(message) {}
+};
+
 } // namespace agent_memory
 
 #endif // AGENT_MEMORY_HEADER_INFRASTRUCTURE_MDBX_MDBX_STORAGE_ERRORS_HPP_INCLUDED

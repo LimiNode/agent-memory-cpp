@@ -1,5 +1,7 @@
 #include "MdbxDurableLexicalDocumentMemory.hpp"
 
+#include "MdbxStorageErrors.hpp"
+
 #if AGENT_MEMORY_HAS_MDBX
 
 #include <agent_memory/lexical/ExactLexicalIndex.hpp>
@@ -522,15 +524,10 @@ private:
             CanonicalDocumentRevision revision;
             try {
                 revision = ensure_canonical(requested);
-            } catch(const std::runtime_error& error) {
-                if(requested.guard &&
-                   std::string_view{error.what()}.find(
-                       "canonical publication fence rejected"
-                   ) != std::string_view::npos) {
+            } catch(const MdbxPublicationFenceError&) {
+                if(requested.guard) {
                     discard_pending(requested, requested_payload);
-                    throw std::runtime_error(
-                        "durable lexical publication fence rejected the operation"
-                    );
+                    throw;
                 }
                 throw;
             }
@@ -912,11 +909,8 @@ private:
         CanonicalDocumentRevision revision;
         try {
             revision = ensure_canonical(operation);
-        } catch(const std::runtime_error& error) {
-            if(operation.guard &&
-               std::string_view{error.what()}.find(
-                   "canonical publication fence rejected"
-               ) != std::string_view::npos) {
+        } catch(const MdbxPublicationFenceError&) {
+            if(operation.guard) {
                 discard_pending(operation, pending_payload);
                 return;
             }

@@ -1,4 +1,5 @@
 #include <agent_memory/infrastructure/mdbx/MdbxDurableLexicalDocumentMemory.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxStorageErrors.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 
@@ -7,6 +8,7 @@
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 namespace {
@@ -95,6 +97,117 @@ int main() {
         try { (void)memory.upsert_text(scope_a, ResourceId{"empty"}, "uri", ""); }
         catch (const std::invalid_argument&) { rejected = true; }
         expect(rejected, "empty body was accepted");
+    }
+
+    {
+        auto context = MdbxStorageContext::open(
+            path.string(),
+            false,
+            kDefaultMdbxMaxDbs
+        );
+        mdbxc::KeyValueTable<std::string, std::string> guards(
+            context->connection(), "agent_memory_resource_import_intents"
+        );
+        mdbxc::KeyValueTable<std::string, std::string> tokens(
+            context->connection(), "agent_memory_resource_import_fencing_tokens"
+        );
+        mdbxc::KeyValueTable<std::string, std::string> catalog(
+            context->connection(), "agent_memory_durable_lexical_catalog"
+        );
+        MdbxDurableLexicalDocumentMemoryOptions options;
+        options.context = context;
+        MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+
+        const auto pending_is_absent = [&](std::string_view resource_id) {
+            auto txn = context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+            const auto pending = catalog.find(
+                std::string{"pending\x1fguarded\x1f"} + std::string{resource_id},
+                txn
+            );
+            txn.commit();
+            return !pending.has_value();
+        };
+
+        bool missing_key_rejected = false;
+        try {
+            static_cast<void>(memory.upsert_text_guarded(
+                ScopeId{"guarded"},
+                ResourceId{"missing-key"},
+                "https://example.test/guarded-missing",
+                "Missing guard must not publish.",
+                DurableLexicalPublicationGuard{
+                    "agent_memory_resource_import_intents",
+                    "guarded-resource",
+                    "expected-owner",
+                    "",
+                    ""
+                }
+            ));
+        } catch(const MdbxPublicationFenceError& error_value) {
+            missing_key_rejected =
+                std::string_view{error_value.what()}.find(
+                    "canonical publication fence rejected"
+                ) != std::string_view::npos;
+        }
+        expect(missing_key_rejected, "missing publication fence was not typed");
+        expect(memory.search(ScopeId{"guarded"}, "publish", 5).empty(),
+               "missing publication fence changed the active catalog");
+        expect(pending_is_absent("missing-key"),
+               "missing publication fence left a pending intent");
+
+        guards.insert_or_assign("guarded-resource", "current-owner");
+        bool changed_value_rejected = false;
+        try {
+            static_cast<void>(memory.upsert_text_guarded(
+                ScopeId{"guarded"},
+                ResourceId{"changed-value"},
+                "https://example.test/guarded-changed",
+                "Changed guard must not publish.",
+                DurableLexicalPublicationGuard{
+                    "agent_memory_resource_import_intents",
+                    "guarded-resource",
+                    "stale-owner",
+                    "",
+                    ""
+                }
+            ));
+        } catch(const MdbxPublicationFenceError& error_value) {
+            changed_value_rejected =
+                std::string_view{error_value.what()}.find("value changed") !=
+                std::string_view::npos;
+        }
+        expect(changed_value_rejected, "changed publication fence was not typed");
+        expect(memory.search(ScopeId{"guarded"}, "publish", 5).empty(),
+               "changed publication fence changed the active catalog");
+        expect(pending_is_absent("changed-value"),
+               "changed publication fence left a pending intent");
+
+        tokens.insert_or_assign("guarded-resource", "current-token");
+        bool changed_token_rejected = false;
+        try {
+            static_cast<void>(memory.upsert_text_guarded(
+                ScopeId{"guarded"},
+                ResourceId{"changed-token"},
+                "https://example.test/guarded-token",
+                "Changed token must not publish.",
+                DurableLexicalPublicationGuard{
+                    "agent_memory_resource_import_intents",
+                    "guarded-resource",
+                    "",
+                    "agent_memory_resource_import_fencing_tokens",
+                    "stale-token"
+                }
+            ));
+        } catch(const MdbxPublicationFenceError& error_value) {
+            changed_token_rejected =
+                std::string_view{error_value.what()}.find("token changed") !=
+                std::string_view::npos;
+        }
+        expect(changed_token_rejected, "changed publication token was not typed");
+        expect(memory.search(ScopeId{"guarded"}, "publish", 5).empty(),
+               "changed publication token changed the active catalog");
+        expect(pending_is_absent("changed-token"),
+               "changed publication token left a pending intent");
     }
 
     {

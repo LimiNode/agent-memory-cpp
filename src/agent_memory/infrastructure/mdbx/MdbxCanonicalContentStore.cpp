@@ -1,6 +1,7 @@
 #include "MdbxCanonicalContentStore.hpp"
 
 #include <agent_memory/storage/CanonicalContentStoreInternal.hpp>
+#include "MdbxStorageErrors.hpp"
 
 #if AGENT_MEMORY_HAS_MDBX
 #include <array>
@@ -666,10 +667,14 @@ class MdbxCanonicalContentStore::Impl final {
         if(guard.expected_token.empty()) {
             const auto current = publication_guard_table->find(guard.key, txn);
             if(!current) {
-                throw std::runtime_error("canonical publication fence rejected: key missing");
+                throw MdbxPublicationFenceError(
+                    "canonical publication fence rejected: key missing"
+                );
             }
             if(*current != guard.expected_value) {
-                throw std::runtime_error("canonical publication fence rejected: value changed");
+                throw MdbxPublicationFenceError(
+                    "canonical publication fence rejected: value changed"
+                );
             }
         }
         if(!guard.expected_token.empty()) {
@@ -681,7 +686,7 @@ class MdbxCanonicalContentStore::Impl final {
             }
             const auto token = publication_token_guard_table->find(guard.key, txn);
             if(!token || *token != guard.expected_token) {
-                throw std::runtime_error(
+                throw MdbxPublicationFenceError(
                     "canonical publication fence rejected: token changed"
                 );
             }
@@ -731,7 +736,9 @@ bool MdbxCanonicalContentStore::create_document_impl(
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
     if (guard && !m_impl->guard_matches(*guard, txn)) {
         txn.rollback();
-        throw std::runtime_error("canonical publication fence rejected the creation");
+        throw MdbxPublicationFenceError(
+            "canonical publication fence rejected the creation"
+        );
     }
     if (m_impl->heads.find(initial.document_id.value(), txn))
         return false;
@@ -812,7 +819,9 @@ CanonicalEditResult MdbxCanonicalContentStore::commit_impl(
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
     if (guard && !m_impl->guard_matches(*guard, txn)) {
         txn.rollback();
-        throw std::runtime_error("canonical publication fence rejected the edit");
+        throw MdbxPublicationFenceError(
+            "canonical publication fence rejected the edit"
+        );
     }
     auto loaded = m_impl->load(request.document_id, txn);
     if (!loaded.current) {
