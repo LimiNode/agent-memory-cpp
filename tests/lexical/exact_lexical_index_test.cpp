@@ -4,12 +4,17 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <iostream>
+#include <cstddef>
 #include <new>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#if defined(_WIN32)
+#include <malloc.h>
+#endif
 
 namespace {
 
@@ -26,6 +31,38 @@ namespace {
         if(auto* result = std::malloc(size == 0 ? 1 : size)) {
             return result;
         }
+        throw std::bad_alloc{};
+    }
+
+    void* allocate_aligned_for_test(
+        const std::size_t size,
+        const std::size_t alignment
+    ) {
+        auto budget = g_allocation_budget.load(std::memory_order_relaxed);
+        if(budget >= 0) {
+            if(budget == 0) {
+                throw std::bad_alloc{};
+            }
+            g_allocation_budget.store(budget - 1, std::memory_order_relaxed);
+        }
+
+        // C++17 requires the aligned allocation size to be a multiple of the
+        // alignment.  Use the platform allocator paired with the matching
+        // aligned delete below; passing an aligned pointer to std::free is
+        // undefined on Windows and caused the CI-only 0xc0000409 failure.
+        const auto rounded_size = size == 0
+            ? alignment
+            : ((size + alignment - 1) / alignment) * alignment;
+#if defined(_WIN32)
+        if(auto* result = _aligned_malloc(rounded_size, alignment)) {
+            return result;
+        }
+#else
+        void* result = nullptr;
+        if(posix_memalign(&result, alignment, rounded_size) == 0) {
+            return result;
+        }
+#endif
         throw std::bad_alloc{};
     }
 
@@ -50,6 +87,23 @@ void* operator new[](const std::size_t size) {
     return allocate_for_test(size);
 }
 
+void* operator new(const std::size_t size, const std::align_val_t alignment) {
+    return allocate_aligned_for_test(
+        size,
+        static_cast<std::size_t>(alignment)
+    );
+}
+
+void* operator new[](
+    const std::size_t size,
+    const std::align_val_t alignment
+) {
+    return allocate_aligned_for_test(
+        size,
+        static_cast<std::size_t>(alignment)
+    );
+}
+
 void operator delete(void* pointer) noexcept {
     std::free(pointer);
 }
@@ -64,6 +118,46 @@ void operator delete(void* pointer, const std::size_t) noexcept {
 
 void operator delete[](void* pointer, const std::size_t) noexcept {
     std::free(pointer);
+}
+
+void operator delete(void* pointer, const std::align_val_t) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+void operator delete[](void* pointer, const std::align_val_t) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+void operator delete(
+    void* pointer,
+    const std::size_t,
+    const std::align_val_t
+) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+void operator delete[](
+    void* pointer,
+    const std::size_t,
+    const std::align_val_t
+) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
 }
 
 namespace {
