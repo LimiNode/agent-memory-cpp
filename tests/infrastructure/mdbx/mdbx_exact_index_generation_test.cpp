@@ -74,6 +74,31 @@ int main() try {
         });
         expect(store.query(*pinned, d.scope_id, {1, 0}, 1, allow).front().unit.id == a,
                "valid snapshot was rejected after another index activation");
+        MdbxExactIndexGenerationStore shared_store(context, "test");
+        expect(shared_store.query(*pinned, d.scope_id, {1, 0}, 1, allow).front().unit.id == a,
+               "shared MDBX connection rejected a valid snapshot");
+        std::optional<ExactIndexGenerationSnapshot> expired_snapshot;
+        {
+            const auto separate_db = path / "separate.mdbx";
+            const auto separate_cas = path / "separate-cas";
+            auto separate_context = MdbxStorageContext::open(separate_db.string());
+            create(separate_context, separate_cas);
+            MdbxExactIndexGenerationStore separate_store(separate_context, "test");
+            const auto separate_ids = ids(separate_context, d.scope_id);
+            separate_store.begin("separate-first", d, 2);
+            separate_store.append("separate-first", {
+                {separate_ids[0], 1, {10, 0}}, {separate_ids[1], 1, {1, 0}}});
+            separate_store.complete("separate-first"); separate_store.activate("separate-first", d);
+            rejects(IndexGenerationFailure::Incompatible, [&] {
+                (void)separate_store.query(*pinned, d.scope_id, {1, 0}, 8, allow);
+            });
+            expired_snapshot = separate_store.pin(d);
+        }
+        auto replacement_context = MdbxStorageContext::open((path / "separate.mdbx").string());
+        MdbxExactIndexGenerationStore replacement_store(replacement_context, "test");
+        rejects(IndexGenerationFailure::Incompatible, [&] {
+            (void)replacement_store.query(*expired_snapshot, d.scope_id, {1, 0}, 8, allow);
+        });
         mdbxc::KeyValueTable<std::string, std::string> canonical_rows(
             context->connection(), "agent_memory_knowledge_units");
         const auto row_a = canonical_rows.find(std::to_string(a.value()));

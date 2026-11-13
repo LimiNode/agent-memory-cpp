@@ -328,7 +328,7 @@ the raw snapshot inspector explicitly links the installed MDBX dependency.
 | NEW verify after each interruption | exits 0 / 0; reopen/query and snapshot equality pass |
 | OLD verify after NEW augmentation | exit 0; all old data remains readable |
 | Canonical logical equality | all 22 preexisting named DBIs, including schema, IDs/revisions, manifest/projection and artifact joins, plus three immutable CAS files remain equal |
-| Focused final local conformance | 5/5 CTest; generation test contains 40 expected-failure controls, not 40 separate CTest cases |
+| Focused final local conformance | 5/5 CTest; generation test contains 42 expected-failure controls, not 42 separate CTest cases |
 | Descriptor / binding failures | incompatible model, recipe, dimensions, metric, codec, schema and bit width rejected; corrupt row/checksum, stale revision, wrong scope and wrong canonical lookup key rejected |
 | Selection / policy | previous selection survives failed activation; complete pinned generation is immutable; deny/hard filter runs before top-K; ties use canonical unit ID |
 | Mutation isolation | failed batch append rolls back earlier rows; repeated identical begin is a no-op; conflicting identity reuse and writes to completed generations fail |

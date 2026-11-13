@@ -86,7 +86,8 @@ struct ExactIndexHit final {
 /// Bounded, opt-in derived generation lifecycle with a persisted exact backend.
 /// All state is independent of canonical records. Only pointer selection is
 /// claimed atomic. Calls own their MDBX transactions; snapshots are copyable.
-/// Context must outlive this store; host authorization is required per query.
+/// Snapshots retain a weak lifetime-aware identity of their MDBX connection,
+/// namespace and index; host authorization is required per query.
 class MdbxExactIndexGenerationStore final {
 public:
     MdbxExactIndexGenerationStore(std::shared_ptr<MdbxStorageContext> context,

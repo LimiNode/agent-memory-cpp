@@ -76,7 +76,9 @@ Rollback explicitly selects a retained complete compatible generation, provided
 its canonical inputs are still current.
 
 Pinning validates completion and returns an immutable in-memory copy of that
-generation. Later activation cannot change it. Each query independently checks
+generation with a weak lifetime-aware identity of its MDBX connection, table
+prefix and logical index. Later activation cannot change it. An expired or
+unrelated connection is rejected before reading candidates. Each query independently checks
 current canonical admission in one MDBX snapshot, so a generation pin does not
 freeze canonical truth. Stale revisions, erased units, inactive manifests and
 changed provenance are excluded. Scope and a required host-owned authorization/
