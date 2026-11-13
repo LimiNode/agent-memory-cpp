@@ -61,9 +61,6 @@ namespace agent_memory {
             std::map<std::string, std::vector<std::uint32_t>> positions_by_term;
         };
 
-        [[nodiscard]] TokenDictionaryEntry& get_or_create_token_entry(
-            const std::string& term
-        );
         [[nodiscard]] const TokenDictionaryEntry* find_token_entry(
             const std::string& term
         ) const noexcept;
@@ -79,6 +76,11 @@ namespace agent_memory {
         [[nodiscard]] float average_document_length() const noexcept;
 
         void remove_record_stats(const StoredRecord& record);
+
+        static void swap_stored_records(
+            StoredRecord& left,
+            StoredRecord& right
+        ) noexcept;
 
         ExactLexicalIndexOptions m_options;
         std::map<ChunkId, StoredRecord> m_records;

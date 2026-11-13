@@ -1,12 +1,70 @@
 #include <agent_memory.hpp>
 
+#include <atomic>
+#include <cstdlib>
 #include <initializer_list>
 #include <iostream>
+#include <new>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+namespace {
+
+    std::atomic<std::ptrdiff_t> g_allocation_budget{-1};
+
+    void* allocate_for_test(const std::size_t size) {
+        auto budget = g_allocation_budget.load(std::memory_order_relaxed);
+        if(budget >= 0) {
+            if(budget == 0) {
+                throw std::bad_alloc{};
+            }
+            g_allocation_budget.store(budget - 1, std::memory_order_relaxed);
+        }
+        if(auto* result = std::malloc(size == 0 ? 1 : size)) {
+            return result;
+        }
+        throw std::bad_alloc{};
+    }
+
+    void fail_allocations_after(const std::ptrdiff_t successful_allocations) {
+        g_allocation_budget.store(
+            successful_allocations,
+            std::memory_order_relaxed
+        );
+    }
+
+    void disable_allocation_failures() {
+        g_allocation_budget.store(-1, std::memory_order_relaxed);
+    }
+
+} // namespace
+
+void* operator new(const std::size_t size) {
+    return allocate_for_test(size);
+}
+
+void* operator new[](const std::size_t size) {
+    return allocate_for_test(size);
+}
+
+void operator delete(void* pointer) noexcept {
+    std::free(pointer);
+}
+
+void operator delete[](void* pointer) noexcept {
+    std::free(pointer);
+}
+
+void operator delete(void* pointer, const std::size_t) noexcept {
+    std::free(pointer);
+}
+
+void operator delete[](void* pointer, const std::size_t) noexcept {
+    std::free(pointer);
+}
 
 namespace {
 
@@ -83,6 +141,44 @@ namespace {
             std::move(tokens),
             metadata
         };
+    }
+
+    [[nodiscard]] bool same_stats(
+        const std::optional<agent_memory::LexicalDocumentStats>& left,
+        const std::optional<agent_memory::LexicalDocumentStats>& right
+    ) {
+        if(left.has_value() != right.has_value()) {
+            return false;
+        }
+        if(!left.has_value()) {
+            return true;
+        }
+        return left->chunk_id == right->chunk_id &&
+            left->revision.resource_id == right->revision.resource_id &&
+            left->revision.generation == right->revision.generation &&
+            left->revision.content_hash == right->revision.content_hash &&
+            left->revision.pipeline_config_hash == right->revision.pipeline_config_hash &&
+            left->token_count == right->token_count &&
+            left->unique_token_count == right->unique_token_count;
+    }
+
+    [[nodiscard]] bool same_hits(
+        const std::vector<agent_memory::LexicalSearchResult>& left,
+        const std::vector<agent_memory::LexicalSearchResult>& right
+    ) {
+        if(left.size() != right.size()) {
+            return false;
+        }
+        for(std::size_t i = 0; i < left.size(); ++i) {
+            if(left[i].chunk_id != right[i].chunk_id ||
+               left[i].score != right[i].score ||
+               left[i].resource_id != right[i].resource_id ||
+               left[i].section_id != right[i].section_id ||
+               left[i].enrichment_level != right[i].enrichment_level) {
+                return false;
+            }
+        }
+        return true;
     }
 
 } // namespace
@@ -529,6 +625,129 @@ int main() {
         }
         if(rollback_index.size() != 0) {
             return fail("v6++: total size must be 0 after fully cleaning up");
+        }
+    }
+
+    // A1: deterministic allocation failures cover both the new-record and
+    // replacement paths. The operation is allowed to throw, but every
+    // observable part of the old index must remain unchanged.
+    {
+        const auto run_fault_matrix = [](const bool replacement) {
+            bool observed_failure = false;
+            bool observed_success = false;
+
+            for(std::ptrdiff_t budget = 0; budget < 512; ++budget) {
+                disable_allocation_failures();
+                agent_memory::ExactLexicalIndex index;
+                index.upsert(make_record(
+                    "chunk:base",
+                    "resource:base",
+                    make_tokens({"base", "shared", "shared"}),
+                    "public"
+                ));
+                index.upsert(make_record(
+                    "chunk:other",
+                    "resource:base",
+                    make_tokens({"shared", "other"}),
+                    "public"
+                ));
+
+                const auto base_stats = index.find_stats(
+                    agent_memory::ChunkId{"chunk:base"}
+                );
+                const auto other_stats = index.find_stats(
+                    agent_memory::ChunkId{"chunk:other"}
+                );
+                const auto base_hits = index.search(
+                    agent_memory::LexicalSearchQuery{{"base"}, 10, {}, {}}
+                );
+                const auto shared_hits = index.search(
+                    agent_memory::LexicalSearchQuery{{"shared"}, 10, {}, {}}
+                );
+                const auto base_resource_count = [&index] {
+                    auto copy = index;
+                    return copy.erase_resource(
+                        agent_memory::ResourceId{"resource:base"}
+                    );
+                }();
+                const auto replacement_resource_count = [&index] {
+                    auto copy = index;
+                    return copy.erase_resource(
+                        agent_memory::ResourceId{"resource:replacement"}
+                    );
+                }();
+
+                auto candidate = make_record(
+                    replacement ? "chunk:base" : "chunk:new",
+                    "resource:replacement",
+                    make_tokens({"replacement", "shared", "replacement"}),
+                    "public"
+                );
+
+                fail_allocations_after(budget);
+                bool threw = false;
+                try {
+                    index.upsert(std::move(candidate));
+                } catch(const std::bad_alloc&) {
+                    threw = true;
+                }
+                disable_allocation_failures();
+
+                if(!threw) {
+                    observed_success = true;
+                    break;
+                }
+
+                observed_failure = true;
+                if(index.size() != 2 ||
+                   !same_stats(
+                       index.find_stats(agent_memory::ChunkId{"chunk:base"}),
+                       base_stats
+                   ) ||
+                   !same_stats(
+                       index.find_stats(agent_memory::ChunkId{"chunk:other"}),
+                       other_stats
+                   ) ||
+                   !same_hits(
+                       index.search(agent_memory::LexicalSearchQuery{
+                           {"base"}, 10, {}, {}
+                       }),
+                       base_hits
+                   ) ||
+                   !same_hits(
+                       index.search(agent_memory::LexicalSearchQuery{
+                           {"shared"}, 10, {}, {}
+                       }),
+                       shared_hits
+                   )) {
+                    return false;
+                }
+
+                auto base_copy = index;
+                auto replacement_copy = index;
+                if(base_copy.erase_resource(
+                       agent_memory::ResourceId{"resource:base"}
+                   ) != base_resource_count ||
+                   replacement_copy.erase_resource(
+                       agent_memory::ResourceId{"resource:replacement"}
+                   ) != replacement_resource_count) {
+                    return false;
+                }
+                if(!replacement && index.find_stats(
+                       agent_memory::ChunkId{"chunk:new"}
+                   )) {
+                    return false;
+                }
+            }
+
+            return observed_failure && observed_success;
+        };
+
+        if(!run_fault_matrix(false)) {
+            return fail("A1: insertion allocation failures changed index state");
+        }
+        if(!run_fault_matrix(true)) {
+            return fail("A1: replacement allocation failures changed index state");
         }
     }
 
