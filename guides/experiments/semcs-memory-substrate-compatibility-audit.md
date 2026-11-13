@@ -110,7 +110,7 @@ DerivationPublication {
   producer_fingerprint: BlobDigest
   source_frontier: FrontierWitness
   publication_generation: uint64
-  marker: committed|historical|stale|unavailable
+  marker: committed
 }
 
 SourceEvidenceBinding {
@@ -118,6 +118,13 @@ SourceEvidenceBinding {
   evidence_anchor_id: opaque
 }
 ```
+
+The immutable `marker` records only committed storage publication. It is not a
+stored lifecycle state machine. `Current`, `Historical`, `Stale` and
+`Unavailable` are read dispositions derived from authoritative frontier,
+revision and access evidence; external admission remains a separate policy
+decision. This sketch therefore does not add an implementation requirement for
+persisting or transitioning those read dispositions.
 
 Required invariants:
 
