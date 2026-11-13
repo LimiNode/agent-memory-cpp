@@ -282,6 +282,39 @@ namespace {
         return 0;
     }
 
+    int test_tokenize_camel_fixture_is_deterministic() {
+        const agent_memory::StandardTokenizer tokenizer;
+        const auto input = u8"camelCase PascalCase HTTPServer version2Value, Привет!";
+        const auto first = tokenizer.tokenize(input);
+        const auto second = tokenizer.tokenize(input);
+
+        if(first.tokens.size() != second.tokens.size()) {
+            return fail("camel fixture must produce a deterministic token count");
+        }
+        for(std::size_t index = 0; index < first.tokens.size(); ++index) {
+            const auto& lhs = first.tokens[index];
+            const auto& rhs = second.tokens[index];
+            if(lhs.text != rhs.text || lhs.source_range.offset != rhs.source_range.offset ||
+               lhs.source_range.length != rhs.source_range.length ||
+               lhs.position != rhs.position || lhs.kind != rhs.kind) {
+                return fail("camel fixture must produce deterministic tokens and offsets");
+            }
+        }
+
+        const auto texts = token_texts(first);
+        const auto contains = [&texts](const std::string_view value) {
+            return std::find(texts.begin(), texts.end(), value) != texts.end();
+        };
+        if(!contains("camelcase") || !contains("camel") || !contains("case") ||
+           !contains("pascalcase") || !contains("pascal") || !contains("httpserver") ||
+           !contains("http") || !contains("server") || !contains("version2value") ||
+           !contains("version2") || !contains("value") || !contains(u8"Привет")) {
+            return fail("camel fixture must preserve camel, acronym, numeric and UTF-8 terms");
+        }
+
+        return 0;
+    }
+
 } // namespace
 
 int run_test(const char* name, int(*fn)()) {
@@ -409,6 +442,10 @@ int main() {
     failures += run_test("test_tokenize_acronym_xmlhttprequest", test_tokenize_acronym_xmlhttprequest);
 
     failures += run_test("test_tokenize_emoji_opaque", test_tokenize_emoji_opaque);
+    failures += run_test(
+        "test_tokenize_camel_fixture_is_deterministic",
+        test_tokenize_camel_fixture_is_deterministic
+    );
 
     if(failures > 0) {
         std::fprintf(stderr, "\nFAILED: %d test(s)\n", failures);
