@@ -245,6 +245,14 @@ int main() {
        || failure_index.size() != 0) {
         return fail("erase failed after injected insertion and replacement faults");
     }
+    failure_index.clear();
+    if(failure_index.size() != 0 || failure_index.bit_count() != 16) {
+        return fail("clear failed after injected insertion and replacement faults");
+    }
+    failure_index.upsert(make_record("chunk:after-clear", {4}, "clear"));
+    if(failure_index.search(make_query(1)).empty()) {
+        return fail("retry after clear failed following injected insertion faults");
+    }
 
     index.clear();
     if(index.size() != 0 || index.bit_count() != 16) {
