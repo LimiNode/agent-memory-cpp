@@ -87,6 +87,22 @@ void* operator new[](const std::size_t size) {
     return allocate_for_test(size);
 }
 
+void* operator new(const std::size_t size, const std::nothrow_t&) noexcept {
+    try {
+        return allocate_for_test(size);
+    } catch(const std::bad_alloc&) {
+        return nullptr;
+    }
+}
+
+void* operator new[](const std::size_t size, const std::nothrow_t&) noexcept {
+    try {
+        return allocate_for_test(size);
+    } catch(const std::bad_alloc&) {
+        return nullptr;
+    }
+}
+
 void* operator new(const std::size_t size, const std::align_val_t alignment) {
     return allocate_aligned_for_test(
         size,
@@ -104,6 +120,36 @@ void* operator new[](
     );
 }
 
+void* operator new(
+    const std::size_t size,
+    const std::align_val_t alignment,
+    const std::nothrow_t&
+) noexcept {
+    try {
+        return allocate_aligned_for_test(
+            size,
+            static_cast<std::size_t>(alignment)
+        );
+    } catch(const std::bad_alloc&) {
+        return nullptr;
+    }
+}
+
+void* operator new[](
+    const std::size_t size,
+    const std::align_val_t alignment,
+    const std::nothrow_t&
+) noexcept {
+    try {
+        return allocate_aligned_for_test(
+            size,
+            static_cast<std::size_t>(alignment)
+        );
+    } catch(const std::bad_alloc&) {
+        return nullptr;
+    }
+}
+
 void operator delete(void* pointer) noexcept {
     std::free(pointer);
 }
@@ -117,6 +163,14 @@ void operator delete(void* pointer, const std::size_t) noexcept {
 }
 
 void operator delete[](void* pointer, const std::size_t) noexcept {
+    std::free(pointer);
+}
+
+void operator delete(void* pointer, const std::nothrow_t&) noexcept {
+    std::free(pointer);
+}
+
+void operator delete[](void* pointer, const std::nothrow_t&) noexcept {
     std::free(pointer);
 }
 
@@ -153,6 +207,32 @@ void operator delete[](
     const std::size_t,
     const std::align_val_t
 ) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+void operator delete(
+    void* pointer,
+    const std::align_val_t alignment,
+    const std::nothrow_t&
+) noexcept {
+    (void)alignment;
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+void operator delete[](
+    void* pointer,
+    const std::align_val_t alignment,
+    const std::nothrow_t&
+) noexcept {
+    (void)alignment;
 #if defined(_WIN32)
     _aligned_free(pointer);
 #else
