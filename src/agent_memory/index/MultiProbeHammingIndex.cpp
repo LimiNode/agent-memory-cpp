@@ -67,20 +67,34 @@ namespace agent_memory {
         }
 
         const auto position = m_records.size();
-        m_positions.emplace(record.chunk_id, position);
+        bool signature_storage_committed = false;
+        bool tables_touched = false;
         try {
             m_records.push_back(StoredRecord{record.chunk_id, std::move(record.metadata)});
+            inject_failure(
+                MultiProbeHammingIndexFaultPoint::AfterRecordAppendBeforeSignatureStorage
+            );
             m_signature_words.insert(
                 m_signature_words.end(),
                 record.signature.words().begin(),
                 record.signature.words().end()
             );
+            signature_storage_committed = true;
+            inject_failure(
+                MultiProbeHammingIndexFaultPoint::AfterSignatureStorageBeforeTables
+            );
+            tables_touched = true;
             add_to_tables(position);
+            m_positions.emplace(record.chunk_id, position);
         } catch(...) {
-            if(m_records.size() > position) {
+            if(tables_touched && signature_storage_committed) {
                 remove_from_tables(position);
-                m_records.pop_back();
+            }
+            if(signature_storage_committed) {
                 m_signature_words.resize(position * m_distance->word_count());
+            }
+            if(m_records.size() > position) {
+                m_records.pop_back();
             }
             m_positions.erase(record.chunk_id);
             throw;
@@ -408,6 +422,9 @@ namespace agent_memory {
         const auto* words = signature_words(position);
         for(std::size_t table = 0; table < m_tables.size(); ++table) {
             m_tables[table][bucket_key(table, words)].push_back(position);
+            if(table == 0) {
+                inject_failure(MultiProbeHammingIndexFaultPoint::AfterFirstTableInsert);
+            }
         }
     }
 
@@ -427,6 +444,22 @@ namespace agent_memory {
                 m_tables[table].erase(bucket);
             }
         }
+    }
+
+    void MultiProbeHammingIndex::set_failure_injection_for_testing(
+        const MultiProbeHammingIndexFaultPoint point
+    ) noexcept {
+        m_failure = point;
+    }
+
+    void MultiProbeHammingIndex::inject_failure(
+        const MultiProbeHammingIndexFaultPoint point
+    ) {
+        if(m_failure != point) {
+            return;
+        }
+        m_failure = MultiProbeHammingIndexFaultPoint::None;
+        throw std::runtime_error("injected MultiProbeHammingIndex failure");
     }
 
 } // namespace agent_memory
