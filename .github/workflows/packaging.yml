@@ -107,6 +107,21 @@ jobs:
           & (Join-Path $relocatedBuild 'agent_memory_installed_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'relocated installed consumer failed' }
 
+          $headerFixturePositive = Join-Path $repo '.build/packaging-header-manifest-nested'
+          cmake -S (Join-Path $repo 'packaging/consumers/header-manifest-fixture') `
+            -B $headerFixturePositive -G Ninja `
+            "-DAGENT_MEMORY_SOURCE_DIR=$repo" `
+            -DAGENT_MEMORY_FIXTURE_WITH_FORBIDDEN_HEADER=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'nested header-manifest fixture failed' }
+
+          $headerFixtureNegative = Join-Path $repo '.build/packaging-header-manifest-negative'
+          cmake -S (Join-Path $repo 'packaging/consumers/header-manifest-fixture') `
+            -B $headerFixtureNegative -G Ninja `
+            "-DAGENT_MEMORY_SOURCE_DIR=$repo" `
+            -DAGENT_MEMORY_FIXTURE_WITH_FORBIDDEN_HEADER=ON
+          if ($LASTEXITCODE -eq 0) { throw 'negative header-manifest fixture unexpectedly passed' }
+          Write-Host 'negative header-manifest fixture failed as expected'
+
   mdbx-installed-consumer:
     name: MDBX installed consumer (ubuntu-latest)
     runs-on: ubuntu-latest
