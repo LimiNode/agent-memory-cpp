@@ -370,3 +370,45 @@ The workflow's `Full research CTest` is skipped and is not counted as evidence.
 Independent review and integration of the Draft implementation remain required.
 No release, tag, version change or cleanup is performed. The inventory hash and
 a small post-release review queue are recorded in the [cleanup manifest](pre-release-ann-r4-workspace-cleanup-manifest.md).
+
+## 2026-11-13 merged compatibility-gate result
+
+The bounded exact-generation implementation was squash-merged as PR #612 in
+`331d9aea2323d6b501a873a7791d8b719124400d`. This section supersedes the earlier
+proposed upgrade matrix for the bounded exact-reference profile only; it does
+not change the R4 evidence boundary above.
+
+The exact post-merge `main` is `331d9aea2323d6b501a873a7791d8b719124400d`.
+[Post-merge CI 43433365961](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43433365961)
+and [packaging 43433365702](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43433365702)
+completed successfully. The packaging `OLD to NEW exact generation upgrade` job
+also succeeded and uploaded `exact-generation-upgrade-receipt` with artifact
+digest `sha256:2c552b0e982bd894482dbb5b201ac246044557b36c7e71a3e205ceccb779d7ad`.
+`Full research CTest` remains skipped and is not counted as evidence.
+
+The executed gate is classified as:
+
+`PASSED — EXPERIMENTAL EXACT GENERATION PROFILE`
+
+The OLD library at `52004324bc0d2b07c3657245195db349dd391774` created the
+canonical MDBX/CAS state without a derived generation. The merged NEW library
+added, activated, reopened, queried, rebuilt and rolled back a separate exact
+generation, while interrupted-build and pre-commit activation failures remained
+fail-closed. The OLD consumer reopened the augmented database. The canonical
+logical snapshot and CAS evidence remained unchanged; the shared snapshot digest
+is `bc29c115cbd644c83837853df9f382105154b178d10f35b3a9f0fab6cc5d97cc`.
+
+The profile guarantees explicit `KnowledgeUnitId`/revision bindings, source and
+projection freshness checks, lifetime-aware snapshot ownership, atomic MDBX
+active-pointer selection, reopen validation, rollback to a retained compatible
+generation, and mandatory host authorization before scoring/top-K. Retained
+FP32 vector provenance remains host-asserted; `model_id` and `recipe_id` are not
+cryptographic model attestation.
+
+This result does not establish NeuRoute R4 routing, production ANN selection,
+ANN quality or latency targets, THQ/codebook migration, arbitrary schema
+migrations, lossy-code reconstruction, cross-platform MDBX file portability,
+online atomic backup of MDBX/CAS, or general generation garbage collection.
+No release, tag, version publication, workspace cleanup, or modification of
+PR #616 was performed. The first agent owns the remaining Technical Preview
+preflight and user-facing release documentation.
