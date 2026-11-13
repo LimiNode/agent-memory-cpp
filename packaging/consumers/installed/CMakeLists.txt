@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(agent_memory_installed_consumer LANGUAGES CXX)
 
 find_package(agent_memory CONFIG REQUIRED)
+include("${CMAKE_CURRENT_LIST_DIR}/../common/verify_public_header_manifest.cmake")
 
 string(REPLACE "." ";" _agent_memory_version_parts "${agent_memory_PACKAGE_VERSION}")
 list(LENGTH _agent_memory_version_parts _agent_memory_version_count)

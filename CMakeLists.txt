@@ -2434,6 +2434,7 @@ install(TARGETS agent_memory
 install(DIRECTORY src/agent_memory/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/agent_memory
     FILES_MATCHING
+        PATTERN "CanonicalContentStoreInternal.hpp" EXCLUDE
         PATTERN "*.hpp"
         PATTERN "*.h"
         PATTERN "*.ipp"
