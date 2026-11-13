@@ -96,16 +96,19 @@ namespace agent_memory {
         }
         stage_resource(resource_id).insert(chunk_id);
 
+        // Stage the record in a node map as well.  Replacements extract the
+        // old node and merge this already-allocated node into the live map;
+        // this avoids a potentially-throwing value swap in the commit path.
         std::map<ChunkId, StoredRecord> staged_records;
-        if(old_record == nullptr) {
-            staged_records.emplace(chunk_id, std::move(new_record));
-        }
+        staged_records.emplace(chunk_id, std::move(new_record));
 
         // Commit order is deliberately last: all allocations have already
         // happened. Node-map merges and swaps do not allocate; scalar and
         // document-frequency changes are likewise non-throwing.
         if(old_record != nullptr) {
-            swap_stored_records(old_it->second, new_record);
+            const auto old_node = m_records.extract(old_it);
+            (void)old_node;
+            m_records.merge(staged_records);
         } else {
             m_records.merge(staged_records);
         }
@@ -353,15 +356,6 @@ namespace agent_memory {
                 }
             }
         }
-    }
-
-    void ExactLexicalIndex::swap_stored_records(
-        StoredRecord& left,
-        StoredRecord& right
-    ) noexcept {
-        using std::swap;
-        swap(left.record, right.record);
-        swap(left.positions_by_term, right.positions_by_term);
     }
 
 } // namespace agent_memory

@@ -77,11 +77,6 @@ namespace agent_memory {
 
         void remove_record_stats(const StoredRecord& record);
 
-        static void swap_stored_records(
-            StoredRecord& left,
-            StoredRecord& right
-        ) noexcept;
-
         ExactLexicalIndexOptions m_options;
         std::map<ChunkId, StoredRecord> m_records;
         std::map<ResourceId, std::set<ChunkId>> m_chunks_by_resource;
