@@ -1,18 +1,39 @@
 # M0/KB-0 Technical Preview preflight
 
-This document is an evidence report for the current `main` after the guarded
-merge of PR #607. It is not a release, tag, API promise, or activation switch.
+This document is an evidence report for the frozen candidate `main` after the
+guarded merge of PRs #607, #610 and #611. It is not a release, tag, API
+promise, or activation switch.
 The intended preview boundary is a narrow, text-only, source-bound path. The
 broader normalized-first profile in
 [`first-release-profile.md`](first-release-profile.md) remains a target and
 must not be reported as implemented merely because this preflight is green.
 
 The separate [Markdown candidate operations guide](markdown-technical-preview.md)
-adds installed-consumer and cold offline backup/restore qualification to the
-#607 baseline below. It does not turn this historical baseline into evidence
-of a release or cross-version compatibility. Those operational extensions
-describe the candidate branch until independently reviewed and integrated;
-the baseline commit and its recorded workflow results remain unchanged.
+describes the installed-consumer and cold offline backup/restore qualification
+now integrated by #611. The historical #607 baseline below is retained as
+provenance; current release-candidate evidence is in the matrix linked below.
+
+## Frozen candidate baseline
+
+| Item | Value |
+|---|---|
+| Candidate main | `dde38ae89fd8bef4be4e7306f2250a7fe3a094d4` (#611 merge) |
+| Post-merge CI | [run 43224174466](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43224174466), SUCCESS |
+| Post-merge packaging | [run 43224174341](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43224174341), SUCCESS |
+| Project/package version | `0.1.0`; no ABI or migration promise |
+| Language/toolchain contract | C++17, CMake 3.20+, static `agent_memory` target |
+| MDBX dependency pins | libmdbx `fc8b8e4697e0ef8b2cd5aee1f2d9fb0974fc665f`; mdbx-containers `4ab32b5eab3cdfce95d1a6c0f05f566019793ec4` |
+| Product configuration | `AGENT_MEMORY_ENABLE_MDBX=ON`, JSON/Zstd/research tooling not required; `max_dbs=96` default; explicit table prefix and CAS root |
+| Product profile | Original UTF-8 `.md`/`.markdown`, bounded lexical retrieval and verified source hydration |
+| Operational evidence | Installed C++17 A@1/reopen/A@2, stale/CAS/budget controls, two-resource cold restore, and post-join replay in #611 |
+| Package-version gate | #613 is a separate Draft; its ExactVersion correction and exact-head packaging result are not part of this frozen #611 candidate |
+| Upgrade work | #612 is separate Draft ANN/R4 exact-generation work and is not merged or included in this candidate |
+
+The full readiness classification is in
+[`markdown-technical-preview-release-candidate.md`](markdown-technical-preview-release-candidate.md).
+If #613 or #612 is later integrated, this post-#611 evidence remains historical
+and the complete preflight must be regenerated against the resulting exact
+`main` commit before any release decision.
 
 ## Verification baseline
 
