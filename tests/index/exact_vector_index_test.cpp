@@ -166,6 +166,25 @@ int main() {
         return fail("dimension adoption must follow the first successful insertion");
     }
 
+    for(const auto invalid_value : {
+            std::numeric_limits<float>::quiet_NaN(),
+            std::numeric_limits<float>::infinity(),
+            -std::numeric_limits<float>::infinity()
+        }) {
+        agent_memory::ExactVectorIndex invalid_record_index(
+            agent_memory::ExactVectorIndexOptions{2, agent_memory::SimilarityMetric::DotProduct}
+        );
+        if(!throws_invalid_argument([&invalid_record_index, invalid_value] {
+               invalid_record_index.upsert(make_record(
+                   "chunk:invalid",
+                   {invalid_value, 0.0F},
+                   "invalid"
+               ));
+           })) {
+            return fail("exact vector index must reject every non-finite record value");
+        }
+    }
+
     if(!throws_invalid_argument([&index] {
            index.upsert(make_record(
                "chunk:alpha",
@@ -188,6 +207,21 @@ int main() {
            });
        })) {
         return fail("exact vector index must reject infinite query values");
+    }
+    for(const auto invalid_value : {
+            std::numeric_limits<float>::quiet_NaN(),
+            std::numeric_limits<float>::infinity(),
+            -std::numeric_limits<float>::infinity()
+        }) {
+        if(!throws_invalid_argument([&index, invalid_value] {
+               (void)index.search(agent_memory::VectorSearchQuery{
+                   agent_memory::Embedding{{invalid_value, 0.0F, 0.0F}},
+                   1,
+                   {}
+               });
+           })) {
+            return fail("exact vector index must reject every non-finite query value");
+        }
     }
 
     agent_memory::ExactVectorIndex dot_index(agent_memory::ExactVectorIndexOptions{
