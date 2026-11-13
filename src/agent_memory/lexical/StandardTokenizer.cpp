@@ -127,32 +127,64 @@ namespace {
         return false;
     }
 
+    [[nodiscard]] bool is_camel_boundary_at(
+        const std::string_view text,
+        const std::size_t index
+    ) noexcept {
+        if(index == 0 || index >= text.size()) {
+            return false;
+        }
+
+        const auto previous = static_cast<unsigned char>(text[index - 1]);
+        const auto current = static_cast<unsigned char>(text[index]);
+        if((is_ascii_lower(previous) || is_ascii_digit(previous)) &&
+           is_ascii_upper(current)) {
+            return true;
+        }
+
+        if(index >= 2) {
+            const auto prev_prev = static_cast<unsigned char>(text[index - 2]);
+            return is_ascii_upper(prev_prev) &&
+                is_ascii_upper(previous) &&
+                is_ascii_lower(current);
+        }
+
+        return false;
+    }
+
     [[nodiscard]] std::vector<std::size_t> find_camel_boundaries(
         const std::string_view text
-    ) noexcept {
+    ) {
         std::vector<std::size_t> boundaries;
         for(std::size_t index = 1; index < text.size(); ++index) {
-            const auto previous = static_cast<unsigned char>(text[index - 1]);
-            const auto current = static_cast<unsigned char>(text[index]);
-            if((is_ascii_lower(previous) || is_ascii_digit(previous)) && is_ascii_upper(current)) {
-                boundaries.push_back(index);
-                continue;
-            }
-            if(index >= 2) {
-                const auto prev_prev = static_cast<unsigned char>(text[index - 2]);
-                if(is_ascii_upper(prev_prev) && is_ascii_upper(previous) && is_ascii_lower(current)) {
-                    boundaries.push_back(index - 1);
+            if(is_camel_boundary_at(text, index)) {
+                const auto previous = static_cast<unsigned char>(text[index - 1]);
+                if(is_ascii_lower(previous) || is_ascii_digit(previous)) {
+                    boundaries.push_back(index);
+                    continue;
                 }
+
+                // An acronym boundary belongs before the final uppercase
+                // character (for example, HTTPServer -> HTTP / Server).
+                boundaries.push_back(index - 1);
             }
         }
         return boundaries;
     }
 
     [[nodiscard]] bool has_camel_boundary(const std::string_view text) noexcept {
-        return !find_camel_boundaries(text).empty();
+        for(std::size_t index = 1; index < text.size(); ++index) {
+            if(is_camel_boundary_at(text, index)) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    [[nodiscard]] TokenKind classify_token(const std::string_view text) noexcept {
+    [[nodiscard]] TokenKind classify_token(
+        const std::string_view text,
+        const bool camel_boundary
+    ) noexcept {
         if(has_path_separator(text)) {
             return TokenKind::Path;
         }
@@ -161,7 +193,7 @@ namespace {
             return TokenKind::Number;
         }
 
-        if(has_identifier_delimiter(text) || has_camel_boundary(text)) {
+        if(has_identifier_delimiter(text) || camel_boundary) {
             return TokenKind::Identifier;
         }
 
@@ -192,12 +224,12 @@ namespace {
         TokenizationResult& result,
         const std::string_view text,
         const std::size_t offset,
-        const TokenizeOptions& options
+        const TokenizeOptions& options,
+        const std::vector<std::size_t>& boundaries
     ) {
         std::size_t part_begin = 0;
         std::size_t emitted_parts = 0;
         std::size_t boundary_index = 0;
-        const auto boundaries = find_camel_boundaries(text);
 
         const auto flush_part = [&](const std::size_t part_end) {
             if(part_end <= part_begin) {
@@ -261,7 +293,15 @@ namespace {
                 }
 
                 const auto token_text = text.substr(begin, index - begin);
-                const auto kind = classify_token(token_text);
+                std::vector<std::size_t> camel_boundaries;
+                bool camel_boundary = false;
+                if(options.emit_identifier_parts) {
+                    camel_boundaries = find_camel_boundaries(token_text);
+                    camel_boundary = !camel_boundaries.empty();
+                } else {
+                    camel_boundary = has_camel_boundary(token_text);
+                }
+                const auto kind = classify_token(token_text, camel_boundary);
 
                 std::string_view body = token_text;
                 std::size_t trim_count = 0;
@@ -297,7 +337,13 @@ namespace {
                    kind == TokenKind::Identifier &&
                    options.emit_identifier_parts &&
                    !is_cli_flag_like(body)) {
-                    append_identifier_parts(result, body, begin, options);
+                    append_identifier_parts(
+                        result,
+                        body,
+                        begin,
+                        options,
+                        camel_boundaries
+                    );
                 }
                 continue;
             }
