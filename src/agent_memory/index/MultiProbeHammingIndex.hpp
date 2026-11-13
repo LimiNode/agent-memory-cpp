@@ -16,6 +16,14 @@
 
 namespace agent_memory {
 
+    /// \brief Deterministic failure points for exception-safety tests.
+    enum class MultiProbeHammingIndexFaultPoint : std::uint8_t {
+        None = 0,
+        AfterRecordAppendBeforeSignatureStorage,
+        AfterSignatureStorageBeforeTables,
+        AfterFirstTableInsert
+    };
+
     /// \brief Configuration for deterministic multi-probe Hamming buckets.
     struct MultiProbeHammingIndexOptions final {
         /// \brief Binary-space identity accepted by this index.
@@ -73,6 +81,12 @@ namespace agent_memory {
         [[nodiscard]] bool erase(const ChunkId& chunk_id) override;
         void clear() override;
 
+        /// \brief Inject one failure into the next matching insertion phase.
+        /// \note Testing hook; production callers must leave it at None.
+        void set_failure_injection_for_testing(
+            MultiProbeHammingIndexFaultPoint point
+        ) noexcept;
+
     private:
         struct StoredRecord final {
             ChunkId chunk_id;
@@ -95,6 +109,7 @@ namespace agent_memory {
         ) const noexcept;
         void add_to_tables(std::size_t position);
         void remove_from_tables(std::size_t position);
+        void inject_failure(MultiProbeHammingIndexFaultPoint point);
 
         MultiProbeHammingIndexOptions m_options;
         std::vector<StoredRecord> m_records;
@@ -102,6 +117,8 @@ namespace agent_memory {
         std::map<ChunkId, std::size_t> m_positions;
         std::vector<Table> m_tables;
         std::optional<HammingDistanceComputer> m_distance;
+        MultiProbeHammingIndexFaultPoint m_failure =
+            MultiProbeHammingIndexFaultPoint::None;
     };
 
 } // namespace agent_memory
