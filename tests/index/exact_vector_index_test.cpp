@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -38,6 +39,16 @@ namespace {
         try {
             fn();
         } catch(const std::invalid_argument&) {
+            return true;
+        }
+        return false;
+    }
+
+    template <typename Fn>
+    bool throws_overflow_error(Fn&& fn) {
+        try {
+            fn();
+        } catch(const std::overflow_error&) {
             return true;
         }
         return false;
@@ -135,6 +146,48 @@ int main() {
         });
     })) {
         return fail("exact vector index must reject query dimension mismatches");
+    }
+
+    agent_memory::ExactVectorIndex invalid_dynamic;
+    if(!throws_invalid_argument([&invalid_dynamic] {
+           invalid_dynamic.upsert(make_record(
+               "chunk:invalid-first",
+               {std::numeric_limits<float>::quiet_NaN(), 1.0F},
+               "invalid"
+           ));
+       })) {
+        return fail("exact vector index must reject NaN records");
+    }
+    if(invalid_dynamic.dimension() != 0 || invalid_dynamic.size() != 0) {
+        return fail("failed first insertion must not adopt a vector dimension");
+    }
+    invalid_dynamic.upsert(make_record("chunk:valid-first", {1.0F, 0.0F}, "valid"));
+    if(invalid_dynamic.dimension() != 2 || invalid_dynamic.size() != 1) {
+        return fail("dimension adoption must follow the first successful insertion");
+    }
+
+    if(!throws_invalid_argument([&index] {
+           index.upsert(make_record(
+               "chunk:alpha",
+               {std::numeric_limits<float>::infinity(), 0.0F, 0.0F},
+               "documents"
+           ));
+       })) {
+        return fail("exact vector index must reject infinite replacement values");
+    }
+    const auto alpha_after_invalid = index.find(agent_memory::ChunkId{"chunk:alpha"});
+    if(!alpha_after_invalid || alpha_after_invalid->embedding.values[0] != 0.0F) {
+        return fail("rejected vector update must preserve the existing record");
+    }
+
+    if(!throws_invalid_argument([&index] {
+           (void)index.search(agent_memory::VectorSearchQuery{
+               agent_memory::Embedding{{-std::numeric_limits<float>::infinity(), 0.0F, 0.0F}},
+               1,
+               {}
+           });
+       })) {
+        return fail("exact vector index must reject infinite query values");
     }
 
     agent_memory::ExactVectorIndex dot_index(agent_memory::ExactVectorIndexOptions{
@@ -245,6 +298,65 @@ int main() {
        || replacement_results.front().chunk_id.value() != "chunk:wide-a"
        || !almost_equal(replacement_results.front().score, 1.0F)) {
         return fail("upsert replacement must refresh the cached cosine norm");
+    }
+
+    const auto extreme = std::numeric_limits<float>::max();
+    for(const bool enable_simd : {false, true}) {
+        agent_memory::ExactVectorIndex extreme_cosine(
+            agent_memory::ExactVectorIndexOptions{
+                2,
+                agent_memory::SimilarityMetric::Cosine,
+                enable_simd
+            }
+        );
+        extreme_cosine.upsert(make_record("chunk:extreme", {extreme, extreme}, "extreme"));
+        const auto extreme_results = extreme_cosine.search(agent_memory::VectorSearchQuery{
+            agent_memory::Embedding{{extreme, extreme}},
+            1,
+            {}
+        });
+        if(extreme_results.size() != 1
+           || !std::isfinite(extreme_results.front().score)
+           || !almost_equal(extreme_results.front().score, 1.0F)) {
+            return fail("cosine scoring must remain finite for extreme finite inputs");
+        }
+    }
+
+    agent_memory::ExactVectorIndex overflowing_dot(
+        agent_memory::ExactVectorIndexOptions{
+            2,
+            agent_memory::SimilarityMetric::DotProduct,
+            false
+        }
+    );
+    overflowing_dot.upsert(make_record("chunk:overflow", {extreme, extreme}, "extreme"));
+    if(!throws_overflow_error([&overflowing_dot, extreme] {
+           (void)overflowing_dot.search(agent_memory::VectorSearchQuery{
+               agent_memory::Embedding{{extreme, extreme}},
+               1,
+               {}
+           });
+       })) {
+        return fail("non-finite dot-product scores must be rejected before ranking");
+    }
+
+    agent_memory::ExactVectorIndex overflowing_euclidean(
+        agent_memory::ExactVectorIndexOptions{
+            2,
+            agent_memory::SimilarityMetric::Euclidean,
+            false
+        }
+    );
+    overflowing_euclidean.upsert(make_record("chunk:overflow", {extreme, extreme}, "extreme"));
+    if(!throws_overflow_error([&overflowing_euclidean] {
+           (void)overflowing_euclidean.search(agent_memory::VectorSearchQuery{
+               agent_memory::Embedding{{-std::numeric_limits<float>::max(),
+                                        -std::numeric_limits<float>::max()}},
+               1,
+               {}
+           });
+       })) {
+        return fail("non-finite Euclidean scores must be rejected before ranking");
     }
 
     index.clear();
