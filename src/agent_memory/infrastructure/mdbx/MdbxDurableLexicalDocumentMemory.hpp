@@ -11,6 +11,8 @@
 
 #include <agent_memory/domain/KnowledgeUnit.hpp>
 
+#include "MdbxStorageErrors.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -116,7 +118,7 @@ public:
     /// The guard is serialized with the lexical intent and rechecked in the
     /// same MDBX transaction that activates the catalog revision, including
     /// recovery after interruption.
-    /// \throws std::runtime_error when the guard no longer matches.
+    /// \throws MdbxPublicationFenceError when the guard no longer matches.
     [[nodiscard]] std::uint64_t upsert_text_guarded(
         ScopeId scope_id,
         ResourceId resource_id,
