@@ -1,8 +1,10 @@
 #include "MultiProbeHammingIndex.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace agent_memory {
@@ -34,6 +36,22 @@ namespace agent_memory {
     void MultiProbeHammingIndex::upsert(BinarySignatureRecord record) {
         validate_record(record);
 
+        bool adopted_identity = false;
+        if(!m_options.signature_info) {
+            // Identity adoption is part of the insertion transaction.  A failed
+            // first write must not make a later, distinct identity look invalid.
+            try {
+                m_options.signature_info = record.signature_info;
+                initialize_for_identity();
+                adopted_identity = true;
+            } catch(...) {
+                m_options.signature_info.reset();
+                m_tables.clear();
+                m_distance.reset();
+                throw;
+            }
+        }
+
         const auto existing = m_positions.find(record.chunk_id);
         if(existing != m_positions.end()) {
             const auto position = existing->second;
@@ -42,25 +60,73 @@ namespace agent_memory {
                 current_words,
                 current_words + static_cast<std::ptrdiff_t>(m_distance->word_count())
             );
-            auto previous_metadata = m_records[position].metadata;
-            remove_from_tables(position);
+            // Copy before touching the index.  This keeps all allocation points
+            // before the staged posting update and lets the old record remain
+            // searchable until the replacement is ready to commit.
+            auto next_metadata = record.metadata;
+            std::size_t staged_tables = 0;
             try {
+                const auto* replacement_words = record.signature.words().data();
+                for(std::size_t table = 0; table < m_tables.size(); ++table) {
+                    const auto key = bucket_key(table, replacement_words);
+                    auto [bucket, inserted] = m_tables[table].try_emplace(key);
+                    try {
+                        bucket->second.push_back(position);
+                    } catch(...) {
+                        // If this was a newly-created bucket, remove the empty
+                        // container. An existing bucket still contains only
+                        // the old posting and must remain untouched.
+                        if(inserted && bucket->second.empty()) {
+                            m_tables[table].erase(bucket);
+                        }
+                        throw;
+                    }
+                    ++staged_tables;
+                    if(table == 0) {
+                        inject_failure(MultiProbeHammingIndexFaultPoint::AfterFirstTableInsert);
+                    }
+                }
+
+                // Validate the old postings before changing any observable state.
+                for(std::size_t table = 0; table < m_tables.size(); ++table) {
+                    const auto key = bucket_key(table, previous_signature.data());
+                    const auto bucket = m_tables[table].find(key);
+                    if(bucket == m_tables[table].end()
+                       || std::find(
+                              bucket->second.begin(),
+                              bucket->second.end(),
+                              position
+                          ) == bucket->second.end()) {
+                        throw std::logic_error(
+                            "MultiProbeHammingIndex replacement posting is missing"
+                        );
+                    }
+                }
+
+                static_assert(
+                    std::is_nothrow_move_assignable_v<Metadata>,
+                    "Metadata move assignment must not throw during index commit"
+                );
+                m_records[position].metadata = std::move(next_metadata);
+                for(std::size_t table = 0; table < m_tables.size(); ++table) {
+                    remove_one_posting(position, previous_signature.data(), table);
+                }
                 std::copy(
                     record.signature.words().begin(),
                     record.signature.words().end(),
                     signature_words(position)
                 );
-                m_records[position].metadata = std::move(record.metadata);
-                add_to_tables(position);
             } catch(...) {
-                remove_from_tables(position);
-                std::copy(
-                    previous_signature.begin(),
-                    previous_signature.end(),
-                    signature_words(position)
+                rollback_staged_postings(
+                    position,
+                    record.signature.words().data(),
+                    staged_tables
                 );
-                m_records[position].metadata = std::move(previous_metadata);
-                add_to_tables(position);
+                if(adopted_identity) {
+                    m_options.signature_info.reset();
+                    m_tables.clear();
+                    m_distance.reset();
+                }
                 throw;
             }
             return;
@@ -97,6 +163,11 @@ namespace agent_memory {
                 m_records.pop_back();
             }
             m_positions.erase(record.chunk_id);
+            if(adopted_identity) {
+                m_options.signature_info.reset();
+                m_tables.clear();
+                m_distance.reset();
+            }
             throw;
         }
     }
@@ -339,7 +410,9 @@ namespace agent_memory {
         }
     }
 
-    void MultiProbeHammingIndex::validate_record(BinarySignatureRecord& record) {
+    void MultiProbeHammingIndex::validate_record(
+        const BinarySignatureRecord& record
+    ) const {
         if(!is_valid(record.signature_info)) {
             throw std::invalid_argument(
                 "MultiProbeHammingIndex records must use valid signature identity"
@@ -350,11 +423,9 @@ namespace agent_memory {
                 "MultiProbeHammingIndex record signature width must match identity"
             );
         }
-        if(!m_options.signature_info) {
-            m_options.signature_info = record.signature_info;
-            initialize_for_identity();
-        }
-        if(record.signature.empty() || record.signature.bit_count() != bit_count()) {
+        if(record.signature.empty()
+           || (m_options.signature_info
+               && record.signature.bit_count() != bit_count())) {
             throw std::invalid_argument(
                 "MultiProbeHammingIndex record signature width mismatch"
             );
@@ -440,6 +511,54 @@ namespace agent_memory {
             }
             auto& postings = bucket->second;
             postings.erase(std::remove(postings.begin(), postings.end(), position), postings.end());
+            if(postings.empty()) {
+                m_tables[table].erase(bucket);
+            }
+        }
+    }
+
+    void MultiProbeHammingIndex::remove_one_posting(
+        const std::size_t position,
+        const std::uint64_t* words,
+        const std::size_t table
+    ) noexcept {
+        auto bucket = m_tables[table].find(bucket_key(table, words));
+        if(bucket == m_tables[table].end()) {
+            return;
+        }
+        auto& postings = bucket->second;
+        const auto posting = std::find(postings.begin(), postings.end(), position);
+        if(posting != postings.end()) {
+            postings.erase(posting);
+        }
+        if(postings.empty()) {
+            m_tables[table].erase(bucket);
+        }
+    }
+
+    void MultiProbeHammingIndex::rollback_staged_postings(
+        const std::size_t position,
+        const std::uint64_t* words,
+        const std::size_t staged_tables
+    ) noexcept {
+        const auto count = std::min(staged_tables, m_tables.size());
+        for(std::size_t table = 0; table < count; ++table) {
+            auto bucket = m_tables[table].find(bucket_key(table, words));
+            if(bucket == m_tables[table].end()) {
+                continue;
+            }
+            auto& postings = bucket->second;
+            // The replacement posting was appended after any old posting in
+            // this bucket. Remove the newest occurrence so a same-key
+            // replacement cannot erase the still-live original posting.
+            const auto posting = std::find(
+                postings.rbegin(),
+                postings.rend(),
+                position
+            );
+            if(posting != postings.rend()) {
+                postings.erase(std::next(posting).base());
+            }
             if(postings.empty()) {
                 m_tables[table].erase(bucket);
             }
