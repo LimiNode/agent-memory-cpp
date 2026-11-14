@@ -542,7 +542,7 @@ private:
                 continue;
             }
             if(publication.status == PublicationStatus::Fenced) {
-                throw std::runtime_error(
+                throw MdbxPublicationFenceError(
                     "durable lexical publication fence rejected the operation"
                 );
             }

@@ -3,7 +3,8 @@
 #define AGENT_MEMORY_HEADER_INFRASTRUCTURE_MDBX_MDBX_STORAGE_ERRORS_HPP_INCLUDED
 
 /// \file MdbxStorageErrors.hpp
-/// \brief Typed failures raised while decoding persisted MDBX records.
+/// \brief Typed failures raised while decoding persisted MDBX records or
+///        rejecting fenced publications.
 
 #include <stdexcept>
 #include <string>

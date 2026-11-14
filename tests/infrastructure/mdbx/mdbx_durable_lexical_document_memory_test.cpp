@@ -118,10 +118,12 @@ int main() {
         options.context = context;
         MdbxDurableLexicalDocumentMemory memory{std::move(options)};
 
-        const auto pending_is_absent = [&](std::string_view resource_id) {
+        const auto pending_is_absent = [&](std::string_view scope_id,
+                                           std::string_view resource_id) {
             auto txn = context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
             const auto pending = catalog.find(
-                std::string{"pending\x1fguarded\x1f"} + std::string{resource_id},
+                std::string{"pending\x1f"} + std::string{scope_id} +
+                    "\x1f" + std::string{resource_id},
                 txn
             );
             txn.commit();
@@ -143,16 +145,13 @@ int main() {
                     ""
                 }
             ));
-        } catch(const MdbxPublicationFenceError& error_value) {
-            missing_key_rejected =
-                std::string_view{error_value.what()}.find(
-                    "canonical publication fence rejected"
-                ) != std::string_view::npos;
+        } catch(const MdbxPublicationFenceError&) {
+            missing_key_rejected = true;
         }
         expect(missing_key_rejected, "missing publication fence was not typed");
         expect(memory.search(ScopeId{"guarded"}, "publish", 5).empty(),
                "missing publication fence changed the active catalog");
-        expect(pending_is_absent("missing-key"),
+        expect(pending_is_absent("guarded", "missing-key"),
                "missing publication fence left a pending intent");
 
         guards.insert_or_assign("guarded-resource", "current-owner");
@@ -171,15 +170,13 @@ int main() {
                     ""
                 }
             ));
-        } catch(const MdbxPublicationFenceError& error_value) {
-            changed_value_rejected =
-                std::string_view{error_value.what()}.find("value changed") !=
-                std::string_view::npos;
+        } catch(const MdbxPublicationFenceError&) {
+            changed_value_rejected = true;
         }
         expect(changed_value_rejected, "changed publication fence was not typed");
         expect(memory.search(ScopeId{"guarded"}, "publish", 5).empty(),
                "changed publication fence changed the active catalog");
-        expect(pending_is_absent("changed-value"),
+        expect(pending_is_absent("guarded", "changed-value"),
                "changed publication fence left a pending intent");
 
         tokens.insert_or_assign("guarded-resource", "current-token");
@@ -198,16 +195,266 @@ int main() {
                     "stale-token"
                 }
             ));
-        } catch(const MdbxPublicationFenceError& error_value) {
-            changed_token_rejected =
-                std::string_view{error_value.what()}.find("token changed") !=
-                std::string_view::npos;
+        } catch(const MdbxPublicationFenceError&) {
+            changed_token_rejected = true;
         }
         expect(changed_token_rejected, "changed publication token was not typed");
         expect(memory.search(ScopeId{"guarded"}, "publish", 5).empty(),
                "changed publication token changed the active catalog");
-        expect(pending_is_absent("changed-token"),
+        expect(pending_is_absent("guarded", "changed-token"),
                "changed publication token left a pending intent");
+
+        guards.insert_or_assign("catalog-stage-resource", "owner-a");
+        const DurableLexicalPublicationGuard catalog_stage_guard{
+            "agent_memory_resource_import_intents",
+            "catalog-stage-resource",
+            "owner-a",
+            "",
+            ""
+        };
+        expect(memory.upsert_text_guarded(
+                   ScopeId{"guarded"},
+                   ResourceId{"catalog-stage-resource"},
+                   "https://example.test/catalog-stage",
+                   "Catalog-stage fencing keeps the prior binding.",
+                   catalog_stage_guard) == 1,
+               "catalog-stage fixture publication failed");
+        guards.insert_or_assign("catalog-stage-resource", "owner-b");
+        bool catalog_stage_rejected = false;
+        try {
+            static_cast<void>(memory.upsert_text_guarded(
+                ScopeId{"guarded"},
+                ResourceId{"catalog-stage-resource"},
+                "https://example.test/catalog-stage",
+                "Catalog-stage fencing keeps the prior binding.",
+                catalog_stage_guard));
+        } catch(const MdbxPublicationFenceError&) {
+            catalog_stage_rejected = true;
+        }
+        expect(catalog_stage_rejected,
+               "catalog-stage fencing did not use the typed exception");
+        const auto retained_catalog_stage = memory.search(
+            ScopeId{"guarded"}, "prior binding", 5);
+        expect(retained_catalog_stage.size() == 1 &&
+                   retained_catalog_stage.front().source_uri ==
+                       "https://example.test/catalog-stage" &&
+                   retained_catalog_stage.front().generation == 1,
+               "catalog-stage fencing changed the active catalog");
+        expect(pending_is_absent("guarded", "catalog-stage-resource"),
+               "catalog-stage fencing left a pending intent");
+    }
+
+    {
+        auto context = MdbxStorageContext::open(
+            path.string(),
+            false,
+            kDefaultMdbxMaxDbs
+        );
+        mdbxc::KeyValueTable<std::string, std::string> guards(
+            context->connection(), "agent_memory_resource_import_intents"
+        );
+        mdbxc::KeyValueTable<std::string, std::string> catalog(
+            context->connection(), "agent_memory_durable_lexical_catalog"
+        );
+        guards.insert_or_assign("after-canonical-resource", "owner-a");
+        const DurableLexicalPublicationGuard guard_a{
+            "agent_memory_resource_import_intents",
+            "after-canonical-resource",
+            "owner-a",
+            "",
+            ""
+        };
+        bool guard_changed = false;
+        MdbxDurableLexicalDocumentMemoryOptions options;
+        options.context = context;
+        options.fault_injector = [&](DurableLexicalDocumentMemoryFaultPoint point) {
+            if(point == DurableLexicalDocumentMemoryFaultPoint::BeforeCatalogPublication &&
+               !guard_changed) {
+                guard_changed = true;
+                guards.insert_or_assign("after-canonical-resource", "owner-b");
+            }
+        };
+        MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+        bool rejected = false;
+        try {
+            static_cast<void>(memory.upsert_text_guarded(
+                ScopeId{"after-canonical"},
+                ResourceId{"after-canonical-resource"},
+                "https://example.test/after-canonical",
+                "Canonical write precedes catalog fencing.",
+                guard_a));
+        } catch(const MdbxPublicationFenceError&) {
+            rejected = true;
+        }
+        expect(rejected, "post-canonical guard change was not typed");
+        expect(memory.search(ScopeId{"after-canonical"}, "precedes", 5).empty(),
+               "post-canonical fencing published a superseded catalog entry");
+        auto pending_txn = context->connection()->transaction(
+            mdbxc::TransactionMode::READ_ONLY
+        );
+        const auto pending = catalog.find(
+            std::string{"pending\x1f"} + "after-canonical" +
+                "\x1f" + "after-canonical-resource",
+            pending_txn
+        );
+        pending_txn.commit();
+        expect(!pending.has_value(),
+               "post-canonical fencing left a pending intent");
+
+        guards.insert_or_assign("after-canonical-resource", "owner-b");
+        expect(memory.upsert_text_guarded(
+                   ScopeId{"after-canonical"},
+                   ResourceId{"after-canonical-resource"},
+                   "https://example.test/after-canonical",
+                   "Canonical write precedes catalog fencing.",
+                   DurableLexicalPublicationGuard{
+                       "agent_memory_resource_import_intents",
+                       "after-canonical-resource",
+                       "owner-b",
+                       "",
+                       ""
+                   }) == 1,
+               "valid guard did not publish retained canonical history");
+        const auto republished = memory.search(
+            ScopeId{"after-canonical"}, "precedes", 5
+        );
+        expect(republished.size() == 1 && republished.front().generation == 1,
+               "retained canonical history was not republished correctly");
+    }
+
+    {
+        auto context = MdbxStorageContext::open(
+            path.string(),
+            false,
+            kDefaultMdbxMaxDbs
+        );
+        mdbxc::KeyValueTable<std::string, std::string> guards(
+            context->connection(), "agent_memory_resource_import_intents"
+        );
+        mdbxc::KeyValueTable<std::string, std::string> catalog(
+            context->connection(), "agent_memory_durable_lexical_catalog"
+        );
+        guards.insert_or_assign("recovery-fenced-resource", "owner-a");
+        const DurableLexicalPublicationGuard guard_a{
+            "agent_memory_resource_import_intents",
+            "recovery-fenced-resource",
+            "owner-a",
+            "",
+            ""
+        };
+        {
+            MdbxDurableLexicalDocumentMemoryOptions options;
+            options.context = context;
+            options.fault_injector = [](DurableLexicalDocumentMemoryFaultPoint point) {
+                if(point == DurableLexicalDocumentMemoryFaultPoint::AfterCanonicalWrite) {
+                    throw std::runtime_error("injected recovery interruption");
+                }
+            };
+            MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+            bool interrupted = false;
+            try {
+                static_cast<void>(memory.upsert_text_guarded(
+                    ScopeId{"recovery-fenced"},
+                    ResourceId{"recovery-fenced-resource"},
+                    "https://example.test/recovery-fenced",
+                    "Recovery discards a fenced pending operation.",
+                    guard_a));
+            } catch(const std::runtime_error&) {
+                interrupted = true;
+            }
+            expect(interrupted, "fenced recovery interruption was not injected");
+        }
+        guards.insert_or_assign("recovery-fenced-resource", "owner-b");
+        {
+            MdbxDurableLexicalDocumentMemoryOptions options;
+            options.context = context;
+            MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+            expect(memory.search(
+                       ScopeId{"recovery-fenced"}, "discards", 5
+                   ).empty(),
+                   "recovery activated a fenced pending catalog entry");
+            auto pending_txn = context->connection()->transaction(
+                mdbxc::TransactionMode::READ_ONLY
+            );
+            const auto pending = catalog.find(
+                "pending\x1frecovery-fenced\x1frecovery-fenced-resource",
+                pending_txn
+            );
+            pending_txn.commit();
+            expect(!pending.has_value(),
+                   "recovery did not discard the fenced pending intent");
+            expect(memory.upsert_text_guarded(
+                       ScopeId{"recovery-fenced"},
+                       ResourceId{"recovery-fenced-resource"},
+                       "https://example.test/recovery-fenced",
+                       "Recovery discards a fenced pending operation.",
+                       DurableLexicalPublicationGuard{
+                           "agent_memory_resource_import_intents",
+                           "recovery-fenced-resource",
+                           "owner-b",
+                           "",
+                           ""
+                       }) == 1,
+                   "valid guard did not publish after fenced recovery");
+        }
+    }
+
+    {
+        auto context = MdbxStorageContext::open(
+            path.string(),
+            false,
+            kDefaultMdbxMaxDbs
+        );
+        mdbxc::KeyValueTable<std::string, std::string> catalog(
+            context->connection(), "agent_memory_durable_lexical_catalog"
+        );
+        {
+            MdbxDurableLexicalDocumentMemoryOptions options;
+            options.context = context;
+            options.fault_injector = [](DurableLexicalDocumentMemoryFaultPoint point) {
+                if(point == DurableLexicalDocumentMemoryFaultPoint::AfterCanonicalWrite) {
+                    throw std::runtime_error(
+                        "canonical publication fence rejected: unrelated injected failure"
+                    );
+                }
+            };
+            MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+            bool ordinary_failure = false;
+            bool typed_failure = false;
+            try {
+                static_cast<void>(memory.upsert_text(
+                    ScopeId{"unrelated-failure"},
+                    ResourceId{"unrelated-resource"},
+                    "https://example.test/unrelated-failure",
+                    "An unrelated failure retains its pending intent."));
+            } catch(const MdbxPublicationFenceError&) {
+                typed_failure = true;
+            } catch(const std::runtime_error&) {
+                ordinary_failure = true;
+            }
+            expect(ordinary_failure && !typed_failure,
+                   "unrelated diagnostic text was classified as fencing");
+            auto pending_txn = context->connection()->transaction(
+                mdbxc::TransactionMode::READ_ONLY
+            );
+            const auto pending = catalog.find(
+                "pending\x1funrelated-failure\x1funrelated-resource",
+                pending_txn
+            );
+            pending_txn.commit();
+            expect(pending.has_value(),
+                   "unrelated failure did not retain its pending intent");
+        }
+        {
+            MdbxDurableLexicalDocumentMemoryOptions options;
+            options.context = context;
+            MdbxDurableLexicalDocumentMemory memory{std::move(options)};
+            const auto recovered = memory.search(
+                ScopeId{"unrelated-failure"}, "retains", 5
+            );
+            expect(recovered.size() == 1 && recovered.front().generation == 1,
+                   "unrelated failure pending intent was not recoverable");
+        }
     }
 
     {
