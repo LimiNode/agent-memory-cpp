@@ -98,7 +98,7 @@ namespace agent_memory {
 
         void initialize_for_identity();
         void validate_options() const;
-        void validate_record(BinarySignatureRecord& record);
+        void validate_record(const BinarySignatureRecord& record) const;
         void validate_query(const BinarySignatureSearchQuery& query) const;
         void require_matching_identity(const BinarySignatureInfo& info) const;
         [[nodiscard]] const std::uint64_t* signature_words(std::size_t position) const noexcept;
@@ -109,6 +109,16 @@ namespace agent_memory {
         ) const noexcept;
         void add_to_tables(std::size_t position);
         void remove_from_tables(std::size_t position);
+        void remove_one_posting(
+            std::size_t position,
+            const std::uint64_t* words,
+            std::size_t table
+        ) noexcept;
+        void rollback_staged_postings(
+            std::size_t position,
+            const std::uint64_t* words,
+            std::size_t staged_tables
+        ) noexcept;
         void inject_failure(MultiProbeHammingIndexFaultPoint point);
 
         MultiProbeHammingIndexOptions m_options;
