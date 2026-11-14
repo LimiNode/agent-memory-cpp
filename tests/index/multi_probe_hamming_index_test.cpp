@@ -66,6 +66,16 @@ namespace {
         return false;
     }
 
+    template <typename Function>
+    bool throws_runtime_error(Function&& function) {
+        try {
+            function();
+        } catch(const std::runtime_error&) {
+            return true;
+        }
+        return false;
+    }
+
 } // namespace
 
 int main() {
@@ -159,6 +169,130 @@ int main() {
            (void)agent_memory::MultiProbeHammingIndex(invalid);
        })) {
         return fail("multi-probe index must reject projections wider than signatures");
+    }
+
+    // Every insertion phase must roll back without consulting uncommitted
+    // signature storage, and a failed replacement must retain the old record.
+    agent_memory::MultiProbeHammingIndex failure_index(options);
+    failure_index.set_failure_injection_for_testing(
+        agent_memory::MultiProbeHammingIndexFaultPoint::AfterRecordAppendBeforeSignatureStorage
+    );
+    if(!throws_runtime_error([&] {
+           failure_index.upsert(make_record("chunk:first-failure", {}, "keep"));
+       })) {
+        return fail("record-before-signature fault did not interrupt insertion");
+    }
+    if(failure_index.size() != 0
+       || failure_index.find(agent_memory::ChunkId{"chunk:first-failure"})) {
+        return fail("record-before-signature fault left partial record state");
+    }
+    failure_index.upsert(make_record("chunk:first-failure", {}, "retry"));
+    if(failure_index.size() != 1) {
+        return fail("first-record identity was not reusable after failed insertion");
+    }
+
+    auto dynamic_options = options;
+    dynamic_options.signature_info.reset();
+    agent_memory::MultiProbeHammingIndex adopted_identity_index(dynamic_options);
+    adopted_identity_index.set_failure_injection_for_testing(
+        agent_memory::MultiProbeHammingIndexFaultPoint::AfterRecordAppendBeforeSignatureStorage
+    );
+    if(!throws_runtime_error([&] {
+           adopted_identity_index.upsert(make_record("chunk:adopted-a", {}, "failed"));
+       })) {
+        return fail("dynamic identity insertion fault did not interrupt the first write");
+    }
+    if(adopted_identity_index.size() != 0 || adopted_identity_index.bit_count() != 0) {
+        return fail("failed dynamic identity insertion must roll back identity adoption");
+    }
+    auto distinct_identity = make_record("chunk:adopted-b", {}, "retry");
+    distinct_identity.signature_info.encoder_version = "v2";
+    distinct_identity.signature_info.encoder_config_fingerprint = "test:16:v2";
+    adopted_identity_index.upsert(std::move(distinct_identity));
+    if(adopted_identity_index.size() != 1 || adopted_identity_index.bit_count() != 16) {
+        return fail("a distinct identity must be accepted after failed first insertion");
+    }
+
+    failure_index.set_failure_injection_for_testing(
+        agent_memory::MultiProbeHammingIndexFaultPoint::AfterSignatureStorageBeforeTables
+    );
+    if(!throws_runtime_error([&] {
+           failure_index.upsert(make_record("chunk:signature-failure", {1}, "keep"));
+       })) {
+        return fail("signature-storage fault did not interrupt insertion");
+    }
+    if(failure_index.size() != 1
+       || failure_index.find(agent_memory::ChunkId{"chunk:signature-failure"})) {
+        return fail("signature-storage fault left partial record state");
+    }
+
+    failure_index.set_failure_injection_for_testing(
+        agent_memory::MultiProbeHammingIndexFaultPoint::AfterFirstTableInsert
+    );
+    if(!throws_runtime_error([&] {
+           failure_index.upsert(make_record("chunk:table-failure", {2}, "keep"));
+       })) {
+        return fail("partial-table fault did not interrupt insertion");
+    }
+    if(failure_index.size() != 1
+       || failure_index.find(agent_memory::ChunkId{"chunk:table-failure"})) {
+        return fail("partial-table fault left a record or posting behind");
+    }
+
+    const auto before_replacement = failure_index.find(
+        agent_memory::ChunkId{"chunk:first-failure"}
+    );
+    failure_index.set_failure_injection_for_testing(
+        agent_memory::MultiProbeHammingIndexFaultPoint::AfterFirstTableInsert
+    );
+    if(!throws_runtime_error([&] {
+           failure_index.upsert(make_record("chunk:first-failure", {3}, "replacement"));
+       })) {
+        return fail("replacement table fault did not interrupt update");
+    }
+    const auto after_replacement = failure_index.find(
+        agent_memory::ChunkId{"chunk:first-failure"}
+    );
+    if(!before_replacement || !after_replacement
+       || after_replacement->signature.words() != before_replacement->signature.words()
+       || !after_replacement->metadata.get("scope")
+       || *after_replacement->metadata.get("scope") != "retry") {
+        return fail("failed replacement did not restore the prior record");
+    }
+
+    agent_memory::MultiProbeHammingIndex same_bucket_index(options);
+    same_bucket_index.upsert(make_record("chunk:same-bucket", {}, "original"));
+    same_bucket_index.set_failure_injection_for_testing(
+        agent_memory::MultiProbeHammingIndexFaultPoint::AfterFirstTableInsert
+    );
+    if(!throws_runtime_error([&] {
+           same_bucket_index.upsert(make_record("chunk:same-bucket", {}, "failed"));
+       })) {
+        return fail("same-bucket replacement fault did not interrupt update");
+    }
+    const auto same_bucket_after_failure = same_bucket_index.find(
+        agent_memory::ChunkId{"chunk:same-bucket"}
+    );
+    if(!same_bucket_after_failure || !same_bucket_after_failure->metadata.get("scope")
+       || *same_bucket_after_failure->metadata.get("scope") != "original"
+       || same_bucket_index.search(make_query(1)).size() != 1) {
+        return fail("same-bucket replacement rollback removed the original posting");
+    }
+    const auto failure_search = failure_index.search_with_diagnostics(make_query(10));
+    if(failure_search.results.size() != failure_index.size()) {
+        return fail("search diagnostics lost consistency after injected failures");
+    }
+    if(!failure_index.erase(agent_memory::ChunkId{"chunk:first-failure"})
+       || failure_index.size() != 0) {
+        return fail("erase failed after injected insertion and replacement faults");
+    }
+    failure_index.clear();
+    if(failure_index.size() != 0 || failure_index.bit_count() != 16) {
+        return fail("clear failed after injected insertion and replacement faults");
+    }
+    failure_index.upsert(make_record("chunk:after-clear", {4}, "clear"));
+    if(failure_index.search(make_query(1)).empty()) {
+        return fail("retry after clear failed following injected insertion faults");
     }
 
     index.clear();
