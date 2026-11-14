@@ -58,6 +58,26 @@ namespace {
         return std::fabs(lhs - rhs) <= 1.0e-5F;
     }
 
+    [[nodiscard]] double reference_cosine(
+        const std::vector<float>& lhs,
+        const std::vector<float>& rhs
+    ) {
+        double lhs_norm = 0.0;
+        double rhs_norm = 0.0;
+        double dot = 0.0;
+        for(std::size_t index = 0; index < lhs.size(); ++index) {
+            const auto left = static_cast<double>(lhs[index]);
+            const auto right = static_cast<double>(rhs[index]);
+            dot += left * right;
+            lhs_norm += left * left;
+            rhs_norm += right * right;
+        }
+        if(lhs_norm == 0.0 || rhs_norm == 0.0) {
+            return 0.0;
+        }
+        return dot / (std::sqrt(lhs_norm) * std::sqrt(rhs_norm));
+    }
+
 } // namespace
 
 int main() {
@@ -353,6 +373,72 @@ int main() {
            || !std::isfinite(extreme_results.front().score)
            || !almost_equal(extreme_results.front().score, 1.0F)) {
             return fail("cosine scoring must remain finite for extreme finite inputs");
+        }
+    }
+
+    // A float dot product can underflow even when the normalized cosine is
+    // perfectly representable.  Compare both arithmetic backends with an
+    // independent double reference across tiny, subnormal and mixed-scale
+    // inputs rather than only checking that the returned score is finite.
+    const auto denorm_min = std::numeric_limits<float>::denorm_min();
+    const std::vector<std::vector<float>> boundary_vectors = {
+        {1.0e-25F},
+        {std::numeric_limits<float>::min()},
+        {denorm_min},
+        {std::numeric_limits<float>::max(), denorm_min},
+        {1.0F, -1.0F}
+    };
+    for(const auto& values : boundary_vectors) {
+        if(values.front() == 0.0F) {
+            continue;
+        }
+        for(const bool enable_simd : {false, true}) {
+            agent_memory::ExactVectorIndex boundary_index(
+                agent_memory::ExactVectorIndexOptions{
+                    values.size(),
+                    agent_memory::SimilarityMetric::Cosine,
+                    enable_simd
+                }
+            );
+            boundary_index.upsert(make_record("chunk:boundary", values, "boundary"));
+            const auto results = boundary_index.search(agent_memory::VectorSearchQuery{
+                agent_memory::Embedding{values},
+                1,
+                {}
+            });
+            const auto expected = static_cast<float>(reference_cosine(values, values));
+            if(results.size() != 1 || !almost_equal(results.front().score, expected)) {
+                return fail(
+                    "cosine boundary scores must match the independent double reference"
+                );
+            }
+        }
+    }
+
+    const std::vector<float> cancellation_query = {1.0F, 1.0F, 1.0e-25F};
+    const std::vector<float> cancellation_record = {1.0F, -1.0F, 1.0e-25F};
+    const auto cancellation_expected = static_cast<float>(reference_cosine(
+        cancellation_query,
+        cancellation_record
+    ));
+    for(const bool enable_simd : {false, true}) {
+        agent_memory::ExactVectorIndex cancellation_index(
+            agent_memory::ExactVectorIndexOptions{
+                3,
+                agent_memory::SimilarityMetric::Cosine,
+                enable_simd
+            }
+        );
+        cancellation_index.upsert(
+            make_record("chunk:cancellation", cancellation_record, "boundary")
+        );
+        const auto results = cancellation_index.search(agent_memory::VectorSearchQuery{
+            agent_memory::Embedding{cancellation_query},
+            1,
+            {}
+        });
+        if(results.size() != 1 || !almost_equal(results.front().score, cancellation_expected)) {
+            return fail("cosine cancellation score must match the double reference");
         }
     }
 

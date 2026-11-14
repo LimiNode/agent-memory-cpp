@@ -164,13 +164,16 @@ namespace agent_memory {
             switch(m_options.similarity_metric) {
                 case SimilarityMetric::Cosine:
                     if(query_inverse_norm != 0.0F && stored.inverse_norm != 0.0F) {
-                        auto dot = static_cast<double>(m_similarity.dot_product(
+                        // The SIMD/scalar float dot product is not a safe
+                        // cosine numerator: finite products can underflow to
+                        // zero before the double inverse norms are applied.
+                        // Accumulate the cosine numerator in double for every
+                        // cosine query so tiny, mixed-scale and cancellation-
+                        // sensitive inputs retain their mathematical ordering.
+                        const auto dot = wide_dot_product(
                             query.embedding,
                             record.embedding
-                        ));
-                        if(!std::isfinite(dot)) {
-                            dot = wide_dot_product(query.embedding, record.embedding);
-                        }
+                        );
                         score = checked_score(
                             dot * query_inverse_norm * stored.inverse_norm
                         );
