@@ -159,6 +159,28 @@ target_link_libraries(agent-memory-hamming-hot-path-bench
         agent_memory::json
 )
 
+add_executable(agent-memory-exact-vector-cosine-bench
+    exact_vector_cosine_benchmark.cpp
+)
+
+if(CMAKE_BUILD_TYPE)
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" _agent_memory_cosine_config_upper)
+    set(_agent_memory_cosine_bench_flags
+        "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_agent_memory_cosine_config_upper}}")
+else()
+    set(_agent_memory_cosine_bench_flags "generator-configured")
+endif()
+target_compile_definitions(agent-memory-exact-vector-cosine-bench
+    PRIVATE
+        AGENT_MEMORY_COSINE_BENCH_BUILD_FLAGS="${_agent_memory_cosine_bench_flags}"
+)
+
+target_link_libraries(agent-memory-exact-vector-cosine-bench
+    PRIVATE
+        agent_memory::agent_memory
+        agent_memory::json
+)
+
 add_executable(agent-memory-mih-native-hot-path
     mih_native_hot_path.cpp
 )
