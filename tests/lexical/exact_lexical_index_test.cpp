@@ -1,6 +1,7 @@
 #include <agent_memory.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <initializer_list>
 #include <iostream>
@@ -555,7 +556,7 @@ int main() {
         return fail("clear must remove all records");
     }
 
-    // Fix 3: regression test — explicit query BM25 numerically equal to
+    // BM25 override regression: explicit query BM25 numerically equal to
     // the library default (k1=1.5, b=0.75) must DIFFER from "fall back to
     // index options" when the index has a non-default BM25 configuration.
     // Use a longer document so the TF-saturation factor (k1 * (1 - b + b *
@@ -598,14 +599,14 @@ int main() {
         const auto explicit_scores = bm25_override_index.search(explicit_query);
 
         if(fallback_scores.empty() || explicit_scores.empty()) {
-            return fail("Fix3: both searches should return hits");
+            return fail("BM25 override: both searches should return hits");
         }
         if(fallback_scores.front().score == explicit_scores.front().score) {
-            return fail("Fix3: explicit query BM25 default must differ from index BM25 fallback");
+            return fail("BM25 override: explicit query default must differ from index fallback");
         }
     }
 
-    // Fix 7: metadata filters must use AND semantics — all filters
+    // Metadata filter regression: filters must use AND semantics — all filters
     // must match a chunk for it to be returned.
     {
         agent_memory::ExactLexicalIndex and_index;
@@ -631,14 +632,14 @@ int main() {
         };
         const auto and_results = and_index.search(q);
         if(and_results.size() != 1) {
-            return fail("Fix7: AND filters must return chunks matching all filters");
+            return fail("Metadata filters: AND must match all filters");
         }
         if(and_results[0].chunk_id != agent_memory::ChunkId{"chunk:a"}) {
-            return fail("Fix7: must match chunk:a (scope=public+lang=en), not chunk:b");
+            return fail("Metadata filters: must match chunk:a, not chunk:b");
         }
     }
 
-    // Fix 8: upsert can re-parent a chunk to a different resource_id;
+    // Resource ownership regression: upsert can re-parent a chunk;
     // the old resource must drop the chunk id, the new resource must
     // own it, and erase_resource on the old resource must return 0.
     {
@@ -657,20 +658,20 @@ int main() {
         ));
 
         if(reparent_index.erase_resource(agent_memory::ResourceId{"resource:alpha"}) != 0) {
-            return fail("Fix8: alpha must be empty after re-parent");
+            return fail("Resource ownership: alpha must be empty after re-parent");
         }
         if(reparent_index.size() != 1) {
-            return fail("Fix8: total size must be 1 after re-parent (beta owns chunk:a)");
+            return fail("Resource ownership: beta must own chunk:a after re-parent");
         }
         if(reparent_index.erase_resource(agent_memory::ResourceId{"resource:beta"}) != 1) {
-            return fail("Fix8: beta must own 1 chunk");
+            return fail("Resource ownership: beta must own one chunk");
         }
         if(reparent_index.size() != 0) {
-            return fail("Fix8: total size must be 0 after erasing beta");
+            return fail("Resource ownership: erasing beta must empty the index");
         }
     }
 
-    // Fix 9a: df counters and stale dictionary entries must remain
+    // Dictionary lifecycle regression: df counters and stale entries remain
     // consistent across mixed upsert/erase sequences.
     {
         agent_memory::ExactLexicalIndex df_index;
@@ -687,10 +688,10 @@ int main() {
             "public"
         ));
         if(!df_index.erase(agent_memory::ChunkId{"chunk:a"})) {
-            return fail("Fix9a: erase of chunk:a must return true");
+            return fail("Dictionary lifecycle: erase of chunk:a must return true");
         }
         if(df_index.size() != 1) {
-            return fail("Fix9a: size after erase must be 1");
+            return fail("Dictionary lifecycle: size after erase must be one");
         }
         // At this point df(foo)=1, df(bar) reached 0 and its dictionary
         // entry must have been erased (stale-entry cleanup). Search for
@@ -701,7 +702,7 @@ int main() {
         bar_q.terms = {"bar"};
         bar_q.limit = 10;
         if(!df_index.search(bar_q).empty()) {
-            return fail("Fix9a: 'bar' must produce no hits after its only chunk is erased");
+            return fail("Dictionary lifecycle: bar must disappear after its owner is erased");
         }
         // And 'foo' still has 1 hit (chunk:b).
         agent_memory::LexicalSearchQuery foo_q;
@@ -709,11 +710,11 @@ int main() {
         foo_q.limit = 10;
         const auto foo_results = df_index.search(foo_q);
         if(foo_results.size() != 1 || foo_results[0].chunk_id != agent_memory::ChunkId{"chunk:b"}) {
-            return fail("Fix9a: 'foo' must still match chunk:b after erasing chunk:a");
+            return fail("Dictionary lifecycle: foo must remain on chunk:b");
         }
     }
 
-    // Fix 9b: search on an empty corpus must return no results and
+    // Empty-index regression: search on an empty corpus must return no results and
     // must not throw.
     {
         agent_memory::ExactLexicalIndex empty_index;
@@ -722,29 +723,20 @@ int main() {
         q.limit = 10;
         const auto empty_results = empty_index.search(q);
         if(!empty_results.empty()) {
-            return fail("Fix9b: empty corpus must return no results");
+            return fail("Empty index: search must return no results");
         }
     }
 
-    // v6++: precise rollback contract for upsert(). The previous
-    // implementation admitted best-effort rollback with possible
-    // double-decrement of df and stale m_total_token_count on
-    // std::bad_alloc. The new contract guarantees that any throwing
-    // commit leaves the index in EXACTLY its pre-upsert state.
+    // Exception and ownership regression: failed upserts preserve the
+    // observable index state, while successful replacements update ownership.
     //
-    // We cannot inject std::bad_alloc without modifying the
-    // implementation, so we verify the contract through two
-    // observable scenarios:
+    // The allocation-failure matrix above covers std::bad_alloc; this block
+    // retains the invalid-input and successful reparenting scenarios:
     //   (a) is_valid() failure (empty tokens) must throw BEFORE any
     //       mutation; observable state is byte-for-byte identical
     //       before and after.
-    //   (b) A successful replace exercises the same code path that a
-    //       failed replace's rollback restore would use. If the
-    //       replace succeeds, then the rollback restore path (which
-    //       re-inserts the old snapshot into m_records, re-increments
-    //       df for old terms, re-adds resource membership, and
-    //       restores m_total_token_count) is sound by the same
-    //       construction.
+    //   (b) A successful replacement updates terms and ownership without
+    //       changing the number of indexed records.
     {
         agent_memory::ExactLexicalIndex rollback_index;
 
@@ -767,7 +759,7 @@ int main() {
         foo_q.terms = {"foo"};
         foo_q.limit = 10;
         if(rollback_index.search(foo_q).size() != 1) {
-            return fail("v6++: 'foo' must match chunk:alpha pre-upsert");
+            return fail("Exception regression: foo must match chunk:alpha before replace");
         }
 
         // (a) is_valid() failure -- throw BEFORE any mutation.
@@ -784,22 +776,20 @@ int main() {
             threw = true;
         }
         if(!threw) {
-            return fail("v6++: invalid upsert must throw invalid_argument");
+            return fail("Exception regression: invalid upsert must throw invalid_argument");
         }
         if(rollback_index.size() != size_before) {
-            return fail("v6++: invalid upsert must not change size");
+            return fail("Exception regression: invalid upsert must not change size");
         }
         if(rollback_index.search(foo_q).size() != 1) {
-            return fail("v6++: invalid upsert must not change df");
+            return fail("Exception regression: invalid upsert must not change df");
         }
         if(rollback_index.erase_resource(agent_memory::ResourceId{"resource:other"}) != 0) {
-            return fail("v6++: invalid upsert must not create resource entry");
+            return fail("Exception regression: invalid upsert must not create ownership");
         }
 
-        // (b) Successful replace -- exercises the same code path that
-        // a failed replace's rollback restore would use. chunk:alpha
-        // was [foo,bar,baz] under resource:shared; replace with
-        // [token5] under resource:other.
+        // (b) Successful replacement reparents chunk:alpha and changes its
+        // vocabulary from [foo,bar,baz] to [token5].
         rollback_index.upsert(make_record(
             "chunk:alpha",
             "resource:other",
@@ -808,36 +798,36 @@ int main() {
         ));
 
         if(rollback_index.size() != size_before) {
-            return fail("v6++: replace must not change size");
+            return fail("Exception regression: replace must preserve size");
         }
         if(rollback_index.search(foo_q).size() != 0) {
-            return fail("v6++: 'foo' must disappear after chunk:alpha replaced");
+            return fail("Exception regression: foo must disappear after replacement");
         }
 
         agent_memory::LexicalSearchQuery token5_q;
         token5_q.terms = {"token5"};
         token5_q.limit = 10;
         if(rollback_index.search(token5_q).size() != 1) {
-            return fail("v6++: 'token5' must match new chunk:alpha");
+            return fail("Exception regression: token5 must match the replacement");
         }
 
         agent_memory::LexicalSearchQuery qux_q;
         qux_q.terms = {"qux"};
         qux_q.limit = 10;
         if(rollback_index.search(qux_q).size() != 1) {
-            return fail("v6++: 'qux' must still match chunk:beta");
+            return fail("Exception regression: qux must remain on chunk:beta");
         }
 
         // Resource membership: resource:shared no longer owns chunk:alpha;
         // resource:other now owns chunk:alpha.
         if(rollback_index.erase_resource(agent_memory::ResourceId{"resource:shared"}) != 1) {
-            return fail("v6++: shared must own only chunk:beta after replace");
+            return fail("Exception regression: shared must own only chunk:beta");
         }
         if(rollback_index.erase_resource(agent_memory::ResourceId{"resource:other"}) != 1) {
-            return fail("v6++: other must own chunk:alpha after replace");
+            return fail("Exception regression: other must own only chunk:alpha");
         }
         if(rollback_index.size() != 0) {
-            return fail("v6++: total size must be 0 after fully cleaning up");
+            return fail("Exception regression: ownership cleanup must empty the index");
         }
     }
 
@@ -1097,6 +1087,72 @@ int main() {
            edge_index.size() != 0) {
             return fail("A1: resource ownership cleanup was incomplete");
         }
+    }
+
+    // A1 ownership staging cost: moving one chunk between resources must not
+    // allocate once per existing owner. The elapsed times are diagnostic;
+    // allocation counts are the deterministic regression signal.
+    {
+        const std::vector<std::size_t> fixture_sizes{128, 512, 2048, 4096};
+        std::vector<std::size_t> replacement_allocations;
+        std::vector<double> replacement_milliseconds;
+        replacement_allocations.reserve(fixture_sizes.size());
+        replacement_milliseconds.reserve(fixture_sizes.size());
+
+        for(const auto fixture_size : fixture_sizes) {
+            agent_memory::ExactLexicalIndex ownership_index;
+            for(std::size_t chunk = 0; chunk < fixture_size; ++chunk) {
+                ownership_index.upsert(make_record(
+                    "chunk:owner-" + std::to_string(chunk),
+                    "resource:large",
+                    make_tokens({"shared"}),
+                    "public"
+                ));
+            }
+
+            auto replacement = make_record(
+                "chunk:owner-0",
+                "resource:moved",
+                make_tokens({"shared"}),
+                "public"
+            );
+            reset_allocation_calls();
+            disable_allocation_failures();
+            const auto started = std::chrono::steady_clock::now();
+            ownership_index.upsert(std::move(replacement));
+            const auto elapsed = std::chrono::steady_clock::now() - started;
+            replacement_allocations.push_back(allocation_calls());
+            replacement_milliseconds.push_back(
+                std::chrono::duration<double, std::milli>(elapsed).count()
+            );
+
+            if(ownership_index.size() != fixture_size ||
+               ownership_index.erase_resource(
+                   agent_memory::ResourceId{"resource:large"}
+               ) != fixture_size - 1 ||
+               ownership_index.erase_resource(
+                   agent_memory::ResourceId{"resource:moved"}
+               ) != 1) {
+                return fail("A1 ownership staging: replacement corrupted membership");
+            }
+        }
+
+        const auto baseline_allocations = replacement_allocations.front();
+        for(const auto allocations : replacement_allocations) {
+            if(allocations > baseline_allocations + 4) {
+                return fail(
+                    "A1 ownership staging: replacement allocations grew with owner count"
+                );
+            }
+        }
+
+        std::cout << "exact lexical ownership replacement benchmark:";
+        for(std::size_t i = 0; i < fixture_sizes.size(); ++i) {
+            std::cout << " " << fixture_sizes[i] << "="
+                      << replacement_allocations[i] << " allocations/"
+                      << replacement_milliseconds[i] << " ms";
+        }
+        std::cout << '\n';
     }
 
     try {

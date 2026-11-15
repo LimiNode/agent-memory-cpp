@@ -47,6 +47,9 @@ namespace agent_memory {
         const auto old_token_count = old_record == nullptr
             ? std::size_t{0}
             : old_record->record.tokens.size();
+        const auto old_resource_id = old_record == nullptr
+            ? ResourceId{}
+            : old_record->record.revision.resource_id;
         const auto new_token_count = new_record.record.tokens.size();
 
         // All potentially allocating work is completed in these temporary
@@ -77,24 +80,23 @@ namespace agent_memory {
             }
         }
 
+        // Ownership staging transfers only the affected membership node.  A
+        // full copy of an existing resource set would make sequential import
+        // of N chunks quadratic in the number of memberships.
+        const bool same_resource = old_record != nullptr &&
+            old_record->record.revision.resource_id == resource_id;
+        std::set<ChunkId> staged_memberships;
         std::map<ResourceId, std::set<ChunkId>> staged_resources;
-        const auto stage_resource = [this, &staged_resources](
-            const ResourceId& id
-        ) -> std::set<ChunkId>& {
-            const auto existing = m_chunks_by_resource.find(id);
-            auto staged = staged_resources.emplace(
-                id,
-                existing == m_chunks_by_resource.end()
-                    ? std::set<ChunkId>{}
-                    : existing->second
-            );
-            return staged.first->second;
-        };
-
-        if(old_record != nullptr) {
-            stage_resource(old_record->record.revision.resource_id).erase(chunk_id);
+        if(!same_resource) {
+            const auto new_resource = m_chunks_by_resource.find(resource_id);
+            if(new_resource == m_chunks_by_resource.end()) {
+                std::set<ChunkId> membership;
+                membership.insert(chunk_id);
+                staged_resources.emplace(resource_id, std::move(membership));
+            } else {
+                staged_memberships.insert(chunk_id);
+            }
         }
-        stage_resource(resource_id).insert(chunk_id);
 
         // Stage the record in a node map as well.  Replacements extract the
         // old node and merge this already-allocated node into the live map;
@@ -113,23 +115,25 @@ namespace agent_memory {
             m_records.merge(staged_records);
         }
 
-        for(auto item = staged_resources.begin(); item != staged_resources.end();) {
-            auto& staged = item->second;
-            const auto existing = m_chunks_by_resource.find(item->first);
-            if(staged.empty()) {
-                if(existing != m_chunks_by_resource.end()) {
-                    m_chunks_by_resource.erase(existing);
+        if(!same_resource) {
+            if(old_record != nullptr) {
+                const auto old_resource = m_chunks_by_resource.find(old_resource_id);
+                if(old_resource != m_chunks_by_resource.end()) {
+                    old_resource->second.extract(chunk_id);
+                    if(old_resource->second.empty()) {
+                        m_chunks_by_resource.erase(old_resource);
+                    }
                 }
-            } else if(existing != m_chunks_by_resource.end()) {
-                existing->second.swap(staged);
             }
-            if(staged.empty()) {
-                item = staged_resources.erase(item);
-            } else {
-                ++item;
+
+            if(!staged_memberships.empty()) {
+                const auto new_resource = m_chunks_by_resource.find(resource_id);
+                if(new_resource != m_chunks_by_resource.end()) {
+                    new_resource->second.merge(staged_memberships);
+                }
             }
+            m_chunks_by_resource.merge(staged_resources);
         }
-        m_chunks_by_resource.merge(staged_resources);
 
         m_dictionary_by_text.merge(staged_dictionary);
         for(const auto& item : document_frequency_deltas) {
