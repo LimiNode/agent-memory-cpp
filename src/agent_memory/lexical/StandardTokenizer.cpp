@@ -295,13 +295,22 @@ namespace {
                 const auto token_text = text.substr(begin, index - begin);
                 std::vector<std::size_t> camel_boundaries;
                 bool camel_boundary = false;
-                if(options.emit_identifier_parts) {
-                    camel_boundaries = find_camel_boundaries(token_text);
-                    camel_boundary = !camel_boundaries.empty();
-                } else {
-                    camel_boundary = has_camel_boundary(token_text);
+                const auto preliminary_kind = classify_token(token_text, false);
+                const bool skips_identifier_parts =
+                    preliminary_kind == TokenKind::Path ||
+                    (preliminary_kind == TokenKind::Identifier &&
+                     is_cli_flag_like(token_text));
+                if(!skips_identifier_parts && preliminary_kind != TokenKind::Number) {
+                    if(options.emit_identifier_parts) {
+                        camel_boundaries = find_camel_boundaries(token_text);
+                        camel_boundary = !camel_boundaries.empty();
+                    } else if(preliminary_kind == TokenKind::Word) {
+                        camel_boundary = has_camel_boundary(token_text);
+                    }
                 }
-                const auto kind = classify_token(token_text, camel_boundary);
+                const auto kind = preliminary_kind == TokenKind::Word && camel_boundary
+                    ? TokenKind::Identifier
+                    : preliminary_kind;
 
                 std::string_view body = token_text;
                 std::size_t trim_count = 0;
