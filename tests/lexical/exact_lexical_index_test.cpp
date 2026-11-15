@@ -19,8 +19,10 @@
 namespace {
 
     std::atomic<std::ptrdiff_t> g_allocation_budget{-1};
+    std::atomic<std::size_t> g_allocation_calls{0};
 
     void* allocate_for_test(const std::size_t size) {
+        g_allocation_calls.fetch_add(1, std::memory_order_relaxed);
         auto budget = g_allocation_budget.load(std::memory_order_relaxed);
         if(budget >= 0) {
             if(budget == 0) {
@@ -38,6 +40,7 @@ namespace {
         const std::size_t size,
         const std::size_t alignment
     ) {
+        g_allocation_calls.fetch_add(1, std::memory_order_relaxed);
         auto budget = g_allocation_budget.load(std::memory_order_relaxed);
         if(budget >= 0) {
             if(budget == 0) {
@@ -75,6 +78,14 @@ namespace {
 
     void disable_allocation_failures() {
         g_allocation_budget.store(-1, std::memory_order_relaxed);
+    }
+
+    void reset_allocation_calls() {
+        g_allocation_calls.store(0, std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] std::size_t allocation_calls() {
+        return g_allocation_calls.load(std::memory_order_relaxed);
     }
 
 } // namespace
@@ -321,6 +332,34 @@ namespace {
         const std::optional<agent_memory::LexicalDocumentStats>& left,
         const std::optional<agent_memory::LexicalDocumentStats>& right
     ) {
+        const auto same_revision = [](const agent_memory::ResourceRevision& lhs,
+                                      const agent_memory::ResourceRevision& rhs) {
+            if(lhs.resource_id != rhs.resource_id ||
+               lhs.generation != rhs.generation ||
+               lhs.content_hash != rhs.content_hash ||
+               lhs.pipeline_config_hash != rhs.pipeline_config_hash ||
+               lhs.text_origin != rhs.text_origin ||
+               lhs.body_digest.has_value() != rhs.body_digest.has_value() ||
+               lhs.derived_text_provenance.has_value() !=
+                   rhs.derived_text_provenance.has_value()) {
+                return false;
+            }
+            if(lhs.body_digest &&
+               (lhs.body_digest->algorithm != rhs.body_digest->algorithm ||
+                lhs.body_digest->bytes != rhs.body_digest->bytes)) {
+                return false;
+            }
+            if(lhs.derived_text_provenance &&
+               (lhs.derived_text_provenance->source_media_type !=
+                    rhs.derived_text_provenance->source_media_type ||
+                lhs.derived_text_provenance->extractor_id !=
+                    rhs.derived_text_provenance->extractor_id ||
+                lhs.derived_text_provenance->extractor_version !=
+                    rhs.derived_text_provenance->extractor_version)) {
+                return false;
+            }
+            return true;
+        };
         if(left.has_value() != right.has_value()) {
             return false;
         }
@@ -328,12 +367,10 @@ namespace {
             return true;
         }
         return left->chunk_id == right->chunk_id &&
-            left->revision.resource_id == right->revision.resource_id &&
-            left->revision.generation == right->revision.generation &&
-            left->revision.content_hash == right->revision.content_hash &&
-            left->revision.pipeline_config_hash == right->revision.pipeline_config_hash &&
+            same_revision(left->revision, right->revision) &&
             left->token_count == right->token_count &&
-            left->unique_token_count == right->unique_token_count;
+            left->unique_token_count == right->unique_token_count &&
+            left->metadata.values() == right->metadata.values();
     }
 
     [[nodiscard]] bool same_hits(
@@ -348,7 +385,9 @@ namespace {
                left[i].score != right[i].score ||
                left[i].resource_id != right[i].resource_id ||
                left[i].section_id != right[i].section_id ||
-               left[i].enrichment_level != right[i].enrichment_level) {
+               left[i].enrichment_level != right[i].enrichment_level ||
+               left[i].result_tier != right[i].result_tier ||
+               left[i].metadata.values() != right[i].metadata.values()) {
                 return false;
             }
         }
@@ -809,8 +848,41 @@ int main() {
         const auto run_fault_matrix = [](const bool replacement) {
             bool observed_failure = false;
             bool observed_success = false;
+            std::size_t required_allocations = 0;
 
-            for(std::ptrdiff_t budget = 0; budget < 512; ++budget) {
+            // Measure the complete successful update path first.  The failure
+            // matrix below then exercises every allocation point, including
+            // the last one, instead of relying on an arbitrary budget cap.
+            {
+                disable_allocation_failures();
+                agent_memory::ExactLexicalIndex probe;
+                probe.upsert(make_record(
+                    "chunk:base",
+                    "resource:base",
+                    make_tokens({"base", "shared", "shared"}),
+                    "public"
+                ));
+                probe.upsert(make_record(
+                    "chunk:other",
+                    "resource:base",
+                    make_tokens({"shared", "other"}),
+                    "public"
+                ));
+                auto probe_candidate = make_record(
+                    replacement ? "chunk:base" : "chunk:new",
+                    "resource:replacement",
+                    make_tokens({"replacement", "shared", "replacement"}),
+                    "public"
+                );
+                reset_allocation_calls();
+                probe.upsert(std::move(probe_candidate));
+                required_allocations = allocation_calls();
+                if(required_allocations == 0) {
+                    return false;
+                }
+            }
+
+            for(std::size_t budget = 0; budget <= required_allocations; ++budget) {
                 disable_allocation_failures();
                 agent_memory::ExactLexicalIndex index;
                 index.upsert(make_record(
@@ -868,8 +940,15 @@ int main() {
                 disable_allocation_failures();
 
                 if(!threw) {
+                    if(budget != required_allocations) {
+                        return false;
+                    }
                     observed_success = true;
                     break;
+                }
+
+                if(budget == required_allocations) {
+                    return false;
                 }
 
                 observed_failure = true;
@@ -922,6 +1001,101 @@ int main() {
         }
         if(!run_fault_matrix(true)) {
             return fail("A1: replacement allocation failures changed index state");
+        }
+    }
+
+    // A1 edge coverage: replacements in the same resource, removal of the
+    // final document-frequency owner, overlapping old/new vocabularies and a
+    // failed update followed by a successful retry must all preserve the
+    // complete observable snapshot.
+    {
+        agent_memory::ExactLexicalIndex edge_index;
+        edge_index.upsert(make_record_with_meta(
+            "chunk:same-resource",
+            "resource:edge",
+            make_tokens({"oldonly", "shared", "shared"}),
+            {{"scope", "before"}, {"marker", "alpha"}}
+        ));
+        edge_index.upsert(make_record_with_meta(
+            "chunk:neighbor",
+            "resource:edge",
+            make_tokens({"shared", "neighbor"}),
+            {{"scope", "neighbor"}, {"marker", "beta"}}
+        ));
+
+        edge_index.upsert(make_record_with_meta(
+            "chunk:same-resource",
+            "resource:edge",
+            make_tokens({"newonly", "shared"}),
+            {{"scope", "after"}, {"marker", "gamma"}}
+        ));
+        const auto replaced_stats = edge_index.find_stats(
+            agent_memory::ChunkId{"chunk:same-resource"}
+        );
+        if(!replaced_stats ||
+           replaced_stats->token_count != 2 ||
+           replaced_stats->unique_token_count != 2 ||
+           replaced_stats->metadata.get("scope") !=
+               std::optional<std::string>{"after"} ||
+           edge_index.search(agent_memory::LexicalSearchQuery{
+               {"oldonly"}, 10, {}, {}
+           }).size() != 0 ||
+           edge_index.search(agent_memory::LexicalSearchQuery{
+               {"newonly"}, 10, {}, {}
+           }).size() != 1) {
+            return fail("A1: same-resource replacement did not replace all state");
+        }
+        if(edge_index.search(agent_memory::LexicalSearchQuery{
+               {"shared"}, 10, {}, {}
+           }).size() != 2) {
+            return fail("A1: overlapping old/new vocabulary lost a shared term");
+        }
+        const auto stable_stats = edge_index.find_stats(
+            agent_memory::ChunkId{"chunk:same-resource"}
+        );
+        const auto stable_hits = edge_index.search(
+            agent_memory::LexicalSearchQuery{{"shared"}, 10, {}, {}}
+        );
+
+        bool invalid_update_threw = false;
+        try {
+            edge_index.upsert(make_record_with_meta(
+                "chunk:same-resource",
+                "resource:edge",
+                {},
+                {{"scope", "invalid"}, {"marker", "invalid"}}
+            ));
+        } catch(const std::invalid_argument&) {
+            invalid_update_threw = true;
+        }
+        if(!invalid_update_threw ||
+           !same_stats(
+               edge_index.find_stats(agent_memory::ChunkId{"chunk:same-resource"}),
+               stable_stats
+           ) ||
+           !same_hits(
+               edge_index.search(agent_memory::LexicalSearchQuery{
+                   {"shared"}, 10, {}, {}
+               }),
+               stable_hits
+           )) {
+            return fail("A1: failed update changed the same-resource snapshot");
+        }
+
+        if(!edge_index.erase(agent_memory::ChunkId{"chunk:same-resource"})) {
+            return fail("A1: same-resource replacement record could not be erased");
+        }
+        if(!edge_index.search(agent_memory::LexicalSearchQuery{
+               {"newonly"}, 10, {}, {}
+           }).empty() ||
+           edge_index.search(agent_memory::LexicalSearchQuery{
+               {"shared"}, 10, {}, {}
+           }).size() != 1) {
+            return fail("A1: final-owner term removal left stale postings");
+        }
+        if(edge_index.erase_resource(agent_memory::ResourceId{"resource:edge"}) != 1 ||
+           edge_index.size() != 0) {
+            return fail("A1: resource ownership cleanup was incomplete");
         }
     }
 
