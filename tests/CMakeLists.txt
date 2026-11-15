@@ -16,6 +16,17 @@ file(GLOB_RECURSE agent_memory_public_headers
 )
 list(SORT agent_memory_public_headers)
 
+# These public headers intentionally reject JSON-disabled translation units.
+# Keep the generic self-sufficiency target focused on headers available in the
+# selected configuration; the JSON-enabled configuration still compiles them.
+if(NOT AGENT_MEMORY_ENABLE_JSON)
+    list(REMOVE_ITEM agent_memory_public_headers
+        "agent_memory/eval/AutoencoderBinaryArtifact.hpp"
+        "agent_memory/eval/DatasetLoader.hpp"
+        "agent_memory/eval/PrecomputedEmbeddingDataset.hpp"
+    )
+endif()
+
 set(agent_memory_header_self_sufficiency_sources)
 set(agent_memory_header_self_sufficiency_dir
     ${CMAKE_CURRENT_BINARY_DIR}/header_self_sufficiency

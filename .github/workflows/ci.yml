@@ -338,6 +338,37 @@ jobs:
       - name: Test
         run: ctest --test-dir build --build-config Release --output-on-failure
 
+  json-off-header-self-sufficiency:
+    if: needs.changes.outputs.core == 'true'
+    needs: changes
+    name: JSON-OFF header self-sufficiency (ubuntu-latest)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure JSON-OFF build
+        run: >
+          cmake -S . -B build-json-off
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_ENABLE_JSON=OFF
+          -DAGENT_MEMORY_ENABLE_MDBX=OFF
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+
+      - name: Build JSON-OFF header self-sufficiency test
+        run: >
+          cmake --build build-json-off --config Release
+          --target agent_memory_header_self_sufficiency_test
+
+      - name: Test JSON-OFF header self-sufficiency
+        run: >
+          ctest --test-dir build-json-off --build-config Release
+          --output-on-failure
+          -R agent_memory_header_self_sufficiency_test
+
   zstd:
     if: needs.changes.outputs.storage == 'true'
     needs: changes
@@ -1236,6 +1267,7 @@ jobs:
       - changes
       - docs
       - cmake
+      - json-off-header-self-sufficiency
       - zstd
       - mdbx
       - mdbx-benchmark
@@ -1260,6 +1292,7 @@ jobs:
           FULL_REQUIRED: ${{ needs.changes.outputs.full }}
           DOCS_RESULT: ${{ needs.docs.result }}
           CORE_RESULT: ${{ needs.cmake.result }}
+          JSON_OFF_RESULT: ${{ needs.json-off-header-self-sufficiency.result }}
           ZSTD_RESULT: ${{ needs.zstd.result }}
           STORAGE_RESULT: ${{ needs.mdbx.result }}
           MDBX_BENCHMARK_RESULT: ${{ needs.mdbx-benchmark.result }}
@@ -1294,6 +1327,7 @@ jobs:
 
           check_required "$DOCS_REQUIRED" "$DOCS_RESULT" "documentation checks"
           check_required "$CORE_REQUIRED" "$CORE_RESULT" "core CMake/CTest"
+          check_required "$CORE_REQUIRED" "$JSON_OFF_RESULT" "JSON-OFF header self-sufficiency"
           check_required "$STORAGE_REQUIRED" "$ZSTD_RESULT" "Framed Zstd"
           check_required "$STORAGE_REQUIRED" "$STORAGE_RESULT" "MDBX storage"
           check_required "$RESEARCH_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
