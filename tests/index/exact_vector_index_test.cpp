@@ -296,6 +296,43 @@ int main() {
         return fail("euclidean search must rank lower distances first");
     }
 
+    // A plain double accumulator loses the tiny first product when the next
+    // terms cancel. The compensated production path must preserve both its
+    // sign and the resulting top-k order.
+    agent_memory::ExactVectorIndex cancellation_index(agent_memory::ExactVectorIndexOptions{
+        3,
+        agent_memory::SimilarityMetric::Cosine,
+        false
+    });
+    const auto cancellation_search_query = agent_memory::VectorSearchQuery{
+        agent_memory::Embedding{{1.0e-10F, 1.0F, 1.0F}},
+        2,
+        {}
+    };
+    cancellation_index.upsert(make_record(
+        "chunk:bad",
+        {-1.0e-10F, 1.0F, -1.0F},
+        "cancellation"
+    ));
+    cancellation_index.upsert(make_record(
+        "chunk:good",
+        {1.0e-10F, 1.0F, -1.0F},
+        "cancellation"
+    ));
+    const auto cancellation_results = cancellation_index.search(cancellation_search_query);
+    if(cancellation_results.size() != 2
+       || cancellation_results[0].chunk_id.value() != "chunk:good"
+       || cancellation_results[1].chunk_id.value() != "chunk:bad"
+       || !(cancellation_results[0].score > 0.0F)
+       || !(cancellation_results[1].score < 0.0F)) {
+        return fail("cosine cancellation must preserve tiny score signs and ranking");
+    }
+    const auto expected_tiny_cosine = 5.0e-21F;
+    if(std::fabs(cancellation_results[0].score - expected_tiny_cosine) > 1.0e-25F
+       || std::fabs(cancellation_results[1].score + expected_tiny_cosine) > 1.0e-25F) {
+        return fail("cosine cancellation must retain the representable tiny score");
+    }
+
     agent_memory::ExactVectorIndex scalar_index(agent_memory::ExactVectorIndexOptions{
         13,
         agent_memory::SimilarityMetric::Cosine,
