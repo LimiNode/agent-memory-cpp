@@ -1,7 +1,9 @@
 #include <agent_memory.hpp>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdio>
+#include <initializer_list>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -22,6 +24,48 @@ namespace {
             texts.push_back(token.text);
         }
         return texts;
+    }
+
+    struct ExpectedToken final {
+        std::string_view text;
+        std::size_t offset;
+        std::size_t length;
+        std::size_t position;
+        agent_memory::TokenKind kind;
+    };
+
+    [[nodiscard]] bool matches_tokens(
+        const agent_memory::TokenizationResult& result,
+        const std::initializer_list<ExpectedToken> expected,
+        const std::string_view fixture
+    ) {
+        if(result.tokens.size() != expected.size()) {
+            std::cerr << fixture << ": expected " << expected.size()
+                      << " tokens, got " << result.tokens.size() << '\n';
+            return false;
+        }
+
+        std::size_t index = 0;
+        for(const auto& expected_token : expected) {
+            const auto& actual = result.tokens[index];
+            if(actual.text != expected_token.text ||
+               actual.source_range.offset != expected_token.offset ||
+               actual.source_range.length != expected_token.length ||
+               actual.position != expected_token.position ||
+               actual.kind != expected_token.kind) {
+                std::cerr << fixture << ": token mismatch at " << index
+                          << " actual='" << actual.text << "' offset="
+                          << actual.source_range.offset << " length="
+                          << actual.source_range.length << " position="
+                          << actual.position << " expected='" << expected_token.text
+                          << "' offset=" << expected_token.offset << " length="
+                          << expected_token.length << " position="
+                          << expected_token.position << '\n';
+                return false;
+            }
+            ++index;
+        }
+        return true;
     }
 
     [[nodiscard]] bool contains_bytes(
@@ -282,6 +326,173 @@ namespace {
         return 0;
     }
 
+    int test_tokenize_camel_fixture_is_deterministic() {
+        const agent_memory::StandardTokenizer tokenizer;
+        const auto input = u8"camelCase PascalCase HTTPServer version2Value, Привет!";
+        const auto first = tokenizer.tokenize(input);
+        const auto second = tokenizer.tokenize(input);
+
+        if(first.tokens.size() != second.tokens.size()) {
+            return fail("camel fixture must produce a deterministic token count");
+        }
+        for(std::size_t index = 0; index < first.tokens.size(); ++index) {
+            const auto& lhs = first.tokens[index];
+            const auto& rhs = second.tokens[index];
+            if(lhs.text != rhs.text || lhs.source_range.offset != rhs.source_range.offset ||
+               lhs.source_range.length != rhs.source_range.length ||
+               lhs.position != rhs.position || lhs.kind != rhs.kind) {
+                return fail("camel fixture must produce deterministic tokens and offsets");
+            }
+        }
+
+        const auto texts = token_texts(first);
+        const auto contains = [&texts](const std::string_view value) {
+            return std::find(texts.begin(), texts.end(), value) != texts.end();
+        };
+        if(!contains("camelcase") || !contains("camel") || !contains("case") ||
+           !contains("pascalcase") || !contains("pascal") || !contains("httpserver") ||
+           !contains("http") || !contains("server") || !contains("version2value") ||
+           !contains("version2") || !contains("value") || !contains(u8"Привет")) {
+            return fail("camel fixture must preserve camel, acronym, numeric and UTF-8 terms");
+        }
+
+        return 0;
+    }
+
+    int test_tokenize_golden_identifier_sequence() {
+        const agent_memory::StandardTokenizer tokenizer;
+        const auto result = tokenizer.tokenize(
+            "camelCase PascalCase HTTPServer XMLHttpRequest version2Value"
+        );
+        if(!matches_tokens(
+               result,
+               {
+                   {"camelcase", 0, 9, 0, agent_memory::TokenKind::Identifier},
+                   {"camel", 0, 5, 1, agent_memory::TokenKind::Word},
+                   {"case", 5, 4, 2, agent_memory::TokenKind::Word},
+                   {"pascalcase", 10, 10, 3, agent_memory::TokenKind::Identifier},
+                   {"pascal", 10, 6, 4, agent_memory::TokenKind::Word},
+                   {"case", 16, 4, 5, agent_memory::TokenKind::Word},
+                   {"httpserver", 21, 10, 6, agent_memory::TokenKind::Identifier},
+                   {"http", 21, 4, 7, agent_memory::TokenKind::Word},
+                   {"server", 25, 6, 8, agent_memory::TokenKind::Word},
+                   {"xmlhttprequest", 32, 14, 9, agent_memory::TokenKind::Identifier},
+                   {"xml", 32, 3, 10, agent_memory::TokenKind::Word},
+                   {"http", 35, 4, 11, agent_memory::TokenKind::Word},
+                   {"request", 39, 7, 12, agent_memory::TokenKind::Word},
+                   {"version2value", 47, 13, 13, agent_memory::TokenKind::Identifier},
+                   {"version2", 47, 8, 14, agent_memory::TokenKind::Word},
+                   {"value", 55, 5, 15, agent_memory::TokenKind::Word}
+               },
+               "camel/acronym golden fixture"
+           )) {
+            return 1;
+        }
+
+        // Repeated terms are part of the stream contract, not a set-membership
+        // assertion.
+        const auto duplicates = tokenizer.tokenize("echo echo echo");
+        if(!matches_tokens(
+               duplicates,
+               {
+                   {"echo", 0, 4, 0, agent_memory::TokenKind::Word},
+                   {"echo", 5, 4, 1, agent_memory::TokenKind::Word},
+                   {"echo", 10, 4, 2, agent_memory::TokenKind::Word}
+               },
+               "duplicate-word golden fixture"
+           )) {
+            return 1;
+        }
+        return 0;
+    }
+
+    int test_tokenize_path_and_cli_do_not_emit_identifier_parts() {
+        const agent_memory::StandardTokenizer tokenizer;
+        agent_memory::TokenizeOptions options;
+        options.emit_identifier_parts = true;
+        const auto result = tokenizer.tokenize(
+            "C:\\SomeFolder\\OtherFile --enableFastMode",
+            options
+        );
+        if(!matches_tokens(
+               result,
+               {
+                   {"c:\\somefolder\\otherfile", 0, 23, 0, agent_memory::TokenKind::Path},
+                   {"--enablefastmode", 24, 16, 1, agent_memory::TokenKind::Identifier}
+               },
+               "path and CLI golden fixture"
+           )) {
+            return 1;
+        }
+        return 0;
+    }
+
+    int test_tokenize_option_combinations_and_no_parts_stream() {
+        const agent_memory::StandardTokenizer tokenizer;
+        agent_memory::TokenizeOptions no_parts;
+        no_parts.emit_identifier_parts = false;
+        const auto no_parts_result = tokenizer.tokenize(
+            "camelCase --enableFastMode C:\\SomeFolder\\OtherFile",
+            no_parts
+        );
+        if(!matches_tokens(
+               no_parts_result,
+               {
+                   {"camelcase", 0, 9, 0, agent_memory::TokenKind::Identifier},
+                   {"--enablefastmode", 10, 16, 1, agent_memory::TokenKind::Identifier},
+                   {"c:\\somefolder\\otherfile", 27, 23, 2, agent_memory::TokenKind::Path}
+               },
+               "identifier-parts disabled golden fixture"
+           )) {
+            return 1;
+        }
+
+        agent_memory::TokenizeOptions symbols;
+        symbols.lowercase_ascii = false;
+        symbols.emit_symbol_tokens = true;
+        symbols.emit_identifier_parts = false;
+        const auto symbol_result = tokenizer.tokenize("CamelCase!", symbols);
+        if(!matches_tokens(
+               symbol_result,
+               {
+                   {"CamelCase", 0, 9, 0, agent_memory::TokenKind::Identifier},
+                   {"!", 9, 1, 1, agent_memory::TokenKind::Symbol}
+               },
+               "option combination golden fixture"
+           )) {
+            return 1;
+        }
+        return 0;
+    }
+
+    int test_tokenize_delimiters_and_utf8_ranges() {
+        const agent_memory::StandardTokenizer tokenizer;
+        agent_memory::TokenizeOptions options;
+        options.emit_identifier_parts = true;
+        options.emit_symbol_tokens = true;
+        const auto result = tokenizer.tokenize(
+            u8"foo_bar-baz.qux:Tail! caf\u00e9",
+            options
+        );
+        if(!matches_tokens(
+               result,
+               {
+                   {"foo_bar-baz.qux:tail", 0, 20, 0, agent_memory::TokenKind::Identifier},
+                   {"foo", 0, 3, 1, agent_memory::TokenKind::Word},
+                   {"bar", 4, 3, 2, agent_memory::TokenKind::Word},
+                   {"baz", 8, 3, 3, agent_memory::TokenKind::Word},
+                   {"qux", 12, 3, 4, agent_memory::TokenKind::Word},
+                   {"tail", 16, 4, 5, agent_memory::TokenKind::Word},
+                   {"!", 20, 1, 6, agent_memory::TokenKind::Symbol},
+                   {u8"caf\u00e9", 22, 5, 7, agent_memory::TokenKind::Word}
+               },
+               "delimiter and UTF-8 golden fixture"
+           )) {
+            return 1;
+        }
+        return 0;
+    }
+
 } // namespace
 
 int run_test(const char* name, int(*fn)()) {
@@ -409,6 +620,26 @@ int main() {
     failures += run_test("test_tokenize_acronym_xmlhttprequest", test_tokenize_acronym_xmlhttprequest);
 
     failures += run_test("test_tokenize_emoji_opaque", test_tokenize_emoji_opaque);
+    failures += run_test(
+        "test_tokenize_camel_fixture_is_deterministic",
+        test_tokenize_camel_fixture_is_deterministic
+    );
+    failures += run_test(
+        "test_tokenize_golden_identifier_sequence",
+        test_tokenize_golden_identifier_sequence
+    );
+    failures += run_test(
+        "test_tokenize_path_and_cli_do_not_emit_identifier_parts",
+        test_tokenize_path_and_cli_do_not_emit_identifier_parts
+    );
+    failures += run_test(
+        "test_tokenize_option_combinations_and_no_parts_stream",
+        test_tokenize_option_combinations_and_no_parts_stream
+    );
+    failures += run_test(
+        "test_tokenize_delimiters_and_utf8_ranges",
+        test_tokenize_delimiters_and_utf8_ranges
+    );
 
     if(failures > 0) {
         std::fprintf(stderr, "\nFAILED: %d test(s)\n", failures);
