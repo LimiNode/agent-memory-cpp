@@ -16,6 +16,7 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 #include "MdbxStorageContext.hpp"
+#include "MdbxStorageErrors.hpp"
 
 #include <array>
 #include <cstdint>
@@ -97,6 +98,7 @@ class MdbxCanonicalContentStore final : public ICanonicalContentStore,
     /// \copydoc ICanonicalContentEditor::create_document
     bool create_document(CanonicalDocumentRevision initial) override;
     /// \brief Creates a document only while the durable publication guard matches.
+    /// \throws MdbxPublicationFenceError when the guard no longer matches.
     bool create_document_guarded(
         CanonicalDocumentRevision initial,
         MdbxCanonicalPublicationGuard guard
@@ -119,6 +121,7 @@ class MdbxCanonicalContentStore final : public ICanonicalContentStore,
     /// \copydoc ICanonicalContentEditor::commit
     [[nodiscard]] CanonicalEditResult commit(const CanonicalEditRequest&) override;
     /// \brief Publishes an edit only while the durable publication guard matches.
+    /// \throws MdbxPublicationFenceError when the guard no longer matches.
     [[nodiscard]] CanonicalEditResult commit_guarded(
         const CanonicalEditRequest&,
         MdbxCanonicalPublicationGuard guard
