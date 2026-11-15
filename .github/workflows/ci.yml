@@ -582,6 +582,17 @@ jobs:
       - name: Test native MIH benchmark harness
         run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R "agent_memory_mih_native_|agent_memory_exact_vector_cosine_benchmark_self_test"
 
+      - name: Run exact cosine benchmark receipt
+        run: >
+          ./build-native-mih/tools/agent-memory-bench/agent-memory-exact-vector-cosine-bench
+          build-native-mih/exact-vector-cosine-benchmark.json
+
+      - name: Upload exact cosine benchmark receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-vector-cosine-benchmark-receipt
+          path: build-native-mih/exact-vector-cosine-benchmark.json
+
   r4-native-benchmark:
     if: needs.changes.outputs.research == 'true'
     needs: changes
