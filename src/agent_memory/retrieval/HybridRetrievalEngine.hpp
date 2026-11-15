@@ -27,6 +27,11 @@ namespace agent_memory {
 
     /// \brief Hybrid retrieval engine with swappable hooks.
     ///
+    /// Reranker results are admitted against the upstream lexical snapshot:
+    /// rerankers may reorder admitted candidates and adjust finite scores, but
+    /// cannot introduce identities, replace provenance/metadata, or duplicate
+    /// candidates. Invalid reranker output fails closed with an empty response.
+    ///
     /// Lifetime contract:
     ///   The engine does not own the underlying index/analyzer/reranker
     ///   unless the matching `set_*` method is used. Default constructors
