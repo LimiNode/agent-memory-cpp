@@ -1,13 +1,16 @@
 #include <agent_memory/embedding/embedding_types.hpp>
+#include <agent_memory/index/ExactVectorIndex.hpp>
 #include <agent_memory/index/VectorSimilarityComputer.hpp>
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -20,9 +23,7 @@
 #include <utility>
 #include <vector>
 
-#if defined(_WIN32)
-#include <cstdlib>
-#elif defined(__APPLE__)
+#if defined(__APPLE__)
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #endif
@@ -42,6 +43,15 @@ namespace {
     constexpr std::size_t kWarmupRepeats = 2;
     constexpr std::size_t kMeasuredRepeats = 8;
     constexpr std::uint64_t kSeed = 0x9e3779b97f4a7c15ULL;
+
+    constexpr std::array<std::array<unsigned, 3>, 6> kMeasurementOrders{{
+        {{0U, 1U, 2U}},
+        {{0U, 2U, 1U}},
+        {{1U, 0U, 2U}},
+        {{1U, 2U, 0U}},
+        {{2U, 0U, 1U}},
+        {{2U, 1U, 0U}}
+    }};
 
     struct DenseCase final {
         std::vector<agent_memory::Embedding> documents;
@@ -394,6 +404,16 @@ namespace {
 #endif
     }
 
+    [[nodiscard]] std::string benchmark_source_commit() {
+        if(const auto* value = std::getenv("GITHUB_SHA"); value != nullptr && *value != '\0') {
+            return value;
+        }
+        if(const auto* value = std::getenv("AGENT_MEMORY_SOURCE_COMMIT"); value != nullptr && *value != '\0') {
+            return value;
+        }
+        return "UNPINNED";
+    }
+
     [[nodiscard]] std::string architecture() {
 #if defined(__x86_64__) || defined(_M_X64)
         return "x86_64";
@@ -409,6 +429,7 @@ namespace {
     [[nodiscard]] Json timing_json(const TimingSummary& summary) {
         return Json{
             {"sample_count", summary.samples_ms.size()},
+            {"raw_samples_ms", summary.samples_ms},
             {"mean_ms", summary.mean_ms},
             {"min_ms", summary.min_ms},
             {"p50_ms", summary.p50_ms},
@@ -460,6 +481,119 @@ namespace {
         maximum = std::max(maximum, observed);
     }
 
+    [[nodiscard]] Json production_benchmark_json(
+        const DenseCase& data,
+        const bool enable_simd
+    ) {
+        agent_memory::ExactVectorIndex index(agent_memory::ExactVectorIndexOptions{
+            data.documents.front().dimension(),
+            agent_memory::SimilarityMetric::Cosine,
+            enable_simd
+        });
+
+        agent_memory::Metadata document_metadata;
+        document_metadata.set("scope", "documents");
+        const auto build_started = Clock::now();
+        for(std::size_t document = 0; document < data.documents.size(); ++document) {
+            index.upsert(agent_memory::VectorRecord{
+                agent_memory::ChunkId{"bench:" + std::to_string(document)},
+                data.documents[document],
+                document_metadata
+            });
+        }
+        agent_memory::Metadata excluded_metadata;
+        excluded_metadata.set("scope", "chat");
+        index.upsert(agent_memory::VectorRecord{
+            agent_memory::ChunkId{"bench:excluded"},
+            data.documents.front(),
+            excluded_metadata
+        });
+        const auto build_ms = std::chrono::duration<double, std::milli>(
+            Clock::now() - build_started
+        ).count();
+
+        const agent_memory::MetadataFilter scope_filter{"scope", "documents"};
+        for(const auto& query : data.queries) {
+            (void)index.search(agent_memory::VectorSearchQuery{
+                query,
+                kTopK,
+                {scope_filter}
+            });
+        }
+
+        std::vector<double> samples;
+        samples.reserve(kMeasuredRepeats * data.queries.size());
+        bool top_k_correct = true;
+        bool tie_order_correct = true;
+        long double maximum_error = 0.0L;
+        std::size_t excluded_hits = 0;
+        volatile double checksum = 0.0;
+        for(std::size_t repeat = 0; repeat < kMeasuredRepeats; ++repeat) {
+            for(const auto& query : data.queries) {
+                const auto started = Clock::now();
+                const auto actual = index.search(agent_memory::VectorSearchQuery{
+                    query,
+                    kTopK,
+                    {scope_filter}
+                });
+                const auto elapsed = std::chrono::duration<double, std::milli>(
+                    Clock::now() - started
+                ).count();
+                samples.push_back(elapsed);
+                for(const auto& hit : actual) {
+                    checksum += static_cast<double>(hit.score);
+                    if(hit.chunk_id.value() == "bench:excluded") {
+                        ++excluded_hits;
+                    }
+                }
+
+                if(repeat == 0U) {
+                    const auto expected = reference_top_k(query, data);
+                    top_k_correct = top_k_correct && actual.size() == expected.size();
+                    for(std::size_t rank = 0; rank < actual.size() && rank < expected.size(); ++rank) {
+                        const auto expected_id = "bench:" + std::to_string(expected[rank].index);
+                        top_k_correct = top_k_correct
+                            && actual[rank].chunk_id.value() == expected_id;
+                        if(rank > 0U && actual[rank - 1U].score == actual[rank].score) {
+                            tie_order_correct = tie_order_correct
+                                && actual[rank - 1U].chunk_id < actual[rank].chunk_id;
+                        }
+                        if(actual[rank].chunk_id.value().rfind("bench:", 0U) == 0U) {
+                            const auto index_text = actual[rank].chunk_id.value().substr(6U);
+                            if(index_text != "excluded") {
+                                const auto candidate = static_cast<std::size_t>(std::stoull(index_text));
+                                maximum_error = std::max(
+                                    maximum_error,
+                                    std::abs(
+                                        static_cast<long double>(actual[rank].score)
+                                        - independent_reference_cosine(query, data.documents[candidate])
+                                    )
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        const auto timing = summarize(std::move(samples));
+        return Json{
+            {"simd_enabled", enable_simd},
+            {"selected_backend", std::string(agent_memory::vector_similarity_backend_name(index.similarity_backend()))},
+            {"record_count", index.size()},
+            {"excluded_record_count", 1},
+            {"build_ms", build_ms},
+            {"search", timing_json(timing)},
+            {"correctness", Json{
+                {"top_k_identity_parity", top_k_correct},
+                {"deterministic_tie_order", tie_order_correct},
+                {"max_returned_top_k_abs_score_error", maximum_error},
+                {"excluded_record_hits", excluded_hits}
+            }},
+            {"query_filter", "scope=documents"}
+        };
+    }
+
     [[nodiscard]] bool run_self_tests() {
         DenseCase data;
         data.documents = {
@@ -487,6 +621,61 @@ namespace {
             }
             if(max_score_error_by_id(actual.items, query, data) > 1.0e-6L) {
                 std::cerr << "self-test: generic score error\n";
+                return false;
+            }
+        }
+
+        DenseCase adversarial;
+        adversarial.documents = {
+            agent_memory::Embedding{{0.0F, 0.0F, 0.0F}},
+            agent_memory::Embedding{{1.0F, 1.0e-7F, 0.0F}},
+            agent_memory::Embedding{{1.0F, -1.0e-7F, 0.0F}},
+            agent_memory::Embedding{{std::numeric_limits<float>::denorm_min(),
+                                     -std::numeric_limits<float>::denorm_min(),
+                                     std::numeric_limits<float>::denorm_min()}},
+            agent_memory::Embedding{{1.0e20F, -1.0e20F, 1.0F}}
+        };
+        adversarial.queries = {
+            agent_memory::Embedding{{0.0F, 0.0F, 0.0F}},
+            agent_memory::Embedding{{1.0e20F, 1.0e-20F, -1.0F}},
+            agent_memory::Embedding{{1.0F, 0.0F, 0.0F}}
+        };
+        std::vector<double> adversarial_norms;
+        adversarial_norms.reserve(adversarial.documents.size());
+        for(const auto& document : adversarial.documents) {
+            adversarial_norms.push_back(stable_inverse_norm(document));
+        }
+        for(const auto& query : adversarial.queries) {
+            const auto expected = reference_top_k(query, adversarial);
+            const auto actual = current_scan(query, adversarial, adversarial_norms);
+            const auto corrected = current_scan(query, adversarial, adversarial_norms, true);
+            if(!same_top_k(actual.items, expected)
+               || !same_top_k(corrected.items, expected)
+               || max_score_error_by_id(actual.items, query, adversarial) > 2.0e-6L
+               || max_score_error_by_id(corrected.items, query, adversarial) > 2.0e-6L) {
+                std::cerr << "self-test: adversarial cosine matrix mismatch\n";
+                return false;
+            }
+        }
+        for(const auto dimension : {1U, 2U, 17U}) {
+            DenseCase dimensional;
+            dimensional.documents = {
+                agent_memory::Embedding{std::vector<float>(dimension, 1.0F)},
+                agent_memory::Embedding{std::vector<float>(dimension, -1.0F)}
+            };
+            dimensional.queries = {
+                agent_memory::Embedding{std::vector<float>(dimension, 1.0F)}
+            };
+            std::vector<double> dimensional_norms;
+            for(const auto& document : dimensional.documents) {
+                dimensional_norms.push_back(stable_inverse_norm(document));
+            }
+            const auto expected = reference_top_k(dimensional.queries.front(), dimensional);
+            if(!same_top_k(
+                   current_scan(dimensional.queries.front(), dimensional, dimensional_norms).items,
+                   expected
+               )) {
+                std::cerr << "self-test: dimensional cosine matrix mismatch\n";
                 return false;
             }
         }
@@ -564,10 +753,20 @@ namespace {
 
         volatile double checksum = 0.0;
         for(std::size_t repeat = 0; repeat < kWarmupRepeats; ++repeat) {
-            for(const auto& query : data.queries) {
-                checksum += legacy_scan(query, data, similarity, legacy_inverse_norms).checksum;
-                checksum += current_scan(query, data, current_inverse_norms).checksum;
-                checksum += current_scan(query, data, current_inverse_norms, true).checksum;
+            for(std::size_t query_index = 0; query_index < data.queries.size(); ++query_index) {
+                const auto& query = data.queries[query_index];
+                const auto& order = kMeasurementOrders[
+                    (repeat * data.queries.size() + query_index) % kMeasurementOrders.size()
+                ];
+                for(const auto variant : order) {
+                    if(variant == 0U) {
+                        checksum += legacy_scan(query, data, similarity, legacy_inverse_norms).checksum;
+                    } else if(variant == 1U) {
+                        checksum += current_scan(query, data, current_inverse_norms).checksum;
+                    } else {
+                        checksum += current_scan(query, data, current_inverse_norms, true).checksum;
+                    }
+                }
             }
         }
 
@@ -582,6 +781,7 @@ namespace {
         long double max_current_abs_error = 0.0L;
         long double max_compensated_abs_error = 0.0L;
         long double max_legacy_abs_error = 0.0L;
+        std::array<std::size_t, kMeasurementOrders.size()> order_counts{};
         for(std::size_t repeat = 0; repeat < kMeasuredRepeats; ++repeat) {
             for(std::size_t query_index = 0; query_index < data.queries.size(); ++query_index) {
                 const auto& query = data.queries[query_index];
@@ -606,34 +806,31 @@ namespace {
                     );
                 }
 
-                const bool current_first = (repeat + query_index) % 2U == 0U;
-                const auto measure = [&checksum, &query, &data, &similarity,
-                                      &legacy_inverse_norms, &current_inverse_norms,
-                                      current_first, &legacy_samples, &current_samples,
-                                      &compensated_samples]() {
+                const auto order_index =
+                    (repeat * data.queries.size() + query_index) % kMeasurementOrders.size();
+                ++order_counts[order_index];
+                for(const auto variant : kMeasurementOrders[order_index]) {
                     const auto started = Clock::now();
-                    const auto result = current_first
-                        ? current_scan(query, data, current_inverse_norms)
-                        : legacy_scan(query, data, similarity, legacy_inverse_norms);
-                    const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - started).count();
-                    checksum += result.checksum;
-                    (current_first ? current_samples : legacy_samples).push_back(elapsed);
-                    const auto other_started = Clock::now();
-                    const auto other = current_first
-                        ? legacy_scan(query, data, similarity, legacy_inverse_norms)
-                        : current_scan(query, data, current_inverse_norms);
-                    const auto other_elapsed = std::chrono::duration<double, std::milli>(Clock::now() - other_started).count();
-                    checksum += other.checksum;
-                    (current_first ? legacy_samples : current_samples).push_back(other_elapsed);
-                    const auto corrected_started = Clock::now();
-                    const auto corrected = current_scan(query, data, current_inverse_norms, true);
-                    const auto corrected_elapsed = std::chrono::duration<double, std::milli>(
-                        Clock::now() - corrected_started
+                    ScanResult result;
+                    if(variant == 0U) {
+                        result = legacy_scan(query, data, similarity, legacy_inverse_norms);
+                    } else if(variant == 1U) {
+                        result = current_scan(query, data, current_inverse_norms);
+                    } else {
+                        result = current_scan(query, data, current_inverse_norms, true);
+                    }
+                    const auto elapsed = std::chrono::duration<double, std::milli>(
+                        Clock::now() - started
                     ).count();
-                    checksum += corrected.checksum;
-                    compensated_samples.push_back(corrected_elapsed);
-                };
-                measure();
+                    checksum += result.checksum;
+                    if(variant == 0U) {
+                        legacy_samples.push_back(elapsed);
+                    } else if(variant == 1U) {
+                        current_samples.push_back(elapsed);
+                    } else {
+                        compensated_samples.push_back(elapsed);
+                    }
+                }
             }
         }
         if(!correct || !compensated_correct) {
@@ -661,12 +858,20 @@ namespace {
             {"legacy_float_simd", timing_json(legacy)},
             {"current_production_double_accumulation", timing_json(current)},
             {"corrected_compensated_double_accumulation", timing_json(compensated)},
+            {"measurement_order_policy", "all six permutations, deterministic query/repeat rotation"},
+            {"measurement_order_counts", order_counts},
+            {"production_exact_vector_search", Json::array({
+                production_benchmark_json(data, false),
+                production_benchmark_json(data, true)
+            })},
             {"legacy_over_current_p50_speedup", speedup},
             {"current_vs_legacy_p50_delta_percent", current_delta_percent},
             {"correctness", Json{
                 {"current_matches_independent_reference_top_k", correct},
                 {"corrected_matches_independent_reference_top_k", compensated_correct},
                 {"score_error_domain", "top-k candidates matched by candidate ID"},
+                {"full_scoring_matrix_measured", false},
+                {"adversarial_fixture_matrix", "cancellation, near-ties, mixed scales, subnormals, zero vectors, permutations, dimensional boundaries"},
                 {"max_current_abs_score_error", max_current_abs_error},
                 {"max_corrected_abs_score_error", max_compensated_abs_error},
                 {"max_legacy_abs_score_error", max_legacy_abs_error}
@@ -689,13 +894,16 @@ int main(int argc, char** argv) {
     try {
         const agent_memory::VectorSimilarityComputer similarity(true);
         Json report{
-            {"schema_version", 2},
+            {"schema_version", 3},
+            {"benchmark_protocol_version", "exact-vector-cosine-v3-balanced-production-path"},
             {"benchmark_name", "exact_vector_cosine_before_after_622"},
+            {"benchmark_source_commit", benchmark_source_commit()},
             {"legacy_source_commit", "7ba6979bde75ffe3a483a11d657f850642c633c0"},
             {"current_source_commit", "ee974627819130004be62efc79c9b401bbe29ac2"},
-            {"corrected_source_commit", "e2d94c09f9787b53d4454941785217acc6dedbd0"},
+            {"corrected_algorithm_source_commit", "e2d94c09f9787b53d4454941785217acc6dedbd0"},
+            {"corrected_source_policy", "manual reproduction in this benchmark; executable source is benchmark_source_commit"},
             {"scope", "bounded cosine scan arithmetic; not a production throughput claim"},
-            {"timing_semantics", "measured query-level sample distribution; sample_count is not independent-request count and p99 is directional, not a stability guarantee"},
+            {"timing_semantics", "measured query-level sample distribution; sample_count is not independent-request count and p99 is directional, not a stability guarantee; kernel-only and production search timings are separate"},
             {"compiler", compiler_name()},
             {"optimization_flags", AGENT_MEMORY_COSINE_BENCH_BUILD_FLAGS},
             {"architecture", architecture()},

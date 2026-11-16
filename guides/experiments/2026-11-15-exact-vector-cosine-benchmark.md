@@ -17,10 +17,12 @@ double-precision cosine numerator?
 The executable is `agent-memory-exact-vector-cosine-bench`. It generates a
 deterministic synthetic corpus and query set for dimensions 384, 768 and 1536.
 Each case has 512 documents, 24 queries, top-k 10, two warm-up repeats and
-eight measured repeats. Each query-level sample runs the legacy and current
-scan in alternating order. `sample_count` is therefore a measured sample
-count, not a count of independent requests; p95/p99 are directional summaries
-of this bounded run.
+eight measured repeats. Each measured query runs all three arithmetic variants
+in a deterministic rotation over all six execution orders. `sample_count` is
+therefore a measured sample count, not a count of independent requests; p95/p99
+are directional summaries of this bounded run. Warm-up runs are separate, and
+raw per-sample observations are retained in the JSON receipt. Kernel-only
+timings exclude corpus construction and index build.
 
 The legacy path reconstructs the cosine arithmetic from the parent of #622
 (float norm and the selected float SIMD dot product). The current path uses
@@ -31,8 +33,8 @@ relabel the current production measurements. The fixture self-test contains a
 near-cancellation negative control: the current production path must disagree
 with the independent reference while the corrected path must agree. Both paths
 use the same generated vectors and top-k comparator. The benchmark is intentionally
-scoped to cosine scan arithmetic; it is not an end-to-end `ExactVectorIndex`
-throughput claim.
+scoped to cosine scan arithmetic; a separate production-level section measures
+the actual `ExactVectorIndex::search()` path.
 
 Correctness is checked against an independent long-double reference for every
 query. Score errors are matched by candidate ID, not by rank position, so a
@@ -59,11 +61,18 @@ build-bench/tools/agent-memory-bench/agent-memory-exact-vector-cosine-bench \
 The report records compiler, optimization profile, CPU identifier, legacy
 SIMD backend, source commits, corpus seed/hash, latency percentiles and the
 independent compensated long-double-style reference result. It distinguishes
-`current_source_commit`/`current_production_double_accumulation` from
-`corrected_source_commit`/`corrected_compensated_double_accumulation`; the
-latter is the #628 diagnostic mode and is not evidence that the correction is
-already in the production `main` path. The legacy SIMD backend must not be
+`corrected_algorithm_source_commit`/`corrected_compensated_double_accumulation`;
+the latter is a manual reproduction of the #628 diagnostic algorithm, while
+`benchmark_source_commit` identifies the executable source itself. It is not
+evidence that the correction is already in the production `main` path. The
+legacy SIMD backend must not be
 interpreted as an acceleration of the new numerator.
+
+The report also contains `production_exact_vector_search`: the actual
+`ExactVectorIndex` is built once per SIMD option, build time is measured
+separately, and fixed queries use a real metadata filter. Returned IDs,
+deterministic tie order, excluded-record hits and score error by candidate ID
+are checked independently of the kernel-only scan.
 
 ## Historical observed run
 
