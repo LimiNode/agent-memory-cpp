@@ -129,6 +129,7 @@ jobs:
           }
           Write-Host 'negative header-manifest fixture failed as expected:'
           Write-Host $negativeFixtureOutput
+          exit 0
 
   mdbx-installed-consumer:
     name: MDBX installed consumer (ubuntu-latest)
