@@ -50,7 +50,8 @@ the decision below applies.
 | Local C++17 Release CTest (clean corrective worktree) | 47/47 passed | JSON=OFF, MDBX=OFF |
 | Local C++17 Release CTest (clean corrective worktree) | 52/52 passed | JSON=ON, MDBX=OFF; includes the new #631 focused assertions |
 | Local C++17 Debug CTest | 51/52 passed | JSON=ON, MDBX=OFF; `agent_memory_exact_lexical_index_test` failed after a long allocation/ownership path and requires a separate reproducible diagnosis |
-| Local MDBX CTest and installed MDBX consumers | not run locally | MDBX submodules are uninitialized in this worktree; installed MDBX evidence is from packaging run 43866997726 |
+| Local MDBX CTest (Windows, JSON=OFF) | not completed | Submodules initialized; baseline MSVC configure/build first required `/Zc:__cplusplus`; with `/Zc:__cplusplus /DNOMINMAX /EHsc`, external `mdbx-containers` failed in `KeyValueTable::retrieve_all` template deduction at `MdbxDurableLexicalDocumentMemory.cpp:947` |
+| Local MDBX installed consumers | not run locally | Ubuntu packaging evidence remains available from runs 43866997726 and 43876392811; no Windows/macOS MDBX execution is claimed |
 
 Post-merge verification for the documentation squash merge is complete:
 
@@ -162,9 +163,10 @@ guarantees:
 **HOLD.** The integrated Release evidence is bounded and reproducible, but the
 release owner has not yet reached approval. The corrective #631 slice is
 unmerged, the Debug `agent_memory_exact_lexical_index_test` result is not
-explained, and the local MDBX CTest is unavailable until the submodules are
-initialized. Packaging proves installed MDBX consumers on the recorded CI
-runner; it does not substitute for the missing local matrix.
+explained, and the local Windows MDBX build is blocked at the external
+`mdbx-containers`/MSVC boundary described above. Packaging proves an installed
+MDBX consumer on the recorded Ubuntu CI runner; it does not substitute for an
+unsupported or incomplete local matrix.
 
 Until that run is recorded, the candidate is not `READY_FOR_RELEASE_APPROVAL`.
 No tag, package upload, GitHub Release or production activation may occur.
@@ -178,8 +180,9 @@ not a production AN R4 implementation or an ANN compatibility promise.
 
 Next steps are bounded: obtain independent review and exact-head CI for #631;
 diagnose or explicitly disposition the Debug lexical-index failure; then
-rebase and requalify #628. Only after those gates should the release owner
-initialize the MDBX submodules in a clean worktree and run the remaining local
-MDBX/consumer/recovery matrix. A failure keeps the Raw Markdown verdict at
+rebase and requalify #628. The local MDBX preflight now has an explicit
+Windows dependency/toolchain failure; the remaining local MDBX/consumer/
+recovery matrix must be run on a supported environment before release approval.
+A failure keeps the Raw Markdown verdict at
 `HOLD` and must name the failing boundary; it does not authorize a compensating
 scope expansion.
