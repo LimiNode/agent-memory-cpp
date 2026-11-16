@@ -4,7 +4,7 @@ This report records the release decision for the exact integrated candidate
 `main` at the current integrated source candidate:
 
 ```text
-c93a7b867cd802e279a4118b07cc177f10322cf3
+0038b52a1361e7a9fce2394401cb2c75da95bd73
 ```
 
 It is a decision record, not a tag, GitHub Release, package publication, or
@@ -28,6 +28,7 @@ historical #611 preview snapshot:
 | #623 | `efb5db506cd246ca235690871685d5a8705bc7dc` | tokenizer boundary correction |
 | #627 | `c2486bc45301fbb83514094cc4c7929e3fc7a7af` | JSON-OFF public-header self-sufficiency gate |
 | #625 | `c93a7b867cd802e279a4118b07cc177f10322cf3` | reranker admission boundary (merge commit) |
+| #630 | `0038b52a1361e7a9fce2394401cb2c75da95bd73` | release decision and independent-audit disposition (squash merge) |
 
 The commits between these entries also contain the already-reviewed MDBX and
 index qualification fixes. The exact candidate is the only revision to which
@@ -50,6 +51,11 @@ the decision below applies.
 | Local C++17 Release CTest (clean corrective worktree) | 52/52 passed | JSON=ON, MDBX=OFF; includes the new #631 focused assertions |
 | Local C++17 Debug CTest | 51/52 passed | JSON=ON, MDBX=OFF; `agent_memory_exact_lexical_index_test` failed after a long allocation/ownership path and requires a separate reproducible diagnosis |
 | Local MDBX CTest and installed MDBX consumers | not run locally | MDBX submodules are uninitialized in this worktree; installed MDBX evidence is from packaging run 43866997726 |
+
+Post-merge verification for the documentation squash merge is complete:
+
+- CI [run 43876392826](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43876392826) passed on `0038b52a1361e7a9fce2394401cb2c75da95bd73`; required source, Windows/macOS and documentation jobs passed, while research lanes were classifier-skipped.
+- Packaging [run 43876392811](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43876392811) passed installed consumers and OLD-to-NEW exact-generation upgrade.
 
 The packaging result covers Linux, Windows and macOS minimal consumers, the
 MDBX installed consumer, the JSON installed consumer, and the OLD-to-NEW
@@ -78,7 +84,7 @@ bounded regression but is not a general high-precision adversarial oracle.
 
 Decision: **CODE APPROVE, PROCESS HOLD**. The PR is still based on
 `5efd4ead68cb891a9f7ebb94c9f03f49d902fc2d`, while `main` is
-`c93a7b867cd802e279a4118b07cc177f10322cf3`. Rebase onto the current
+`0038b52a1361e7a9fce2394401cb2c75da95bd73`. Rebase onto the current
 candidate, obtain new exact-head CI and packaging, and repeat the short source
 review before considering a guarded merge.
 
@@ -121,7 +127,7 @@ targeted regression, not merely a historical assertion.
 | StandardTokenizer allocation/noexcept | P2 | #623 tokenizer boundary regressions | `FIXED_MERGED` | lexical token identity preserved | `DEFER_WITH_REASON`; fixed |
 | Installed backend-only header | P2 | #619 negative install fixture and packaging | `FIXED_MERGED` | consumer package boundary correct | `DEFER_WITH_REASON`; fixed |
 | Reranker duplicate/foreign admission | P2 | #625 merged as `c93a7b8`; post-merge CI and packaging passed | `FIXED_MERGED` | bounded admission path protected | `DEFER_WITH_REASON`; no production-authority claim |
-| BM25+ naming | P3 | documentation correction in #630 | `FIXED_IN_DRAFT_PR` | documentation only | `FIX_NOW`; merge #630 after rebase |
+| BM25+ naming | P3 | documentation correction merged in #630; post-merge CI and packaging passed | `FIXED_MERGED` | documentation only | `DEFER_WITH_REASON`; fixed |
 | BruteForceTopKIndex dimension/query/score handling | P2 | current code reproducer; corrective #631 | `OPEN_CONFIRMED` | eval adapter correctness; not source-backed product path | `FIX_NOW`; independent review and CI pending |
 | BowVectorRetriever text and metadata filters | P2 | legacy evaluation-only adapter contract; source-backed preview uses another path | `INTENTIONAL_LIMITATION` | outside Raw Markdown product path | `DEFER_WITH_REASON`; document scope, no silent rewrite |
 | ResourceIndexer matching and uniqueness scans | P2 | static O(N²) paths; no release failure reproduced | `NEEDS_EVIDENCE` | bounded ingestion remains functional | `DEFER_WITH_REASON`; measure on representative corpora |
