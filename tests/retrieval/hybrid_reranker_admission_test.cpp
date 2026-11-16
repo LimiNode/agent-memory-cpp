@@ -100,6 +100,9 @@ namespace {
         Duplicate,
         TooMany,
         NonFinite,
+        PositiveInfinity,
+        NegativeInfinity,
+        Subset,
         Empty
     };
 
@@ -138,13 +141,25 @@ namespace {
                     candidates.front().enrichment_level = 99;
                     break;
                 case Mutation::Duplicate:
-                    candidates.push_back(candidates.front());
+                    candidates[1].chunk_id = candidates[0].chunk_id;
+                    candidates[1].resource_id = candidates[0].resource_id;
+                    candidates[1].section_id = candidates[0].section_id;
+                    candidates[1].result_tier = candidates[0].result_tier;
                     break;
                 case Mutation::TooMany:
                     candidates.push_back(candidates.back());
                     break;
                 case Mutation::NonFinite:
                     candidates.front().score = std::numeric_limits<float>::quiet_NaN();
+                    break;
+                case Mutation::PositiveInfinity:
+                    candidates.front().score = std::numeric_limits<float>::infinity();
+                    break;
+                case Mutation::NegativeInfinity:
+                    candidates.front().score = -std::numeric_limits<float>::infinity();
+                    break;
+                case Mutation::Subset:
+                    candidates.resize(1);
                     break;
                 case Mutation::Empty:
                     candidates.clear();
@@ -253,7 +268,9 @@ int main(int argc, char** argv) {
             Mutation::Enrichment,
             Mutation::Duplicate,
             Mutation::TooMany,
-            Mutation::NonFinite
+            Mutation::NonFinite,
+            Mutation::PositiveInfinity,
+            Mutation::NegativeInfinity
         }) {
         if(!run(index, mutation).empty()) {
             return fail("invalid reranker output must fail closed with an empty response");
@@ -264,16 +281,46 @@ int main(int argc, char** argv) {
         return fail("an explicitly empty reranker result must remain an empty response");
     }
 
+    const auto subset = run(index, Mutation::Subset, 2);
+    if(subset.size() != 1
+       || subset.items.front().lexical.chunk_id != agent_memory::ChunkId{"chunk:alpha"}
+       || subset.items.front().lexical.resource_id != agent_memory::ResourceId{"resource:alpha"}
+       || subset.items.front().lexical.section_id != 5
+       || subset.items.front().lexical.result_tier != 0
+       || subset.items.front().lexical.enrichment_level != 2
+       || subset.items.front().lexical.score != 0.9F
+       || subset.items.front().lexical.metadata.get("scope")
+            != std::optional<std::string>{"documents"}) {
+        return fail("a reranker may return a valid admitted subset without changing fields");
+    }
+
     agent_memory::HybridRetrievalEngine identity_engine(index);
     agent_memory::RetrievalRequest identity_request;
     identity_request.query = "memory";
     identity_request.limit = 2;
     const auto identity = identity_engine.retrieve(identity_request);
-    if(identity.size() != 2
-       || identity.items[0].lexical.result_tier != 0
-       || identity.items[1].lexical.result_tier != 1
-       || !std::isfinite(identity.items[0].lexical.score)) {
-        return fail("IdentityReranker must preserve the admitted lexical results");
+    if(identity.size() != 2) {
+        return fail("IdentityReranker must preserve the admitted result count");
+    }
+    const auto& identity_first = identity.items[0].lexical;
+    const auto& identity_second = identity.items[1].lexical;
+    if(identity_first.chunk_id != agent_memory::ChunkId{"chunk:alpha"}
+       || identity_first.resource_id != agent_memory::ResourceId{"resource:alpha"}
+       || identity_first.section_id != 5
+       || identity_first.result_tier != 0
+       || identity_first.enrichment_level != 2
+       || identity_first.score != 0.9F
+       || identity_first.metadata.get("scope") != std::optional<std::string>{"documents"}
+       || identity_second.chunk_id != agent_memory::ChunkId{"chunk:alpha"}
+       || identity_second.resource_id != agent_memory::ResourceId{"resource:alpha"}
+       || identity_second.section_id != 5
+       || identity_second.result_tier != 1
+       || identity_second.enrichment_level != 2
+       || identity_second.score != 0.8F
+       || identity_second.metadata.get("scope") != std::optional<std::string>{"documents"}
+       || !std::isfinite(identity_first.score)
+       || !std::isfinite(identity_second.score)) {
+        return fail("IdentityReranker must preserve all admitted lexical fields and order");
     }
 
     return 0;
