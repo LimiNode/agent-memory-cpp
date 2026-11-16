@@ -419,6 +419,20 @@ target_link_libraries(agent_memory_retrieval_contracts_test
 
 add_test(NAME agent_memory_retrieval_contracts_test COMMAND agent_memory_retrieval_contracts_test)
 
+add_executable(agent_memory_hybrid_reranker_admission_test
+    retrieval/hybrid_reranker_admission_test.cpp
+)
+
+target_link_libraries(agent_memory_hybrid_reranker_admission_test
+    PRIVATE
+        agent_memory::agent_memory
+)
+
+add_test(
+    NAME agent_memory_hybrid_reranker_admission_test
+    COMMAND agent_memory_hybrid_reranker_admission_test
+)
+
 if(AGENT_MEMORY_ENABLE_JSON)
     add_executable(agent_memory_exact_vector_retriever_test
         retrieval/exact_vector_retriever_test.cpp
