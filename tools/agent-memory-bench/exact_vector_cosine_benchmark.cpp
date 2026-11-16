@@ -265,17 +265,33 @@ namespace {
     [[nodiscard]] ScanResult current_scan(
         const agent_memory::Embedding& query,
         const DenseCase& data,
-        const std::vector<double>& inverse_document_norms
+        const std::vector<double>& inverse_document_norms,
+        const bool compensated = false
     ) {
         const auto query_inverse_norm = stable_inverse_norm(query);
         std::vector<RankedItem> scored;
         scored.reserve(data.documents.size());
         for(std::size_t index = 0; index < data.documents.size(); ++index) {
             double dot = 0.0;
+            double compensation = 0.0;
             const auto& document = data.documents[index];
             for(std::size_t value = 0; value < query.values.size(); ++value) {
-                dot += static_cast<double>(query.values[value])
+                const auto product = static_cast<double>(query.values[value])
                     * static_cast<double>(document.values[value]);
+                if(!compensated) {
+                    dot += product;
+                } else {
+                    const auto next = dot + product;
+                    if(std::abs(dot) >= std::abs(product)) {
+                        compensation += (dot - next) + product;
+                    } else {
+                        compensation += (product - next) + dot;
+                    }
+                    dot = next;
+                }
+            }
+            if(compensated) {
+                dot += compensation;
             }
             const auto score = query_inverse_norm != 0.0 && inverse_document_norms[index] != 0.0
                 ? static_cast<float>(dot * query_inverse_norm * inverse_document_norms[index])
@@ -437,6 +453,13 @@ namespace {
         return maximum;
     }
 
+    void accumulate_max_score_error(
+        long double& maximum,
+        const long double observed
+    ) noexcept {
+        maximum = std::max(maximum, observed);
+    }
+
     [[nodiscard]] bool run_self_tests() {
         DenseCase data;
         data.documents = {
@@ -486,10 +509,16 @@ namespace {
         const auto cancellation_production = current_scan(
             cancellation_data.queries.front(), cancellation_data, cancellation_norms
         );
+        const auto cancellation_corrected = current_scan(
+            cancellation_data.queries.front(), cancellation_data, cancellation_norms, true
+        );
         if(cancellation_reference.front().index != 1U
            || !(cancellation_reference.front().score > 0.0L)
            || !(cancellation_reference.back().score < 0.0L)
-           || same_top_k(cancellation_production.items, cancellation_reference)) {
+           || same_top_k(cancellation_production.items, cancellation_reference)
+           || !same_top_k(cancellation_corrected.items, cancellation_reference)
+           || !(cancellation_corrected.items.front().score > 0.0F)
+           || !(cancellation_corrected.items.back().score < 0.0F)) {
             std::cerr << "self-test: cancellation negative control mismatch ref="
                       << cancellation_reference.front().index << "/"
                       << static_cast<double>(cancellation_reference.front().score)
@@ -505,6 +534,14 @@ namespace {
         );
         if(!(std::abs(normalized - 1.0L) < 1.0e-6L)) {
             std::cerr << "self-test: normalized vector mismatch\n";
+            return false;
+        }
+        long double aggregate_error = 0.0L;
+        for(const auto observed : {2.0e-6L, 7.0e-6L, 1.0e-7L}) {
+            accumulate_max_score_error(aggregate_error, observed);
+        }
+        if(aggregate_error != 7.0e-6L) {
+            std::cerr << "self-test: score error aggregation mismatch\n";
             return false;
         }
         return true;
@@ -530,15 +567,20 @@ namespace {
             for(const auto& query : data.queries) {
                 checksum += legacy_scan(query, data, similarity, legacy_inverse_norms).checksum;
                 checksum += current_scan(query, data, current_inverse_norms).checksum;
+                checksum += current_scan(query, data, current_inverse_norms, true).checksum;
             }
         }
 
         std::vector<double> legacy_samples;
         std::vector<double> current_samples;
+        std::vector<double> compensated_samples;
         legacy_samples.reserve(kMeasuredRepeats * data.queries.size());
         current_samples.reserve(kMeasuredRepeats * data.queries.size());
+        compensated_samples.reserve(kMeasuredRepeats * data.queries.size());
         bool correct = true;
+        bool compensated_correct = true;
         long double max_current_abs_error = 0.0L;
+        long double max_compensated_abs_error = 0.0L;
         long double max_legacy_abs_error = 0.0L;
         for(std::size_t repeat = 0; repeat < kMeasuredRepeats; ++repeat) {
             for(std::size_t query_index = 0; query_index < data.queries.size(); ++query_index) {
@@ -546,16 +588,29 @@ namespace {
                 const auto reference = reference_top_k(query, data);
                 if(repeat == 0) {
                     const auto current = current_scan(query, data, current_inverse_norms);
+                    const auto compensated = current_scan(query, data, current_inverse_norms, true);
                     const auto legacy = legacy_scan(query, data, similarity, legacy_inverse_norms);
                     correct = correct && same_top_k(current.items, reference);
-                    max_current_abs_error = max_score_error_by_id(current.items, query, data);
-                    max_legacy_abs_error = max_score_error_by_id(legacy.items, query, data);
+                    compensated_correct = compensated_correct && same_top_k(compensated.items, reference);
+                    accumulate_max_score_error(
+                        max_current_abs_error,
+                        max_score_error_by_id(current.items, query, data)
+                    );
+                    accumulate_max_score_error(
+                        max_legacy_abs_error,
+                        max_score_error_by_id(legacy.items, query, data)
+                    );
+                    accumulate_max_score_error(
+                        max_compensated_abs_error,
+                        max_score_error_by_id(compensated.items, query, data)
+                    );
                 }
 
                 const bool current_first = (repeat + query_index) % 2U == 0U;
                 const auto measure = [&checksum, &query, &data, &similarity,
                                       &legacy_inverse_norms, &current_inverse_norms,
-                                      current_first, &legacy_samples, &current_samples]() {
+                                      current_first, &legacy_samples, &current_samples,
+                                      &compensated_samples]() {
                     const auto started = Clock::now();
                     const auto result = current_first
                         ? current_scan(query, data, current_inverse_norms)
@@ -570,16 +625,24 @@ namespace {
                     const auto other_elapsed = std::chrono::duration<double, std::milli>(Clock::now() - other_started).count();
                     checksum += other.checksum;
                     (current_first ? legacy_samples : current_samples).push_back(other_elapsed);
+                    const auto corrected_started = Clock::now();
+                    const auto corrected = current_scan(query, data, current_inverse_norms, true);
+                    const auto corrected_elapsed = std::chrono::duration<double, std::milli>(
+                        Clock::now() - corrected_started
+                    ).count();
+                    checksum += corrected.checksum;
+                    compensated_samples.push_back(corrected_elapsed);
                 };
                 measure();
             }
         }
-        if(!correct) {
-            throw std::runtime_error("current production cosine scan disagrees with the independent reference top-k");
+        if(!correct || !compensated_correct) {
+            throw std::runtime_error("cosine scan disagrees with the independent reference top-k");
         }
 
         const auto legacy = summarize(std::move(legacy_samples));
         const auto current = summarize(std::move(current_samples));
+        const auto compensated = summarize(std::move(compensated_samples));
         const auto speedup = current.p50_ms == 0.0 ? 0.0 : legacy.p50_ms / current.p50_ms;
         const auto current_delta_percent = legacy.p50_ms == 0.0
             ? 0.0
@@ -597,11 +660,15 @@ namespace {
             }()},
             {"legacy_float_simd", timing_json(legacy)},
             {"current_production_double_accumulation", timing_json(current)},
+            {"corrected_compensated_double_accumulation", timing_json(compensated)},
             {"legacy_over_current_p50_speedup", speedup},
             {"current_vs_legacy_p50_delta_percent", current_delta_percent},
             {"correctness", Json{
                 {"current_matches_independent_reference_top_k", correct},
+                {"corrected_matches_independent_reference_top_k", compensated_correct},
+                {"score_error_domain", "top-k candidates matched by candidate ID"},
                 {"max_current_abs_score_error", max_current_abs_error},
+                {"max_corrected_abs_score_error", max_compensated_abs_error},
                 {"max_legacy_abs_score_error", max_legacy_abs_error}
             }}
         };
@@ -626,6 +693,7 @@ int main(int argc, char** argv) {
             {"benchmark_name", "exact_vector_cosine_before_after_622"},
             {"legacy_source_commit", "7ba6979bde75ffe3a483a11d657f850642c633c0"},
             {"current_source_commit", "ee974627819130004be62efc79c9b401bbe29ac2"},
+            {"corrected_source_commit", "e2d94c09f9787b53d4454941785217acc6dedbd0"},
             {"scope", "bounded cosine scan arithmetic; not a production throughput claim"},
             {"timing_semantics", "measured query-level sample distribution; sample_count is not independent-request count and p99 is directional, not a stability guarantee"},
             {"compiler", compiler_name()},
@@ -641,6 +709,7 @@ int main(int argc, char** argv) {
             {"cpu_model", cpu_model()},
             {"legacy_simd_backend", std::string(agent_memory::vector_similarity_backend_name(similarity.backend()))},
             {"current_cosine_accumulation", "current production scalar double (sequential accumulation)"},
+            {"corrected_cosine_accumulation", "Neumaier-compensated scalar double from the cancellation corrective"},
             {"independent_reference", "compensated long-double-style accumulation with independent norm calculation"},
             {"dimensions", Json::array({384, 768, 1536})},
             {"cases", Json::array({
