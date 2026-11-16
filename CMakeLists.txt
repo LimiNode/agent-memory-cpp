@@ -516,6 +516,10 @@ if(AGENT_MEMORY_BUILD_TESTS)
         )
     if(AGENT_MEMORY_BUILD_BENCHMARKS)
         add_test(
+            NAME agent_memory_reranker_admission_scaling_self_test
+            COMMAND agent-memory-reranker-admission-scaling --self-test
+        )
+        add_test(
             NAME agent_memory_mih_native_hot_path_self_test
             COMMAND agent-memory-mih-native-hot-path --self-test
         )

@@ -12,6 +12,16 @@ add_executable(agent-memory-autoencoder-eval
     autoencoder_evaluation.cpp
 )
 
+add_executable(agent-memory-reranker-admission-scaling
+    reranker_admission_scaling.cpp
+)
+
+target_link_libraries(agent-memory-reranker-admission-scaling
+    PRIVATE
+        agent_memory::agent_memory
+        agent_memory::json
+)
+
 function(agent_memory_set_evaluator_source_manifest target)
     set(manifest_text "")
     foreach(source_file IN LISTS ARGN)

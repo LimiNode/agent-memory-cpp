@@ -608,9 +608,23 @@ jobs:
           cmake --build build-native-mih --config Release --target
           agent-memory-mih-native-hot-path
           agent-memory-mih-native-sparse-arbitrary-m
+          agent-memory-reranker-admission-scaling
 
       - name: Test native MIH benchmark harness
         run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_
+
+      - name: Test reranker admission scaling
+        run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_reranker_admission_scaling_self_test
+
+      - name: Run reranker admission scaling
+        run: ./build-native-mih/tools/agent-memory-bench/agent-memory-reranker-admission-scaling build-native-mih/reranker-admission-scaling.json
+
+      - name: Upload reranker admission scaling receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: reranker-admission-scaling-receipt
+          path: build-native-mih/reranker-admission-scaling.json
+          if-no-files-found: error
 
   r4-native-benchmark:
     if: needs.changes.outputs.research == 'true'
