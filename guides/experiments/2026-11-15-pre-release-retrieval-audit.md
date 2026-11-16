@@ -32,7 +32,10 @@ At the time of the corrective handoff, `main` is
 | #625 | `dc8cbc650ab7103854e4f62a277f76780db6d817` | Draft; restacked on current `main`; exact-head CI `43820825942` and packaging `43820825988` successful |
 | #626 | `4fe7eb82eb3a14a103f84c0d72f29751e41db3c6` | Draft research benchmark; corrected-mode self-test and provenance added; exact-head CI `43821058522` and packaging `43821058369` successful |
 | #628 | `e2d94c09f9787b53d4454941785217acc6dedbd0` | Draft; restacked on current `main`; exact-head CI `43820484040` and packaging `43820484050` successful |
-| #629 | `305753829f70f10a9bb8db0c48aa0b2017fe0c51` | Audit update; CI `43821248087` and packaging `43821247970` successful; no merge or release action |
+| #629 | `b40a106fd02b2e2a3f1abeddb3ec42ca31e255e2` | Audit update; CI `43823954404` and packaging `43823954439` successful; no merge or release action |
+
+This row records the latest content-bearing audit head; the follow-up commit
+that records this completed CI result is documentation-only.
 
 The earlier rows and CI identifiers remain valid evidence for the heads they
 name, but do not certify these newer heads. The new exact-head checks listed
