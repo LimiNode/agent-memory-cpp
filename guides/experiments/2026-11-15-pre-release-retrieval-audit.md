@@ -49,6 +49,15 @@ It adds balanced six-order timing, raw observations, and a separate
 tracked separately from the historical receipt above; the follow-up is not a
 production performance claim.
 
+### Latest integration status
+
+Since the historical snapshot, #625 was integrated as
+`c93a7b867cd802e279a4118b07cc177f10322cf3`; the current `main` is
+`d4cccd4834cad866f3309adb0d31c35f407d7111`. #628 remains open at
+`e2d94c09f9787b53d4454941785217acc6dedbd0` and has not been merged. #626 is
+still a Draft research PR at the follow-up head above. The isolated admission
+scaling follow-up is Draft PR #633 and is intentionally research-only.
+
 ## Dependency and ownership map
 
 ```text
@@ -194,7 +203,9 @@ checks are now successful for the recorded historical heads. #625 and #628
 have been handed to the first agent for independent review and integration;
 this research branch performs no merge.
 
-Current blockers are deliberately different: independent review of the Draft
-handoff, qualification of the new #626 production-path receipt, isolated
-#625 admission-scaling evidence, and the future canonical Modern R4 replay.
+Current blockers are deliberately different: exact-head qualification of the
+new #626 production-path receipt, exact-head qualification of isolated PR #633,
+independent review/integration of #628, and the future canonical Modern R4
+replay. #625's production code is already integrated; its optimization remains
+out of scope until the isolated evidence is reviewed.
 No merge, tag, release or package publication is performed by this audit.
