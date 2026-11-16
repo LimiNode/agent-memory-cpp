@@ -29,14 +29,16 @@ At the time of the corrective handoff, `main` is
 
 | PR | Current head | Current status |
 | --- | --- | --- |
-| #625 | `dc8cbc650ab7103854e4f62a277f76780db6d817` | Draft; restacked on current `main`; exact-head CI pending |
-| #626 | `4fe7eb82eb3a14a103f84c0d72f29751e41db3c6` | Draft research benchmark; corrected-mode self-test and provenance added; exact-head CI pending |
-| #628 | `e2d94c09f9787b53d4454941785217acc6dedbd0` | Draft; restacked on current `main`; exact-head CI pending |
-| #629 | `ebf05dc21a2a40f539fd09a306c20690b9e48972` | Historical audit document; no merge or release action |
+| #625 | `dc8cbc650ab7103854e4f62a277f76780db6d817` | Draft; restacked on current `main`; exact-head CI `43820825942` and packaging `43820825988` successful |
+| #626 | `4fe7eb82eb3a14a103f84c0d72f29751e41db3c6` | Draft research benchmark; corrected-mode self-test and provenance added; exact-head CI `43821058522` and packaging `43821058369` successful |
+| #628 | `e2d94c09f9787b53d4454941785217acc6dedbd0` | Draft; restacked on current `main`; exact-head CI `43820484040` and packaging `43820484050` successful |
+| #629 | `305753829f70f10a9bb8db0c48aa0b2017fe0c51` | Audit update; CI `43821248087` and packaging `43821247970` successful; no merge or release action |
 
 The earlier rows and CI identifiers remain valid evidence for the heads they
-name, but do not certify these newer heads. Any release decision must use the
-new exact-head checks and receipts.
+name, but do not certify these newer heads. The new exact-head checks listed
+above are successful, but they qualify Draft research PRs and do not authorize
+merge or release. Any release decision must use these checks and receipts
+together with independent review.
 
 ## Dependency and ownership map
 
@@ -105,11 +107,14 @@ not an SLA and not an authorization proof; the PR remains Draft.
 Earlier exact-head CI completed successfully for the then-current #625
 (`43666590301` / packaging `43666590356`), #626 (`43667644953` / packaging
 `43667644948`) and #628 (`43666263091` / packaging `43666263072`). Those runs
-remain historical evidence for those exact heads. The #626 CI uploaded
+remain historical evidence for those exact heads. The current #626 CI
+(`43821058522`) uploaded
 `exact-vector-cosine-benchmark-receipt`; its downloaded JSON has SHA-256
 `967ee6ba8631c83bf39ea35604fe18f1c8212cb33451b9d1fd6d82bb4a26b2c7`, schema
 version 2, source commit `ee974627819130004be62efc79c9b401bbe29ac2`, and all
-three current top-k checks passed against the independent reference.
+three current top-k checks passed against the independent reference. The
+updated receipt also includes the corrected-mode provenance and has digest
+`sha256:3f4f902ee223e3ff0f227be9fde4e3d1de2da3df62bad7a57a801de5af385e81`.
 
 ## Exception safety, memory, race and lifetime matrix
 
