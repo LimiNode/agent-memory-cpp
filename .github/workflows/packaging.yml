@@ -115,12 +115,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'nested header-manifest fixture failed' }
 
           $headerFixtureNegative = Join-Path $repo '.build/packaging-header-manifest-negative'
-          cmake -S (Join-Path $repo 'packaging/consumers/header-manifest-fixture') `
+          $negativeFixtureOutput = & cmake -S (Join-Path $repo 'packaging/consumers/header-manifest-fixture') `
             -B $headerFixtureNegative -G Ninja `
             "-DAGENT_MEMORY_SOURCE_DIR=$repo" `
-            -DAGENT_MEMORY_FIXTURE_WITH_FORBIDDEN_HEADER=ON
-          if ($LASTEXITCODE -eq 0) { throw 'negative header-manifest fixture unexpectedly passed' }
-          Write-Host 'negative header-manifest fixture failed as expected'
+            -DAGENT_MEMORY_FIXTURE_WITH_FORBIDDEN_HEADER=ON 2>&1 | Out-String
+          $negativeFixtureExitCode = $LASTEXITCODE
+          if ($negativeFixtureExitCode -eq 0) {
+            throw 'negative header-manifest fixture unexpectedly passed'
+          }
+          if ($negativeFixtureOutput -notmatch
+              'backend-only CanonicalContentStoreInternal\.hpp leaked into the installed\s+package') {
+            throw 'negative header-manifest fixture failed without the expected forbidden-header diagnostic'
+          }
+          Write-Host 'negative header-manifest fixture failed as expected:'
+          Write-Host $negativeFixtureOutput
 
   mdbx-installed-consumer:
     name: MDBX installed consumer (ubuntu-latest)

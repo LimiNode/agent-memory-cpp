@@ -25,7 +25,3 @@ set(agent_memory_DIR "${_fixture_package_dir}")
 include(
     "${AGENT_MEMORY_SOURCE_DIR}/packaging/consumers/common/verify_public_header_manifest.cmake"
 )
-
-if(AGENT_MEMORY_FIXTURE_WITH_FORBIDDEN_HEADER)
-    message(FATAL_ERROR "negative header-manifest fixture unexpectedly passed")
-endif()
