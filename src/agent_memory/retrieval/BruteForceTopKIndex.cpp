@@ -49,13 +49,12 @@ namespace agent_memory {
                 "BruteForceTopKIndex::add: vector contains NaN or Inf"
             );
         }
-        if(m_dimension == 0) {
-            m_dimension = vector.size();
-        } else if(vector.size() != m_dimension) {
+        const std::size_t candidate_dimension = vector.size();
+        if(m_dimension != 0 && candidate_dimension != m_dimension) {
             throw std::invalid_argument(
                 "BruteForceTopKIndex::add: vector dimension mismatch "
                 "(expected " + std::to_string(m_dimension) +
-                ", got " + std::to_string(vector.size()) + ")"
+                ", got " + std::to_string(candidate_dimension) + ")"
             );
         }
 
@@ -67,7 +66,13 @@ namespace agent_memory {
                 return;
             }
         }
+        // Publish the dimension only after the potentially-throwing insertion
+        // succeeds. A failed first insertion must leave an empty index with
+        // dimension() == 0, as promised by the public contract.
         m_records.emplace_back(std::move(doc_id), std::move(vector));
+        if(m_dimension == 0) {
+            m_dimension = candidate_dimension;
+        }
     }
 
     void BruteForceTopKIndex::build() {
@@ -79,7 +84,15 @@ namespace agent_memory {
         std::size_t k
     ) const {
         std::vector<std::pair<std::string, double>> result;
-        if(k == 0 || m_records.empty() || query.empty()) {
+        if(k == 0 || query.empty()) {
+            return result;
+        }
+        if(!all_finite(query)) {
+            throw std::invalid_argument(
+                "BruteForceTopKIndex: query contains NaN or Inf"
+            );
+        }
+        if(m_records.empty()) {
             return result;
         }
         if(m_dimension != 0 && query.size() != m_dimension) {
@@ -100,52 +113,17 @@ namespace agent_memory {
             return result;
         }
 
-        // partial_sort over an index array: zero copies of the full matrix.
-        std::vector<std::size_t> order(m_records.size());
-        for(std::size_t i = 0; i < order.size(); ++i) {
-            order[i] = i;
-        }
-        const std::size_t limit = std::min(k, m_records.size());
-        std::partial_sort(
-            order.begin(),
-            order.begin() + static_cast<std::ptrdiff_t>(limit),
-            order.end(),
-            [&](std::size_t lhs, std::size_t rhs) {
-                const auto& a = m_records[lhs].second;
-                const auto& b = m_records[rhs].second;
-                double a_dot = 0.0;
-                double a_norm_sq = 0.0;
-                double b_dot = 0.0;
-                double b_norm_sq = 0.0;
-                const std::size_t n = query.size();
-                for(std::size_t i = 0; i < n; ++i) {
-                    const float qv = query[i];
-                    a_dot += static_cast<double>(qv) * static_cast<double>(a[i]);
-                    a_norm_sq += static_cast<double>(a[i]) * static_cast<double>(a[i]);
-                    b_dot += static_cast<double>(qv) * static_cast<double>(b[i]);
-                    b_norm_sq += static_cast<double>(b[i]) * static_cast<double>(b[i]);
-                }
-                // Higher cosine first; ties broken by doc_id ascending so
-                // the result is byte-deterministic across runs. Zero-norm
-                // documents produce cosine == 0 and fall through to the
-                // tie-break.
-                const double a_score = a_norm_sq > 0.0
-                    ? (a_dot / std::sqrt(a_norm_sq * q_norm_sq))
-                    : 0.0;
-                const double b_score = b_norm_sq > 0.0
-                    ? (b_dot / std::sqrt(b_norm_sq * q_norm_sq))
-                    : 0.0;
-                if(a_score == b_score) {
-                    return m_records[lhs].first < m_records[rhs].first;
-                }
-                return a_score > b_score;
-            }
-        );
+        struct ScoredRecord {
+            std::size_t index = 0;
+            double score = 0.0;
+        };
 
-        result.reserve(limit);
-        for(std::size_t i = 0; i < limit; ++i) {
-            const auto& record = m_records[order[i]];
-            const auto& vec = record.second;
+        // Score each record once. The comparator below only compares scalar
+        // scores and document ids; it never rescans an embedding.
+        std::vector<ScoredRecord> scored;
+        scored.reserve(m_records.size());
+        for(std::size_t index = 0; index < m_records.size(); ++index) {
+            const auto& vec = m_records[index].second;
             double dot = 0.0;
             double v_norm_sq = 0.0;
             for(std::size_t j = 0; j < query.size(); ++j) {
@@ -155,7 +133,34 @@ namespace agent_memory {
             const double score = v_norm_sq > 0.0
                 ? (dot / std::sqrt(v_norm_sq * q_norm_sq))
                 : 0.0;
-            result.emplace_back(record.first, score);
+            if(!std::isfinite(score)) {
+                throw std::runtime_error(
+                    "BruteForceTopKIndex: cosine score is non-finite"
+                );
+            }
+            scored.push_back(ScoredRecord{index, score});
+        }
+
+        const std::size_t limit = std::min(k, m_records.size());
+        std::partial_sort(
+            scored.begin(),
+            scored.begin() + static_cast<std::ptrdiff_t>(limit),
+            scored.end(),
+            [&](const ScoredRecord& lhs, const ScoredRecord& rhs) {
+                if(lhs.score == rhs.score) {
+                    return m_records[lhs.index].first < m_records[rhs.index].first;
+                }
+                return lhs.score > rhs.score;
+            }
+        );
+
+        result.reserve(limit);
+        for(std::size_t i = 0; i < limit; ++i) {
+            const auto& scored_record = scored[i];
+            result.emplace_back(
+                m_records[scored_record.index].first,
+                scored_record.score
+            );
         }
         return result;
     }

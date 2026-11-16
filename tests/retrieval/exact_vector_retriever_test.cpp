@@ -543,6 +543,28 @@ namespace {
         }
     }
 
+    // A rejected first insertion must not publish its dimension.
+    {
+        BruteForceTopKIndex idx;
+        const bool ok = throws_invalid_argument_message(
+            [&] {
+                idx.add(
+                    "doc:a",
+                    std::vector<float>{
+                        std::numeric_limits<float>::quiet_NaN(),
+                        0.0F
+                    }
+                );
+            },
+            "NaN"
+        );
+        if(!ok || idx.size() != 0 || idx.dimension() != 0) {
+            return fail(
+                "add(): failed first insertion must leave empty dimension state"
+            );
+        }
+    }
+
     // add() rejects +Inf.
     {
         BruteForceTopKIndex idx;
@@ -640,6 +662,41 @@ namespace {
         );
         if(!ok) {
             return fail("top_k(): dimension mismatch must throw std::invalid_argument");
+        }
+    }
+
+    // top_k() rejects non-finite queries before ranking.
+    {
+        BruteForceTopKIndex idx;
+        idx.add("doc:a", std::vector<float>{1.0F, 0.0F});
+        for(const float invalid : {
+                std::numeric_limits<float>::quiet_NaN(),
+                std::numeric_limits<float>::infinity(),
+                -std::numeric_limits<float>::infinity()
+            }) {
+            const bool ok = throws_invalid_argument_message(
+                [&] { (void)idx.top_k(std::vector<float>{invalid, 0.0F}, 1); },
+                "NaN or Inf"
+            );
+            if(!ok) {
+                return fail("top_k(): non-finite query must throw before ranking");
+            }
+        }
+    }
+
+    // Repeated queries must preserve score ordering and deterministic ties.
+    {
+        BruteForceTopKIndex idx;
+        idx.add("doc:b", std::vector<float>{1.0F, 0.0F});
+        idx.add("doc:a", std::vector<float>{1.0F, 0.0F});
+        idx.add("doc:c", std::vector<float>{0.0F, 1.0F});
+        const auto first = idx.top_k(std::vector<float>{1.0F, 0.0F}, 3);
+        const auto second = idx.top_k(std::vector<float>{1.0F, 0.0F}, 3);
+        if(first != second || first.size() != 3 || first[0].first != "doc:a" ||
+           first[1].first != "doc:b" || first[2].first != "doc:c" ||
+           !std::isfinite(first[0].second) || !std::isfinite(first[1].second) ||
+           !std::isfinite(first[2].second)) {
+            return fail("top_k(): score ordering and tie-break must be repeatable");
         }
     }
 
