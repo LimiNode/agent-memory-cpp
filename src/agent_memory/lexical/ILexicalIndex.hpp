@@ -28,10 +28,13 @@ namespace agent_memory {
     ///     implementation permits it.
     ///
     /// Document-frequency ownership:
-    ///   ILexicalIndex is responsible for incrementing document frequency
-    ///   in ITokenDictionary (via increment_document_frequency) on each
-    ///   upsert of a new chunk and decrementing on erase. df survives
-    ///   clear() -- clear() does not reset df in ITokenDictionary.
+    ///   An implementation that uses an external ITokenDictionary owns the
+    ///   corresponding document-frequency updates (via
+    ///   increment_document_frequency and decrement_document_frequency).
+    ///   The ILexicalIndex contract does not require every implementation to
+    ///   use that backend: a self-contained index may keep its token
+    ///   statistics internally. The lifetime and clear() semantics of an
+    ///   external dictionary remain the responsibility of its owner.
     class ILexicalIndex {
     public:
         virtual ~ILexicalIndex();
@@ -70,7 +73,12 @@ namespace agent_memory {
         ///         indexed). Idempotent on repeated calls.
         [[nodiscard]] virtual std::size_t erase_resource(const ResourceId& resource_id) = 0;
 
-        /// \brief Removes all indexed chunks and token statistics.
+        /// \brief Removes all indexed chunks and statistics owned by this
+        /// implementation.
+        ///
+        /// An external ITokenDictionary, when used by an implementation, is
+        /// not implicitly cleared by this call unless that implementation's
+        /// documented contract says so.
         virtual void clear() = 0;
     };
 

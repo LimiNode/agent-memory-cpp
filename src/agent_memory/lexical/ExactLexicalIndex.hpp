@@ -21,7 +21,7 @@ namespace agent_memory {
     /// \brief Deterministic in-memory BM25 lexical index.
     ///
     /// Per-token scoring (BM25):
-    ///   idf = log(1 + (N - df + 0.5) / (df + 0.5))   // BM25+ variant
+    ///   idf = log(1 + (N - df + 0.5) / (df + 0.5))
     ///   numerator   = tf * (k1 + 1)
     ///   denominator = tf + k1 * (1 - b + b * |D| / avgdl)
     ///   score = idf * (numerator / denominator)

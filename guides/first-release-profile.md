@@ -9,6 +9,10 @@ The evidence-backed status of the current bounded preview is recorded in
 [`technical-preview-preflight.md`](technical-preview-preflight.md). That
 preflight is narrower than this normalized-first target and does not promote
 the remaining contract-only source profiles to implemented capabilities.
+The latest exact-commit release decision is recorded separately in
+[`experiments/2026-11-16-release-decision-report.md`](experiments/2026-11-16-release-decision-report.md);
+this profile remains the broader target rather than evidence that all listed
+guarantees are currently available.
 
 The profile is normalized-first and artifact-aware. It is suitable for
 articles, Telegram posts and normalized video transcripts supplied by external

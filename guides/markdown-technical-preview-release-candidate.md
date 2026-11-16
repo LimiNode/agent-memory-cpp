@@ -1,9 +1,11 @@
 # Markdown Technical Preview release-candidate matrix
 
-This is a readiness report, not a release approval. It evaluates the frozen
-candidate main `dde38ae89fd8bef4be4e7306f2250a7fe3a094d4` after #611. No tag,
-version publication, package upload, GitHub Release or production retrieval
-activation is authorized by this document.
+This is a historical readiness snapshot, not a release approval. It evaluates
+the frozen candidate main `dde38ae89fd8bef4be4e7306f2250a7fe3a094d4` after
+#611. The current release decision is recorded in
+[`experiments/2026-11-16-release-decision-report.md`](experiments/2026-11-16-release-decision-report.md).
+No tag, version publication, package upload, GitHub Release or production
+retrieval activation is authorized by this document.
 
 ## Evidence baseline
 

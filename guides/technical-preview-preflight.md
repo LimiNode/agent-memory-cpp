@@ -1,8 +1,11 @@
 # M0/KB-0 Technical Preview preflight
 
-This document is an evidence report for the frozen candidate `main` after the
-guarded merge of PRs #607, #610 and #611. It is not a release, tag, API
+This document is an evidence report for the historical frozen candidate `main`
+after the guarded merge of PRs #607, #610 and #611. It is not a release, tag, API
 promise, or activation switch.
+The current integrated candidate and release decision are recorded in
+[`experiments/2026-11-16-release-decision-report.md`](experiments/2026-11-16-release-decision-report.md);
+the tables below are retained as provenance and are not silently rewritten.
 The intended preview boundary is a narrow, text-only, source-bound path. The
 broader normalized-first profile in
 [`first-release-profile.md`](first-release-profile.md) remains a target and

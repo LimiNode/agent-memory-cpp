@@ -1,13 +1,15 @@
 # Raw Markdown Technical Preview candidate
 
-This is frozen release-candidate documentation, not a published release. It
+This is historical frozen release-candidate documentation, not a published
+release. It
 describes only the experimental Raw Markdown source-backed path founded by
 [PR #607](https://github.com/LimiNode/agent-memory-cpp/pull/607) and qualified
 by [PR #611](https://github.com/LimiNode/agent-memory-cpp/pull/611). The
 candidate main is `dde38ae89fd8bef4be4e7306f2250a7fe3a094d4`; the exact CI and
 packaging evidence is recorded in the release-candidate matrix. This baseline
 is deliberately frozen for review and is not a tag, package publication or
-version promise.
+version promise. The current exact-commit decision is recorded in
+[`experiments/2026-11-16-release-decision-report.md`](experiments/2026-11-16-release-decision-report.md).
 The [preflight](technical-preview-preflight.md) records the release decision
 boundary. No tag, version change, ABI stability, general migration promise or
 production retrieval activation follows from this guide.
