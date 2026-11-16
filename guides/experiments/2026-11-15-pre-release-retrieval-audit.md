@@ -43,6 +43,12 @@ above are successful, but they qualify Draft research PRs and do not authorize
 merge or release. Any release decision must use these checks and receipts
 together with independent review.
 
+The latest #626 follow-up is `699d225be6036e7a9dbe34d1bff69f09245025db`.
+It adds balanced six-order timing, raw observations, and a separate
+`ExactVectorIndex::search()` production-path measurement. Its exact-head CI is
+tracked separately from the historical receipt above; the follow-up is not a
+production performance claim.
+
 ## Dependency and ownership map
 
 ```text
@@ -181,7 +187,14 @@ correct kernel, broad index-manager abstractions, speculative admission maps,
 R4 default activation, cross-filesystem atomicity and large-corpus performance
 claims.
 
-Blocking evidence still required: exact-head CI for #626 and #628, the #625
-candidate-pool complexity receipt, and independent review of the resulting
-Draft PRs. No merge, tag, release or package publication is performed by this
-audit.
+### Historical blockers versus current handoff
+
+The original snapshot listed exact-head CI for #626/#628 as blocking. Those
+checks are now successful for the recorded historical heads. #625 and #628
+have been handed to the first agent for independent review and integration;
+this research branch performs no merge.
+
+Current blockers are deliberately different: independent review of the Draft
+handoff, qualification of the new #626 production-path receipt, isolated
+#625 admission-scaling evidence, and the future canonical Modern R4 replay.
+No merge, tag, release or package publication is performed by this audit.
