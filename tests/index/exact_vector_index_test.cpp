@@ -62,20 +62,37 @@ namespace {
         const std::vector<float>& lhs,
         const std::vector<float>& rhs
     ) {
-        double lhs_norm = 0.0;
-        double rhs_norm = 0.0;
-        double dot = 0.0;
+        long double lhs_norm = 0.0L;
+        long double lhs_norm_compensation = 0.0L;
+        long double rhs_norm = 0.0L;
+        long double rhs_norm_compensation = 0.0L;
+        long double dot = 0.0L;
+        long double dot_compensation = 0.0L;
+        const auto add_compensated = [](long double& sum,
+                                        long double& compensation,
+                                        const long double term) {
+            const auto next = sum + term;
+            if(std::abs(sum) >= std::abs(term)) {
+                compensation += (sum - next) + term;
+            } else {
+                compensation += (term - next) + sum;
+            }
+            sum = next;
+        };
         for(std::size_t index = 0; index < lhs.size(); ++index) {
-            const auto left = static_cast<double>(lhs[index]);
-            const auto right = static_cast<double>(rhs[index]);
-            dot += left * right;
-            lhs_norm += left * left;
-            rhs_norm += right * right;
+            const auto left = static_cast<long double>(lhs[index]);
+            const auto right = static_cast<long double>(rhs[index]);
+            add_compensated(dot, dot_compensation, left * right);
+            add_compensated(lhs_norm, lhs_norm_compensation, left * left);
+            add_compensated(rhs_norm, rhs_norm_compensation, right * right);
         }
+        dot += dot_compensation;
+        lhs_norm += lhs_norm_compensation;
+        rhs_norm += rhs_norm_compensation;
         if(lhs_norm == 0.0 || rhs_norm == 0.0) {
             return 0.0;
         }
-        return dot / (std::sqrt(lhs_norm) * std::sqrt(rhs_norm));
+        return static_cast<double>(dot / (std::sqrt(lhs_norm) * std::sqrt(rhs_norm)));
     }
 
 } // namespace
@@ -331,6 +348,30 @@ int main() {
     if(std::fabs(cancellation_results[0].score - expected_tiny_cosine) > 1.0e-25F
        || std::fabs(cancellation_results[1].score + expected_tiny_cosine) > 1.0e-25F) {
         return fail("cosine cancellation must retain the representable tiny score");
+    }
+
+    // Permute the tiny product between the two large cancelling terms. The
+    // production result must not depend on that dimension order.
+    agent_memory::ExactVectorIndex permuted_cancellation_index(
+        agent_memory::ExactVectorIndexOptions{3, agent_memory::SimilarityMetric::Cosine, true}
+    );
+    permuted_cancellation_index.upsert(make_record(
+        "chunk:permuted-bad", {1.0F, -1.0e-10F, -1.0F}, "cancellation"
+    ));
+    permuted_cancellation_index.upsert(make_record(
+        "chunk:permuted-good", {1.0F, 1.0e-10F, -1.0F}, "cancellation"
+    ));
+    const auto permuted_results = permuted_cancellation_index.search(
+        agent_memory::VectorSearchQuery{
+            agent_memory::Embedding{{1.0F, 1.0e-10F, 1.0F}}, 2, {}
+        }
+    );
+    if(permuted_results.size() != 2
+       || permuted_results[0].chunk_id.value() != "chunk:permuted-good"
+       || permuted_results[1].chunk_id.value() != "chunk:permuted-bad"
+       || !(permuted_results[0].score > 0.0F)
+       || !(permuted_results[1].score < 0.0F)) {
+        return fail("permuted cosine cancellation must preserve signs and ranking");
     }
 
     agent_memory::ExactVectorIndex scalar_index(agent_memory::ExactVectorIndexOptions{
