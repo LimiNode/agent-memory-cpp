@@ -8,6 +8,30 @@ target_link_libraries(agent-memory-bench
     agent_memory::json
 )
 
+add_executable(agent-memory-exact-vector-numerical-frontier
+    exact_vector_numerical_frontier.cpp
+)
+
+target_link_libraries(agent-memory-exact-vector-numerical-frontier
+    PRIVATE
+        agent_memory::json
+)
+
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+    RESULT_VARIABLE agent_memory_numerical_frontier_git_result
+    OUTPUT_VARIABLE agent_memory_numerical_frontier_source_commit
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(NOT agent_memory_numerical_frontier_git_result EQUAL 0 OR
+   NOT agent_memory_numerical_frontier_source_commit MATCHES "^[0-9a-f]{40}$")
+    set(agent_memory_numerical_frontier_source_commit "unknown")
+endif()
+target_compile_definitions(agent-memory-exact-vector-numerical-frontier
+    PRIVATE
+        AGENT_MEMORY_NUMERICAL_FRONTIER_SOURCE_COMMIT="${agent_memory_numerical_frontier_source_commit}"
+)
+
 add_executable(agent-memory-autoencoder-eval
     autoencoder_evaluation.cpp
 )
