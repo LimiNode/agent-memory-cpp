@@ -40,6 +40,8 @@ the decision below applies.
 | Post-merge CI for pre-#625 candidate | [run 43818373245](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43818373245) — SUCCESS | Required jobs passed; Full research CTest was skipped by classifier rules |
 | Post-merge CI for #625 candidate | [run 43866997725](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43866997725) — SUCCESS | Head `c93a7b867cd802e279a4118b07cc177f10322cf3`; research lanes classified/skipped as shown by CI |
 | Post-merge packaging for #625 | [run 43866997726](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43866997726) — SUCCESS | Linux/Windows/macOS consumers, JSON/MDBX installed consumers and OLD-to-NEW upgrade passed |
+| #631 exact-head CI | [run 43871179603](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43871179603) — SUCCESS | Required code lanes passed; research lanes were classifier-skipped |
+| #631 packaging | [run 43871179424](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43871179424) — SUCCESS | Linux/Windows/macOS consumers, JSON/MDBX installed consumers and OLD-to-NEW upgrade passed |
 | JSON-OFF header gate | Included in the integrated CI | Public headers compile without JSON support |
 | #619 negative install fixture | Included in packaging | The forbidden `CanonicalContentStoreInternal.hpp` diagnostic is checked and the expected negative exit is consumed explicitly |
 | #620 ownership allocation regression | Reviewed evidence | 6 allocation calls at 128, 512, 2048 and 4096 chunks; this is not a whole-system throughput proof |
@@ -94,10 +96,12 @@ The current source audit confirmed three concrete defects in
 potentially-throwing record insertion, non-finite query components reached
 ranking, and cosine values were recomputed inside the `partial_sort`
 comparator and again while materialising results. Draft PR #631
-(`9357504667726ecff1abf754aeb7f5564d3d75be`) moves dimension publication after
-successful insertion, rejects NaN/Inf queries, and scores each record once.
-The JSON-enabled focused test passed locally; exact-head CI and an independent
-review are still pending. The slice is not integrated into the candidate.
+(`935750460eb2fa98e0c0da526d8e7d32625f4599`) moves dimension publication
+after successful insertion, rejects NaN/Inf queries, and scores each record
+once. The JSON-enabled focused test and full local JSON Release CTest passed;
+exact-head CI `43871179603` and packaging `43871179424` also passed. An
+independent review is still pending, so the slice is not integrated into the
+candidate.
 
 Decision: **OPEN_CONFIRMED, FIX_NOW**. It is a correctness repair for the
 public evaluation adapter, but it is not yet release-integrated.
