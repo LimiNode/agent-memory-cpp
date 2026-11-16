@@ -46,8 +46,10 @@ together with independent review.
 The latest #626 follow-up is `699d225be6036e7a9dbe34d1bff69f09245025db`.
 It adds balanced six-order timing, raw observations, and a separate
 `ExactVectorIndex::search()` production-path measurement. Its exact-head CI is
-tracked separately from the historical receipt above; the follow-up is not a
-production performance claim.
+`43874752567` and packaging `43874752610` succeeded. The updated receipt
+artifact digest is
+`sha256:3d16b015d5b5929492e17b1f5786d3d448736bc41198cfa1c7c67d33d65ec1c1`.
+The follow-up is not a production performance claim.
 
 ### Latest integration status
 
@@ -203,9 +205,13 @@ checks are now successful for the recorded historical heads. #625 and #628
 have been handed to the first agent for independent review and integration;
 this research branch performs no merge.
 
-Current blockers are deliberately different: exact-head qualification of the
-new #626 production-path receipt, exact-head qualification of isolated PR #633,
-independent review/integration of #628, and the future canonical Modern R4
-replay. #625's production code is already integrated; its optimization remains
-out of scope until the isolated evidence is reviewed.
+Current blockers are deliberately different: independent review/integration of
+#628, review of isolated PR #633 before any production rewrite, and the future
+canonical Modern R4 replay. #625's production code is already integrated; its
+optimization remains out of scope until the isolated evidence is reviewed.
+
+PR #633 (`9f30c06d22dcad21d6ddc3dfdda66ef988e043b6`) passed exact-head CI
+`43881478011` and packaging `43881477857`. Its
+`reranker-admission-scaling-receipt` artifact has digest
+`sha256:ed6e72153887e02542c5f4f15cecba459de17711e15106f2516be5da9fe842c1`.
 No merge, tag, release or package publication is performed by this audit.
