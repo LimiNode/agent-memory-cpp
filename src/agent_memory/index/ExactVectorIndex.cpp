@@ -53,16 +53,24 @@ namespace agent_memory {
             return 1.0 / norm;
         }
 
-        [[nodiscard]] double wide_dot_product(
+        [[nodiscard]] double compensated_dot_product(
             const Embedding& lhs,
             const Embedding& rhs
         ) noexcept {
             double result = 0.0;
+            double compensation = 0.0;
             for(std::size_t index = 0; index < lhs.values.size(); ++index) {
-                result += static_cast<double>(lhs.values[index])
+                const auto product = static_cast<double>(lhs.values[index])
                     * static_cast<double>(rhs.values[index]);
+                const auto next = result + product;
+                if(std::abs(result) >= std::abs(product)) {
+                    compensation += (result - next) + product;
+                } else {
+                    compensation += (product - next) + result;
+                }
+                result = next;
             }
-            return result;
+            return result + compensation;
         }
 
         [[nodiscard]] double wide_negative_squared_distance(
@@ -170,7 +178,7 @@ namespace agent_memory {
                         // Accumulate the cosine numerator in double for every
                         // cosine query so tiny, mixed-scale and cancellation-
                         // sensitive inputs retain their mathematical ordering.
-                        const auto dot = wide_dot_product(
+                        const auto dot = compensated_dot_product(
                             query.embedding,
                             record.embedding
                         );
@@ -184,7 +192,7 @@ namespace agent_memory {
                         m_similarity.dot_product(query.embedding, record.embedding)
                     );
                     if(!std::isfinite(dot)) {
-                        dot = wide_dot_product(query.embedding, record.embedding);
+                        dot = compensated_dot_product(query.embedding, record.embedding);
                     }
                     score = checked_score(dot);
                     break;
