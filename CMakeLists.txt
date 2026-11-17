@@ -516,10 +516,6 @@ if(AGENT_MEMORY_BUILD_TESTS)
         )
     if(AGENT_MEMORY_BUILD_BENCHMARKS)
         add_test(
-            NAME agent_memory_reranker_admission_scaling_self_test
-            COMMAND agent-memory-reranker-admission-scaling --self-test
-        )
-        add_test(
             NAME agent_memory_mih_native_hot_path_self_test
             COMMAND agent-memory-mih-native-hot-path --self-test
         )
@@ -2430,6 +2426,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --raw ${CMAKE_CURRENT_SOURCE_DIR}/guides/experiments/2026-10-27-seg-v2-qualification.raw.tsv
                     --receipt ${CMAKE_CURRENT_SOURCE_DIR}/guides/experiments/2026-10-27-seg-v2-qualification.receipt.json
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+    endif()
+    if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        # This control is a bounded C++ research executable, not a full
+        # research-test matrix; keep it available when research tests are off.
+        add_test(
+            NAME agent_memory_reranker_admission_scaling_self_test
+            COMMAND agent-memory-reranker-admission-scaling --self-test
         )
     endif()
     add_subdirectory(tests)

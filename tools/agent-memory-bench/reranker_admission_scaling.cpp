@@ -15,6 +15,7 @@
 #include <limits>
 #include <map>
 #include <new>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -27,6 +28,13 @@ namespace {
 
     using Json = nlohmann::json;
     using Clock = std::chrono::steady_clock;
+
+#ifndef AGENT_MEMORY_RERANKER_ADMISSION_SOURCE_COMMIT
+#define AGENT_MEMORY_RERANKER_ADMISSION_SOURCE_COMMIT "unconfigured"
+#endif
+#ifndef AGENT_MEMORY_RERANKER_ADMISSION_PRODUCTION_CONTRACT_COMMIT
+#define AGENT_MEMORY_RERANKER_ADMISSION_PRODUCTION_CONTRACT_COMMIT "unconfigured"
+#endif
 
     constexpr std::size_t kRepeats = 12;
     constexpr std::size_t kWarmups = 2;
@@ -115,36 +123,97 @@ namespace {
         return std::isfinite(score);
     }
 
-    [[nodiscard]] std::vector<agent_memory::LexicalSearchResult> linear_admit(
-        const std::vector<agent_memory::LexicalSearchResult>& admitted,
-        const std::vector<agent_memory::LexicalSearchResult>& reranked
-    ) {
-        if(reranked.size() > admitted.size()) {
-            return {};
+    class FixtureIndex final : public agent_memory::ILexicalIndex {
+    public:
+        explicit FixtureIndex(std::vector<agent_memory::LexicalSearchResult> hits)
+            : m_hits(std::move(hits)) {}
+
+        [[nodiscard]] std::size_t size() const noexcept override {
+            return m_hits.size();
         }
-        std::vector<agent_memory::LexicalSearchResult> result;
-        result.reserve(reranked.size());
-        for(const auto& candidate : reranked) {
-            if(!finite_score(candidate.score)) {
-                return {};
-            }
-            const auto matching = std::find_if(
-                admitted.begin(), admitted.end(), [&candidate](const auto& original) {
-                    return identity_of(original) == identity_of(candidate);
-                }
-            );
-            if(matching == admitted.end() || !protected_equal(*matching, candidate)
-               || std::find_if(result.begin(), result.end(), [&candidate](const auto& previous) {
-                      return identity_of(previous) == identity_of(candidate);
-                  }) != result.end()) {
-                return {};
-            }
-            auto trusted = *matching;
-            trusted.score = candidate.score;
-            result.push_back(std::move(trusted));
+
+        void upsert(agent_memory::LexicalDocumentRecord) override {}
+
+        [[nodiscard]] std::optional<agent_memory::LexicalDocumentStats> find_stats(
+            const agent_memory::ChunkId&
+        ) const override {
+            return std::nullopt;
         }
-        return result;
-    }
+
+        [[nodiscard]] std::vector<agent_memory::LexicalSearchResult> search(
+            const agent_memory::LexicalSearchQuery& query
+        ) const override {
+            last_query = query;
+            return m_hits;
+        }
+
+        [[nodiscard]] bool erase(const agent_memory::ChunkId&) override {
+            return false;
+        }
+
+        [[nodiscard]] std::size_t erase_resource(
+            const agent_memory::ResourceId&
+        ) override {
+            return 0;
+        }
+
+        void clear() override {}
+
+        mutable std::optional<agent_memory::LexicalSearchQuery> last_query;
+
+    private:
+        std::vector<agent_memory::LexicalSearchResult> m_hits;
+    };
+
+    class FixedReranker final : public agent_memory::IReranker {
+    public:
+        explicit FixedReranker(std::vector<agent_memory::LexicalSearchResult> result)
+            : m_result(std::move(result)) {}
+
+        [[nodiscard]] std::vector<agent_memory::LexicalSearchResult> rerank(
+            const std::string&, std::vector<agent_memory::LexicalSearchResult>
+        ) const override {
+            return m_result;
+        }
+
+    private:
+        std::vector<agent_memory::LexicalSearchResult> m_result;
+    };
+
+    class ProductionAdmissionRunner final {
+    public:
+        ProductionAdmissionRunner(
+            const std::vector<agent_memory::LexicalSearchResult>& admitted,
+            const std::vector<agent_memory::LexicalSearchResult>& reranked
+        )
+            : m_index(admitted), m_engine(m_index) {
+            m_engine.set_reranker(std::make_unique<FixedReranker>(reranked));
+        }
+
+        [[nodiscard]] std::vector<agent_memory::LexicalSearchResult> run(
+            const std::size_t limit
+        ) const {
+            agent_memory::RetrievalRequest request;
+            request.query = "memory";
+            request.limit = limit;
+            request.metadata_filters.push_back({"scope", "documents"});
+            const auto response = m_engine.retrieve(request);
+            std::vector<agent_memory::LexicalSearchResult> result;
+            result.reserve(response.items.size());
+            for(const auto& item : response.items) {
+                result.push_back(item.lexical);
+            }
+            return result;
+        }
+
+        [[nodiscard]] const FixtureIndex& index() const noexcept {
+            return m_index;
+        }
+
+    private:
+        FixtureIndex m_index;
+        agent_memory::HybridRetrievalEngine m_engine;
+    };
 
     struct SortedIndex final {
         std::vector<std::pair<Identity, std::size_t>> entries;
@@ -172,7 +241,7 @@ namespace {
         }
         std::vector<agent_memory::LexicalSearchResult> result;
         result.reserve(reranked.size());
-        std::vector<Identity> seen;
+        std::unordered_set<Identity, IdentityHash> seen;
         seen.reserve(reranked.size());
         for(const auto& candidate : reranked) {
             if(!finite_score(candidate.score)) {
@@ -186,10 +255,9 @@ namespace {
                 return {};
             }
             const auto& original = admitted[matching->second];
-            if(!protected_equal(original, candidate)) {
+            if(!protected_equal(original, candidate) || !seen.emplace(key).second) {
                 return {};
             }
-            seen.push_back(key);
             auto trusted = original;
             trusted.score = candidate.score;
             result.push_back(std::move(trusted));
@@ -283,12 +351,19 @@ namespace {
         g_allocation_count = 0;
         g_allocated_bytes = 0;
         g_count_allocations = true;
-        const auto started = Clock::now();
-        auto result = fn();
-        const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - started).count();
-        g_count_allocations = false;
-        allocations = AllocationReceipt{g_allocation_count, g_allocated_bytes};
-        return std::pair{std::move(result), elapsed};
+        try {
+            const auto started = Clock::now();
+            auto result = fn();
+            const auto elapsed = std::chrono::duration<double, std::milli>(
+                Clock::now() - started
+            ).count();
+            g_count_allocations = false;
+            allocations = AllocationReceipt{g_allocation_count, g_allocated_bytes};
+            return std::pair{std::move(result), elapsed};
+        } catch(...) {
+            g_count_allocations = false;
+            throw;
+        }
     }
 
     [[nodiscard]] bool equivalent(
@@ -313,6 +388,7 @@ namespace {
             admitted.push_back(make_hit(index, metadata_width));
         }
         const auto reranked = reranked_for(admitted);
+        ProductionAdmissionRunner production(admitted, reranked);
         const auto sorted_started = Clock::now();
         const auto sorted = make_sorted_index(admitted);
         const auto sorted_build_ms = std::chrono::duration<double, std::milli>(Clock::now() - sorted_started).count();
@@ -320,7 +396,7 @@ namespace {
         const auto hashed = make_hash_index(admitted);
         const auto hash_build_ms = std::chrono::duration<double, std::milli>(Clock::now() - hash_started).count();
 
-        const auto expected = linear_admit(admitted, reranked);
+        const auto expected = production.run(candidate_count);
         Json variants = Json::array();
         std::array<std::vector<double>, 3> samples;
         std::array<std::vector<std::size_t>, 3> allocation_counts;
@@ -334,7 +410,7 @@ namespace {
                 AllocationReceipt allocations;
                 auto measured_result = measured([&] {
                     if(variant == 0U) {
-                        return linear_admit(admitted, reranked);
+                        return production.run(candidate_count);
                     }
                     if(variant == 1U) {
                         return sorted_admit(admitted, reranked, sorted);
@@ -353,6 +429,7 @@ namespace {
         }
 
         const auto summarize = [](std::vector<double> values) {
+            const auto raw_values = values;
             std::sort(values.begin(), values.end());
             const auto at = [&values](const double fraction) {
                 if(values.empty()) return 0.0;
@@ -361,6 +438,7 @@ namespace {
             double total = 0.0;
             for(const auto value : values) total += value;
             return Json{
+                {"samples_ms", raw_values},
                 {"sample_count", values.size()}, {"mean_ms", values.empty() ? 0.0 : total / values.size()},
                 {"p50_ms", at(0.50)}, {"p95_ms", at(0.95)}, {"min_ms", values.empty() ? 0.0 : values.front()},
                 {"max_ms", values.empty() ? 0.0 : values.back()}
@@ -373,8 +451,10 @@ namespace {
         };
         for(unsigned variant = 0; variant < 3U; ++variant) {
             variants.push_back(Json{
-                {"algorithm", variant == 0U ? "linear_contract_baseline" : variant == 1U ? "sorted_identity_index" : "hash_identity_index"},
+                {"algorithm", variant == 0U ? "production_hybrid_engine_admission" : variant == 1U ? "sorted_identity_index" : "hash_identity_index"},
                 {"timing", summarize(samples[variant])},
+                {"allocation_counts", allocation_counts[variant]},
+                {"allocated_bytes", allocation_bytes[variant]},
                 {"allocation_count_mean", average_size(allocation_counts[variant])},
                 {"allocated_bytes_mean", average_size(allocation_bytes[variant])},
                 {"trusted_record_copy_count", expected.size()},
@@ -386,6 +466,8 @@ namespace {
             {"metadata_width", metadata_width},
             {"sorted_index_build_ms", sorted_build_ms},
             {"hash_index_build_ms", hash_build_ms},
+            {"build_timing_scope", "index construction is measured separately from lookup/admission timing"},
+            {"lookup_timing_scope", "production variant is the actual HybridRetrievalEngine retrieve() path; indexed variants measure admission lookup only"},
             {"variants", std::move(variants)}
         };
     }
@@ -395,23 +477,52 @@ namespace {
             make_hit(0, 2), make_hit(1, 2), make_hit(2, 2), make_hit(3, 2)
         };
         const auto reranked = reranked_for(admitted);
+        ProductionAdmissionRunner production(admitted, reranked);
         const auto sorted = make_sorted_index(admitted);
         const auto hashed = make_hash_index(admitted);
-        const auto expected = linear_admit(admitted, reranked);
+        const auto expected = production.run(admitted.size());
         if(!equivalent(expected, sorted_admit(admitted, reranked, sorted))
            || !equivalent(expected, hash_admit(admitted, reranked, hashed))) {
+            return false;
+        }
+        if(!production.index().last_query
+           || production.index().last_query->metadata_filters.size() != 1U
+           || production.index().last_query->metadata_filters.front().key != "scope"
+           || production.index().last_query->metadata_filters.front().value != "documents") {
             return false;
         }
         auto duplicate = reranked;
         duplicate.back() = duplicate.front();
         auto foreign = reranked;
         foreign.front().chunk_id = agent_memory::ChunkId{"foreign"};
-        return linear_admit(admitted, duplicate).empty()
+        auto metadata = reranked;
+        metadata.front().metadata.set("scope", "foreign");
+        auto resource = reranked;
+        resource.front().resource_id = agent_memory::ResourceId{"foreign"};
+        auto section = reranked;
+        section.front().section_id = 999;
+        auto nonfinite = reranked;
+        nonfinite.front().score = std::numeric_limits<float>::quiet_NaN();
+        auto too_many = reranked;
+        too_many.push_back(too_many.back());
+        ProductionAdmissionRunner duplicate_production(admitted, duplicate);
+        ProductionAdmissionRunner foreign_production(admitted, foreign);
+        ProductionAdmissionRunner metadata_production(admitted, metadata);
+        ProductionAdmissionRunner resource_production(admitted, resource);
+        ProductionAdmissionRunner section_production(admitted, section);
+        ProductionAdmissionRunner nonfinite_production(admitted, nonfinite);
+        ProductionAdmissionRunner too_many_production(admitted, too_many);
+        return duplicate_production.run(admitted.size()).empty()
             && sorted_admit(admitted, duplicate, sorted).empty()
             && hash_admit(admitted, duplicate, hashed).empty()
-            && linear_admit(admitted, foreign).empty()
+            && foreign_production.run(admitted.size()).empty()
             && sorted_admit(admitted, foreign, sorted).empty()
-            && hash_admit(admitted, foreign, hashed).empty();
+            && hash_admit(admitted, foreign, hashed).empty()
+            && metadata_production.run(admitted.size()).empty()
+            && resource_production.run(admitted.size()).empty()
+            && section_production.run(admitted.size()).empty()
+            && nonfinite_production.run(admitted.size()).empty()
+            && too_many_production.run(admitted.size()).empty();
     }
 
 } // namespace
@@ -431,7 +542,9 @@ int main(int argc, char** argv) {
             {"schema_version", 1},
             {"benchmark_name", "reranker_admission_scaling"},
             {"scope", "isolated executable model of HybridRetrievalEngine admission contract; not a production latency claim"},
-            {"production_contract_source_commit", "dc8cbc650ab7103854e4f62a277f76780db6d817"},
+            {"source_commit", AGENT_MEMORY_RERANKER_ADMISSION_SOURCE_COMMIT},
+            {"production_contract_source_commit", AGENT_MEMORY_RERANKER_ADMISSION_PRODUCTION_CONTRACT_COMMIT},
+            {"production_contract", "HybridRetrievalEngine admission implementation merged by PR #625"},
             {"timing_semantics", "balanced six-order query-independent samples; warmups excluded; sample_count is not independent-request count"},
             {"metadata_widths", Json::array({2, 8, 32})},
             {"cases", Json::array({

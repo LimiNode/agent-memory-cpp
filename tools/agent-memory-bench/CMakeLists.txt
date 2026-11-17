@@ -16,6 +16,24 @@ add_executable(agent-memory-reranker-admission-scaling
     reranker_admission_scaling.cpp
 )
 
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+    RESULT_VARIABLE agent_memory_reranker_admission_git_result
+    OUTPUT_VARIABLE agent_memory_reranker_admission_source_commit
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(LENGTH "${agent_memory_reranker_admission_source_commit}" agent_memory_reranker_admission_source_length)
+if(NOT agent_memory_reranker_admission_git_result EQUAL 0
+   OR NOT agent_memory_reranker_admission_source_length EQUAL 40
+   OR NOT "${agent_memory_reranker_admission_source_commit}" MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR "Reranker admission scaling requires a pinned source Git SHA")
+endif()
+target_compile_definitions(agent-memory-reranker-admission-scaling
+    PRIVATE
+        AGENT_MEMORY_RERANKER_ADMISSION_SOURCE_COMMIT="${agent_memory_reranker_admission_source_commit}"
+        AGENT_MEMORY_RERANKER_ADMISSION_PRODUCTION_CONTRACT_COMMIT="c93a7b867cd802e279a4118b07cc177f10322cf3"
+)
+
 target_link_libraries(agent-memory-reranker-admission-scaling
     PRIVATE
         agent_memory::agent_memory

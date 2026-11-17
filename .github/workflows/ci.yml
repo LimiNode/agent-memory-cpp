@@ -614,7 +614,7 @@ jobs:
         run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_
 
       - name: Test reranker admission scaling
-        run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_reranker_admission_scaling_self_test
+        run: ./build-native-mih/tools/agent-memory-bench/agent-memory-reranker-admission-scaling --self-test
 
       - name: Run reranker admission scaling
         run: ./build-native-mih/tools/agent-memory-bench/agent-memory-reranker-admission-scaling build-native-mih/reranker-admission-scaling.json
