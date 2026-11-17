@@ -757,11 +757,12 @@ namespace {
         // validation cases in this Debug configuration.
 #else
         BruteForceTopKIndex idx;
+        std::string doc_id = "doc:fail";
         std::vector<float> candidate{1.0F, 2.0F};
         fail_next_allocation();
         bool threw_bad_alloc = false;
         try {
-            idx.add("doc:fail", std::move(candidate));
+            idx.add(std::move(doc_id), std::move(candidate));
         } catch(const std::bad_alloc&) {
             threw_bad_alloc = true;
         } catch(...) {
