@@ -12,6 +12,11 @@ Technical Preview and `HybridRetrievalEngine` are unchanged.
 
 ## Executable contract
 
+`examples/canonical_prompt_subtree.cpp` is the small C++17 demonstration. It
+creates Role, Review obligations, Tools, and Output blocks, performs the
+replace/insert/move sequence, replays the historical Markdown, and exercises
+stale, cycle, duplicate-ID, and non-leaf deletion rejection.
+
 `tests/experimental/canonical_prompt_profile_test.cpp` is a private consumer
 of the existing public API. It exercises the same contract against
 `InMemoryCanonicalContentStore` and, when MDBX is enabled, C1
@@ -75,13 +80,21 @@ control-instruction status or make a universal memory owner.
 
 ## Retrieval and Harness² follow-up
 
-This slice is read-only with respect to retrieval. A future adapter may join a
-`ContentBlockId` to `DocumentId + revision`, source-backed `KnowledgeUnit`, and
-`SearchProjection` records. Any projection revision/fingerprint and
-`ContentChangeSet` invalidation policy must be specified separately. A parent
-block edit may invalidate contextual embeddings of descendants; that is an
-evaluation question, not a reason to search for required instructions with
-RAG.
+This slice is read-only with respect to retrieval. The minimal future binding
+is deliberately a join, not a new index:
+
+| Prompt identity | Retrieval identity | Binding rule |
+|---|---|---|
+| `ContentBlockId` | source-backed `KnowledgeUnit` | one block may point to zero or more source units, but the block ID remains the canonical owner of prompt order |
+| `DocumentId + exact revision` | source document revision | a hit is admissible only when its source revision is explicitly compatible with the pinned prompt manifest |
+| block text and `ContentChangeSet` | `SearchProjection` | changed text or structure invalidates the affected projection; a parent-text change may conservatively invalidate descendant contextual projections |
+| projection revision/fingerprint | projection metadata | retrieval may use a projection only when its revision/fingerprint matches the exact source binding |
+
+The adapter must read the exact manifest revision and may use retrieval only to
+attach explanatory/source material. It must not use RAG to discover or decide
+which required instructions become active. A parent block edit may invalidate
+contextual embeddings of descendants; that is an evaluation question, not a
+reason to search for required instructions with RAG.
 
 The compatibility note for Harness² should preserve: baseline harness
 identity, candidate prompt revision, task/dataset identity, model/profile,

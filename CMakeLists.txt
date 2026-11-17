@@ -303,6 +303,11 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND $<TARGET_FILE:agent_memory_canonical_content>
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+        add_test(
+            NAME agent_memory_canonical_prompt_subtree_example
+            COMMAND $<TARGET_FILE:agent_memory_canonical_prompt_subtree>
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
         if(AGENT_MEMORY_ENABLE_MDBX)
             add_test(
                 NAME agent_memory_durable_lexical_document_memory_example
