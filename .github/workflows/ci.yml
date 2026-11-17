@@ -630,6 +630,7 @@ jobs:
           -DAGENT_MEMORY_BUILD_TESTS=ON
           -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF
           -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DAGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA=${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Build exact-vector numerical frontier target
         run: >
@@ -663,6 +664,9 @@ jobs:
         run: >
           python tools/agent-memory-bench/validate_exact_vector_numerical_frontier.py
           build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json
+          --expected-source-commit "$(git rev-parse HEAD)"
+          --expected-checkout-sha "$(git rev-parse HEAD)"
+          --expected-pr-head-sha "${{ github.event.pull_request.head.sha || github.sha }}"
 
       - name: Record raw receipt SHA-256
         run: >

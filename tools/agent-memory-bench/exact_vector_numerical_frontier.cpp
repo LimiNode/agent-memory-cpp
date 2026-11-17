@@ -24,7 +24,13 @@ namespace {
     using Clock = std::chrono::steady_clock;
 
 #ifndef AGENT_MEMORY_NUMERICAL_FRONTIER_SOURCE_COMMIT
-#define AGENT_MEMORY_NUMERICAL_FRONTIER_SOURCE_COMMIT "unknown"
+#define AGENT_MEMORY_NUMERICAL_FRONTIER_SOURCE_COMMIT "unconfigured"
+#endif
+#ifndef AGENT_MEMORY_NUMERICAL_FRONTIER_CHECKOUT_SHA
+#define AGENT_MEMORY_NUMERICAL_FRONTIER_CHECKOUT_SHA "unconfigured"
+#endif
+#ifndef AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA
+#define AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA "unconfigured"
 #endif
 #ifndef AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_ID
 #define AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_ID "unknown"
@@ -50,6 +56,8 @@ namespace {
         FloatLanes,
         Fp64Sequential,
         Fp64Neumaier,
+        Fp64StreamingSequential,
+        Fp64StreamingNeumaier,
         Fp64Pairwise,
         Fp64Blockwise,
         Fp64Guarded
@@ -98,6 +106,8 @@ namespace {
             case Method::FloatLanes: return "float_lanes";
             case Method::Fp64Sequential: return "fp64_sequential";
             case Method::Fp64Neumaier: return "fp64_neumaier";
+            case Method::Fp64StreamingSequential: return "fp64_streaming_sequential";
+            case Method::Fp64StreamingNeumaier: return "fp64_streaming_neumaier";
             case Method::Fp64Pairwise: return "fp64_pairwise";
             case Method::Fp64Blockwise: return "fp64_blockwise";
             case Method::Fp64Guarded: return "fp64_overflow_guarded_blockwise";
@@ -264,6 +274,28 @@ namespace {
             }
             return static_cast<double>(result);
         }
+        if(method == Method::Fp64StreamingSequential) {
+            double result = 0.0;
+            for(std::size_t index = 0; index < lhs.size(); ++index) {
+                result += static_cast<double>(lhs[index]) * static_cast<double>(rhs[index]);
+            }
+            return result;
+        }
+        if(method == Method::Fp64StreamingNeumaier) {
+            double sum = 0.0;
+            double compensation = 0.0;
+            for(std::size_t index = 0; index < lhs.size(); ++index) {
+                const auto value = static_cast<double>(lhs[index]) * static_cast<double>(rhs[index]);
+                const auto next = sum + value;
+                if(std::abs(sum) >= std::abs(value)) {
+                    compensation += (sum - next) + value;
+                } else {
+                    compensation += (value - next) + sum;
+                }
+                sum = next;
+            }
+            return sum + compensation;
+        }
         for(std::size_t index = 0; index < lhs.size(); ++index) {
             products.push_back(
                 static_cast<double>(lhs[index]) * static_cast<double>(rhs[index])
@@ -294,6 +326,8 @@ namespace {
                 return result;
             }
             case Method::FloatLanes:
+            case Method::Fp64StreamingSequential:
+            case Method::Fp64StreamingNeumaier:
                 break;
         }
         return 0.0;
@@ -601,10 +635,12 @@ namespace {
     ) {
         const auto corpus = make_corpus(document_count, query_count, dimension, 0x5eed1234ULL);
         const auto expected = reference_ranking(corpus);
-        constexpr std::array<Method, 6> methods{
+        constexpr std::array<Method, 8> methods{
             Method::FloatLanes,
             Method::Fp64Sequential,
             Method::Fp64Neumaier,
+            Method::Fp64StreamingSequential,
+            Method::Fp64StreamingNeumaier,
             Method::Fp64Pairwise,
             Method::Fp64Blockwise,
             Method::Fp64Guarded
@@ -782,6 +818,14 @@ namespace {
                 {"mean_ms", std::accumulate(
                     kernel_samples[method_index].begin(), kernel_samples[method_index].end(), 0.0
                 ) / static_cast<double>(kernel_samples[method_index].size())},
+                {"min_ms", *std::min_element(
+                    kernel_samples[method_index].begin(), kernel_samples[method_index].end()
+                )},
+                {"p50_ms", percentile(kernel_samples[method_index], 0.50)},
+                {"p95_ms", percentile(kernel_samples[method_index], 0.95)},
+                {"max_ms", *std::max_element(
+                    kernel_samples[method_index].begin(), kernel_samples[method_index].end()
+                )},
                 {"max_abs_dot_error_vs_long_double_oracle", max_abs_dot_error},
                 {"max_relative_dot_error_vs_long_double_oracle", max_relative_dot_error},
                 {"guarded_fallback_events", kernel_fallback_count[method_index]}
@@ -799,11 +843,13 @@ namespace {
                 && rankings_match(expected, actual[method_index], tolerance);
         }
         return Json{
-            {"schema_version", 1},
+            {"schema_version", 2},
             {"family", "exact_vector_numerical_optimization_frontier_v1"},
             {"status", correctness_pass ? "EXECUTED" : "EXECUTED_WITH_MISMATCH"},
             {"correctness_status", correctness_pass ? "PASS" : "FAIL"},
             {"source_commit", AGENT_MEMORY_NUMERICAL_FRONTIER_SOURCE_COMMIT},
+            {"checkout_sha", AGENT_MEMORY_NUMERICAL_FRONTIER_CHECKOUT_SHA},
+            {"expected_pr_head_sha", AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA},
             {"build_provenance", Json{
                 {"compiler_id", AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_ID},
                 {"compiler_version", AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_VERSION},
@@ -870,8 +916,18 @@ namespace {
         const auto blockwise = sum_products(
             lhs, rhs, Method::Fp64Blockwise, products, blocks
         );
+        const auto streaming_sequential = sum_products(
+            lhs, rhs, Method::Fp64StreamingSequential, products, blocks
+        );
+        const auto streaming_neumaier = sum_products(
+            lhs, rhs, Method::Fp64StreamingNeumaier, products, blocks
+        );
         require(std::abs(sequential - 1.0) < 1.0e-9, "fp64 sequential cancellation control failed");
         require(std::abs(neumaier - 2.0) < 1.0e-9, "Neumaier cancellation control failed");
+        require(std::abs(streaming_sequential - 1.0) < 1.0e-9,
+                "streaming fp64 sequential cancellation control failed");
+        require(std::abs(streaming_neumaier - 2.0) < 1.0e-9,
+                "streaming Neumaier cancellation control failed");
         require(std::abs(pairwise - 1.0) < 1.0e-9, "pairwise cancellation control failed");
         require(std::abs(blockwise - 1.0) < 1.0e-9, "blockwise cancellation control failed");
         bool finite_cancellation_fallback = false;
@@ -888,10 +944,36 @@ namespace {
         const auto guarded = guarded_blockwise_sum(injected, 1, blocks, &used_fallback);
         require(used_fallback && !std::isfinite(guarded), "guard trigger control failed");
 
+        const std::vector<double> positive_residual{1.0e20, 1.0, -1.0e20, 1.0};
+        const std::vector<double> permuted_residual{1.0, -1.0e20, 1.0e20, 1.0};
+        const std::vector<double> negative_residual{1.0e20, 1.0, -1.0e20, -2.0};
+        require(std::abs(neumaier_sum(positive_residual) - 2.0) < 1.0e-9,
+                "positive residual Neumaier control failed");
+        require(std::abs(neumaier_sum(permuted_residual) - 2.0) < 1.0e-9,
+                "permuted residual Neumaier control failed");
+        require(std::abs(neumaier_sum(negative_residual) + 1.0) < 1.0e-9
+                    && neumaier_sum(negative_residual) < 0.0,
+                "negative residual Neumaier control failed");
+        require(pairwise_sum(positive_residual, 0, positive_residual.size()) == 1.0,
+                "pairwise cancellation boundary behavior changed");
+        require(pairwise_sum(permuted_residual, 0, permuted_residual.size()) == 1.0,
+                "pairwise permutation boundary behavior changed");
+        bool positive_finite = true;
+        bool permuted_finite = true;
+        std::vector<double> positive_blocks;
+        std::vector<double> permuted_blocks;
+        require(blockwise_sum(positive_residual, 32, positive_blocks, &positive_finite) == 1.0,
+                "blockwise cancellation boundary behavior changed");
+        require(blockwise_sum(permuted_residual, 32, permuted_blocks, &permuted_finite) == 1.0,
+                "blockwise permutation boundary behavior changed");
+        require(positive_finite && permuted_finite,
+                "finite cancellation boundary was incorrectly treated as overflow");
+
         const auto corpus = make_corpus(32, 4, 64, 12345);
         const auto expected = reference_ranking(corpus);
-        for(const auto method : std::array<Method, 6>{
+        for(const auto method : std::array<Method, 8>{
                 Method::FloatLanes, Method::Fp64Sequential, Method::Fp64Neumaier,
+                Method::Fp64StreamingSequential, Method::Fp64StreamingNeumaier,
                 Method::Fp64Pairwise, Method::Fp64Blockwise, Method::Fp64Guarded}) {
             std::size_t nonfinite = 0;
             std::size_t fallback = 0;
@@ -949,8 +1031,9 @@ namespace {
         Corpus tie_corpus;
         tie_corpus.documents = {{1.0F, 0.0F}, {1.0F, 0.0F}, {0.99999994F, 0.001F}};
         tie_corpus.queries = {{1.0F, 0.0F}};
-        for(const auto method : std::array<Method, 6>{
+        for(const auto method : std::array<Method, 8>{
                 Method::FloatLanes, Method::Fp64Sequential, Method::Fp64Neumaier,
+                Method::Fp64StreamingSequential, Method::Fp64StreamingNeumaier,
                 Method::Fp64Pairwise, Method::Fp64Blockwise, Method::Fp64Guarded}) {
             std::size_t nonfinite = 0;
             std::size_t fallback = 0;
