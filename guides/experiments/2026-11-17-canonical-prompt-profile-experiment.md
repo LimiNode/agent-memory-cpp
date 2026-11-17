@@ -2,7 +2,7 @@
 
 Status: `draft` / research-only
 
-Source candidate: `main@9eea319f54e1538c550a3b26fd435d22e94f3c57`
+Source candidate: `main@00a9695762ab3bbdc9d5193d371dd8b25ca7b51c`
 
 This experiment qualifies the existing `CanonicalContent` substrate as a
 revision-pinned source for structured prompt documents and agent lessons. It
@@ -28,11 +28,18 @@ of the existing public API. It exercises the same contract against
   `CanonicalEditRequest` and `ContentChangeSet`;
 - deterministic block order and stale optimistic edits are checked;
 - structural cycles, repeated IDs, and deletion of a non-leaf are rejected;
-- a private prompt manifest uses `DocumentId + exact revision + block ID`;
-- required blocks, canonical order, invalid revisions, and non-instructional
-  lessons fail closed;
-- the active prompt digest is computed from the exact UTF-8 bytes with the
-  shared `agent_memory::sha256` implementation.
+- a trusted prompt policy is kept separate from an untrusted candidate;
+- the candidate can select policy-owned block IDs, but cannot supply
+  `required`, `editable`, or `control_instruction` flags;
+- baseline and candidate revisions are compared block-for-block for IDs,
+  order, parent IDs, kinds, insertions, deletions, and moves;
+- only text changes to policy blocks marked editable are admitted;
+- required blocks, unknown or duplicate references, invalid revisions, wrong
+  baselines, and non-instructional lessons fail closed;
+- the control prompt contains only policy-controlled instruction blocks;
+- separate digests identify the exact UTF-8 prompt bytes and the resolved
+  configuration (policy identity, baseline, revisions, block identities, and
+  policy flags).
 
 The consumer intentionally calls `read_revision()` for active assembly. It
 does not call `read_current()`, so editing the current document cannot silently
@@ -95,11 +102,19 @@ recorded in the repository preflight notes.
 
 ## Prompt-profile boundary
 
-The private manifest is deliberately smaller than a public API. It records
-exact revisions, required/editable block policy, canonical order, and a digest
-of the assembled bytes. It does not decide whether a candidate becomes active.
-Missing required blocks, wrong revisions, forbidden structural edits, and
-configuration mismatches are rejected before assembly.
+The private consumer policy is deliberately smaller than a public API. The
+trusted policy records exact baseline revisions, required/editable block
+policy, and control-instruction classification. The candidate supplies only
+exact candidate revisions and selected block IDs. It does not decide whether
+a block is required, editable, or an instruction, and it cannot change the
+canonical order by reordering its references. Missing required blocks, wrong
+baselines or revisions, forbidden structural edits, duplicate or unknown
+references, and configuration mismatches are rejected before assembly.
+
+The text digest is the SHA-256 of the exact assembled UTF-8 bytes. The
+resolved-configuration digest is separate: two policies can produce the same
+text while remaining different configurations and therefore different
+admission evidence.
 
 Extracted lessons remain evidence. They may later be represented as
 `KnowledgeUnitKind::Decision` or `KnowledgeUnitKind::Playbook` with normal

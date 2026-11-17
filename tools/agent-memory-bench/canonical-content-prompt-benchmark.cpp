@@ -120,15 +120,27 @@ struct Sample final {
 
 template<typename Callable>
 std::uint64_t timed(Callable&& callable, std::size_t& peak_alloc_bytes) {
-    g_live_bytes.store(0, std::memory_order_relaxed);
-    g_peak_bytes.store(0, std::memory_order_relaxed);
-    g_track_allocations.store(true, std::memory_order_relaxed);
+    const auto live_before = g_live_bytes.load(std::memory_order_relaxed);
+    g_peak_bytes.store(live_before, std::memory_order_relaxed);
+    struct TrackingScope final {
+        TrackingScope() { g_track_allocations.store(true, std::memory_order_relaxed); }
+        ~TrackingScope() { g_track_allocations.store(false, std::memory_order_relaxed); }
+    } tracking;
     const auto start = Clock::now();
     callable();
     const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start);
-    g_track_allocations.store(false, std::memory_order_relaxed);
-    peak_alloc_bytes = g_peak_bytes.load(std::memory_order_relaxed);
+    const auto peak_total = g_peak_bytes.load(std::memory_order_relaxed);
+    peak_alloc_bytes = peak_total >= live_before ? peak_total - live_before : 0;
     return static_cast<std::uint64_t>(elapsed.count());
+}
+
+std::uintmax_t file_size_or_throw(const std::filesystem::path& path) {
+    std::error_code error;
+    const auto size = std::filesystem::file_size(path, error);
+    if(error) {
+        throw std::runtime_error("cannot read MDBX file size: " + error.message());
+    }
+    return size;
 }
 
 CanonicalDocumentRevision make_document(const DocumentId& id, std::size_t block_count) {
@@ -150,9 +162,8 @@ Sample measure_backend(std::size_t block_count, StoreFactory&& make_store,
     if(!store->create_document(make_document(id, block_count))) {
         throw std::runtime_error("benchmark document creation failed");
     }
-    std::error_code file_error;
     const auto initial_mdbx_bytes = mdbx_path
-        ? std::filesystem::file_size(*mdbx_path, file_error)
+        ? file_size_or_throw(*mdbx_path)
         : std::uintmax_t{0};
     Sample sample;
     const auto target = ContentBlockId{"block-" + std::to_string(block_count / 2)};
@@ -185,12 +196,9 @@ Sample measure_backend(std::size_t block_count, StoreFactory&& make_store,
     }, peak) / 3;
     sample.peak_alloc_bytes = std::max(sample.peak_alloc_bytes, peak);
     if(mdbx_path) {
-        std::error_code error;
-        sample.mdbx_bytes = std::filesystem::file_size(*mdbx_path, error);
-        if(!error && !file_error) {
-            sample.mdbx_growth_bytes = sample.mdbx_bytes > initial_mdbx_bytes
-                ? sample.mdbx_bytes - initial_mdbx_bytes : 0;
-        }
+        sample.mdbx_bytes = file_size_or_throw(*mdbx_path);
+        sample.mdbx_growth_bytes = sample.mdbx_bytes > initial_mdbx_bytes
+            ? sample.mdbx_bytes - initial_mdbx_bytes : 0;
     }
     return sample;
 }
