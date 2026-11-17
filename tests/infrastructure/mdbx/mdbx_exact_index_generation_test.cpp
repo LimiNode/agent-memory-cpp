@@ -128,7 +128,24 @@ int main() try {
                "zero-score ties are not ordered by canonical unit identity");
         expect(store.query(*pinned, d.scope_id, {-1, 0}, 1, allow).front().unit.id == b,
                "negative dot golden mismatch");
-        expect(store.query(*pinned, d.scope_id, {1, 0}, 0, allow).empty(), "zero limit returned results");
+        std::size_t zero_limit_authorize_calls = 0;
+        const auto zero_limit_allow = [&zero_limit_authorize_calls](const KnowledgeUnitEnvelope&) {
+            ++zero_limit_authorize_calls;
+            return true;
+        };
+        expect(store.query(*pinned, d.scope_id, {1, 0}, 0, zero_limit_allow).empty(),
+               "zero limit returned results");
+        expect(zero_limit_authorize_calls == 0,
+               "zero-limit query must not invoke authorization for any row");
+        rejects(IndexGenerationFailure::InvalidInput, [&] {
+            (void)store.query(*pinned, d.scope_id, {1, 0}, 0, {});
+        });
+        rejects(IndexGenerationFailure::Incompatible, [&] {
+            (void)store.query(*pinned, ScopeId{"other"}, {1, 0}, 0, allow);
+        });
+        rejects(IndexGenerationFailure::Incompatible, [&] {
+            (void)store.query(*pinned, d.scope_id, {1}, 0, allow);
+        });
         hits = store.query(*pinned, d.scope_id, {1, 0}, 1,
                            [&](const KnowledgeUnitEnvelope& unit) { return unit.id != a; });
         expect(hits.size() == 1 && hits[0].unit.id == b, "filter was applied after top K");
