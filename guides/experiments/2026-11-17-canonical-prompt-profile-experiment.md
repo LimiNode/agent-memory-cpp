@@ -65,6 +65,34 @@ from one local run; they are not medians or SLAs. The raw TSV must be retained
 with the build provenance before any aggregate is published. No threshold or
 performance claim is attached to this experiment.
 
+### Linux MDBX C1 observation
+
+The raw receipt
+`guides/experiments/2026-11-17-canonical-prompt-mdbx.raw.tsv` was produced by
+the Release benchmark in an Ubuntu 24.04 container with GCC, the pinned
+`libmdbx` and `mdbx-containers` submodules, and `AGENT_MEMORY_ENABLE_MDBX=ON`.
+Both prompt contract tests and both backends completed successfully. The
+observed per-call means were:
+
+| Backend | Blocks | `read_block_ns` | `read_revision_ns` | `commit_ns` | `materialize_ns` | `peak_alloc_bytes` | `mdbx_bytes` |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| in-memory | 32 | 90,788 | 17,620 | 377,118 | 14,633 | 25,581 | 0 |
+| mdbx-c1 | 32 | 49,153 | 36,899 | 4,375,256 | 78,229 | 30,756 | 65,536 |
+| in-memory | 128 | 10,167 | 9,006 | 4,362,594 | 23,370 | 100,601 | 0 |
+| mdbx-c1 | 128 | 161,876 | 141,018 | 9,527,807 | 323,330 | 117,316 | 65,536 |
+| in-memory | 512 | 40,584 | 36,083 | 236,869,802 | 111,864 | 402,036 | 0 |
+| mdbx-c1 | 512 | 669,113 | 656,042 | 242,418,364 | 1,422,408 | 468,194 | 16,777,216 |
+| in-memory | 2048 | 172,615 | 146,978 | 13,884,585,064 | 470,729 | 1,613,031 | 0 |
+| mdbx-c1 | 2048 | 2,571,575 | 2,632,917 | 13,920,189,767 | 11,567,767 | 1,932,736 | 16,777,216 |
+
+These measurements demonstrate the current implementation cost: a logical
+point read still materializes the immutable revision, and C1 block edits write
+the full logical body. They are a reproducible diagnostic, not an SLA or a
+production capacity claim. Windows MDBX was not substituted into this receipt;
+the pinned MSVC build remains blocked by the external `mdbx-containers`
+`KeyValueTable::retrieve_all<std::map>` template-deduction ambiguity already
+recorded in the repository preflight notes.
+
 ## Prompt-profile boundary
 
 The private manifest is deliberately smaller than a public API. It records
