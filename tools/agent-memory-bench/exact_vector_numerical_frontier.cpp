@@ -26,6 +26,18 @@ namespace {
 #ifndef AGENT_MEMORY_NUMERICAL_FRONTIER_SOURCE_COMMIT
 #define AGENT_MEMORY_NUMERICAL_FRONTIER_SOURCE_COMMIT "unknown"
 #endif
+#ifndef AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_ID
+#define AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_ID "unknown"
+#endif
+#ifndef AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_VERSION
+#define AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_VERSION "unknown"
+#endif
+#ifndef AGENT_MEMORY_NUMERICAL_FRONTIER_BUILD_CONFIGURATION
+#define AGENT_MEMORY_NUMERICAL_FRONTIER_BUILD_CONFIGURATION "unknown"
+#endif
+#ifndef AGENT_MEMORY_NUMERICAL_FRONTIER_SYSTEM_PROCESSOR
+#define AGENT_MEMORY_NUMERICAL_FRONTIER_SYSTEM_PROCESSOR "unknown"
+#endif
 
     constexpr std::size_t kDefaultDocumentCount = 256;
     constexpr std::size_t kDefaultQueryCount = 16;
@@ -52,6 +64,12 @@ namespace {
         std::vector<std::vector<float>> documents;
         std::vector<std::vector<float>> queries;
         std::uint64_t seed = 0;
+        std::uint64_t digest = 1469598103934665603ULL;
+    };
+
+    struct NormCache final {
+        std::vector<double> query;
+        std::vector<double> documents;
     };
 
     struct Ranked final {
@@ -69,6 +87,8 @@ namespace {
         std::size_t nonfinite_scores = 0;
         double max_abs_error = 0.0;
         double max_relative_error = 0.0;
+        double max_abs_error_after_fp32_rounding = 0.0;
+        double max_relative_error_after_fp32_rounding = 0.0;
         std::size_t top1_matches = 0;
         std::size_t topk_matches = 0;
     };
@@ -80,7 +100,7 @@ namespace {
             case Method::Fp64Neumaier: return "fp64_neumaier";
             case Method::Fp64Pairwise: return "fp64_pairwise";
             case Method::Fp64Blockwise: return "fp64_blockwise";
-            case Method::Fp64Guarded: return "fp64_guarded_blockwise";
+            case Method::Fp64Guarded: return "fp64_overflow_guarded_blockwise";
         }
         return "unknown";
     }
@@ -98,6 +118,20 @@ namespace {
         return static_cast<float>(unit * 2.0 - 1.0);
     }
 
+    void hash_float(std::uint64_t& digest, const float value) noexcept {
+        const auto* bytes = reinterpret_cast<const unsigned char*>(&value);
+        for(std::size_t index = 0; index < sizeof(value); ++index) {
+            digest ^= bytes[index];
+            digest *= 1099511628211ULL;
+        }
+    }
+
+    [[nodiscard]] std::string hex_digest(const std::uint64_t value) {
+        std::ostringstream stream;
+        stream << std::hex << std::setw(16) << std::setfill('0') << value;
+        return stream.str();
+    }
+
     [[nodiscard]] Corpus make_corpus(
         const std::size_t document_count,
         const std::size_t query_count,
@@ -112,11 +146,13 @@ namespace {
         for(auto& row : corpus.documents) {
             for(auto& value : row) {
                 value = random_value(state);
+                hash_float(corpus.digest, value);
             }
         }
         for(auto& row : corpus.queries) {
             for(auto& value : row) {
                 value = random_value(state);
+                hash_float(corpus.digest, value);
             }
         }
         return corpus;
@@ -161,10 +197,10 @@ namespace {
     [[nodiscard]] double blockwise_sum(
         const std::vector<double>& values,
         const std::size_t block_size,
+        std::vector<double>& blocks,
         bool* finite
-    ) noexcept {
-        std::vector<double> blocks;
-        blocks.reserve((values.size() + block_size - 1) / block_size);
+    ) {
+        blocks.clear();
         for(std::size_t begin = 0; begin < values.size(); begin += block_size) {
             const auto end = std::min(values.size(), begin + block_size);
             double block = 0.0;
@@ -186,10 +222,11 @@ namespace {
     [[nodiscard]] double guarded_blockwise_sum(
         const std::vector<double>& values,
         const std::size_t block_size,
+        std::vector<double>& blocks,
         bool* used_fallback
-    ) noexcept {
+    ) {
         bool finite = true;
-        const auto result = blockwise_sum(values, block_size, &finite);
+        const auto result = blockwise_sum(values, block_size, blocks, &finite);
         if(finite && std::isfinite(result)) {
             *used_fallback = false;
             return result;
@@ -202,10 +239,11 @@ namespace {
         const std::vector<float>& lhs,
         const std::vector<float>& rhs,
         const Method method,
+        std::vector<double>& products,
+        std::vector<double>& blocks,
         bool* used_fallback = nullptr
-    ) noexcept {
-        std::vector<double> products;
-        products.reserve(lhs.size());
+    ) {
+        products.clear();
         if(used_fallback != nullptr) {
             *used_fallback = false;
         }
@@ -245,11 +283,11 @@ namespace {
                 return pairwise_sum(products, 0, products.size());
             case Method::Fp64Blockwise: {
                 bool finite = true;
-                return blockwise_sum(products, 32, &finite);
+                return blockwise_sum(products, 32, blocks, &finite);
             }
             case Method::Fp64Guarded: {
                 bool fallback = false;
-                const auto result = guarded_blockwise_sum(products, 32, &fallback);
+                const auto result = guarded_blockwise_sum(products, 32, blocks, &fallback);
                 if(used_fallback != nullptr) {
                     *used_fallback = fallback;
                 }
@@ -265,12 +303,33 @@ namespace {
         const std::vector<float>& query,
         const std::vector<float>& document,
         const Method method,
+        std::vector<double>& products,
+        std::vector<double>& blocks,
         bool* used_fallback = nullptr
-    ) noexcept {
-        const auto dot = sum_products(query, document, method, used_fallback);
-        const auto query_norm = std::sqrt(std::max(0.0, sum_products(query, query, method)));
-        const auto document_norm = std::sqrt(
-            std::max(0.0, sum_products(document, document, method))
+    ) {
+        const auto dot = sum_products(query, document, method, products, blocks, used_fallback);
+        const auto query_norm = std::sqrt(std::max(
+            0.0, sum_products(query, query, method, products, blocks)));
+        const auto document_norm = std::sqrt(std::max(
+            0.0, sum_products(document, document, method, products, blocks)));
+        if(query_norm == 0.0 || document_norm == 0.0) {
+            return 0.0;
+        }
+        return dot / (query_norm * document_norm);
+    }
+
+    [[nodiscard]] double cosine_score_cached_norms(
+        const std::vector<float>& query,
+        const std::vector<float>& document,
+        const Method method,
+        const double query_norm,
+        const double document_norm,
+        std::vector<double>& products,
+        std::vector<double>& blocks,
+        bool* used_fallback = nullptr
+    ) {
+        const auto dot = sum_products(
+            query, document, method, products, blocks, used_fallback
         );
         if(query_norm == 0.0 || document_norm == 0.0) {
             return 0.0;
@@ -278,10 +337,30 @@ namespace {
         return dot / (query_norm * document_norm);
     }
 
+    [[nodiscard]] NormCache make_norm_cache(
+        const Corpus& corpus,
+        const Method method,
+        std::vector<double>& products,
+        std::vector<double>& blocks
+    ) {
+        NormCache cache;
+        cache.query.reserve(corpus.queries.size());
+        cache.documents.reserve(corpus.documents.size());
+        for(const auto& query : corpus.queries) {
+            cache.query.push_back(std::sqrt(std::max(
+                0.0, sum_products(query, query, method, products, blocks))));
+        }
+        for(const auto& document : corpus.documents) {
+            cache.documents.push_back(std::sqrt(std::max(
+                0.0, sum_products(document, document, method, products, blocks))));
+        }
+        return cache;
+    }
+
     [[nodiscard]] double reference_cosine(
         const std::vector<float>& query,
         const std::vector<float>& document
-    ) noexcept {
+    ) {
         std::vector<long double> dot(query.size());
         std::vector<long double> query_norm(query.size());
         std::vector<long double> document_norm(query.size());
@@ -324,6 +403,26 @@ namespace {
             / (std::sqrt(query_sum) * std::sqrt(document_sum)));
     }
 
+    [[nodiscard]] long double reference_dot(
+        const std::vector<float>& lhs,
+        const std::vector<float>& rhs
+    ) noexcept {
+        long double sum = 0.0L;
+        long double compensation = 0.0L;
+        for(std::size_t index = 0; index < lhs.size(); ++index) {
+            const auto value = static_cast<long double>(lhs[index])
+                * static_cast<long double>(rhs[index]);
+            const auto next = sum + value;
+            if(std::abs(sum) >= std::abs(value)) {
+                compensation += (sum - next) + value;
+            } else {
+                compensation += (value - next) + sum;
+            }
+            sum = next;
+        }
+        return sum + compensation;
+    }
+
     [[nodiscard]] bool better(const Ranked& lhs, const Ranked& rhs) noexcept {
         if(lhs.score == rhs.score) {
             return lhs.id < rhs.id;
@@ -336,17 +435,27 @@ namespace {
         const std::size_t query_index,
         const Method method,
         std::size_t* nonfinite,
-        bool* fallback
+        std::size_t* fallback_count,
+        const NormCache* norms,
+        std::vector<double>& products,
+        std::vector<double>& blocks
     ) {
         std::vector<Ranked> ranked;
         ranked.reserve(corpus.documents.size());
         for(std::size_t document = 0; document < corpus.documents.size(); ++document) {
             bool used_fallback = false;
-            const auto score = cosine_score(
-                corpus.queries[query_index], corpus.documents[document], method, &used_fallback
-            );
-            if(used_fallback && fallback != nullptr) {
-                *fallback = true;
+            const auto score = norms == nullptr
+                ? cosine_score(
+                    corpus.queries[query_index], corpus.documents[document], method,
+                    products, blocks, &used_fallback
+                )
+                : cosine_score_cached_norms(
+                    corpus.queries[query_index], corpus.documents[document], method,
+                    norms->query[query_index], norms->documents[document],
+                    products, blocks, &used_fallback
+                );
+            if(used_fallback && fallback_count != nullptr) {
+                ++*fallback_count;
             }
             if(!std::isfinite(score)) {
                 ++*nonfinite;
@@ -383,6 +492,30 @@ namespace {
         return result;
     }
 
+    [[nodiscard]] bool rankings_match(
+        const std::vector<std::vector<Ranked>>& expected,
+        const std::vector<std::vector<Ranked>>& actual,
+        const double score_tolerance
+    ) noexcept {
+        if(expected.size() != actual.size()) {
+            return false;
+        }
+        for(std::size_t query = 0; query < expected.size(); ++query) {
+            if(expected[query].size() != actual[query].size()) {
+                return false;
+            }
+            for(std::size_t item = 0; item < expected[query].size(); ++item) {
+                if(expected[query][item].id != actual[query][item].id
+                   || !std::isfinite(actual[query][item].score)
+                   || std::abs(expected[query][item].score - actual[query][item].score)
+                       > score_tolerance) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     [[nodiscard]] double percentile(std::vector<double> values, const double fraction) {
         if(values.empty()) {
             return 0.0;
@@ -401,13 +534,17 @@ namespace {
         const std::vector<std::vector<Ranked>>& actual,
         const std::size_t nonfinite,
         const double max_abs_error,
-        const double max_relative_error
+        const double max_relative_error,
+        const double max_abs_error_after_fp32_rounding,
+        const double max_relative_error_after_fp32_rounding
     ) {
         Summary summary;
         summary.samples_ms = samples;
         summary.nonfinite_scores = nonfinite;
         summary.max_abs_error = max_abs_error;
         summary.max_relative_error = max_relative_error;
+        summary.max_abs_error_after_fp32_rounding = max_abs_error_after_fp32_rounding;
+        summary.max_relative_error_after_fp32_rounding = max_relative_error_after_fp32_rounding;
         if(!samples.empty()) {
             summary.mean_ms = std::accumulate(samples.begin(), samples.end(), 0.0)
                 / static_cast<double>(samples.size());
@@ -448,6 +585,8 @@ namespace {
             {"nonfinite_scores", summary.nonfinite_scores},
             {"max_abs_error_vs_long_double_oracle", summary.max_abs_error},
             {"max_relative_error_vs_long_double_oracle", summary.max_relative_error},
+            {"max_abs_error_after_fp32_rounding", summary.max_abs_error_after_fp32_rounding},
+            {"max_relative_error_after_fp32_rounding", summary.max_relative_error_after_fp32_rounding},
             {"top1_exact_queries", summary.top1_matches},
             {"topk_exact_queries", summary.topk_matches}
         };
@@ -474,7 +613,57 @@ namespace {
         std::array<std::vector<double>, method_count> samples;
         std::array<std::vector<std::vector<Ranked>>, method_count> actual;
         std::array<std::size_t, method_count> nonfinite{};
-        std::array<bool, method_count> fallback{};
+        std::array<std::size_t, method_count> fallback_count{};
+        std::array<NormCache, method_count> norms;
+        std::array<std::vector<double>, method_count> products;
+        std::array<std::vector<double>, method_count> blocks;
+        std::array<std::vector<double>, method_count> kernel_samples;
+        std::array<std::size_t, method_count> kernel_fallback_count{};
+        for(std::size_t method_index = 0; method_index < method_count; ++method_index) {
+            products[method_index].reserve(dimension);
+            blocks[method_index].reserve((dimension + 31U) / 32U);
+            kernel_samples[method_index].reserve(repeats);
+        }
+
+        const auto run_kernel = [&](const std::size_t method_index) {
+            double checksum = 0.0;
+            for(std::size_t query = 0; query < query_count; ++query) {
+                for(std::size_t document = 0; document < document_count; ++document) {
+                    bool used_fallback = false;
+                    checksum += sum_products(
+                        corpus.queries[query], corpus.documents[document],
+                        methods[method_index], products[method_index], blocks[method_index],
+                        &used_fallback
+                    );
+                    if(used_fallback) {
+                        ++kernel_fallback_count[method_index];
+                    }
+                }
+            }
+            volatile double keep_checksum = checksum;
+            static_cast<void>(keep_checksum);
+        };
+        for(std::size_t repeat = 0; repeat < warmups; ++repeat) {
+            for(std::size_t slot = 0; slot < method_count; ++slot) {
+                run_kernel((slot + repeat) % method_count);
+            }
+        }
+        kernel_fallback_count.fill(0);
+        for(std::size_t repeat = 0; repeat < repeats; ++repeat) {
+            for(std::size_t slot = 0; slot < method_count; ++slot) {
+                const auto method_index = (slot + repeat) % method_count;
+                const auto start = Clock::now();
+                run_kernel(method_index);
+                kernel_samples[method_index].push_back(
+                    std::chrono::duration<double, std::milli>(Clock::now() - start).count()
+                );
+            }
+        }
+        for(std::size_t method_index = 0; method_index < method_count; ++method_index) {
+            norms[method_index] = make_norm_cache(
+                corpus, methods[method_index], products[method_index], blocks[method_index]
+            );
+        }
         const auto run_scan = [&](const std::size_t method_index) {
             actual[method_index].clear();
             double checksum = 0.0;
@@ -484,7 +673,10 @@ namespace {
                     query,
                     methods[method_index],
                     &nonfinite[method_index],
-                    &fallback[method_index]
+                    &fallback_count[method_index],
+                    &norms[method_index],
+                    products[method_index],
+                    blocks[method_index]
                 ));
                 for(const auto item : actual[method_index].back()) {
                     checksum += item.score;
@@ -501,6 +693,7 @@ namespace {
                 run_scan((slot + repeat) % method_count);
             }
         }
+        fallback_count.fill(0);
         for(std::size_t repeat = 0; repeat < repeats; ++repeat) {
             for(std::size_t slot = 0; slot < method_count; ++slot) {
                 const auto method_index = (slot + repeat) % method_count;
@@ -517,12 +710,17 @@ namespace {
             const auto method = methods[method_index];
             double max_abs_error = 0.0;
             double max_relative_error = 0.0;
+            double max_abs_error_after_fp32_rounding = 0.0;
+            double max_relative_error_after_fp32_rounding = 0.0;
+            double max_abs_dot_error = 0.0;
+            double max_relative_dot_error = 0.0;
             for(std::size_t query = 0; query < query_count; ++query) {
                 for(std::size_t document = 0; document < document_count; ++document) {
                     bool ignored_fallback = false;
-                    const auto actual_score = cosine_score(
+                    const auto actual_score = cosine_score_cached_norms(
                         corpus.queries[query], corpus.documents[document], method,
-                        &ignored_fallback
+                        norms[method_index].query[query], norms[method_index].documents[document],
+                        products[method_index], blocks[method_index], &ignored_fallback
                     );
                     const auto reference_score = reference_cosine(
                         corpus.queries[query], corpus.documents[document]
@@ -534,31 +732,110 @@ namespace {
                             max_relative_error, absolute / std::abs(reference_score)
                         );
                     }
+                    const auto actual_score_fp32 = static_cast<float>(actual_score);
+                    const auto reference_score_fp32 = static_cast<float>(reference_score);
+                    const auto fp32_absolute = std::abs(
+                        static_cast<double>(actual_score_fp32)
+                        - static_cast<double>(reference_score_fp32)
+                    );
+                    max_abs_error_after_fp32_rounding = std::max(
+                        max_abs_error_after_fp32_rounding, fp32_absolute
+                    );
+                    if(reference_score_fp32 != 0.0F) {
+                        max_relative_error_after_fp32_rounding = std::max(
+                            max_relative_error_after_fp32_rounding,
+                            fp32_absolute / std::abs(static_cast<double>(reference_score_fp32))
+                        );
+                    }
+                    bool ignored_dot_fallback = false;
+                    const auto actual_dot = sum_products(
+                        corpus.queries[query], corpus.documents[document], method,
+                        products[method_index], blocks[method_index], &ignored_dot_fallback
+                    );
+                    const auto reference_dot_value = static_cast<double>(reference_dot(
+                        corpus.queries[query], corpus.documents[document]
+                    ));
+                    const auto dot_absolute = std::abs(actual_dot - reference_dot_value);
+                    max_abs_dot_error = std::max(max_abs_dot_error, dot_absolute);
+                    if(reference_dot_value != 0.0) {
+                        max_relative_dot_error = std::max(
+                            max_relative_dot_error,
+                            dot_absolute / std::abs(reference_dot_value)
+                        );
+                    }
                 }
             }
             methods_json[std::string(method_name(method))] = summary_json(summarize(
                 samples[method_index], expected, actual[method_index], nonfinite[method_index],
-                max_abs_error, max_relative_error
+                max_abs_error, max_relative_error,
+                max_abs_error_after_fp32_rounding,
+                max_relative_error_after_fp32_rounding
             ));
-            methods_json[std::string(method_name(method))]["guarded_fallback_observed"] =
-                fallback[method_index];
+            methods_json[std::string(method_name(method))]["guarded_fallback_events"] =
+                fallback_count[method_index];
+            methods_json[std::string(method_name(method))]["guarded_fallback_frequency"] =
+                static_cast<double>(fallback_count[method_index])
+                / static_cast<double>(query_count * document_count * repeats);
+            methods_json[std::string(method_name(method))]["kernel_timing"] = Json{
+                {"samples_ms", kernel_samples[method_index]},
+                {"sample_count", kernel_samples[method_index].size()},
+                {"mean_ms", std::accumulate(
+                    kernel_samples[method_index].begin(), kernel_samples[method_index].end(), 0.0
+                ) / static_cast<double>(kernel_samples[method_index].size())},
+                {"max_abs_dot_error_vs_long_double_oracle", max_abs_dot_error},
+                {"max_relative_dot_error_vs_long_double_oracle", max_relative_dot_error},
+                {"guarded_fallback_events", kernel_fallback_count[method_index]}
+            };
+            methods_json[std::string(method_name(method))]["kernel_timing"]["guarded_fallback_frequency"] =
+                static_cast<double>(kernel_fallback_count[method_index])
+                / static_cast<double>(query_count * document_count * repeats);
+        }
+        bool correctness_pass = true;
+        for(std::size_t method_index = 0; method_index < method_count; ++method_index) {
+            const auto tolerance = methods[method_index] == Method::FloatLanes
+                ? 1.0e-3 : 1.0e-12;
+            correctness_pass = correctness_pass
+                && nonfinite[method_index] == 0
+                && rankings_match(expected, actual[method_index], tolerance);
         }
         return Json{
             {"schema_version", 1},
             {"family", "exact_vector_numerical_optimization_frontier_v1"},
-            {"status", "EXECUTED"},
+            {"status", correctness_pass ? "EXECUTED" : "EXECUTED_WITH_MISMATCH"},
+            {"correctness_status", correctness_pass ? "PASS" : "FAIL"},
             {"source_commit", AGENT_MEMORY_NUMERICAL_FRONTIER_SOURCE_COMMIT},
+            {"build_provenance", Json{
+                {"compiler_id", AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_ID},
+                {"compiler_version", AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_VERSION},
+                {"configuration", AGENT_MEMORY_NUMERICAL_FRONTIER_BUILD_CONFIGURATION},
+                {"cxx_standard", 17},
+                {"system_processor", AGENT_MEMORY_NUMERICAL_FRONTIER_SYSTEM_PROCESSOR},
+                {"simd_backend", "none"}
+            }},
             {"production_api_changed", false},
             {"portable_fp64_control", true},
             {"simd_claim", "none"},
             {"documents", document_count},
             {"queries", query_count},
             {"dimension", dimension},
+            {"corpus_seed", "0x5eed1234"},
+            {"corpus_digest_fnv1a64", hex_digest(corpus.digest)},
             {"warmups", warmups},
             {"measured_repeats", repeats},
+            {"measured_scan_scored_pairs", query_count * document_count * repeats},
+            {"measured_kernel_scored_pairs", query_count * document_count * repeats},
             {"sample_count_semantics", "one sample is one complete corpus/query sweep; not an independent request"},
             {"timing_claim", "directional measured distribution; p95 is not a stability guarantee"},
             {"oracle", "long_double_neumaier_over_float_products"},
+            {"score_error_domain", "real-valued double cosine before production float conversion"},
+            {"ranking_domain", "ordered numeric document IDs with deterministic ascending tie-break"},
+            {"guarded_fallback_semantics", "finite-overflow/non-finite reduction diagnostic only; finite cancellation is not detected"},
+            {"allocation_accounting", Json{
+                {"kernel_workspaces", "reserved before timing; no per-dot vector allocation"},
+                {"scan_norms", "precomputed before scan timing"},
+                {"scan_ranking_buffers", "included in scan timing"},
+                {"allocator_instrumentation", "not instrumented"}
+            }},
             {"methods", methods_json},
             {"limitations", Json::array({
                 "The harness is a direct arithmetic scan, not end-to-end ExactVectorIndex throughput.",
@@ -577,20 +854,38 @@ namespace {
     void self_test() {
         const std::vector<float> lhs{1.0e20F, 1.0F, -1.0e20F, 1.0F};
         const std::vector<float> rhs{1.0F, 1.0F, 1.0F, 1.0F};
-        const auto sequential = sum_products(lhs, rhs, Method::Fp64Sequential);
-        const auto neumaier = sum_products(lhs, rhs, Method::Fp64Neumaier);
-        const auto pairwise = sum_products(lhs, rhs, Method::Fp64Pairwise);
-        const auto blockwise = sum_products(lhs, rhs, Method::Fp64Blockwise);
+        std::vector<double> products;
+        std::vector<double> blocks;
+        products.reserve(1536);
+        blocks.reserve(48);
+        const auto sequential = sum_products(
+            lhs, rhs, Method::Fp64Sequential, products, blocks
+        );
+        const auto neumaier = sum_products(
+            lhs, rhs, Method::Fp64Neumaier, products, blocks
+        );
+        const auto pairwise = sum_products(
+            lhs, rhs, Method::Fp64Pairwise, products, blocks
+        );
+        const auto blockwise = sum_products(
+            lhs, rhs, Method::Fp64Blockwise, products, blocks
+        );
         require(std::abs(sequential - 1.0) < 1.0e-9, "fp64 sequential cancellation control failed");
         require(std::abs(neumaier - 2.0) < 1.0e-9, "Neumaier cancellation control failed");
         require(std::abs(pairwise - 1.0) < 1.0e-9, "pairwise cancellation control failed");
         require(std::abs(blockwise - 1.0) < 1.0e-9, "blockwise cancellation control failed");
+        bool finite_cancellation_fallback = false;
+        const auto guarded_cancellation = sum_products(
+            lhs, rhs, Method::Fp64Guarded, products, blocks, &finite_cancellation_fallback
+        );
+        require(!finite_cancellation_fallback && std::abs(guarded_cancellation - 1.0) < 1.0e-9,
+                "guarded cancellation scope control failed");
 
         std::vector<double> injected{
             std::numeric_limits<double>::max(), std::numeric_limits<double>::max()
         };
         bool used_fallback = false;
-        const auto guarded = guarded_blockwise_sum(injected, 1, &used_fallback);
+        const auto guarded = guarded_blockwise_sum(injected, 1, blocks, &used_fallback);
         require(used_fallback && !std::isfinite(guarded), "guard trigger control failed");
 
         const auto corpus = make_corpus(32, 4, 64, 12345);
@@ -599,14 +894,56 @@ namespace {
                 Method::FloatLanes, Method::Fp64Sequential, Method::Fp64Neumaier,
                 Method::Fp64Pairwise, Method::Fp64Blockwise, Method::Fp64Guarded}) {
             std::size_t nonfinite = 0;
-            bool fallback = false;
+            std::size_t fallback = 0;
+            std::vector<std::vector<Ranked>> actual;
             for(std::size_t query = 0; query < corpus.queries.size(); ++query) {
-                const auto actual = rank_query(corpus, query, method, &nonfinite, &fallback);
-                require(!actual.empty(), "ranking self-test returned no candidates");
-                require(actual[0].id < corpus.documents.size(), "ranking returned invalid id");
+                actual.push_back(rank_query(
+                    corpus, query, method, &nonfinite, &fallback, nullptr, products, blocks
+                ));
+                require(!actual.back().empty(), "ranking self-test returned no candidates");
+                require(actual.back()[0].id < corpus.documents.size(),
+                        "ranking returned invalid id");
             }
-            static_cast<void>(expected);
             require(nonfinite == 0, "random finite fixture produced non-finite score");
+            const auto tolerance = method == Method::FloatLanes ? 1.0e-3 : 1.0e-12;
+            require(rankings_match(expected, actual, tolerance),
+                    "ranking or score self-test disagrees with oracle");
+
+            auto mutated_order = actual;
+            if(mutated_order[0].size() > 1) {
+                std::swap(mutated_order[0][0], mutated_order[0][1]);
+            }
+            require(!rankings_match(expected, mutated_order, tolerance),
+                    "ranking mutation control was not rejected");
+            auto mutated_score = actual;
+            mutated_score[0][0].score += 0.25;
+            require(!rankings_match(expected, mutated_score, tolerance),
+                    "score mutation control was not rejected");
+        }
+
+        for(const auto size : std::array<std::size_t, 6>{31, 32, 33, 64, 384, 1536}) {
+            std::vector<double> values(size);
+            long double oracle = 0.0L;
+            for(std::size_t index = 0; index < size; ++index) {
+                switch(index % 4U) {
+                    case 0: values[index] = 1.0e12; break;
+                    case 1: values[index] = 1.0; break;
+                    case 2: values[index] = -1.0e12; break;
+                    default: values[index] = 1.0; break;
+                }
+                oracle += static_cast<long double>(values[index]);
+            }
+            bool finite = true;
+            std::vector<double> boundary_blocks;
+            const auto pairwise = pairwise_sum(values, 0, values.size());
+            const auto blockwise = blockwise_sum(values, 32, boundary_blocks, &finite);
+            const auto tolerance = 1.0e-9 * std::max(1.0L, std::abs(oracle));
+            require(finite && std::isfinite(pairwise) && std::isfinite(blockwise),
+                    "pairwise/blockwise boundary produced non-finite result");
+            require(std::abs(static_cast<long double>(pairwise) - oracle) <= tolerance,
+                    "pairwise boundary fixture lost excessive accuracy");
+            require(std::abs(static_cast<long double>(blockwise) - oracle) <= tolerance,
+                    "blockwise boundary fixture lost excessive accuracy");
         }
 
         Corpus tie_corpus;
@@ -616,8 +953,10 @@ namespace {
                 Method::FloatLanes, Method::Fp64Sequential, Method::Fp64Neumaier,
                 Method::Fp64Pairwise, Method::Fp64Blockwise, Method::Fp64Guarded}) {
             std::size_t nonfinite = 0;
-            bool fallback = false;
-            const auto ranked = rank_query(tie_corpus, 0, method, &nonfinite, &fallback);
+            std::size_t fallback = 0;
+            const auto ranked = rank_query(
+                tie_corpus, 0, method, &nonfinite, &fallback, nullptr, products, blocks
+            );
             require(ranked.size() == 3 && ranked[0].id == 0 && ranked[1].id == 1,
                     "near-tie deterministic ordering control failed");
         }

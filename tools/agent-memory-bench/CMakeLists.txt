@@ -30,6 +30,10 @@ endif()
 target_compile_definitions(agent-memory-exact-vector-numerical-frontier
     PRIVATE
         AGENT_MEMORY_NUMERICAL_FRONTIER_SOURCE_COMMIT="${agent_memory_numerical_frontier_source_commit}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_BUILD_CONFIGURATION="${CMAKE_BUILD_TYPE}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_SYSTEM_PROCESSOR="${CMAKE_SYSTEM_PROCESSOR}"
 )
 
 add_executable(agent-memory-autoencoder-eval

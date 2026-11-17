@@ -310,6 +310,16 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND $<TARGET_FILE:agent-memory-exact-vector-numerical-frontier> --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+        add_test(
+            NAME agent_memory_exact_vector_numerical_frontier_invalid_cli
+            COMMAND $<TARGET_FILE:agent-memory-exact-vector-numerical-frontier> --invalid-option
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        set_tests_properties(
+            agent_memory_exact_vector_numerical_frontier_invalid_cli
+            PROPERTIES
+                WILL_FAIL TRUE
+        )
     endif()
     if(AGENT_MEMORY_BUILD_EXAMPLES)
         add_test(
