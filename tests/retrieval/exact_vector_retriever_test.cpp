@@ -761,7 +761,7 @@ namespace {
         fail_next_allocation();
         bool threw_bad_alloc = false;
         try {
-            idx.add("doc:allocation-failure", std::move(candidate));
+            idx.add("doc:fail", std::move(candidate));
         } catch(const std::bad_alloc&) {
             threw_bad_alloc = true;
         } catch(...) {
