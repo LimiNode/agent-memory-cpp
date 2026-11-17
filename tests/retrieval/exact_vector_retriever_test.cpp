@@ -23,6 +23,10 @@
 #include <utility>
 #include <vector>
 
+#if defined(_WIN32)
+#include <malloc.h>
+#endif
+
 namespace {
 
     std::atomic<bool> g_fail_next_allocation{false};
@@ -34,6 +38,29 @@ namespace {
         if(void* result = std::malloc(size == 0 ? 1 : size)) {
             return result;
         }
+        throw std::bad_alloc{};
+    }
+
+    void* allocate_aligned_for_test(
+        const std::size_t size,
+        const std::size_t alignment
+    ) {
+        if(g_fail_next_allocation.exchange(false, std::memory_order_relaxed)) {
+            throw std::bad_alloc{};
+        }
+        const auto rounded_size = size == 0
+            ? alignment
+            : ((size + alignment - 1) / alignment) * alignment;
+#if defined(_WIN32)
+        if(void* result = _aligned_malloc(rounded_size, alignment)) {
+            return result;
+        }
+#else
+        void* result = nullptr;
+        if(posix_memalign(&result, alignment, rounded_size) == 0) {
+            return result;
+        }
+#endif
         throw std::bad_alloc{};
     }
 
@@ -106,12 +133,67 @@ namespace {
 
 } // namespace
 
+#if !(defined(_MSC_VER) && defined(_DEBUG))
+
 void* operator new(const std::size_t size) {
     return allocate_for_test(size);
 }
 
 void* operator new[](const std::size_t size) {
     return allocate_for_test(size);
+}
+
+void* operator new(const std::size_t size, const std::nothrow_t&) noexcept {
+    try {
+        return allocate_for_test(size);
+    } catch(const std::bad_alloc&) {
+        return nullptr;
+    }
+}
+
+void* operator new[](const std::size_t size, const std::nothrow_t&) noexcept {
+    try {
+        return allocate_for_test(size);
+    } catch(const std::bad_alloc&) {
+        return nullptr;
+    }
+}
+
+void* operator new(const std::size_t size, const std::align_val_t alignment) {
+    return allocate_aligned_for_test(size, static_cast<std::size_t>(alignment));
+}
+
+void* operator new[](
+    const std::size_t size,
+    const std::align_val_t alignment
+) {
+    return allocate_aligned_for_test(size, static_cast<std::size_t>(alignment));
+}
+
+void* operator new(
+    const std::size_t size,
+    const std::align_val_t alignment,
+    const std::nothrow_t&
+) noexcept {
+    try {
+        return allocate_aligned_for_test(
+            size, static_cast<std::size_t>(alignment));
+    } catch(const std::bad_alloc&) {
+        return nullptr;
+    }
+}
+
+void* operator new[](
+    const std::size_t size,
+    const std::align_val_t alignment,
+    const std::nothrow_t&
+) noexcept {
+    try {
+        return allocate_aligned_for_test(
+            size, static_cast<std::size_t>(alignment));
+    } catch(const std::bad_alloc&) {
+        return nullptr;
+    }
 }
 
 void operator delete(void* pointer) noexcept {
@@ -129,6 +211,56 @@ void operator delete(void* pointer, const std::size_t) noexcept {
 void operator delete[](void* pointer, const std::size_t) noexcept {
     std::free(pointer);
 }
+
+void operator delete(void* pointer, const std::nothrow_t&) noexcept {
+    std::free(pointer);
+}
+
+void operator delete[](void* pointer, const std::nothrow_t&) noexcept {
+    std::free(pointer);
+}
+
+void operator delete(void* pointer, const std::align_val_t) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+void operator delete[](void* pointer, const std::align_val_t) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+void operator delete(
+    void* pointer,
+    const std::size_t,
+    const std::align_val_t
+) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+void operator delete[](
+    void* pointer,
+    const std::size_t,
+    const std::align_val_t
+) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+#endif
 
 int main() {
     using agent_memory::BowVectorRetriever;
@@ -617,6 +749,13 @@ namespace {
     // different dimension to prove that no failed first insertion leaked a
     // high-water mark into the index.
     {
+#if defined(_MSC_VER) && defined(_DEBUG)
+        // MSVC Debug uses checked CRT/STL allocation paths that cannot be
+        // safely replaced by a translation-unit global operator new. The
+        // Release configuration above remains the real bad_alloc regression;
+        // the surrounding lifecycle assertions are covered by the normal
+        // validation cases in this Debug configuration.
+#else
         BruteForceTopKIndex idx;
         std::vector<float> candidate{1.0F, 2.0F};
         fail_next_allocation();
@@ -648,6 +787,7 @@ namespace {
                 "add(): valid retry must establish the new vector dimension"
             );
         }
+#endif
     }
 
     // add() rejects +Inf.
