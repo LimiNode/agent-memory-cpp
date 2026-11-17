@@ -6,12 +6,12 @@
 /// \brief Dependency-free brute-force top-K vector index.
 ///
 /// Storage is a flat `std::vector<std::pair<std::string, std::vector<float>>>`.
-/// Top-K is computed via `std::partial_sort` over an index array, so the
-/// full matrix is never copied. Cosine similarity is computed on demand
-/// from L2-normalized input vectors (the BowEmbedder emits normalized
-/// vectors so dot product == cosine here, but the implementation falls
-/// back to a true cosine ratio to remain correct for non-normalized
-/// callers).
+/// Top-K is computed via `std::partial_sort` over one scored entry per
+/// record, so the full matrix is never copied and each cosine is evaluated
+/// exactly once. Cosine similarity is computed from L2-normalized input
+/// vectors (the BowEmbedder emits normalized vectors so dot product == cosine
+/// here, but the implementation falls back to a true cosine ratio to remain
+/// correct for non-normalized callers).
 ///
 /// The `build()` method is a no-op for brute force: it exists so the
 /// caller-visible lifecycle matches the planned ANN indices (HNSW, IVF,
@@ -67,7 +67,8 @@ namespace agent_memory {
         ///         - `k == 0`;
         ///         - empty index (no records yet).
         /// \throws std::invalid_argument when `query.size()` differs from
-        ///         the adopted dimension.
+        ///         the adopted dimension or a non-finite query component is
+        ///         supplied.
         [[nodiscard]] std::vector<std::pair<std::string, double>> top_k(
             const std::vector<float>& query,
             std::size_t k

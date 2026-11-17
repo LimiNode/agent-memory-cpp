@@ -9,18 +9,68 @@
 #include <agent_memory/retrieval/BruteForceTopKIndex.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <new>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
+#if defined(_WIN32)
+#include <malloc.h>
+#endif
+
 namespace {
+
+    std::atomic<bool> g_fail_next_allocation{false};
+
+    void* allocate_for_test(const std::size_t size) {
+        if(g_fail_next_allocation.exchange(false, std::memory_order_relaxed)) {
+            throw std::bad_alloc{};
+        }
+        if(void* result = std::malloc(size == 0 ? 1 : size)) {
+            return result;
+        }
+        throw std::bad_alloc{};
+    }
+
+    void* allocate_aligned_for_test(
+        const std::size_t size,
+        const std::size_t alignment
+    ) {
+        if(g_fail_next_allocation.exchange(false, std::memory_order_relaxed)) {
+            throw std::bad_alloc{};
+        }
+        const auto rounded_size = size == 0
+            ? alignment
+            : ((size + alignment - 1) / alignment) * alignment;
+#if defined(_WIN32)
+        if(void* result = _aligned_malloc(rounded_size, alignment)) {
+            return result;
+        }
+#else
+        void* result = nullptr;
+        if(posix_memalign(&result, alignment, rounded_size) == 0) {
+            return result;
+        }
+#endif
+        throw std::bad_alloc{};
+    }
+
+    void fail_next_allocation() {
+        g_fail_next_allocation.store(true, std::memory_order_relaxed);
+    }
+
+    void disable_allocation_failure() {
+        g_fail_next_allocation.store(false, std::memory_order_relaxed);
+    }
 
     int fail(const std::string& message) {
         std::cerr << "exact_vector_retriever_test: " << message << '\n';
@@ -82,6 +132,135 @@ namespace {
     int run_brute_force_validation_tests();
 
 } // namespace
+
+#if !(defined(_MSC_VER) && defined(_DEBUG))
+
+void* operator new(const std::size_t size) {
+    return allocate_for_test(size);
+}
+
+void* operator new[](const std::size_t size) {
+    return allocate_for_test(size);
+}
+
+void* operator new(const std::size_t size, const std::nothrow_t&) noexcept {
+    try {
+        return allocate_for_test(size);
+    } catch(const std::bad_alloc&) {
+        return nullptr;
+    }
+}
+
+void* operator new[](const std::size_t size, const std::nothrow_t&) noexcept {
+    try {
+        return allocate_for_test(size);
+    } catch(const std::bad_alloc&) {
+        return nullptr;
+    }
+}
+
+void* operator new(const std::size_t size, const std::align_val_t alignment) {
+    return allocate_aligned_for_test(size, static_cast<std::size_t>(alignment));
+}
+
+void* operator new[](
+    const std::size_t size,
+    const std::align_val_t alignment
+) {
+    return allocate_aligned_for_test(size, static_cast<std::size_t>(alignment));
+}
+
+void* operator new(
+    const std::size_t size,
+    const std::align_val_t alignment,
+    const std::nothrow_t&
+) noexcept {
+    try {
+        return allocate_aligned_for_test(
+            size, static_cast<std::size_t>(alignment));
+    } catch(const std::bad_alloc&) {
+        return nullptr;
+    }
+}
+
+void* operator new[](
+    const std::size_t size,
+    const std::align_val_t alignment,
+    const std::nothrow_t&
+) noexcept {
+    try {
+        return allocate_aligned_for_test(
+            size, static_cast<std::size_t>(alignment));
+    } catch(const std::bad_alloc&) {
+        return nullptr;
+    }
+}
+
+void operator delete(void* pointer) noexcept {
+    std::free(pointer);
+}
+
+void operator delete[](void* pointer) noexcept {
+    std::free(pointer);
+}
+
+void operator delete(void* pointer, const std::size_t) noexcept {
+    std::free(pointer);
+}
+
+void operator delete[](void* pointer, const std::size_t) noexcept {
+    std::free(pointer);
+}
+
+void operator delete(void* pointer, const std::nothrow_t&) noexcept {
+    std::free(pointer);
+}
+
+void operator delete[](void* pointer, const std::nothrow_t&) noexcept {
+    std::free(pointer);
+}
+
+void operator delete(void* pointer, const std::align_val_t) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+void operator delete[](void* pointer, const std::align_val_t) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+void operator delete(
+    void* pointer,
+    const std::size_t,
+    const std::align_val_t
+) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+void operator delete[](
+    void* pointer,
+    const std::size_t,
+    const std::align_val_t
+) noexcept {
+#if defined(_WIN32)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
+
+#endif
 
 int main() {
     using agent_memory::BowVectorRetriever;
@@ -468,7 +647,7 @@ int main() {
     }
 
     // Silence unused tokenize warnings.
-    (void)tokenize_local;
+    (void)&tokenize_local;
 
     if(const int rc = run_brute_force_validation_tests(); rc != 0) {
         return rc;
@@ -541,6 +720,74 @@ namespace {
         if(!ok) {
             return fail("add(): NaN component must throw std::invalid_argument mentioning NaN");
         }
+    }
+
+    // A rejected first insertion must not publish its dimension.
+    {
+        BruteForceTopKIndex idx;
+        const bool ok = throws_invalid_argument_message(
+            [&] {
+                idx.add(
+                    "doc:a",
+                    std::vector<float>{
+                        std::numeric_limits<float>::quiet_NaN(),
+                        0.0F
+                    }
+                );
+            },
+            "NaN"
+        );
+        if(!ok || idx.size() != 0 || idx.dimension() != 0) {
+            return fail(
+                "add(): failed first insertion must leave empty dimension state"
+            );
+        }
+    }
+
+    // A real allocation failure during the first insertion must not publish
+    // either a record or its dimension. The retry deliberately uses a
+    // different dimension to prove that no failed first insertion leaked a
+    // high-water mark into the index.
+    {
+#if defined(_MSC_VER) && defined(_DEBUG)
+        // MSVC Debug uses checked CRT/STL allocation paths that cannot be
+        // safely replaced by a translation-unit global operator new. The
+        // Release configuration above remains the real bad_alloc regression;
+        // the surrounding lifecycle assertions are covered by the normal
+        // validation cases in this Debug configuration.
+#else
+        BruteForceTopKIndex idx;
+        std::vector<float> candidate{1.0F, 2.0F};
+        fail_next_allocation();
+        bool threw_bad_alloc = false;
+        try {
+            idx.add("doc:fail", std::move(candidate));
+        } catch(const std::bad_alloc&) {
+            threw_bad_alloc = true;
+        } catch(...) {
+            disable_allocation_failure();
+            return fail("add(): first insertion fault must throw std::bad_alloc");
+        }
+        disable_allocation_failure();
+        if(!threw_bad_alloc || idx.size() != 0 || idx.dimension() != 0) {
+            return fail(
+                "add(): failed first allocation must leave the index empty"
+            );
+        }
+        try {
+            idx.add("doc:retry", std::vector<float>{1.0F, 2.0F, 3.0F});
+        } catch(const std::exception& err) {
+            return fail(
+                std::string("add(): valid retry after bad_alloc failed: ") +
+                err.what()
+            );
+        }
+        if(idx.size() != 1 || idx.dimension() != 3) {
+            return fail(
+                "add(): valid retry must establish the new vector dimension"
+            );
+        }
+#endif
     }
 
     // add() rejects +Inf.
@@ -640,6 +887,41 @@ namespace {
         );
         if(!ok) {
             return fail("top_k(): dimension mismatch must throw std::invalid_argument");
+        }
+    }
+
+    // top_k() rejects non-finite queries before ranking.
+    {
+        BruteForceTopKIndex idx;
+        idx.add("doc:a", std::vector<float>{1.0F, 0.0F});
+        for(const float invalid : {
+                std::numeric_limits<float>::quiet_NaN(),
+                std::numeric_limits<float>::infinity(),
+                -std::numeric_limits<float>::infinity()
+            }) {
+            const bool ok = throws_invalid_argument_message(
+                [&] { (void)idx.top_k(std::vector<float>{invalid, 0.0F}, 1); },
+                "NaN or Inf"
+            );
+            if(!ok) {
+                return fail("top_k(): non-finite query must throw before ranking");
+            }
+        }
+    }
+
+    // Repeated queries must preserve score ordering and deterministic ties.
+    {
+        BruteForceTopKIndex idx;
+        idx.add("doc:b", std::vector<float>{1.0F, 0.0F});
+        idx.add("doc:a", std::vector<float>{1.0F, 0.0F});
+        idx.add("doc:c", std::vector<float>{0.0F, 1.0F});
+        const auto first = idx.top_k(std::vector<float>{1.0F, 0.0F}, 3);
+        const auto second = idx.top_k(std::vector<float>{1.0F, 0.0F}, 3);
+        if(first != second || first.size() != 3 || first[0].first != "doc:a" ||
+           first[1].first != "doc:b" || first[2].first != "doc:c" ||
+           !std::isfinite(first[0].second) || !std::isfinite(first[1].second) ||
+           !std::isfinite(first[2].second)) {
+            return fail("top_k(): score ordering and tie-break must be repeatable");
         }
     }
 
