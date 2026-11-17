@@ -77,6 +77,26 @@ MDBX installed consumer, the JSON installed consumer, and the OLD-to-NEW
 exact-generation upgrade. It does not establish a universal MDBX or research
 profile on every platform.
 
+## Additional audit disposition
+
+The 17-November audit adds no new production P0/P1. The following items are
+kept separate from the release corrective branch:
+
+| Item | Disposition |
+|---|---|
+| #633 admission benchmark methodology | Owned by the second agent; baseline identity comparison, duplicate-check complexity, end-to-end timing and production-contract matrix must be corrected before using its numbers for algorithm selection. It is not a production activation decision. |
+| #635 `noexcept`/allocation and self-test | Remains the second agent's first corrective gate; no release claim is made here until its exact-head CI is available. |
+| Duplicate SHA-256 implementations | Confirmed technical debt, with no digest mismatch established. First run cross-implementation golden vectors and persisted-digest parity checks; only then consider a separate minimal consolidation PR. No hash implementation was changed in this release work. |
+| `MultiProbeHammingIndex::search_with_diagnostics()` `seen` allocation | Research backlog: measure dense versus sparse visitation for the stated N/candidate regimes, including memory, allocations, visited postings and p95. No shared mutable generation bitmap is introduced. |
+| `ResourceIndexer` quadratic scans and other performance findings | Measure representative batch sizes first; no release blocker is assigned without a reproduced preview-contract violation. |
+| Targeted ASan/UBSan | Optional next-preflight evidence. Not run in this report and therefore not marked PASS; TSan remains conditional on a defined concurrency contract. |
+
+The separate zero-limit MDBX corrective branch
+`2245b9517b53d421756d3faebdbe5a440021e791` returns before opening a read
+transaction or scanning rows, but only after authorization presence, snapshot
+identity, scope and vector validation. Its focused MDBX Release test passed;
+the branch is not merged and does not change the current release candidate.
+
 ## Open pull requests and process state
 
 ### #625 — hybrid reranker admission
