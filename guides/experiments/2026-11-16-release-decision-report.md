@@ -4,12 +4,18 @@ This report records the release decision for the exact integrated candidate
 `main` at the current integrated source candidate:
 
 ```text
-0038b52a1361e7a9fce2394401cb2c75da95bd73
+9eea319f54e1538c550a3b26fd435d22e94f3c57
 ```
 
 It is a decision record, not a tag, GitHub Release, package publication, or
 production-activation request. No such publication is authorized by this
 document.
+
+The tested source candidate is `9eea319f54e1538c550a3b26fd435d22e94f3c57`.
+The release-preflight documentation change was authored as
+`fead7bf9d2ed1b3c17a87dc06204b1d0476b5231` and then squash-merged into that
+source candidate. These identifiers are kept separate: a documentation commit
+is not a replacement for the source revision against which a test ran.
 
 ## Candidate composition
 
@@ -29,6 +35,8 @@ historical #611 preview snapshot:
 | #627 | `c2486bc45301fbb83514094cc4c7929e3fc7a7af` | JSON-OFF public-header self-sufficiency gate |
 | #625 | `c93a7b867cd802e279a4118b07cc177f10322cf3` | reranker admission boundary (merge commit) |
 | #630 | `0038b52a1361e7a9fce2394401cb2c75da95bd73` | release decision and independent-audit disposition (squash merge) |
+| #632 | `d4cccd4834cad866f3309adb0d31c35f407d7111` | post-merge candidate evidence record |
+| #634 | `9eea319f54e1538c550a3b26fd435d22e94f3c57` | local Windows MDBX preflight boundary |
 
 The commits between these entries also contain the already-reviewed MDBX and
 index qualification fixes. The exact candidate is the only revision to which
@@ -49,14 +57,20 @@ the decision below applies.
 | #623 tokenizer regression | Reviewed evidence | CamelCase/golden-token tests preserve the intended boundaries |
 | Local C++17 Release CTest (clean corrective worktree) | 47/47 passed | JSON=OFF, MDBX=OFF |
 | Local C++17 Release CTest (clean corrective worktree) | 52/52 passed | JSON=ON, MDBX=OFF; includes the new #631 focused assertions |
-| Local C++17 Debug CTest | 51/52 passed | JSON=ON, MDBX=OFF; `agent_memory_exact_lexical_index_test` failed after a long allocation/ownership path and requires a separate reproducible diagnosis |
-| Local MDBX CTest (Windows, JSON=OFF) | not completed | Submodules initialized; baseline MSVC configure/build first required `/Zc:__cplusplus`; with `/Zc:__cplusplus /DNOMINMAX /EHsc`, external `mdbx-containers` failed in `KeyValueTable::retrieve_all` template deduction at `MdbxDurableLexicalDocumentMemory.cpp:947` |
+| Local C++17 Debug focused CTest | passed | JSON=OFF, MDBX=OFF; `agent_memory_exact_lexical_index_test` now completes in 0.55 s. MSVC Debug explicitly skips only the executable-wide allocation-failure matrix because checked STL unwinding does not reach the test catch; the Release matrix remains enabled and passed |
+| Local C++17 Release focused CTest | passed | `agent_memory_exact_lexical_index_test` completes in 0.08 s and exercises the full allocation-failure matrix |
+| Local MDBX CTest (Windows, JSON=OFF) | not completed | Submodules initialized at `mdbx-containers` `4ab32b5eab3cdfce95d1a6c0f05f566019793ec4` and `libmdbx` `fc8b8e4697e0ef8b2cd5aee1f2d9fb0974fc665f`; baseline MSVC configure/build first required `/Zc:__cplusplus`. A standalone include-only reproducer independently reproduces C2664 in `KeyValueTable.hpp:252` for `retrieve_all<std::map>()` (`std::_Tree` vs `std::map` deduction); the vector overload compiles. This is a pinned dependency/toolchain boundary, not an agent-memory source failure |
 | Local MDBX installed consumers | not run locally | Ubuntu packaging evidence remains available from runs 43866997726 and 43876392811; no Windows/macOS MDBX execution is claimed |
 
 Post-merge verification for the documentation squash merge is complete:
 
 - CI [run 43876392826](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43876392826) passed on `0038b52a1361e7a9fce2394401cb2c75da95bd73`; required source, Windows/macOS and documentation jobs passed, while research lanes were classifier-skipped.
 - Packaging [run 43876392811](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43876392811) passed installed consumers and OLD-to-NEW exact-generation upgrade.
+
+The later #634 squash merge was also verified on the tested source candidate:
+
+- CI [run 43884926097](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43884926097) passed on `9eea319f54e1538c550a3b26fd435d22e94f3c57`.
+- Packaging [run 43884926120](https://github.com/LimiNode/agent-memory-cpp/actions/runs/43884926120) passed on the same candidate.
 
 The packaging result covers Linux, Windows and macOS minimal consumers, the
 MDBX installed consumer, the JSON installed consumer, and the OLD-to-NEW
@@ -80,14 +94,22 @@ not make `HybridRetrievalEngine` a canonical authorization boundary.
 Source review of HEAD
 `e2d94c09f9787b53d4454941785217acc6dedbd0` found Neumaier accumulation,
 cancellation-sign coverage and scalar/SIMD parity checks. The independent
-reference helper is ordinary sequential `double`; it is sufficient for the
-bounded regression but is not a general high-precision adversarial oracle.
+reference helper uses compensated `long double` accumulation for the dot
+product and both norms. That is stronger than an ordinary sequential
+`double` sum for the tested inputs, but it is not a universal high-precision
+oracle: on MSVC, `long double` normally has the same precision as `double`.
 
 Decision: **CODE APPROVE, PROCESS HOLD**. The PR is still based on
 `5efd4ead68cb891a9f7ebb94c9f03f49d902fc2d`, while `main` is
-`0038b52a1361e7a9fce2394401cb2c75da95bd73`. Rebase onto the current
+`9eea319f54e1538c550a3b26fd435d22e94f3c57`. Rebase onto the current
 candidate, obtain new exact-head CI and packaging, and repeat the short source
 review before considering a guarded merge.
+
+As a local rebase rehearsal, the fetched PR head was rebased onto current
+`main` as `cf66b6807e5b18f236d5f8917a2da13be0d988a1`; the focused Release
+`agent_memory_exact_vector_index_test` passed. This local result does not
+replace a rebase of the owner branch or new exact-head CI/packaging for PR
+#628.
 
 ### #626 and #629
 
@@ -106,8 +128,11 @@ comparator and again while materialising results. Draft PR #631
 (`935750460eb2fa98e0c0da526d8e7d32625f4599`) moves dimension publication
 after successful insertion, rejects NaN/Inf queries, and scores each record
 once. The JSON-enabled focused test and full local JSON Release CTest passed;
-exact-head CI `43871179603` and packaging `43871179424` also passed. An
-independent review is still pending, so the slice is not integrated into the
+exact-head CI `43871179603` and packaging `43871179424` also passed. The PR is
+based on `c93a7b867cd802e279a4118b07cc177f10322cf3`, while current `main` is
+`9eea319f54e1538c550a3b26fd435d22e94f3c57`; therefore this evidence is stale
+for integration. A real allocation-failure regression, rebase, and new
+exact-head CI/packaging remain required before the slice can enter the
 candidate.
 
 Decision: **OPEN_CONFIRMED, FIX_NOW**. It is a correctness repair for the
@@ -153,8 +178,11 @@ guarantees:
 - stable ABI, cross-version migration and cross-platform MDBX file exchange;
 - ANN/R4 serving, graph traversal, hybrid fusion and compact-vector codecs;
 - a production default for #625 or #628 before rebase and exact-head CI;
-- release approval while #631 remains unreviewed or while the Debug
-  `agent_memory_exact_lexical_index_test` failure is unexplained.
+- release approval while #631 remains unreviewed or while the Windows MDBX
+  dependency/toolchain boundary remains unqualified. The MSVC Debug lexical
+  failure is dispositioned: the checked STL cannot safely unwind through the
+  executable-wide allocation injector, so only that matrix is skipped there;
+  the remaining Debug test and the complete Release matrix pass.
 
 ## Verdicts
 
@@ -162,11 +190,13 @@ guarantees:
 
 **HOLD.** The integrated Release evidence is bounded and reproducible, but the
 release owner has not yet reached approval. The corrective #631 slice is
-unmerged, the Debug `agent_memory_exact_lexical_index_test` result is not
-explained, and the local Windows MDBX build is blocked at the external
-`mdbx-containers`/MSVC boundary described above. Packaging proves an installed
-MDBX consumer on the recorded Ubuntu CI runner; it does not substitute for an
-unsupported or incomplete local matrix.
+unmerged, and the local Windows MDBX build is blocked at the external
+`mdbx-containers`/MSVC boundary described above. The Debug lexical failure is
+no longer unexplained: the remaining Debug test passes, while its
+executable-wide allocation-failure matrix is explicitly limited to Release
+and non-MSVC builds because checked STL unwinding does not reach the test
+catch. Packaging proves an installed MDBX consumer on the recorded Ubuntu CI
+runner; it does not substitute for an unsupported or incomplete local matrix.
 
 Until that run is recorded, the candidate is not `READY_FOR_RELEASE_APPROVAL`.
 No tag, package upload, GitHub Release or production activation may occur.
@@ -179,8 +209,7 @@ not a production AN R4 implementation or an ANN compatibility promise.
 ## Next observable step
 
 Next steps are bounded: obtain independent review and exact-head CI for #631;
-diagnose or explicitly disposition the Debug lexical-index failure; then
-rebase and requalify #628. The local MDBX preflight now has an explicit
+then rebase and requalify #628. The local MDBX preflight now has an explicit
 Windows dependency/toolchain failure; the remaining local MDBX/consumer/
 recovery matrix must be run on a supported environment before release approval.
 A failure keeps the Raw Markdown verdict at

@@ -986,12 +986,21 @@ int main() {
             return observed_failure && observed_success;
         };
 
+#if defined(_MSC_VER) && defined(_DEBUG)
+        // MSVC Debug's checked STL does not support this executable-wide
+        // operator-new fault injector: an injected failure inside a checked
+        // container can fail during unwinding before the test catch runs.
+        // The complete matrix remains enabled for Release and non-MSVC builds.
+        std::cerr << "A1 allocation-failure matrix skipped for MSVC Debug; "
+                     "run the Release matrix for fault-injection coverage\n";
+#else
         if(!run_fault_matrix(false)) {
             return fail("A1: insertion allocation failures changed index state");
         }
         if(!run_fault_matrix(true)) {
             return fail("A1: replacement allocation failures changed index state");
         }
+#endif
     }
 
     // A1 edge coverage: replacements in the same resource, removal of the
