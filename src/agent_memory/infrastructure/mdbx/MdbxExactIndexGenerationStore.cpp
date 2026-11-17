@@ -382,6 +382,7 @@ std::vector<ExactIndexHit> MdbxExactIndexGenerationStore::query(const ExactIndex
         fail(Failure::Incompatible, "snapshot belongs to another exact index or storage context");
     if(scope != data.descriptor.scope_id) fail(Failure::Incompatible, "query scope mismatch");
     validate_vector(vector, data.descriptor);
+    if(limit == 0) return {};
     std::vector<ExactIndexHit> result;
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
     for(const auto& row : data.rows) {

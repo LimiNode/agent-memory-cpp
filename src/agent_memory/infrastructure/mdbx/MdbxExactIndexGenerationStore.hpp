@@ -110,7 +110,8 @@ public:
     /// Fails closed on missing, incomplete, incompatible or corrupt generation.
     [[nodiscard]] ExactIndexGenerationSnapshot pin(const ExactIndexSpaceDescriptor& expected) const;
     /// Exhaustive bounded exact scan; scope, current admission and host policy
-    /// are checked BEFORE scoring/top-K. Missing policy is InvalidInput.
+    /// are checked BEFORE scoring/top-K. Missing policy is InvalidInput. A
+    /// zero limit still validates the request but performs no row scan.
     [[nodiscard]] std::vector<ExactIndexHit> query(
         const ExactIndexGenerationSnapshot& snapshot, const ScopeId& scope,
         const std::vector<float>& vector, std::size_t limit,
