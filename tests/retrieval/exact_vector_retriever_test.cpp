@@ -9,18 +9,41 @@
 #include <agent_memory/retrieval/BruteForceTopKIndex.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <new>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace {
+
+    std::atomic<bool> g_fail_next_allocation{false};
+
+    void* allocate_for_test(const std::size_t size) {
+        if(g_fail_next_allocation.exchange(false, std::memory_order_relaxed)) {
+            throw std::bad_alloc{};
+        }
+        if(void* result = std::malloc(size == 0 ? 1 : size)) {
+            return result;
+        }
+        throw std::bad_alloc{};
+    }
+
+    void fail_next_allocation() {
+        g_fail_next_allocation.store(true, std::memory_order_relaxed);
+    }
+
+    void disable_allocation_failure() {
+        g_fail_next_allocation.store(false, std::memory_order_relaxed);
+    }
 
     int fail(const std::string& message) {
         std::cerr << "exact_vector_retriever_test: " << message << '\n';
@@ -82,6 +105,30 @@ namespace {
     int run_brute_force_validation_tests();
 
 } // namespace
+
+void* operator new(const std::size_t size) {
+    return allocate_for_test(size);
+}
+
+void* operator new[](const std::size_t size) {
+    return allocate_for_test(size);
+}
+
+void operator delete(void* pointer) noexcept {
+    std::free(pointer);
+}
+
+void operator delete[](void* pointer) noexcept {
+    std::free(pointer);
+}
+
+void operator delete(void* pointer, const std::size_t) noexcept {
+    std::free(pointer);
+}
+
+void operator delete[](void* pointer, const std::size_t) noexcept {
+    std::free(pointer);
+}
 
 int main() {
     using agent_memory::BowVectorRetriever;
@@ -468,7 +515,7 @@ int main() {
     }
 
     // Silence unused tokenize warnings.
-    (void)tokenize_local;
+    (void)&tokenize_local;
 
     if(const int rc = run_brute_force_validation_tests(); rc != 0) {
         return rc;
@@ -561,6 +608,44 @@ namespace {
         if(!ok || idx.size() != 0 || idx.dimension() != 0) {
             return fail(
                 "add(): failed first insertion must leave empty dimension state"
+            );
+        }
+    }
+
+    // A real allocation failure during the first insertion must not publish
+    // either a record or its dimension. The retry deliberately uses a
+    // different dimension to prove that no failed first insertion leaked a
+    // high-water mark into the index.
+    {
+        BruteForceTopKIndex idx;
+        std::vector<float> candidate{1.0F, 2.0F};
+        fail_next_allocation();
+        bool threw_bad_alloc = false;
+        try {
+            idx.add("doc:allocation-failure", std::move(candidate));
+        } catch(const std::bad_alloc&) {
+            threw_bad_alloc = true;
+        } catch(...) {
+            disable_allocation_failure();
+            return fail("add(): first insertion fault must throw std::bad_alloc");
+        }
+        disable_allocation_failure();
+        if(!threw_bad_alloc || idx.size() != 0 || idx.dimension() != 0) {
+            return fail(
+                "add(): failed first allocation must leave the index empty"
+            );
+        }
+        try {
+            idx.add("doc:retry", std::vector<float>{1.0F, 2.0F, 3.0F});
+        } catch(const std::exception& err) {
+            return fail(
+                std::string("add(): valid retry after bad_alloc failed: ") +
+                err.what()
+            );
+        }
+        if(idx.size() != 1 || idx.dimension() != 3) {
+            return fail(
+                "add(): valid retry must establish the new vector dimension"
             );
         }
     }
