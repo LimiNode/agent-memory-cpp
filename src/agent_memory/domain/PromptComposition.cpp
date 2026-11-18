@@ -4,10 +4,11 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cmath>
 #include <iomanip>
 #include <limits>
+#include <locale>
+#include <map>
 #include <set>
 #include <sstream>
 #include <string_view>
@@ -50,36 +51,11 @@ std::string value_text(const PromptBindingValue& value) {
                 return {};
             }
             std::ostringstream stream;
+            stream.imbue(std::locale::classic());
             stream << std::setprecision(std::numeric_limits<double>::max_digits10) << item;
             return stream.str();
         }
     }, value);
-}
-
-std::string escape_untrusted(std::string_view value) {
-    std::string result;
-    result.reserve(value.size() + 2U);
-    result.push_back('"');
-    for(const unsigned char character : value) {
-        switch(character) {
-        case '\\': result += "\\\\"; break;
-        case '"': result += "\\\""; break;
-        case '\n': result += "\\n"; break;
-        case '\r': result += "\\r"; break;
-        case '\t': result += "\\t"; break;
-        default:
-            if(character < 0x20U) {
-                result += "\\u00";
-                static constexpr char digits[] = "0123456789abcdef";
-                result.push_back(digits[(character >> 4U) & 0x0fU]);
-                result.push_back(digits[character & 0x0fU]);
-            } else {
-                result.push_back(static_cast<char>(character));
-            }
-        }
-    }
-    result.push_back('"');
-    return result;
 }
 
 const PromptBlockSelection* selection_for(
@@ -110,8 +86,11 @@ PromptCompilationResult failure(PromptCompileStatus status, std::string message)
 bool is_valid_key(std::string_view key) {
     if(key.empty() || key.size() > kMaxKeyBytes) return false;
     for(const auto character : key) {
-        if(!(std::isalnum(static_cast<unsigned char>(character)) || character == '.' ||
-             character == '_' || character == '-')) return false;
+        const bool ascii_alpha = (character >= 'a' && character <= 'z') ||
+            (character >= 'A' && character <= 'Z');
+        const bool ascii_digit = character >= '0' && character <= '9';
+        if(!(ascii_alpha || ascii_digit || character == '.' || character == '_' ||
+             character == '-')) return false;
     }
     return true;
 }
@@ -122,23 +101,37 @@ PromptCompilationResult render_block(std::string_view source,
                                      std::size_t& expansions,
                                      std::size_t max_expansions,
                                      std::size_t max_template_bytes,
+                                     std::size_t max_output_bytes,
                                      std::vector<std::string>& referenced_bindings,
                                      std::string& output) {
+    const auto append_bounded = [&](std::string_view value) {
+        if(value.size() > max_output_bytes || output.size() > max_output_bytes - value.size()) {
+            return false;
+        }
+        output.append(value);
+        return true;
+    };
     if(allow_templates && source.size() > max_template_bytes) {
         return failure(PromptCompileStatus::BudgetExceeded, "template input is too large");
     }
     if(!allow_templates) {
-        output.append(source);
+        if(!append_bounded(source)) {
+            return failure(PromptCompileStatus::BudgetExceeded, "compiled block exceeds result budget");
+        }
         return {PromptCompileStatus::Ok, std::nullopt, {}};
     }
     std::size_t cursor = 0;
     while(cursor < source.size()) {
         const auto open = source.find("{{", cursor);
         if(open == std::string_view::npos) {
-            output.append(source.substr(cursor));
+            if(!append_bounded(source.substr(cursor))) {
+                return failure(PromptCompileStatus::BudgetExceeded, "compiled block exceeds result budget");
+            }
             break;
         }
-        output.append(source.substr(cursor, open - cursor));
+        if(!append_bounded(source.substr(cursor, open - cursor))) {
+            return failure(PromptCompileStatus::BudgetExceeded, "compiled block exceeds result budget");
+        }
         const auto close = source.find("}}", open + 2U);
         if(close == std::string_view::npos) {
             return failure(PromptCompileStatus::InvalidTemplate, "unterminated template binding");
@@ -159,8 +152,41 @@ PromptCompilationResult render_block(std::string_view source,
         if(value.empty() && !std::holds_alternative<std::string>(binding->value)) {
             return failure(PromptCompileStatus::InvalidBinding, "non-finite template binding");
         }
-        output += binding->trust == PromptBindingTrust::TrustedControl
-            ? value : escape_untrusted(value);
+        if(binding->trust == PromptBindingTrust::TrustedControl) {
+            if(!append_bounded(value)) {
+                return failure(PromptCompileStatus::BudgetExceeded, "compiled block exceeds result budget");
+            }
+        } else {
+            if(!append_bounded("\"")) {
+                return failure(PromptCompileStatus::BudgetExceeded, "compiled block exceeds result budget");
+            }
+            for(const unsigned char character : value) {
+                std::string escaped;
+                switch(character) {
+                case '\\': escaped = "\\\\"; break;
+                case '"': escaped = "\\\""; break;
+                case '\n': escaped = "\\n"; break;
+                case '\r': escaped = "\\r"; break;
+                case '\t': escaped = "\\t"; break;
+                default:
+                    if(character < 0x20U) {
+                        static constexpr char digits[] = "0123456789abcdef";
+                        escaped = "\\u00";
+                        escaped.push_back(digits[(character >> 4U) & 0x0fU]);
+                        escaped.push_back(digits[character & 0x0fU]);
+                    } else {
+                        escaped.push_back(static_cast<char>(character));
+                    }
+                }
+                if(!append_bounded(escaped)) {
+                    return failure(PromptCompileStatus::BudgetExceeded,
+                                   "compiled block exceeds result budget");
+                }
+            }
+            if(!append_bounded("\"")) {
+                return failure(PromptCompileStatus::BudgetExceeded, "compiled block exceeds result budget");
+            }
+        }
         if(std::find(referenced_bindings.begin(), referenced_bindings.end(), key) == referenced_bindings.end()) {
             referenced_bindings.emplace_back(key);
         }
@@ -174,7 +200,7 @@ PromptCompilationResult render_block(std::string_view source,
 PromptCompilationResult compile_prompt(const CanonicalDocumentRevision& document,
                                        const PromptAssemblyProfile& profile,
                                        const PromptRenderContext& context) {
-    if(document.document_id.empty() || document.revision == 0U || profile.profile_id.empty() ||
+    if(document.document_id.empty() || profile.profile_id.empty() ||
        profile.revision == 0U || profile.renderer_revision.empty() ||
        profile.limits.max_expansions == 0U || profile.limits.max_result_bytes == 0U) {
         return failure(PromptCompileStatus::InvalidProfile, "document or profile identity is invalid");
@@ -212,6 +238,9 @@ PromptCompilationResult compile_prompt(const CanonicalDocumentRevision& document
     append_field(configuration, context.locale);
     append_field(configuration, context.style);
     append_field(configuration, context.consumer_profile);
+    append_field(configuration, std::to_string(profile.limits.max_template_bytes));
+    append_field(configuration, std::to_string(profile.limits.max_expansions));
+    append_field(configuration, std::to_string(profile.limits.max_result_bytes));
 
     std::set<ContentBlockId> active;
     std::set<ContentBlockId> known;
@@ -225,6 +254,28 @@ PromptCompilationResult compile_prompt(const CanonicalDocumentRevision& document
                            "document blocks are not in canonical preorder");
         }
         seen_blocks.insert(block.id);
+    }
+    std::vector<ContentBlockId> canonical_preorder;
+    std::set<ContentBlockId> emitted;
+    const auto append_subtree = [&](const auto& self, const ContentBlockId& id) -> void {
+        if(!emitted.insert(id).second) return;
+        canonical_preorder.push_back(id);
+        for(const auto& candidate : document.blocks) {
+            if(candidate.parent_id && *candidate.parent_id == id) {
+                self(self, candidate.id);
+            }
+        }
+    };
+    for(const auto& block : document.blocks) {
+        if(!block.parent_id) append_subtree(append_subtree, block.id);
+    }
+    if(canonical_preorder.size() != document.blocks.size() ||
+       !std::equal(canonical_preorder.begin(), canonical_preorder.end(), document.blocks.begin(),
+                   [](const ContentBlockId& id, const ContentBlock& block) {
+                       return id == block.id;
+                   })) {
+        return failure(PromptCompileStatus::InvalidProfile,
+                       "document blocks are not in canonical preorder");
     }
     for(const auto& selection : profile.selections) {
         if(known.count(selection.block_id) == 0U) {
@@ -244,7 +295,13 @@ PromptCompilationResult compile_prompt(const CanonicalDocumentRevision& document
         }
     }
 
-    std::map<std::string, std::optional<ContentBlockId>> selected_variant;
+    struct VariantChoice final {
+        std::int32_t priority = 0;
+        ContentBlockId block_id;
+        std::size_t matches = 0U;
+        bool initialized = false;
+    };
+    std::map<std::string, VariantChoice> variant_choices;
     for(const auto& selection : profile.selections) {
         if(selection.variant_group.empty() || !condition_matches(selection, context) || !selection.enabled) continue;
         const auto variant = profile.variants.find(selection.variant_group);
@@ -253,13 +310,23 @@ PromptCompilationResult compile_prompt(const CanonicalDocumentRevision& document
                            "variant group has no declared value: " + selection.variant_group);
         }
         if(variant->second != selection.variant_value) continue;
-        auto& selected = selected_variant[selection.variant_group];
-        if(!selected || selection.variant_priority < selection_for(profile, *selected)->variant_priority) {
-            selected = selection.block_id;
-        } else if(selection.variant_priority == selection_for(profile, *selected)->variant_priority) {
-            return failure(PromptCompileStatus::AmbiguousVariant,
-                           "variant group has no unique selected alternative: " + selection.variant_group);
+        auto& choice = variant_choices[selection.variant_group];
+        if(!choice.initialized || selection.variant_priority < choice.priority) {
+            choice.priority = selection.variant_priority;
+            choice.block_id = selection.block_id;
+            choice.matches = 1U;
+            choice.initialized = true;
+        } else if(selection.variant_priority == choice.priority) {
+            ++choice.matches;
         }
+    }
+    std::map<std::string, ContentBlockId> selected_variant;
+    for(const auto& [group, choice] : variant_choices) {
+        if(choice.matches != 1U) {
+            return failure(PromptCompileStatus::AmbiguousVariant,
+                           "variant group has no unique selected alternative: " + group);
+        }
+        selected_variant.emplace(group, choice.block_id);
     }
 
     std::size_t expansions = 0U;
@@ -274,14 +341,24 @@ PromptCompilationResult compile_prompt(const CanonicalDocumentRevision& document
         bool variant_active = true;
         if(selection && !selection->variant_group.empty()) {
             const auto variant = selected_variant.find(selection->variant_group);
-            variant_active = variant != selected_variant.end() && variant->second &&
-                *variant->second == block.id;
+            variant_active = variant != selected_variant.end() && variant->second == block.id;
         }
         const bool enabled = (!selection && profile.default_enabled) ||
             (selection && condition_matches(*selection, context) && selection->enabled && variant_active);
+        if(selection && selection->required && !condition_matches(*selection, context)) {
+            return failure(PromptCompileStatus::InvalidProfile,
+                           "required block condition is not satisfied");
+        }
+        if(selection && selection->required && !variant_active) {
+            return failure(PromptCompileStatus::InvalidProfile,
+                           "required block variant is not selected");
+        }
         if(!enabled) {
-            manifest.excluded_blocks.push_back({block.id, selection && !selection->variant_group.empty()
-                ? "variant-not-selected" : selection ? "disabled-or-condition" : "not-selected"});
+            const auto reason = !selection ? "not-selected" :
+                !condition_matches(*selection, context) || !selection->enabled
+                    ? "disabled-or-condition"
+                    : !variant_active ? "variant-not-selected" : "not-selected";
+            manifest.excluded_blocks.push_back({block.id, reason});
             continue;
         }
         active.insert(block.id);
@@ -294,25 +371,32 @@ PromptCompilationResult compile_prompt(const CanonicalDocumentRevision& document
         default_selection.block_id = block.id;
         default_selection.enabled = profile.default_enabled;
         const auto* effective_selection = selection ? selection : &default_selection;
-        if(effective_selection->required && !condition_matches(*effective_selection, context)) {
-            return failure(PromptCompileStatus::InvalidProfile, "required block condition is not satisfied");
+        // Required conditions and variants are rejected in the activation pass above.
+        if(prompt.size() > profile.limits.max_result_bytes) {
+            return failure(PromptCompileStatus::BudgetExceeded, "compiled prompt exceeds result budget");
+        }
+        const auto separator_bytes = prompt.empty() ? 0U : 2U;
+        const auto remaining = profile.limits.max_result_bytes - prompt.size();
+        if(separator_bytes > remaining) {
+            return failure(PromptCompileStatus::BudgetExceeded, "compiled prompt exceeds result budget");
         }
         std::string rendered;
         const auto rendered_result = render_block(block.text, effective_selection->allow_templates, context,
                                                   expansions, profile.limits.max_expansions,
                                                   profile.limits.max_template_bytes,
+                                                  remaining - separator_bytes,
                                                   referenced_bindings,
                                                   rendered);
         if(rendered_result.status != PromptCompileStatus::Ok) {
             return rendered_result;
         }
-        if(rendered.size() > profile.limits.max_result_bytes ||
-           prompt.size() > profile.limits.max_result_bytes - rendered.size()) {
+        if(rendered.size() > remaining - separator_bytes) {
             return failure(PromptCompileStatus::BudgetExceeded, "compiled prompt exceeds result budget");
         }
         if(!prompt.empty()) prompt += "\n\n";
         prompt += rendered;
         manifest.included_blocks.push_back(block.id);
+        manifest.included_block_revisions.push_back({block.id, block.revision});
     }
 
     manifest.binding_keys = referenced_bindings;
@@ -345,7 +429,10 @@ PromptCompilationResult compile_prompt(const CanonicalDocumentRevision& document
         append_field(configuration, selection->variant_value);
         append_field(configuration, std::to_string(selection->variant_priority));
     }
-    for(const auto& id : manifest.included_blocks) append_field(configuration, id.value());
+    for(const auto& included : manifest.included_block_revisions) {
+        append_field(configuration, included.block_id.value());
+        append_field(configuration, std::to_string(included.block_revision));
+    }
     for(const auto& [group, value] : profile.variants) {
         append_field(configuration, group);
         append_field(configuration, value);

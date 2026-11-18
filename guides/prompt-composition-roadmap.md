@@ -33,6 +33,10 @@ The compiler receives an already selected document revision. It does not read
 retrieval indexes or ADELIA state. A caller that needs a durable profile must
 pin and validate that profile separately before calling the compiler.
 
+Revision `0` is the valid initial canonical snapshot. The compiler accepts it
+and binds the manifest to that exact document revision and to the revisions of
+the selected blocks; it never substitutes a later snapshot.
+
 ## Phase A API
 
 The public types are in `src/agent_memory/domain/PromptComposition.hpp`:
@@ -85,7 +89,7 @@ Every successful build records:
 - document identity and exact revision;
 - profile identity and exact revision;
 - renderer revision and resource limits;
-- canonical preorder of included block IDs;
+- canonical preorder of included block IDs and their exact block revisions;
 - omission reasons;
 - template binding keys (never the raw binding values);
 - text and configuration SHA-256 digests.
@@ -112,6 +116,14 @@ The compiler fails closed for malformed profiles, duplicate selections,
 non-preorder documents, missing bindings, malformed templates, non-finite
 values, ambiguous variants and resource-limit exhaustion. It returns no
 partially rendered prompt on failure.
+
+The result budget is enforced while literal text and template values are
+appended, including untrusted-value escaping and inter-block separators. A
+required selection whose condition or variant is not active is a profile error,
+not a silent omission. `control_instruction` is recorded as profile metadata;
+it is not an authority decision or a separate transport channel. A host that
+needs distinct control and data messages must wrap the compiled result at its
+own boundary.
 
 ## Required conformance cases
 

@@ -1,5 +1,6 @@
 #include <agent_memory.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
@@ -89,6 +90,20 @@ int main() {
                "Code block was unexpectedly templated");
         expect(ru.prompt->manifest.included_blocks.size() == 4U,
                "unexpected canonical preorder selection");
+        expect(ru.prompt->manifest.included_block_revisions.size() == 4U &&
+                   ru.prompt->manifest.included_block_revisions[0].block_revision == 3U,
+               "selected block revisions were not recorded");
+
+        auto baseline = source;
+        baseline.revision = 0;
+        expect(compile_prompt(baseline, assembly, context("ru")).succeeded(),
+               "initial canonical revision was rejected");
+
+        auto interleaved = source;
+        std::swap(interleaved.blocks[1], interleaved.blocks[2]);
+        expect(compile_prompt(interleaved, assembly, context("ru")).status ==
+                   PromptCompileStatus::InvalidProfile,
+               "interleaved canonical subtree was accepted");
 
         const auto repeated = compile_prompt(source, assembly, context("ru"));
         expect(repeated.succeeded() && repeated.prompt->text == ru.prompt->text &&
@@ -134,6 +149,24 @@ int main() {
         expect(compile_prompt(source, oversized, context("ru")).status == PromptCompileStatus::BudgetExceeded,
                "result budget was not enforced");
 
+        auto oversized_binding = context("ru");
+        oversized_binding.bindings["user.value"].value = std::string(1024U, 'x');
+        auto binding_source = source;
+        binding_source.blocks[1].text = "{{user.value}}";
+        auto binding_profile = assembly;
+        binding_profile.limits.max_result_bytes = 16U;
+        binding_profile.selections[1].allow_templates = true;
+        expect(compile_prompt(binding_source, binding_profile, oversized_binding).status ==
+                   PromptCompileStatus::BudgetExceeded,
+               "oversized binding escaped the result budget");
+
+        auto changed_limits = assembly;
+        changed_limits.limits.max_result_bytes -= 1U;
+        const auto limited = compile_prompt(source, changed_limits, context("ru"));
+        expect(limited.succeeded() &&
+                   limited.prompt->manifest.configuration_digest != ru.prompt->manifest.configuration_digest,
+               "compile limits were omitted from configuration identity");
+
         auto variants = assembly;
         variants.selections[2].locale.reset();
         variants.selections[2].variant_group = "language";
@@ -145,6 +178,32 @@ int main() {
         expect(compile_prompt(source, variants, context("ru")).status ==
                    PromptCompileStatus::AmbiguousVariant,
                "ambiguous variant selection was accepted");
+
+        auto prioritized = assembly;
+        prioritized.selections[2].locale.reset();
+        prioritized.selections[2].variant_group = "language";
+        prioritized.selections[2].variant_value = "ru";
+        prioritized.selections[2].variant_priority = 5;
+        prioritized.selections[3].locale.reset();
+        prioritized.selections[3].variant_group = "language";
+        prioritized.selections[3].variant_value = "ru";
+        prioritized.selections[3].variant_priority = 3;
+        prioritized.variants["language"] = "ru";
+        const auto prioritized_result = compile_prompt(source, prioritized, context("ru"));
+        expect(prioritized_result.succeeded() &&
+                   std::find(prioritized_result.prompt->manifest.included_blocks.begin(),
+                             prioritized_result.prompt->manifest.included_blocks.end(),
+                             ContentBlockId{"en"}) != prioritized_result.prompt->manifest.included_blocks.end() &&
+                   std::find(prioritized_result.prompt->manifest.included_blocks.begin(),
+                             prioritized_result.prompt->manifest.included_blocks.end(),
+                             ContentBlockId{"ru"}) == prioritized_result.prompt->manifest.included_blocks.end(),
+               "lowest-priority variant was not selected independently of declaration order");
+
+        auto required_condition = assembly;
+        required_condition.selections[2].required = true;
+        expect(compile_prompt(source, required_condition, context("en")).status ==
+                   PromptCompileStatus::InvalidProfile,
+               "required condition mismatch was silently omitted");
 
         std::cout << "prompt composition contract: PASS\n";
         return 0;

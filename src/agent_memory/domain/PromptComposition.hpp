@@ -94,6 +94,12 @@ namespace agent_memory {
         std::string reason;
     };
 
+    /// \brief A selected block and the exact immutable revision used.
+    struct PromptIncludedBlock final {
+        ContentBlockId block_id;
+        std::uint64_t block_revision = 0;
+    };
+
     /// \brief Reproducibility record for one successful or failed build.
     struct PromptAssemblyManifest final {
         DocumentId document_id;
@@ -102,6 +108,7 @@ namespace agent_memory {
         std::uint64_t profile_revision = 0;
         std::string renderer_revision;
         std::vector<ContentBlockId> included_blocks;
+        std::vector<PromptIncludedBlock> included_block_revisions;
         std::vector<PromptExclusion> excluded_blocks;
         std::vector<std::string> binding_keys;
         std::string text_digest;
