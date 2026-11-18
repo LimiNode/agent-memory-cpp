@@ -96,7 +96,6 @@ add_library(agent_memory STATIC
     src/agent_memory/retrieval/ExactLexicalRetriever.cpp
     src/agent_memory/retrieval/ProjectionAwareLexicalRetriever.cpp
     src/agent_memory/retrieval/RevisionBoundRetrieval.cpp
-    src/agent_memory/retrieval/RevisionBoundRetrieval.cpp
     src/agent_memory/retrieval/RevisionBoundRetrievalTrace.cpp
     src/agent_memory/retrieval/HybridRetrievalEngine.cpp
     src/agent_memory/retrieval/OriginalProjection.cpp
