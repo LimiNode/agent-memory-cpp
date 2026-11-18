@@ -1,6 +1,7 @@
 # KB-0 Architecture and Storage Audit
 
-**Audit snapshot:** `origin/main` at `b149a5c0923c01eff662d7294796803a2766482a`
+**Audit snapshot:** `liminode/main` at
+`00a9695762ab3bbdc9d5193d371dd8b25ca7b51c` (2026-11-18)
 
 **Status:** audit-only document. It does not change production DTOs, DBIs,
 schema versions, serialization, or runtime defaults.
