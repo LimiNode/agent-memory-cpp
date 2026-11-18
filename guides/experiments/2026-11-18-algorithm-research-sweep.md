@@ -15,7 +15,14 @@ its mutation controls with `--self-test`.
 Every executable stage must record the exact source SHA, compiler and build
 identity, corpus/fixture digest, seed, raw samples, correctness oracle, and
 mutation controls. Kernel-only or synthetic timings must not be presented as
-production latency.
+production latency. A registry row is not evidence merely because a linked
+file exists: `evidence_status=PRIMARY` is reserved for an independent,
+execution-bound receipt, while `EVIDENCE_PENDING` rows deliberately carry no
+evidence references. `SUPERSEDED` rows retain historical pointers only and
+cannot qualify a result.
+
+The `cross_references` object on each row points to the relevant Draft PRs and
+research guides. Those links provide review context, not proof of execution.
 
 ## Inventory
 
@@ -83,6 +90,13 @@ Every stage must publish:
 5. raw samples with explicit timing scope and sample-count semantics;
 6. quality, memory, and failure-path results;
 7. limitations, unresolved inquiries, and a bounded status.
+
+The registry's `evidence_status` is intentionally separate from the algorithm
+`status`: an implemented or benchmark-worthy surface can still be
+`EVIDENCE_PENDING` until a primary receipt is produced. Primary receipt paths
+must contain an execution/status field and a digest binding the recorded result
+to its inputs or runner; a design note, source file, or this registry never
+qualifies as a primary receipt.
 
 Allowed statuses are `READY_FOR_INDEPENDENT_REVIEW`, `RESEARCH_QUALIFIED`,
 `CORRECTIVE_REQUIRED`, `DEFER`, and `NOT_EXECUTED`. A research result never

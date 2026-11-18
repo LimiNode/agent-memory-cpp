@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "source_commit": "00a9695762ab3bbdc9d5193d371dd8b25ca7b51c",
   "production_activation": false,
   "rows": [
@@ -8,8 +8,13 @@
       "family": "exact_vector",
       "scope": "production exact-result baseline and numerical controls",
       "status": "ALREADY_IMPLEMENTED",
+      "evidence_status": "EVIDENCE_PENDING",
       "source_snapshot": "src/agent_memory/index/ExactVectorIndex.cpp",
-      "evidence_refs": ["guides/experiments/2026-11-18-algorithm-research-sweep.md"],
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": ["https://github.com/LimiNode/agent-memory-cpp/pull/635"],
+        "research_guides": ["guides/experiments/2026-10-03-fresh-qrels-exact-reference.md"]
+      },
       "quality_scope": "exact top-k with deterministic tie ordering",
       "latency_scope": "implementation-dependent; measure only with the production-shaped index",
       "next_gate": "independent review of exact-vector numerical frontier and representative scan benchmark"
@@ -19,11 +24,13 @@
       "family": "binary_retrieval",
       "scope": "candidate generation followed by exact rerank",
       "status": "ALREADY_IMPLEMENTED",
+      "evidence_status": "PRIMARY",
       "source_snapshot": "src/agent_memory/index/MultiProbeHammingIndex.cpp",
-      "evidence_refs": [
-        "guides/experiments/2026-07-20-binary-flat-vs-exact-vector.md",
-        "guides/experiments/2026-08-10-ann-cascade-comparison.md"
-      ],
+      "evidence_refs": ["guides/experiments/2026-09-10-bit-mih-oracle-result.json"],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/experiments/2026-07-20-binary-flat-vs-exact-vector.md", "guides/experiments/2026-08-10-ann-cascade-comparison.md"]
+      },
       "quality_scope": "candidate recall and exact-rerank quality; binary score is not final rank",
       "latency_scope": "Python and native harnesses have separate scopes; no production ANN claim",
       "next_gate": "matched native MIH layout and budget benchmark"
@@ -33,8 +40,13 @@
       "family": "lexical_retrieval",
       "scope": "tokenization, dictionary lookup, exact lexical scoring",
       "status": "ALREADY_IMPLEMENTED",
+      "evidence_status": "EVIDENCE_PENDING",
       "source_snapshot": "src/agent_memory/lexical/ExactLexicalIndex.cpp",
-      "evidence_refs": ["guides/lexical-search-roadmap.md"],
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": ["https://github.com/LimiNode/agent-memory-cpp/pull/633"],
+        "research_guides": ["guides/lexical-search-roadmap.md"]
+      },
       "quality_scope": "lexical top-k and metadata/filter contract",
       "latency_scope": "measure scoring, candidate generation, sorting, and I/O separately",
       "next_gate": "real-corpus hybrid and pruning benchmark"
@@ -44,8 +56,13 @@
       "family": "hybrid_retrieval",
       "scope": "lexical retrieval and reranker composition",
       "status": "ALREADY_IMPLEMENTED",
+      "evidence_status": "EVIDENCE_PENDING",
       "source_snapshot": "src/agent_memory/retrieval/HybridRetrievalEngine.cpp",
-      "evidence_refs": ["guides/experiments/2026-11-11-source-bound-retrieval-quality-benchmark.md"],
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/experiments/2026-11-11-source-bound-retrieval-quality-benchmark.md"]
+      },
       "quality_scope": "contract and source-bound quality fixture; no BM25+dense fusion receipt yet",
       "latency_scope": "end-to-end retrieve() only when all stages use the same query and filters",
       "next_gate": "sealed lexical-only, dense-only, fusion, and worst-query comparison"
@@ -55,8 +72,13 @@
       "family": "quantization",
       "scope": "matched-payload scalar ADC candidate scoring",
       "status": "WORTH_BENCHMARK",
+      "evidence_status": "EVIDENCE_PENDING",
       "source_snapshot": "guides/experiments/2026-08-06-scalar-projection-rate-distortion-grid-contract.json",
-      "evidence_refs": ["guides/experiments/2026-08-06-scalar-projection-rate-distortion-grid-contract.json"],
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/experiments/2026-08-06-scalar-projection-rate-distortion-grid-contract.json"]
+      },
       "quality_scope": "held-out recall/quality at fixed payload and exact rerank budget",
       "latency_scope": "native packed-LUT scorer and top-k; training/materialization measured separately",
       "next_gate": "native C++ receipt with exact oracle and mutation controls"
@@ -66,8 +88,13 @@
       "family": "binary_ann",
       "scope": "native MIH block layout and probe-budget alternatives",
       "status": "WORTH_BENCHMARK",
+      "evidence_status": "EVIDENCE_PENDING",
       "source_snapshot": "tools/agent-memory-bench/mih_native_hot_path.cpp",
-      "evidence_refs": ["guides/experiments/2026-08-11-mih-native-hot-path-baseline.md"],
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/experiments/2026-08-11-mih-native-hot-path-baseline.md"]
+      },
       "quality_scope": "exact top-k parity and candidate recall under fixed bit budget",
       "latency_scope": "native candidate lookup; excludes corpus build unless explicitly reported",
       "next_gate": "matched block-CSR/whole-band and external-control comparison"
@@ -77,8 +104,13 @@
       "family": "ann_ivf",
       "scope": "offline prototype centroids and compact candidate cascades",
       "status": "WORTH_BENCHMARK",
+      "evidence_status": "EVIDENCE_PENDING",
       "source_snapshot": "guides/experiments/research-timeline.md",
-      "evidence_refs": ["guides/retrieval-techniques-roadmap.md"],
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": ["https://github.com/LimiNode/agent-memory-cpp/pull/638", "https://github.com/LimiNode/agent-memory-cpp/pull/641"],
+        "research_guides": ["guides/retrieval-techniques-roadmap.md"]
+      },
       "quality_scope": "held-out assignment error, recall, exact rerank quality, and empty clusters",
       "latency_scope": "training, index build, candidate lookup, rerank, and retraining reported separately",
       "next_gate": "design note and representative corpus feasibility check"
@@ -88,8 +120,13 @@
       "family": "quantization",
       "scope": "matched-byte PQ/OPQ controls against scalar and THQ variants",
       "status": "NEEDS_CORRECTION",
+      "evidence_status": "EVIDENCE_PENDING",
       "source_snapshot": "guides/experiments/2026-08-06-scalar-projection-rate-distortion-grid-contract.json",
-      "evidence_refs": ["guides/experiments/2026-08-06-scalar-projection-rate-distortion-grid-contract.json"],
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/experiments/2026-08-06-scalar-projection-rate-distortion-grid-contract.json"]
+      },
       "quality_scope": "full calibration, fixed payload, explicit seed, and held-out quality",
       "latency_scope": "Python/reference results are diagnostic until native timing exists",
       "next_gate": "rerun with explicit seed, raw samples, orthogonal/PCA/ITQ controls, and native scorer"
@@ -99,8 +136,13 @@
       "family": "binary_retrieval",
       "scope": "using Hamming distance as the final result rank",
       "status": "PREVIOUSLY_REJECTED",
+      "evidence_status": "SUPERSEDED",
       "source_snapshot": "guides/experiments/2026-07-20-binary-flat-vs-exact-vector.md",
       "evidence_refs": ["guides/experiments/2026-07-20-binary-flat-vs-exact-vector.md"],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/experiments/2026-07-20-binary-flat-vs-exact-vector.md"]
+      },
       "quality_scope": "weak final-rank recall in the recorded synthetic control",
       "latency_scope": "not a production serving decision",
       "next_gate": "none without a new mechanism and a matched exact-rerank control"
@@ -110,8 +152,13 @@
       "family": "production_ann",
       "scope": "new production index classes and defaults",
       "status": "DEFER",
+      "evidence_status": "EVIDENCE_PENDING",
       "source_snapshot": "guides/retrieval-techniques-roadmap.md",
-      "evidence_refs": ["guides/retrieval-techniques-roadmap.md"],
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/retrieval-techniques-roadmap.md"]
+      },
       "quality_scope": "not established for the current production corpus and contract",
       "latency_scope": "not executed",
       "next_gate": "representative corpus, serving contract, and independent quality/latency evidence"
