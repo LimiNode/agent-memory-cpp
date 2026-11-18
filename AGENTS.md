@@ -31,6 +31,8 @@ agent framework.
   bounded DomainMap routing and map-conditioned retrieval rules.
 - [Canonical navigation](guides/canonical-navigation-roadmap.md) -
   revision-pinned outline and bounded subtree reads.
+- [Prompt composition](guides/prompt-composition-roadmap.md) -
+  revision-pinned deterministic assembly, templates, variants and manifests.
 - [Agent runtime integration](guides/agent-runtime-integration-roadmap.md) -
   optional cognitive-runtime trace, perspective, procedure, and reconciliation
   contracts.

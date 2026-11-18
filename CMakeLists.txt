@@ -30,6 +30,7 @@ add_library(agent_memory STATIC
     src/agent_memory/core/LibraryInfo.cpp
     src/agent_memory/domain/Document.cpp
     src/agent_memory/domain/CanonicalContent.cpp
+    src/agent_memory/domain/PromptComposition.cpp
     src/agent_memory/domain/CanonicalNavigation.cpp
     src/agent_memory/domain/Artifact.cpp
     src/agent_memory/domain/Identifiers.cpp
@@ -302,6 +303,11 @@ if(AGENT_MEMORY_BUILD_TESTS)
         add_test(
             NAME agent_memory_canonical_content_example
             COMMAND $<TARGET_FILE:agent_memory_canonical_content>
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_prompt_composition_example
+            COMMAND $<TARGET_FILE:agent_memory_prompt_composition>
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         if(AGENT_MEMORY_ENABLE_MDBX)
