@@ -13,6 +13,7 @@
 #include "mdbx/MdbxResourceFrontierSnapshot.hpp"
 #include "mdbx/MdbxCurrentDerivedPublicationReader.hpp"
 #include "mdbx/MdbxSnapshotRevisionBoundRetriever.hpp"
+#include "mdbx/MdbxKb0RetrievalFacade.hpp"
 #include "mdbx/MdbxStorageContext.hpp"
 #include "mdbx/MdbxExactIndexGenerationStore.hpp"
 #include "mdbx/MdbxWorkspaceStorageRegistry.hpp"
