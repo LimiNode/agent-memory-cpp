@@ -13,8 +13,9 @@ O-means is relevant to approximate nearest-centroid assignment during
 training. It does not automatically reduce query-time IVF scanning. E-means
 is a training procedure with a different update schedule; reported author
 numbers are not transferable evidence for this repository. The reference for
-O-means is Faiss PR #5917 at pinned commit `9ecbf0c2`; that reference must be
-recorded in every measured receipt. The current exploratory case of 16,384
+O-means is Faiss PR #5917 at pinned commit
+`9ecbf0c2a2f4ca7a771b552badc145584b09e1a6`; that reference must be recorded
+in every measured receipt. The current exploratory case of 16,384
 centroids and roughly 25,000 training vectors is intentionally treated as a
 negative prior: it provides too few samples per centroid for a first claim.
 

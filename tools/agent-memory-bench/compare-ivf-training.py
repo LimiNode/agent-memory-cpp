@@ -21,7 +21,11 @@ from pathlib import Path
 from typing import Any
 
 
-OMEANS_REFERENCE = {"project": "faiss", "pull_request": 5917, "commit": "9ecbf0c2"}
+OMEANS_REFERENCE = {
+    "project": "faiss",
+    "pull_request": 5917,
+    "commit": "9ecbf0c2a2f4ca7a771b552badc145584b09e1a6",
+}
 
 
 def provenance() -> dict[str, Any]:
@@ -309,7 +313,7 @@ def main() -> int:
                     },
                     "o_means": {
                         "status": "NOT_EXECUTED",
-                        "reason": "Faiss PR #5917 adapter at commit 9ecbf0c2 was not supplied",
+                        "reason": "Faiss PR #5917 adapter at the pinned commit was not supplied",
                         "reference": OMEANS_REFERENCE,
                     },
                 },
