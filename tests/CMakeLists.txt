@@ -107,6 +107,19 @@ target_link_libraries(agent_memory_canonical_content_test
 
 add_test(NAME agent_memory_canonical_content_test COMMAND agent_memory_canonical_content_test)
 
+add_executable(agent_memory_canonical_prompt_profile_test
+    experimental/canonical_prompt_profile_test.cpp
+)
+
+target_link_libraries(agent_memory_canonical_prompt_profile_test
+    PRIVATE
+        agent_memory::agent_memory
+)
+
+add_test(NAME agent_memory_canonical_prompt_profile_test
+    COMMAND agent_memory_canonical_prompt_profile_test
+)
+
 add_executable(agent_memory_file_raw_blob_store_test
     storage/file_raw_blob_store_test.cpp
 )
@@ -764,6 +777,11 @@ target_compile_definitions(agent_memory_feature_flags_test
 add_test(NAME agent_memory_feature_flags_test COMMAND agent_memory_feature_flags_test)
 
 if(AGENT_MEMORY_ENABLE_MDBX)
+    target_link_libraries(agent_memory_canonical_prompt_profile_test
+        PRIVATE
+            mdbx_containers::mdbx_containers
+    )
+
     add_executable(agent_memory_mdbx_document_storage_test
         infrastructure/mdbx/mdbx_document_storage_test.cpp
     )
