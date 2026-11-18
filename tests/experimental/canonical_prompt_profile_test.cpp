@@ -157,6 +157,10 @@ std::optional<PromptBuildResult> build_exact_prompt(
             error = "candidate changed prompt structure";
             return std::nullopt;
         }
+        if(baseline->metadata.values() != revision->metadata.values()) {
+            error = "candidate changed prompt metadata";
+            return std::nullopt;
+        }
         for(std::size_t index = 0; index < baseline->blocks.size(); ++index) {
             const auto& expected = baseline->blocks[index];
             const auto& actual = revision->blocks[index];
@@ -214,6 +218,13 @@ std::optional<PromptBuildResult> build_exact_prompt(
             selected[index] = true;
             first_selected = false;
             previous_selected_index = index;
+        }
+        // Activation is part of the assembly configuration, including
+        // selections that do not contribute control text.  Record the
+        // canonical candidate order so distinct masks cannot alias.
+        append_config_field(config_bytes, "selected-blocks");
+        for(const auto& selected_id : candidate_document->selected_blocks) {
+            append_config_field(config_bytes, selected_id.value());
         }
         for(std::size_t index = 0; index < policy_document.blocks.size(); ++index) {
             const auto& reference = policy_document.blocks[index];
@@ -397,6 +408,30 @@ void run_prompt_profile_suite(ICanonicalContentStore& store,
     const auto lesson_prompt = build_exact_prompt(store, lesson_policy, lesson_candidate, error);
     expect(lesson_prompt && lesson_prompt->text.find("Lesson:") == std::string::npos,
            backend_name + ": optional lesson entered the control prompt");
+    PromptCandidate lesson_without_selection = lesson_candidate;
+    lesson_without_selection.documents.front().selected_blocks.erase(
+        lesson_without_selection.documents.front().selected_blocks.begin() + 2);
+    const auto lesson_without =
+        build_exact_prompt(store, lesson_policy, lesson_without_selection, error);
+    expect(lesson_without && lesson_without->text == lesson_prompt->text &&
+               lesson_without->config_digest != lesson_prompt->config_digest,
+           backend_name + ": optional non-control selection did not change configuration digest");
+
+    PromptPolicy optional_control_policy = policy;
+    optional_control_policy.policy_id = "policy-optional-control";
+    optional_control_policy.documents.front().blocks[2].required = false;
+    PromptCandidate optional_control_candidate = baseline_candidate;
+    optional_control_candidate.documents.front().selected_blocks.erase(
+        optional_control_candidate.documents.front().selected_blocks.begin() + 2);
+    const auto optional_control_without =
+        build_exact_prompt(store, optional_control_policy, optional_control_candidate, error);
+    const auto optional_control_with =
+        build_exact_prompt(store, optional_control_policy, baseline_candidate, error);
+    expect(optional_control_without && optional_control_with &&
+               optional_control_without->text.find("Tools:") == std::string::npos &&
+               optional_control_with->text.find("Tools:") != std::string::npos &&
+               optional_control_without->config_digest != optional_control_with->config_digest,
+           backend_name + ": optional control selection was not reflected in configuration digest");
 
     const auto historical = store.materialize_markdown(document_id, 0);
     const auto current = store.materialize_markdown(document_id);
@@ -467,6 +502,19 @@ void run_prompt_profile_suite(ICanonicalContentStore& store,
         {document_id, 3, {DeleteBlock{ContentBlockId{"role"}}}});
     expect(non_leaf_delete.status == CanonicalEditStatus::InvalidEdit,
            backend_name + ": non-leaf deletion was accepted");
+
+    Metadata changed_metadata;
+    changed_metadata.set("profile", "metadata-only-change");
+    const auto metadata_only = editor.commit(
+        {second_document_id, 1, {UpdateDocumentMetadata{changed_metadata}}});
+    expect(metadata_only.status == CanonicalEditStatus::Ok && metadata_only.revision &&
+               metadata_only.revision->revision == 2 && metadata_only.changes.metadata_changed,
+           backend_name + ": metadata-only revision was not published");
+    PromptCandidate metadata_candidate = fixed_candidate;
+    metadata_candidate.documents.front().revision = 2;
+    expect(!build_exact_prompt(store, fixed_policy, metadata_candidate, error) &&
+               error == "candidate changed prompt metadata",
+           backend_name + ": metadata-only candidate revision was admitted");
 
     const auto pinned_after = build_exact_prompt(store, policy, baseline_candidate, error);
     expect(pinned_after && pinned_after->text_digest == baseline_digest &&
