@@ -615,6 +615,23 @@ jobs:
           ctest --test-dir build-native-mih --build-config Release
           --output-on-failure -R "agent_memory_mih_native_|agent_memory_exact_selection_self_test"
 
+      - name: Generate exact selection receipt
+        run: >
+          mkdir -p artifacts &&
+          ./build-native-mih/tools/agent-memory-bench/agent-memory-exact-selection-benchmark
+          artifacts/exact-selection-benchmark.json &&
+          sha256sum artifacts/exact-selection-benchmark.json
+          > artifacts/exact-selection-benchmark.json.sha256
+
+      - name: Upload exact selection receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-selection-benchmark-receipt
+          path: |
+            artifacts/exact-selection-benchmark.json
+            artifacts/exact-selection-benchmark.json.sha256
+          if-no-files-found: error
+
   r4-native-benchmark:
     if: needs.changes.outputs.research == 'true'
     needs: changes
