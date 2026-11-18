@@ -107,6 +107,14 @@ target_link_libraries(agent_memory_canonical_content_test
 
 add_test(NAME agent_memory_canonical_content_test COMMAND agent_memory_canonical_content_test)
 
+add_executable(agent_memory_canonical_navigation_test
+    domain/canonical_navigation_test.cpp
+)
+target_link_libraries(agent_memory_canonical_navigation_test
+    PRIVATE agent_memory::agent_memory
+)
+add_test(NAME agent_memory_canonical_navigation_test COMMAND agent_memory_canonical_navigation_test)
+
 add_executable(agent_memory_prompt_composition_test
     domain/prompt_composition_test.cpp
 )

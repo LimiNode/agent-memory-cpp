@@ -29,6 +29,8 @@ agent framework.
   bounded offline projection refresh, replay receipts, and source protection.
 - [Hierarchical navigation](guides/hierarchical-navigation-roadmap.md) -
   bounded DomainMap routing and map-conditioned retrieval rules.
+- [Canonical navigation](guides/canonical-navigation-roadmap.md) -
+  revision-pinned outline and bounded subtree reads.
 - [Prompt composition](guides/prompt-composition-roadmap.md) -
   revision-pinned deterministic assembly, templates, variants and manifests.
 - [Agent runtime integration](guides/agent-runtime-integration-roadmap.md) -
