@@ -113,8 +113,11 @@ namespace {
     [[nodiscard]] bool protected_equal(
         const agent_memory::LexicalSearchResult& left,
         const agent_memory::LexicalSearchResult& right
-    ) noexcept {
-        return identity_of(left) == identity_of(right)
+    ) {
+        return left.chunk_id.value() == right.chunk_id.value()
+            && left.resource_id.value() == right.resource_id.value()
+            && left.section_id == right.section_id
+            && left.result_tier == right.result_tier
             && left.metadata.values() == right.metadata.values()
             && left.enrichment_level == right.enrichment_level;
     }
@@ -250,8 +253,7 @@ namespace {
             const auto key = identity_of(candidate);
             const auto matching = std::lower_bound(index.entries.begin(), index.entries.end(),
                 std::pair<Identity, std::size_t>{key, 0U});
-            if(matching == index.entries.end() || !(matching->first == key)
-               || std::find(seen.begin(), seen.end(), key) != seen.end()) {
+            if(matching == index.entries.end() || !(matching->first == key)) {
                 return {};
             }
             const auto& original = admitted[matching->second];
@@ -369,7 +371,7 @@ namespace {
     [[nodiscard]] bool equivalent(
         const std::vector<agent_memory::LexicalSearchResult>& left,
         const std::vector<agent_memory::LexicalSearchResult>& right
-    ) noexcept {
+    ) {
         if(left.size() != right.size()) {
             return false;
         }
