@@ -28,5 +28,6 @@
 #include "mdbx/MdbxVerifiedArtifactHydration.hpp"
 #include "mdbx/MdbxAuthoritativeArticleHydration.hpp"
 #include "mdbx/MdbxRawMarkdownProductIngestion.hpp"
+#include "mdbx/MdbxPromptAssemblyProfileStorage.hpp"
 
 #endif

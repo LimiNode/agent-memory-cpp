@@ -1,7 +1,8 @@
 # Prompt Composition Roadmap
 
-**Status:** Phase A implemented as a pure, opt-in C++17 compiler. Durable
-profile storage and consumer integration are not implemented.
+**Status:** Phase A implemented as a pure, opt-in C++17 compiler. A durable,
+opt-in profile history adapter is implemented; consumer integration and
+activation remain out of scope.
 
 This guide owns deterministic assembly of a prompt-like text context from an
 immutable `CanonicalDocumentRevision`. It is a projection over canonical
@@ -110,7 +111,8 @@ The pure compiler has no store access and therefore cannot silently refresh a
 stale document. A storage-facing adapter must compare the requested document
 revision with the caller's pinned revision before invoking it, and must report
 `StaleDocument` rather than substitute a newer revision. Durable profile
-admission, retention and authorization remain outside this layer.
+admission, retention and authorization remain outside this layer. The durable
+profile adapter likewise does not select, authorize or activate a profile.
 
 The compiler fails closed for malformed profiles, duplicate selections,
 non-preorder documents, missing bindings, malformed templates, non-finite
@@ -138,19 +140,35 @@ The Phase A test fixture covers:
 7. result-budget enforcement;
 8. ambiguous variant rejection.
 
-The fixture is intentionally in-memory. MDBX profile persistence is a
-follow-up slice and must reuse the existing canonical-content revision/history
-mechanisms rather than introducing a second block tree or document revision
-system.
+The compiler fixture remains in-memory. Durable profile persistence is tested
+separately by the MDBX adapter and does not alter the compiler's pure-input
+contract.
 
-## Phase B: durable profiles (not implemented)
+## Phase B: durable profiles
 
-The next PR may persist versioned profiles and dictionaries using an existing
-profile/metadata mechanism if it can prove reopen, exact revision binding,
-corruption rejection and historical replay without a new DBI. It must not
-activate a profile automatically, replace host policy, or turn inactive
-variants into deletions. If the existing mechanisms cannot represent the
-profile without ambiguity, record an ADR before adding physical schema.
+`IPromptAssemblyProfileStorage` and `MdbxPromptAssemblyProfileStorage` provide
+an immutable, revision-addressable history for `PromptAssemblyProfile` values.
+The MDBX adapter uses two tables under the configured prefix:
+
+- `<prefix>_prompt_profiles` stores length-prefixed, versioned profile payloads
+  keyed by `(profile_id, revision)`;
+- `<prefix>_prompt_profile_heads` stores the highest published revision for
+  each profile identity.
+
+The adapter retains older revisions, supports exact revision reads and reopen,
+and makes a repeated byte-identical write idempotent. A second payload for the
+same identity and revision is rejected. Payload identity, malformed heads,
+unsupported wire versions, truncated data, duplicate selections and orphan
+heads fail closed. The adapter validates limits and selection invariants before
+publishing any row.
+
+This is storage-only infrastructure. It does not establish canonical content,
+trusted frontier admission, freshness, authorization or automatic activation;
+callers must perform those checks before invoking `compile_prompt()`. Profile
+revision is deliberately separate from canonical document revision, and the
+adapter introduces no second document tree or implicit revision substitution.
+The additive schema decision and experimental scope are recorded in
+[`guides/adr/2026-11-18-prompt-profile-history-storage.md`](adr/2026-11-18-prompt-profile-history-storage.md).
 
 ## Non-goals
 

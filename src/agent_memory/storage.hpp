@@ -17,5 +17,6 @@
 #include "storage/ResourceArtifactBinding.hpp"
 #include "storage/IDerivedPublicationStore.hpp"
 #include "storage/DerivedPublicationAdmission.hpp"
+#include "storage/IPromptAssemblyProfileStorage.hpp"
 
 #endif

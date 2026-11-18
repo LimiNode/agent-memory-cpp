@@ -113,6 +113,7 @@ add_library(agent_memory STATIC
     src/agent_memory/storage/DerivedPublicationAdmission.cpp
     src/agent_memory/storage/IResourceIndexRecordOwnerStorage.cpp
     src/agent_memory/storage/IResourceManifestStorage.cpp
+    src/agent_memory/storage/IPromptAssemblyProfileStorage.cpp
 )
 add_library(agent_memory::agent_memory ALIAS agent_memory)
 
@@ -169,6 +170,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxFederatedCanonicalReader.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceIndexRecordOwnerStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxPromptAssemblyProfileStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceFrontierSnapshot.cpp
             src/agent_memory/infrastructure/mdbx/MdbxWorkspaceStorageRegistry.cpp
             src/agent_memory/infrastructure/mdbx/MdbxDurableLexicalDocumentMemory.cpp
