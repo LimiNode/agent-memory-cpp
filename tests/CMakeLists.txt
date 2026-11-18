@@ -809,6 +809,19 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         COMMAND agent_memory_mdbx_resource_manifest_storage_test
     )
 
+    add_executable(agent_memory_mdbx_prompt_assembly_profile_storage_test
+        infrastructure/mdbx/mdbx_prompt_assembly_profile_storage_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_prompt_assembly_profile_storage_test
+        PRIVATE
+            agent_memory::agent_memory
+            mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_prompt_assembly_profile_storage_test
+        COMMAND agent_memory_mdbx_prompt_assembly_profile_storage_test
+    )
+
     add_executable(agent_memory_mdbx_canonical_content_store_test
         infrastructure/mdbx/mdbx_canonical_content_store_test.cpp
     )
