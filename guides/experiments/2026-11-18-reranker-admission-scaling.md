@@ -20,7 +20,10 @@ defaults, ABI, or persisted schema. It does not select a production rewrite.
 path against the same fixture and reranker output used by the controls. The
 `sorted_identity_index` and `hash_identity_index` arms use the same identity,
 metadata, score, and finite-value checks, but replace the linear identity
-lookup with a sorted or hash index. Index construction is measured separately
+lookup with a sorted or hash index. Duplicate detection is performed by the
+bounded hash insertion in both arms; protected-field comparison uses the
+production-shaped ID fields directly and is allowed to propagate allocation
+failures. Index construction is measured separately
 from lookup/admission timing. The production arm is an end-to-end
 `retrieve()` measurement; the indexed arms are explicitly lookup-only
 controls, not end-to-end latency claims.
