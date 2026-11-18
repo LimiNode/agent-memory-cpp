@@ -7,6 +7,11 @@ This registry records the algorithm research surface at `main` commit
 evidence index; it does not change production APIs, ABI, persisted formats,
 retrieval defaults, or dependency policy.
 
+The machine-readable inventory is
+`2026-11-18-algorithm-research-sweep-registry.json`. Validate it with
+`python tools/agent-memory-bench/validate-algorithm-research-sweep.py` and run
+its mutation controls with `--self-test`.
+
 Every executable stage must record the exact source SHA, compiler and build
 identity, corpus/fixture digest, seed, raw samples, correctness oracle, and
 mutation controls. Kernel-only or synthetic timings must not be presented as
