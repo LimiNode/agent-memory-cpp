@@ -608,9 +608,12 @@ jobs:
           cmake --build build-native-mih --config Release --target
           agent-memory-mih-native-hot-path
           agent-memory-mih-native-sparse-arbitrary-m
+          agent-memory-exact-selection-benchmark
 
       - name: Test native MIH benchmark harness
-        run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_
+        run: >
+          ctest --test-dir build-native-mih --build-config Release
+          --output-on-failure -R "agent_memory_mih_native_|agent_memory_exact_selection_self_test"
 
   r4-native-benchmark:
     if: needs.changes.outputs.research == 'true'
