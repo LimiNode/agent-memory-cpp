@@ -167,6 +167,8 @@ trusted frontier admission, freshness, authorization or automatic activation;
 callers must perform those checks before invoking `compile_prompt()`. Profile
 revision is deliberately separate from canonical document revision, and the
 adapter introduces no second document tree or implicit revision substitution.
+The additive schema decision and experimental scope are recorded in
+[`guides/adr/2026-11-18-prompt-profile-history-storage.md`](adr/2026-11-18-prompt-profile-history-storage.md).
 
 ## Non-goals
 
