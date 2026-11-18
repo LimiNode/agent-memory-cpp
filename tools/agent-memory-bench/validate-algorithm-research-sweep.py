@@ -51,6 +51,22 @@ def _is_safe_repo_path(value: Any) -> bool:
     )
 
 
+def _contains_digest(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if isinstance(child, str) and child.strip() and (
+                key == "digest"
+                or key.endswith("_digest")
+                or key.endswith("_sha256")
+            ):
+                return True
+            if _contains_digest(child):
+                return True
+    elif isinstance(value, list):
+        return any(_contains_digest(child) for child in value)
+    return False
+
+
 def _is_primary_receipt(path: Path) -> bool:
     """Require receipt-shaped content, not merely a path that exists.
 
@@ -70,15 +86,7 @@ def _is_primary_receipt(path: Path) -> bool:
         return False
     if not isinstance(payload, dict):
         return False
-    has_digest = any(
-        isinstance(payload.get(field), str) and payload[field].strip()
-        for field in (
-            "result_sha256",
-            "raw_evidence_sha256",
-            "source_sha256",
-            "manifest_sha256",
-        )
-    ) or isinstance(payload.get("source"), dict)
+    has_digest = _contains_digest(payload)
     has_status = any(
         isinstance(payload.get(field), str) and payload[field].strip()
         for field in ("status", "execution_status", "outcome", "interpretation")
@@ -224,6 +232,15 @@ def run_self_test(registry_path: Path, repository_root: Path) -> None:
         "https://example.invalid/not-a-pr"
     ]
     mutations.append(("invalid cross-reference", mutation))
+    mutation = copy.deepcopy(valid)
+    mutation["rows"][1]["evidence_refs"] = [
+        "guides/experiments/2026-09-10-bit-mih-oracle-result.json"
+    ]
+    mutation["rows"][1]["evidence_status"] = "PRIMARY"
+    mutation["rows"][1]["evidence_refs"][0] = (
+        "guides/experiments/2026-11-18-algorithm-research-sweep-registry.json"
+    )
+    mutations.append(("primary registry without digest", mutation))
     for name, candidate in mutations:
         if not validate_registry(candidate, repository_root):
             raise AssertionError(f"mutation control did not fail: {name}")
