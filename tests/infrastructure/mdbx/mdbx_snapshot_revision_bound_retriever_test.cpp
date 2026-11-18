@@ -3,6 +3,7 @@
 #include <agent_memory/infrastructure/mdbx/MdbxResourceImporter.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxSnapshotRevisionBoundRetriever.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxKb0RetrievalFacade.hpp>
 #include <agent_memory/lexical/StandardTokenizer.hpp>
 #include <agent_memory/retrieval/OriginalProjection.hpp>
 
@@ -185,6 +186,46 @@ int main() {
                current.text == initial->primary_text,
            "A@1 was not admitted from one snapshot");
 
+    MdbxKb0RetrievalFacade facade(
+        context, scope, tokenizer, retriever_options, table_prefix);
+    const auto traced = facade.retrieve_with_trace(query);
+    expect(traced.response.completeness == RevisionBoundCompleteness::Complete &&
+               traced.trace.query_identity.rfind("kb0.retrieval.v1:", 0) == 0 &&
+               traced.trace.query_digest.size() == 64 &&
+               traced.trace.scope_id == scope && traced.trace.limit == query.limit &&
+               traced.trace.max_candidates == retriever_options.max_candidates &&
+               traced.trace.projection_kind == ProjectionKind::Original &&
+               traced.trace.final_admission_snapshot_consistent &&
+               !traced.trace.ranking_snapshot_consistent &&
+               traced.trace.admitted_count > 0 && !traced.trace.hits.empty() &&
+               traced.trace.hits.front().unit_revision == initial->revision &&
+               traced.trace.hits.front().root_generation ==
+                   initial->sources.front().resource_revision->generation &&
+               traced.trace.hits.front().freshness == RevisionBoundFreshness::Current &&
+               traced.trace.hits.front().materialization ==
+                   RevisionBoundMaterialization::SummaryOnly,
+           "KB-0 trace did not retain exact A@1 admission evidence");
+
+    RetrievalQuery unsupported = query;
+    unsupported.metadata_filters.push_back(MetadataFilter{"kind", "chunk"});
+    const auto unsupported_trace = facade.retrieve_with_trace(unsupported);
+    expect(unsupported_trace.response.completeness ==
+               RevisionBoundCompleteness::UnsupportedQuery &&
+               !unsupported_trace.trace.final_admission_snapshot_consistent &&
+               unsupported_trace.trace.ranking_snapshot_consistent == false &&
+               unsupported_trace.response.results.empty() &&
+               !unsupported_trace.trace.diagnostic.empty(),
+           "unsupported KB-0 query was not traced explicitly");
+
+    auto over_budget = query;
+    over_budget.limit = retriever_options.max_candidates + 1U;
+    const auto budget_trace = facade.retrieve_with_trace(over_budget);
+    expect(budget_trace.response.completeness ==
+               RevisionBoundCompleteness::BudgetExceeded &&
+               !budget_trace.trace.final_admission_snapshot_consistent &&
+               budget_trace.response.results.empty(),
+           "over-budget KB-0 query was not traced explicitly");
+
     const auto updated = units.update_mutable_fields(
         unit_id, display_patch("updated display at revision two"));
     expect(updated.revision == 2, "unit mutation did not advance revision");
@@ -297,12 +338,13 @@ int main() {
                    imported_v2.revision.body_digest->bytes,
            "resource A@2 was not admitted with its exact root revision");
     ResourceImportResult imported_v3;
-    retriever.set_candidate_hook_for_testing([&] {
+    facade.set_candidate_hook_for_testing([&] {
         imported_v3 = importer.import(
             resource("snapshot projection alpha resource revision three"));
     });
-    const auto invalidated_window = retriever.retrieve_detailed(query);
-    retriever.set_candidate_hook_for_testing({});
+    const auto invalidated_trace = facade.retrieve_with_trace(query);
+    const auto& invalidated_window = invalidated_trace.response;
+    facade.set_candidate_hook_for_testing({});
     expect(imported_v3.revision.generation == 3 &&
                imported_v3.revision.body_digest &&
                imported_v3.revision.body_digest->bytes !=
@@ -317,6 +359,10 @@ int main() {
                !invalidated_window.results.empty() &&
                invalidated_window.results.front().text.empty(),
            "source update between ranking and admission was not reported boundedly");
+    expect(invalidated_trace.trace.final_admission_snapshot_consistent &&
+               !invalidated_trace.trace.ranking_snapshot_consistent &&
+               invalidated_trace.trace.stale_count == invalidated_window.stale_count,
+           "KB-0 trace lost the bounded candidate-hook race evidence");
     const auto resource_v3_unit = units.find(imported_v3.raw_units.front());
     expect(resource_v3_unit && resource_v3_unit->sources.size() == 1 &&
                resource_v3_unit->sources.front().resource_revision &&
