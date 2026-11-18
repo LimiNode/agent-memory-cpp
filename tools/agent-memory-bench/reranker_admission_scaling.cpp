@@ -503,28 +503,38 @@ namespace {
         resource.front().resource_id = agent_memory::ResourceId{"foreign"};
         auto section = reranked;
         section.front().section_id = 999;
+        auto tier = reranked;
+        tier.front().result_tier = static_cast<std::uint8_t>(
+            tier.front().result_tier + 1U
+        );
+        auto enrichment = reranked;
+        enrichment.front().enrichment_level += 1U;
         auto nonfinite = reranked;
         nonfinite.front().score = std::numeric_limits<float>::quiet_NaN();
         auto too_many = reranked;
         too_many.push_back(too_many.back());
-        ProductionAdmissionRunner duplicate_production(admitted, duplicate);
-        ProductionAdmissionRunner foreign_production(admitted, foreign);
-        ProductionAdmissionRunner metadata_production(admitted, metadata);
-        ProductionAdmissionRunner resource_production(admitted, resource);
-        ProductionAdmissionRunner section_production(admitted, section);
-        ProductionAdmissionRunner nonfinite_production(admitted, nonfinite);
-        ProductionAdmissionRunner too_many_production(admitted, too_many);
-        return duplicate_production.run(admitted.size()).empty()
-            && sorted_admit(admitted, duplicate, sorted).empty()
-            && hash_admit(admitted, duplicate, hashed).empty()
-            && foreign_production.run(admitted.size()).empty()
-            && sorted_admit(admitted, foreign, sorted).empty()
-            && hash_admit(admitted, foreign, hashed).empty()
-            && metadata_production.run(admitted.size()).empty()
-            && resource_production.run(admitted.size()).empty()
-            && section_production.run(admitted.size()).empty()
-            && nonfinite_production.run(admitted.size()).empty()
-            && too_many_production.run(admitted.size()).empty();
+        const auto rejects_every_admission_path = [&](
+            const std::vector<agent_memory::LexicalSearchResult>& mutated
+        ) {
+            ProductionAdmissionRunner production_mutation(admitted, mutated);
+            return production_mutation.run(admitted.size()).empty()
+                && sorted_admit(admitted, mutated, sorted).empty()
+                && hash_admit(admitted, mutated, hashed).empty();
+        };
+
+        // Every identity/provenance and result-shape mutation must fail closed
+        // for the production runner and both indexed admission arms.  Keeping
+        // this matrix symmetric prevents a faster lookup path from silently
+        // weakening the production contract.
+        return rejects_every_admission_path(duplicate)
+            && rejects_every_admission_path(foreign)
+            && rejects_every_admission_path(resource)
+            && rejects_every_admission_path(section)
+            && rejects_every_admission_path(tier)
+            && rejects_every_admission_path(enrichment)
+            && rejects_every_admission_path(metadata)
+            && rejects_every_admission_path(nonfinite)
+            && rejects_every_admission_path(too_many);
     }
 
 } // namespace
