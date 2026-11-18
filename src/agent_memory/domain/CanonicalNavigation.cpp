@@ -8,7 +8,7 @@ namespace agent_memory {
 namespace {
 
 bool validate_document(const CanonicalDocumentRevision& document, std::string& message) {
-    if(document.document_id.empty() || document.revision == 0U) {
+    if(document.document_id.empty()) {
         message = "document identity or revision is invalid";
         return false;
     }
@@ -23,9 +23,27 @@ bool validate_document(const CanonicalDocumentRevision& document, std::string& m
             return false;
         }
     }
+    std::vector<ContentBlockId> preorder;
+    std::set<ContentBlockId> emitted;
+    const auto append_subtree = [&](const auto& self, const ContentBlockId& id) -> void {
+        if(!emitted.insert(id).second) return;
+        preorder.push_back(id);
+        for(const auto& candidate : document.blocks) {
+            if(candidate.parent_id && *candidate.parent_id == id) {
+                self(self, candidate.id);
+            }
+        }
+    };
     for(const auto& block : document.blocks) {
-        if(block.parent_id && seen.count(*block.parent_id) == 0U) {
-            message = "document contains a dangling parent id";
+        if(!block.parent_id) append_subtree(append_subtree, block.id);
+    }
+    if(preorder.size() != document.blocks.size()) {
+        message = "canonical preorder is incomplete";
+        return false;
+    }
+    for(std::size_t index = 0; index < document.blocks.size(); ++index) {
+        if(preorder[index] != document.blocks[index].id) {
+            message = "blocks must be stored in canonical tree preorder";
             return false;
         }
     }

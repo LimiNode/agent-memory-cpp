@@ -30,6 +30,13 @@ The API is deliberately pure. A storage-facing adapter may first call
 navigation functions. This keeps freshness and authorization at the owner of
 the storage/consumer boundary and prevents an accidental `latest` read.
 
+Revision `0` is the valid initial canonical snapshot and is addressed exactly
+like later revisions. The reference implementation reconstructs and compares
+canonical preorder before producing either outline or subtree output. This
+validation is intentionally an in-memory reference; its child scans are not a
+constant-time navigation claim. A backend adapter must preserve the same
+rejection and budget semantics when it replaces those scans.
+
 ## Relationship to hierarchical retrieval
 
 This API supplies the first local navigation primitive for

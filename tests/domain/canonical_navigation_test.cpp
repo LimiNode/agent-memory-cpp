@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <utility>
 
 namespace {
 using namespace agent_memory;
@@ -30,6 +31,12 @@ int main() {
                    outline->entries[2].depth == 2U && outline->entries[1].child_count == 1U,
                "outline locator or hierarchy is incorrect");
 
+        auto baseline = document;
+        baseline.revision = 0;
+        expect(build_canonical_outline(baseline).has_value() &&
+                   read_canonical_subtree(baseline, {std::nullopt, 10U, 100U, true}).succeeded(),
+               "initial canonical revision was rejected");
+
         const auto subtree = read_canonical_subtree(document,
             {ContentBlockId{"a"}, 10U, 100U, true});
         expect(subtree.status == CanonicalNavigationStatus::Ok && subtree.blocks.size() == 2U &&
@@ -57,6 +64,10 @@ int main() {
         auto malformed = document;
         malformed.blocks[2].parent_id = ContentBlockId{"missing"};
         expect(!build_canonical_outline(malformed), "dangling parent was accepted");
+
+        auto interleaved = document;
+        std::swap(interleaved.blocks[1], interleaved.blocks[2]);
+        expect(!build_canonical_outline(interleaved), "interleaved canonical subtree was accepted");
 
         std::cout << "canonical navigation contract: PASS\n";
         return 0;
