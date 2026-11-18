@@ -7,7 +7,8 @@
 ///
 /// This is a pure layer over CanonicalDocumentRevision. It does not mutate
 /// canonical content, read implicit process state, or make authority
-/// decisions. Durable profile storage is intentionally a separate follow-up.
+/// decisions. Durable profile storage is an opt-in separate adapter and never
+/// selects or activates a profile for the compiler.
 
 #include "CanonicalContent.hpp"
 
