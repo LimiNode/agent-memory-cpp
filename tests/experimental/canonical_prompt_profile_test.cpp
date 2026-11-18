@@ -510,9 +510,17 @@ void run_prompt_profile_suite(ICanonicalContentStore& store,
     expect(metadata_only.status == CanonicalEditStatus::Ok && metadata_only.revision &&
                metadata_only.revision->revision == 2 && metadata_only.changes.metadata_changed,
            backend_name + ": metadata-only revision was not published");
-    PromptCandidate metadata_candidate = fixed_candidate;
-    metadata_candidate.documents.front().revision = 2;
-    expect(!build_exact_prompt(store, fixed_policy, metadata_candidate, error) &&
+    PromptPolicy metadata_policy = fixed_policy;
+    metadata_policy.policy_id = "policy-fixed-metadata";
+    metadata_policy.baseline_id = "baseline-fixed-metadata";
+    metadata_policy.documents.front().baseline_revision = 1;
+    PromptCandidate metadata_candidate{
+        "baseline-fixed-metadata",
+        {{second_document_id,
+          2,
+          {ContentBlockId{"role"}, ContentBlockId{"obligations"},
+           ContentBlockId{"tools"}, ContentBlockId{"output"}}}}};
+    expect(!build_exact_prompt(store, metadata_policy, metadata_candidate, error) &&
                error == "candidate changed prompt metadata",
            backend_name + ": metadata-only candidate revision was admitted");
 
