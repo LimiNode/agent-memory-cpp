@@ -35,6 +35,12 @@ and physical-body-encoding contracts. It extends, but does not replace:
 document describes contracts and planned work; it does not claim that a
 contract-only feature already exists in C++.
 
+Prompt assembly is a separate projection over a pinned
+`CanonicalDocumentRevision`; its Phase A contract and implementation status
+are maintained in [`prompt-composition-roadmap.md`](prompt-composition-roadmap.md).
+It must not add activation flags, template values or renderer state to
+`ContentBlock` merely for convenience.
+
 ## 1. Problem And Decisions
 
 An agent-memory corpus is usually consumed by software rather than opened by a
