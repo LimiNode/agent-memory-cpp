@@ -25,10 +25,19 @@ are not direct O-means targets. The experiment must not alter any of them.
 
 `tools/agent-memory-bench/compare-ivf-training.py` is an offline receipt
 runner. With no `.npy` inputs, or without a required dependency, it emits a
-`NOT_RUN` receipt. When NumPy and Faiss are available it measures the ordinary
-Lloyd control and records E-means/O-means as `NOT_RUN` until separately pinned
-adapters are supplied. It never labels Lloyd output as an E-means or O-means
-result.
+`NOT_EXECUTED` receipt. When NumPy and Faiss are available it measures the
+ordinary Lloyd control and records E-means/O-means as `NOT_EXECUTED` until
+separately pinned adapters and corpora are supplied. It never labels Lloyd
+output as an E-means or O-means result.
+
+The Lloyd control trains centroids exactly once. It installs those caller-owned
+centroids into a fresh IVF quantizer, verifies a digest after installation, and
+adds vectors without calling `IndexIVFFlat.train()` again. Input `.npy` files
+and the centroid byte representation are SHA-256 bound in the receipt. The
+minimum training-vectors-per-centroid guard is explicit and a failed guard is
+`NOT_EXECUTED`, not a partial quality claim. Held-out nearest-centroid work is
+performed in bounded query/centroid blocks; no `Q x K x D` distance tensor is
+materialised.
 
 Example contract check:
 
@@ -38,7 +47,8 @@ python tools/agent-memory-bench/compare-ivf-training.py \
 ```
 
 The resulting JSON is evidence of execution state and provenance, not a
-benchmark result.
+benchmark result. A `PARTIAL` receipt means only the explicitly listed methods
+ran; it is not evidence that E-means or O-means were approximated by Lloyd.
 
 ## Required comparison matrix
 
@@ -66,5 +76,5 @@ No method is promoted by training speed alone. A measured method is eligible
 for a follow-up only if it has a complete receipt, no fabricated or inherited
 metrics, and a matched retrieval comparison. A result on an RTX 4090 must not
 be reported as an RTX 5090 result. If the pinned O-means or E-means adapter is
-unavailable, the correct result is `NOT_RUN`; production work continues
+unavailable, the correct result is `NOT_EXECUTED`; production work continues
 independently.
