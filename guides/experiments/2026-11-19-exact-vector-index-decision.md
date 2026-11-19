@@ -82,6 +82,12 @@ measurement. No new production accumulator or multiprecision dependency is
 proposed. This does not claim that all FP64 algorithms fail, nor qualify
 synthetic timing as production latency.
 
+The [local source-bound receipt](2026-11-19-r5-exact-vector-v2.receipt.json)
+and adjacent `.sha256` bind the clean `6272e7b2` execution. Raw output remains
+in the canonical external workspace named in that receipt; per-head CI
+artifacts provide separate Ubuntu/MSVC runs. Later receipt/docs commits are
+not retrospectively substituted for the tested source SHA.
+
 Receipts separate `tested_source_head`, `expected_pr_head`, compiled checkout
 and compiled-source hashes. The expected HEAD is enforced in CI; local
 uncommitted-source runs are explicitly reported as such. The required

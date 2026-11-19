@@ -92,6 +92,10 @@ checks out its expected PR HEAD; a non-null expected HEAD must equal the actual
 checkout and its committed script hashes before training starts. Runtime and
 platform, Faiss compile options and NumPy build/BLAS configuration are recorded.
 
+The [local source-bound receipt](2026-11-19-r5-emeans-vs-lloyd-v2.receipt.json)
+and adjacent `.sha256` record clean source `6272e7b2`. Subsequent archival/docs
+commits do not change that historical tested source identity.
+
 The validator regenerates split hashes, replays training, recomputes final MSE,
 occupancy, IVF sizes, native results/scans and capped-proxy recall, and checks
 timing summaries against raw samples. Twelve negative controls re-sign
