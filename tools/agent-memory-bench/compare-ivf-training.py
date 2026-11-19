@@ -169,6 +169,21 @@ def quantizer_centroids(index, count: int):
         return np.asarray(rows, dtype="float32")
 
 
+def verify_installed_centroids(index, centroids):
+    """Reject an IVF quantizer whose installed centroids are not identical."""
+
+    import numpy as np
+
+    installed = quantizer_centroids(index, int(centroids.shape[0]))
+    installed_digest = centroid_digest(installed)
+    expected_digest = centroid_digest(centroids)
+    if installed_digest != expected_digest or not np.array_equal(installed, centroids):
+        raise RuntimeError(
+            "installed IVF quantizer centroids differ from Lloyd output"
+        )
+    return installed, installed_digest
+
+
 def run_lloyd(
     train, queries, args: argparse.Namespace, train_digest: str, query_digest: str
 ) -> dict[str, Any]:
@@ -217,9 +232,9 @@ def run_lloyd(
     # centroids are installed into the quantizer and IndexIVFFlat.train() is
     # never called a second time.
     index = build_pretrained_index(faiss, train, centroids)
-    installed = quantizer_centroids(index, args.nlist)
-    installed_digest = centroid_digest(installed)
-    if installed_digest != trained_digest or not np.array_equal(installed, centroids):
+    try:
+        installed, installed_digest = verify_installed_centroids(index, centroids)
+    except RuntimeError:
         return {
             "status": "NOT_EXECUTED",
             "reason": "installed IVF quantizer centroids differ from Lloyd output",

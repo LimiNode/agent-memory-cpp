@@ -6,6 +6,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parent
@@ -54,7 +55,62 @@ def test_bounded_selection_and_ties():
         raise AssertionError("non-positive block size must fail closed")
 
 
+def test_faiss_pretrained_ivf_positive_and_mutation_control():
+    """Exercise the real Faiss quantizer and compare full-probe results."""
+
+    import faiss
+    import numpy as np
+
+    module = load_module()
+    rng = np.random.default_rng(20261119)
+    train = rng.normal(size=(512, 8)).astype("float32")
+    queries = rng.normal(size=(11, 8)).astype("float32")
+    nlist = 4
+    kmeans = faiss.Kmeans(8, nlist, niter=5, nredo=1, seed=17, verbose=False, gpu=False)
+    kmeans.train(train)
+    centroids = np.asarray(kmeans.centroids, dtype="float32").reshape(nlist, 8)
+    index = module.build_pretrained_index(faiss, train, centroids)
+    installed, installed_digest = module.verify_installed_centroids(index, centroids)
+    assert np.array_equal(installed, centroids)
+    assert installed_digest == module.centroid_digest(centroids)
+    index.add(train)
+    index.nprobe = nlist
+    distances, ids = index.search(queries, 5)
+    reference = faiss.IndexFlatL2(8)
+    reference.add(train)
+    reference_distances, reference_ids = reference.search(queries, 5)
+    assert np.array_equal(ids, reference_ids), "full-probe IVF differs from exact reference"
+    assert np.allclose(distances, reference_distances), "IVF distances differ from exact reference"
+
+    mutated = centroids.copy()
+    mutated[0, 0] += np.float32(1.0)
+    index.quantizer.reset()
+    index.quantizer.add(mutated)
+    try:
+        module.verify_installed_centroids(index, centroids)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("centroid substitution must fail closed")
+
+    args = SimpleNamespace(
+        nlist=nlist,
+        nprobe=2,
+        top_k=5,
+        iterations=5,
+        nredo=1,
+        seed=17,
+        distance_block_size=2,
+        min_training_vectors_per_centroid=1,
+    )
+    receipt = module.run_lloyd(train, queries, args, "train-sha", "query-sha")
+    assert receipt["status"] == "MEASURED"
+    assert receipt["centroid_digest"] == receipt["installed_centroid_digest"]
+    assert receipt["query_count"] == len(queries)
+
+
 if __name__ == "__main__":
     test_single_training_call()
     test_bounded_selection_and_ties()
+    test_faiss_pretrained_ivf_positive_and_mutation_control()
     print("compare_ivf_training self-test: PASS")

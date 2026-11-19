@@ -38,7 +38,9 @@ and the centroid byte representation are SHA-256 bound in the receipt. The
 minimum training-vectors-per-centroid guard is explicit and a failed guard is
 `NOT_EXECUTED`, not a partial quality claim. Held-out nearest-centroid work is
 performed in bounded query/centroid blocks; no `Q x K x D` distance tensor is
-materialised.
+materialised. The CI self-test also runs a small pinned `faiss-cpu` positive
+control: full-probe `IndexIVFFlat` results must match `IndexFlatL2`, while a
+mutated quantizer centroid must be rejected by the digest gate.
 
 Example contract check:
 
