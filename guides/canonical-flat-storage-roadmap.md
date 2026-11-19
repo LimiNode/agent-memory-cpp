@@ -45,5 +45,13 @@ the canonical reference adapter.
 
 The benchmark gate is separate from correctness. It must report fixed-seed
 large-document runs for point block, bounded subtree, single-block update,
-and full materialization, including physical bytes, allocations, CPU, and
-latency. No performance claim is made by this Draft PR.
+and full materialization. The opt-in
+`tools/mdbx-canonical-flat-benchmark.cpp` harness emits raw TSV observations and
+a SHA-bound JSON receipt for those four workloads at 64/256/1024 blocks with
+five repeats. It reports steady-clock latency and codec-payload byte estimates;
+CPU time and allocator counts are explicitly unavailable in this slice. The
+bounded-subtree row intentionally calls `read_revision()` followed by the
+existing reference `read_canonical_subtree()` API, so its physical source read
+is the full revision. It is not evidence of bounded MDBX I/O. Single-block
+edits likewise report the full-revision rewrite performed by the current
+adapter. No performance claim is made by this Draft PR.

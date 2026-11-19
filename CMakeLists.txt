@@ -245,6 +245,16 @@ if(AGENT_MEMORY_BUILD_BENCHMARKS)
         target_compile_features(agent_memory_segmented_lexical_benchmark
             PRIVATE cxx_std_17
         )
+        add_executable(agent_memory_mdbx_canonical_flat_benchmark
+            tools/mdbx-canonical-flat-benchmark.cpp
+        )
+        target_link_libraries(agent_memory_mdbx_canonical_flat_benchmark
+            PRIVATE agent_memory::agent_memory
+                    ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET}
+        )
+        target_compile_features(agent_memory_mdbx_canonical_flat_benchmark
+            PRIVATE cxx_std_17
+        )
         add_executable(agent_memory_lexical_retrieval_qualification_r2
             tools/lexical-retrieval-qualification-r2.cpp
         )
@@ -2386,6 +2396,18 @@ if(AGENT_MEMORY_BUILD_TESTS)
     endif() # AGENT_MEMORY_BUILD_RESEARCH_TESTS
     if(AGENT_MEMORY_BUILD_BENCHMARKS AND AGENT_MEMORY_ENABLE_MDBX)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(
+            NAME agent_memory_mdbx_canonical_flat_benchmark_self_test
+            COMMAND $<TARGET_FILE:agent_memory_mdbx_canonical_flat_benchmark> --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_mdbx_canonical_flat_benchmark_validator_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate-mdbx-canonical-flat-benchmark.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
         add_test(
             NAME agent_memory_segmented_lexical_benchmark_contract
             COMMAND ${Python3_EXECUTABLE}
