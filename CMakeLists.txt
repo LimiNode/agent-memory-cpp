@@ -302,6 +302,13 @@ endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
+    if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        add_test(
+            NAME agent_memory_exact_vector_cosine_benchmark_self_test
+            COMMAND $<TARGET_FILE:agent-memory-exact-vector-cosine-bench> --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+    endif()
     if(AGENT_MEMORY_BUILD_EXAMPLES)
         add_test(
             NAME agent_memory_canonical_content_example
