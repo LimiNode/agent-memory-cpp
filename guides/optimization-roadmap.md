@@ -85,6 +85,14 @@ that it helps.
 
 ### Native THQ/IVF bake-off (2026-09-08)
 
+The route family is named **Prototype–Representative Routing (PRR)**. A
+concrete IVF implementation may use **Prototype–Representative Inverted File
+(PR-IVF)**, but the historical Prototype-IVF and Modern R4 artifacts retain
+their original names. See
+[`prototype-representative-routing-lineage.md`](prototype-representative-routing-lineage.md)
+for the machine identifiers, manifest requirements, and compatibility rules.
+No public enum or backend is introduced by this naming record.
+
 - Keep flat THQ4 as the latency denominator: on the frozen DE-1M replay it
   reaches about `.6540` nDCG at K=256 with p95 total around 29.5 ms.
 - E5-IVF → local THQ is a valid balanced architecture, but the first native
