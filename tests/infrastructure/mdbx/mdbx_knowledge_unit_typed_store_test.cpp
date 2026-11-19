@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -189,6 +190,22 @@ int main() {
                 ScopeId{"scope"}, KnowledgeUnitKind::Chunk);
             expect(ids.size() == 2U && ids[0].value() == 2U && ids[1].value() == 10U,
                    "numeric typed index order was lexical rather than numeric");
+
+            const auto boundary_id = KnowledgeUnitId{
+                std::numeric_limits<std::uint64_t>::max()};
+            bool boundary_rejected = false;
+            try {
+                store.upsert(envelope("scope", "id boundary", boundary_id.value(), 12));
+            } catch(const std::runtime_error&) {
+                boundary_rejected = true;
+            }
+            expect(boundary_rejected, "typed id-space boundary was not rejected");
+            expect(!store.find(boundary_id).has_value(),
+                   "rejected boundary write leaked a primary row");
+            const auto after_boundary = store.create_or_get_unit(
+                request("scope", "id eleven", 13));
+            expect(after_boundary.id.value() == 11U,
+                   "rejected boundary write advanced the allocation high-water mark");
         }
 
         const auto corrupt_path = test_path("corrupt_");
