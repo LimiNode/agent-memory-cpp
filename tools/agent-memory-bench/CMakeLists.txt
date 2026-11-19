@@ -15,6 +15,7 @@ add_executable(agent-memory-exact-vector-index-decision
 target_link_libraries(agent-memory-exact-vector-index-decision
     PRIVATE
         agent_memory::agent_memory
+        agent_memory::json
 )
 
 add_executable(agent-memory-autoencoder-eval
@@ -90,6 +91,24 @@ function(agent_memory_set_evaluator_build_environment target)
         AGENT_MEMORY_EVALUATOR_ACTIVE_CONFIGURATION_FLAGS_SHA256="${active_configuration_flags_definition}"
     )
 endfunction()
+
+agent_memory_set_evaluator_source_manifest(agent-memory-exact-vector-index-decision
+    "${CMAKE_CURRENT_SOURCE_DIR}/exact_vector_index_decision.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/ExactVectorIndex.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/ExactVectorIndex.hpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/VectorSimilarityComputer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/VectorSimilarityComputer.hpp"
+)
+agent_memory_set_evaluator_build_environment(agent-memory-exact-vector-index-decision)
+execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    OUTPUT_VARIABLE r5_checkout_sha OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/exact_vector_index_decision.cpp" r5_runner_sha)
+file(SHA256 "${PROJECT_SOURCE_DIR}/src/agent_memory/index/ExactVectorIndex.cpp" r5_index_sha)
+target_compile_definitions(agent-memory-exact-vector-index-decision PRIVATE
+    AGENT_MEMORY_R5_CHECKOUT_SHA="${r5_checkout_sha}"
+    AGENT_MEMORY_R5_RUNNER_SHA256="${r5_runner_sha}"
+    AGENT_MEMORY_R5_INDEX_SHA256="${r5_index_sha}"
+)
 
 agent_memory_set_evaluator_source_manifest(agent-memory-autoencoder-eval
     "${CMAKE_CURRENT_SOURCE_DIR}/autoencoder_evaluation.cpp"

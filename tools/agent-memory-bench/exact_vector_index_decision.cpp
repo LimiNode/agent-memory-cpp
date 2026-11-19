@@ -1,332 +1,306 @@
 #include <agent_memory/index/ExactVectorIndex.hpp>
 #include <agent_memory/index/VectorSimilarityComputer.hpp>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <random>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace {
+using namespace agent_memory;
+using Json = nlohmann::json;
+using Clock = std::chrono::steady_clock;
+using Corpus = std::vector<std::vector<float>>;
 
-using agent_memory::ChunkId;
-using agent_memory::Embedding;
-using agent_memory::ExactVectorIndex;
-using agent_memory::ExactVectorIndexOptions;
-using agent_memory::SimilarityMetric;
-using agent_memory::VectorRecord;
-using agent_memory::VectorSearchQuery;
-using agent_memory::VectorSearchResult;
-
-struct OracleHit final {
-    std::size_t row = 0;
-    long double score = 0.0L;
-};
-
-struct Timing final {
-    std::vector<double> milliseconds;
-};
-
-struct CaseResult final {
-    std::size_t rows = 0;
-    std::size_t dimension = 0;
-    std::size_t queries = 0;
-    std::size_t top_k = 0;
-    std::string backend;
-    bool parity = false;
-    double max_score_error = 0.0;
-    Timing kernel;
-    Timing end_to_end;
-};
-
-std::vector<float> make_vector(
-    std::mt19937& generator,
-    const std::size_t dimension,
-    const std::size_t row
-) {
-    std::uniform_real_distribution<float> distribution(-1.0F, 1.0F);
-    std::vector<float> values(dimension);
-    for(auto& value : values) {
-        value = distribution(generator);
-    }
-    if(!values.empty()) {
-        values[row % dimension] += 0.0001F;
-    }
-    return values;
-}
-
-long double cosine(
-    const std::vector<float>& lhs,
-    const std::vector<float>& rhs
-) {
-    long double dot = 0.0L;
-    long double lhs_norm = 0.0L;
-    long double rhs_norm = 0.0L;
-    for(std::size_t index = 0; index < lhs.size(); ++index) {
-        const auto left = static_cast<long double>(lhs[index]);
-        const auto right = static_cast<long double>(rhs[index]);
-        dot += left * right;
-        lhs_norm += left * left;
-        rhs_norm += right * right;
-    }
-    if(lhs_norm == 0.0L || rhs_norm == 0.0L) {
-        return 0.0L;
-    }
-    return dot / (std::sqrt(lhs_norm) * std::sqrt(rhs_norm));
-}
-
-std::vector<OracleHit> oracle(
-    const std::vector<std::vector<float>>& corpus,
-    const std::vector<float>& query,
-    const std::size_t limit
-) {
-    std::vector<OracleHit> hits;
-    hits.reserve(corpus.size());
-    for(std::size_t row = 0; row < corpus.size(); ++row) {
-        hits.push_back(OracleHit{row, cosine(query, corpus[row])});
-    }
-    std::stable_sort(hits.begin(), hits.end(), [&corpus](const auto& lhs, const auto& rhs) {
-        if(lhs.score != rhs.score) {
-            return lhs.score > rhs.score;
+// These research arithmetic controls are not alternative index implementations.
+// Correctness is recomputed independently in Python Decimal, not asserted here.
+double dot(const std::vector<float>& a, const std::vector<float>& b,
+           const std::string& accumulator) {
+    if(accumulator == "fp32") {
+        float narrow = 0.0F;
+        for(std::size_t i = 0; i < a.size(); ++i) {
+            narrow += a[i] * b[i];
         }
-        return std::string("chunk:") + std::to_string(lhs.row)
-            < std::string("chunk:") + std::to_string(rhs.row);
-    });
-    if(hits.size() > limit) {
-        hits.resize(limit);
+        return static_cast<double>(narrow);
     }
-    return hits;
+    if(accumulator == "fp64_sequential") {
+        double sequential = 0.0;
+        for(std::size_t i = 0; i < a.size(); ++i) {
+            sequential += static_cast<double>(a[i]) * static_cast<double>(b[i]);
+        }
+        return sequential;
+    }
+    double sum = 0.0;
+    double correction = 0.0;
+    for(std::size_t i = 0; i < a.size(); ++i) {
+        const double product = static_cast<double>(a[i]) * static_cast<double>(b[i]);
+        const double next = sum + product;
+        correction += std::abs(sum) >= std::abs(product)
+            ? (sum - next) + product : (product - next) + sum;
+        sum = next;
+    }
+    return sum + correction;
 }
 
-std::vector<VectorSearchQuery> make_queries(
-    const std::vector<std::vector<float>>& corpus,
-    const std::size_t count
-) {
-    std::vector<VectorSearchQuery> queries;
-    queries.reserve(count);
-    for(std::size_t index = 0; index < count; ++index) {
-        queries.push_back(VectorSearchQuery{Embedding{corpus[index % corpus.size()]}, 10, {}});
+double inverse_norm(const std::vector<float>& a) {
+    double scale = 0.0;
+    double scaled_sum = 1.0;
+    for(const float value : a) {
+        const double magnitude = std::abs(static_cast<double>(value));
+        if(magnitude == 0.0) {
+            continue;
+        }
+        if(scale < magnitude) {
+            const double ratio = scale == 0.0 ? 0.0 : scale / magnitude;
+            scaled_sum = 1.0 + scaled_sum * ratio * ratio;
+            scale = magnitude;
+        } else {
+            const double ratio = magnitude / scale;
+            scaled_sum += ratio * ratio;
+        }
     }
-    return queries;
+    return scale == 0.0 ? 0.0 : 1.0 / (scale * std::sqrt(scaled_sum));
 }
 
-template <typename Fn>
-Timing measure(Fn&& fn, const std::size_t samples) {
-    Timing timing;
-    timing.milliseconds.reserve(samples);
-    for(std::size_t sample = 0; sample < samples; ++sample) {
-        const auto start = std::chrono::steady_clock::now();
-        fn();
-        const auto end = std::chrono::steady_clock::now();
-        timing.milliseconds.push_back(std::chrono::duration<double, std::milli>(end - start).count());
+Corpus random_vectors(const std::size_t rows, const std::size_t dim, std::mt19937& rng) {
+    Corpus result(rows, std::vector<float>(dim));
+    for(auto& row : result) {
+        for(auto& value : row) {
+            // Exact dyadic values; unlike uniform_real_distribution this mapping
+            // does not depend on the standard library implementation.
+            value = static_cast<float>(static_cast<int>(rng() % 8193U) - 4096) / 4096.0F;
+        }
     }
-    return timing;
+    return result;
 }
 
-CaseResult run_case(
-    const std::size_t rows,
-    const std::size_t dimension,
-    const std::size_t query_count,
-    const std::size_t top_k
-) {
-    std::mt19937 generator(static_cast<std::uint32_t>(0x5eedU + rows));
-    std::vector<std::vector<float>> corpus;
-    corpus.reserve(rows);
-    for(std::size_t row = 0; row < rows; ++row) {
-        corpus.push_back(make_vector(generator, dimension, row));
-    }
-    auto queries = make_queries(corpus, query_count);
-    ExactVectorIndex index(ExactVectorIndexOptions{dimension, SimilarityMetric::Cosine, true});
+ExactVectorIndex build(const Corpus& corpus, const SimilarityMetric metric, const bool simd) {
+    ExactVectorIndex index(ExactVectorIndexOptions{corpus.front().size(), metric, simd});
     for(std::size_t row = 0; row < corpus.size(); ++row) {
         index.upsert(VectorRecord{ChunkId{"chunk:" + std::to_string(row)}, Embedding{corpus[row]}, {}});
     }
+    return index;
+}
 
-    bool parity = true;
-    double max_score_error = 0.0;
-    volatile std::size_t sink = 0;
-    for(const auto& query : queries) {
-        const auto expected = oracle(corpus, query.embedding.values, top_k);
-        const auto actual = index.search(VectorSearchQuery{query.embedding, top_k, {}});
-        if(actual.size() != expected.size()) {
-            parity = false;
-            continue;
-        }
-        for(std::size_t position = 0; position < actual.size(); ++position) {
-            const auto expected_id = "chunk:" + std::to_string(expected[position].row);
-            if(actual[position].chunk_id.value() != expected_id) {
-                parity = false;
+Json hits(const std::vector<VectorSearchResult>& values) {
+    Json output = Json::array();
+    for(const auto& value : values) {
+        output.push_back({{"id", value.chunk_id.value()}, {"score", value.score}});
+    }
+    return output;
+}
+
+Json correctness_case(const std::string& name, const Corpus& corpus, const Corpus& queries,
+                      const SimilarityMetric metric, const std::string& metric_name) {
+    Json result = {{"name", name}, {"metric", metric_name}, {"corpus", corpus},
+                   {"queries", queries}, {"runs", Json::array()}};
+    for(const bool simd : {false, true}) {
+        const auto index = build(corpus, metric, simd);
+        Json run = {{"simd_requested", simd},
+                    {"backend", vector_similarity_backend_name(index.similarity_backend())},
+                    {"queries", Json::array()}};
+        for(const auto& query : queries) {
+            Json query_output = {{"limits", Json::array()}, {"arithmetic", Json::object()}};
+            for(const auto limit : {std::size_t{0}, std::size_t{1}, std::size_t{10}, corpus.size()}) {
+                query_output["limits"].push_back({{"k", limit},
+                    {"hits", hits(index.search(VectorSearchQuery{Embedding{query}, limit, {}}))}});
             }
-            max_score_error = std::max(
-                max_score_error,
-                static_cast<double>(std::abs(
-                    static_cast<long double>(actual[position].score) - expected[position].score
-                ))
-            );
-            sink += actual[position].chunk_id.value().size();
+            if(metric == SimilarityMetric::Cosine) {
+                for(const std::string method : {"fp32", "fp64_sequential", "neumaier"}) {
+                    Json scores = Json::array();
+                    for(const auto& record : corpus) {
+                        scores.push_back(static_cast<float>(dot(query, record, method)
+                            * inverse_norm(query) * inverse_norm(record)));
+                    }
+                    query_output["arithmetic"][method] = std::move(scores);
+                }
+            }
+            run["queries"].push_back(std::move(query_output));
         }
+        result["runs"].push_back(std::move(run));
     }
-    (void)sink;
+    return result;
+}
 
-    for(std::size_t warmup = 0; warmup < 2; ++warmup) {
-        for(const auto& query : queries) {
-            sink += index.search(query).size();
+Json controls() {
+    Json output;
+    auto index = build(Corpus{{1.0F, 0.0F}}, SimilarityMetric::Cosine, false);
+    for(const auto& name : {"nan_query", "infinite_record", "dimension", "empty_query"}) {
+        bool rejected = false;
+        try {
+            if(std::string(name) == "nan_query") {
+                (void)index.search(VectorSearchQuery{Embedding{{std::numeric_limits<float>::quiet_NaN(), 0.0F}}, 1, {}});
+            } else if(std::string(name) == "infinite_record") {
+                index.upsert(VectorRecord{ChunkId{"invalid"}, Embedding{{std::numeric_limits<float>::infinity(), 0.0F}}, {}});
+            } else if(std::string(name) == "dimension") {
+                (void)index.search(VectorSearchQuery{Embedding{{1.0F}}, 1, {}});
+            } else {
+                (void)index.search(VectorSearchQuery{Embedding{{}}, 1, {}});
+            }
+        } catch(const std::invalid_argument&) {
+            rejected = true;
+        }
+        output[name] = rejected;
+    }
+    for(const bool simd : {false, true}) {
+        const float extreme = std::numeric_limits<float>::max();
+        auto overflow = build(Corpus{{extreme, extreme}}, SimilarityMetric::DotProduct, simd);
+        bool rejected = false;
+        try {
+            (void)overflow.search(VectorSearchQuery{Embedding{{extreme, extreme}}, 1, {}});
+        } catch(const std::overflow_error&) {
+            rejected = true;
+        }
+        output[simd ? "overflow_auto" : "overflow_scalar"] = rejected;
+    }
+    ExactVectorIndex empty(ExactVectorIndexOptions{2, SimilarityMetric::Cosine, false});
+    output["empty_index"] = empty.search(VectorSearchQuery{Embedding{{1.0F, 0.0F}}, 10, {}}).empty();
+    return output;
+}
+
+template<class Fn> double measure(Fn&& fn) {
+    const auto start = Clock::now();
+    fn();
+    return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+}
+
+Json performance_case(const std::size_t rows, const std::size_t dim,
+                      const SimilarityMetric metric, const std::string& metric_name) {
+    const auto seed = static_cast<std::uint32_t>(0x5eedU + rows + dim);
+    std::mt19937 rng(seed);
+    const auto corpus = random_vectors(rows, dim, rng);
+    const auto queries = random_vectors(4, dim, rng);
+    Json result = {{"rows", rows}, {"dimension", dim}, {"seed", seed},
+                   {"metric", metric_name}, {"query_count", queries.size()},
+                   {"runs", Json::array()}, {"kernel_samples_ms", Json::object()}};
+    volatile double sink = 0.0;
+    for(const bool simd : {false, true}) {
+        const auto start = Clock::now();
+        const auto index = build(corpus, metric, simd);
+        const double construction_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+        for(const auto k : {std::size_t{1}, std::size_t{10}, rows}) {
+            Json run = {{"simd_requested", simd}, {"k", k}, {"construction_ms", construction_ms},
+                        {"backend", vector_similarity_backend_name(index.similarity_backend())},
+                        {"search_samples_ms", Json::array()}, {"output", Json::array()}};
+            for(const auto& query : queries) {
+                const auto output = index.search(VectorSearchQuery{Embedding{query}, k, {}});
+                // Full output is verified for the independent correctness suite.
+                // Keep timing matrix artifacts compact without claiming a new oracle.
+                run["output"].push_back(hits(std::vector<VectorSearchResult>(output.begin(),
+                    output.begin() + static_cast<std::ptrdiff_t>(std::min<std::size_t>(10, output.size())))));
+                run["result_counts"].push_back(output.size());
+            }
+            for(std::size_t sample = 0; sample < 7; ++sample) {
+                run["search_samples_ms"].push_back(measure([&] {
+                    for(const auto& query : queries) {
+                        const auto found = index.search(VectorSearchQuery{Embedding{query}, k, {}});
+                        sink += static_cast<double>(found.size()) + (found.empty() ? 0.0 : found.front().score);
+                    }
+                }));
+            }
+            result["runs"].push_back(std::move(run));
         }
     }
-    const auto kernel = measure([&] {
-        for(const auto& query : queries) {
-            sink += index.search(query).size();
-        }
-    }, 5);
-    const auto end_to_end = measure([&] {
-        ExactVectorIndex rebuilt(ExactVectorIndexOptions{dimension, SimilarityMetric::Cosine, true});
-        for(std::size_t row = 0; row < corpus.size(); ++row) {
-            rebuilt.upsert(VectorRecord{
-                ChunkId{"chunk:" + std::to_string(row)},
-                Embedding{corpus[row]},
-                {}
+    std::vector<double> record_norms;
+    for(const auto& record : corpus) {
+        record_norms.push_back(inverse_norm(record));
+    }
+    VectorSimilarityComputer scalar(false), automatic(true);
+    std::vector<std::string> methods = metric == SimilarityMetric::Cosine
+        ? std::vector<std::string>{"fp32", "fp64_sequential", "neumaier"}
+        : std::vector<std::string>{"scalar_primitive", "auto_primitive"};
+    for(const auto& method : methods) {
+        result["kernel_samples_ms"][method] = Json::array();
+    }
+    // Rotate order, rather than always heating the cache for the same arm.
+    for(std::size_t sample = 0; sample < 8; ++sample) {
+        std::rotate(methods.begin(), methods.begin() + 1, methods.end());
+        for(const auto& method : methods) {
+            const double elapsed = measure([&] {
+                double total = 0.0;
+                for(const auto& query : queries) {
+                    const double query_norm = inverse_norm(query);
+                    for(std::size_t row = 0; row < rows; ++row) {
+                        if(metric == SimilarityMetric::Cosine) {
+                            total += static_cast<float>(dot(query, corpus[row], method) * query_norm * record_norms[row]);
+                        } else {
+                            const auto& computer = method == "scalar_primitive" ? scalar : automatic;
+                            total += computer.dot_product_values(query.data(), corpus[row].data(), dim);
+                        }
+                    }
+                }
+                sink += total;
             });
+            if(sample != 0) {
+                result["kernel_samples_ms"][method].push_back(elapsed);
+            }
         }
-        for(const auto& query : queries) {
-            sink += rebuilt.search(query).size();
-        }
-    }, 5);
-    (void)sink;
-    return CaseResult{
-        rows,
-        dimension,
-        query_count,
-        top_k,
-        std::string(agent_memory::vector_similarity_backend_name(index.similarity_backend())),
-        parity,
-        max_score_error,
-        kernel,
-        end_to_end
-    };
+    }
+    result["observable_sink"] = static_cast<double>(sink);
+    return result;
 }
-
-bool check_adversarial_controls() {
-    ExactVectorIndex cancellation(ExactVectorIndexOptions{3, SimilarityMetric::Cosine, false});
-    cancellation.upsert(VectorRecord{
-        ChunkId{"chunk:bad"}, Embedding{{1.0F, -1.0F, 1.0e-10F}}, {}
-    });
-    cancellation.upsert(VectorRecord{
-        ChunkId{"chunk:good"}, Embedding{{1.0F, 1.0F, 1.0e-10F}}, {}
-    });
-    const auto cancellation_result = cancellation.search(VectorSearchQuery{
-        Embedding{{1.0F, 1.0F, 1.0e-10F}}, 2, {}
-    });
-    if(cancellation_result.size() != 2
-       || cancellation_result.front().chunk_id.value() != "chunk:good") {
-        return false;
-    }
-
-    ExactVectorIndex near_tie(ExactVectorIndexOptions{2, SimilarityMetric::Cosine, true});
-    near_tie.upsert(VectorRecord{ChunkId{"chunk:b"}, Embedding{{1.0F, 0.0F}}, {}});
-    near_tie.upsert(VectorRecord{ChunkId{"chunk:a"}, Embedding{{1.0F, 0.0F}}, {}});
-    const auto ties = near_tie.search(VectorSearchQuery{Embedding{{1.0F, 0.0F}}, 2, {}});
-    if(ties.size() != 2 || ties[0].chunk_id.value() != "chunk:a") {
-        return false;
-    }
-
-    bool rejected_non_finite = false;
-    try {
-        (void)near_tie.search(VectorSearchQuery{
-            Embedding{{std::numeric_limits<float>::quiet_NaN(), 0.0F}}, 1, {}
-        });
-    } catch(const std::invalid_argument&) {
-        rejected_non_finite = true;
-    }
-    if(!rejected_non_finite) {
-        return false;
-    }
-
-    ExactVectorIndex overflowing(ExactVectorIndexOptions{2, SimilarityMetric::DotProduct, false});
-    const auto extreme = std::numeric_limits<float>::max();
-    overflowing.upsert(VectorRecord{ChunkId{"chunk:overflow"}, Embedding{{extreme, extreme}}, {}});
-    bool rejected_overflow = false;
-    try {
-        (void)overflowing.search(VectorSearchQuery{Embedding{{extreme, extreme}}, 1, {}});
-    } catch(const std::overflow_error&) {
-        rejected_overflow = true;
-    }
-    return rejected_overflow;
-}
-
-void write_timing(std::ostream& output, const Timing& timing) {
-    output << '[';
-    for(std::size_t index = 0; index < timing.milliseconds.size(); ++index) {
-        if(index != 0) {
-            output << ',';
-        }
-        output << std::setprecision(12) << timing.milliseconds[index];
-    }
-    output << ']';
-}
-
-void write_case(std::ostream& output, const CaseResult& result) {
-    output << "{\"rows\":" << result.rows
-           << ",\"dimension\":" << result.dimension
-           << ",\"queries\":" << result.queries
-           << ",\"top_k\":" << result.top_k
-           << ",\"backend\":\"" << result.backend
-           << "\",\"parity\":" << (result.parity ? "true" : "false")
-           << ",\"max_score_error\":" << std::setprecision(12) << result.max_score_error
-           << ",\"kernel_only_ms\":";
-    write_timing(output, result.kernel);
-    output << ",\"end_to_end_ms\":";
-    write_timing(output, result.end_to_end);
-    output << '}';
-}
-
 } // namespace
 
 int main(int argc, char** argv) {
-    const auto output_path = argc > 1 ? std::string(argv[1]) : std::string{};
-    std::ofstream file;
-    std::ostream* output = &std::cout;
-    if(!output_path.empty()) {
-        file.open(output_path, std::ios::trunc);
-        if(!file) {
-            std::cerr << "cannot open output: " << output_path << '\n';
-            return 2;
+    try {
+        if(argc != 2) {
+            throw std::invalid_argument("usage: agent-memory-exact-vector-index-decision output.json");
         }
-        output = &file;
-    }
-
-    const bool controls = check_adversarial_controls();
-    const std::vector<std::size_t> sizes = {128, 1024, 8192, 65536};
-    std::vector<CaseResult> cases;
-    for(const auto rows : sizes) {
-        cases.push_back(run_case(rows, 8, 4, 10));
-    }
-
-    bool parity = controls;
-    for(const auto& result : cases) {
-        parity = parity && result.parity;
-    }
-    *output << "{\"schema\":\"r5.exact_vector_index.decision.v1\""
-            << ",\"status\":\"" << (parity ? "PASS" : "FAIL") << '\"'
-            << ",\"production_path\":\"ExactVectorIndex::search\""
-            << ",\"metric\":\"cosine\""
-            << ",\"oracle\":\"compensated_long_double\""
-            << ",\"long_double_bytes\":" << sizeof(long double)
-            << ",\"adversarial_controls\":" << (controls ? "true" : "false")
-            << ",\"cases\":[";
-    for(std::size_t index = 0; index < cases.size(); ++index) {
-        if(index != 0) {
-            *output << ',';
+        std::mt19937 rng(0x5eedU);
+        const auto random_corpus = random_vectors(128, 32, rng);
+        const auto random_queries = random_vectors(4, 32, rng);
+        const float large = std::ldexp(1.0F, 60);
+        Json output = {{"schema", "r5.exact_vector_index.decision.v2"},
+            {"production_path", "ExactVectorIndex::search"},
+            {"compiled_checkout_sha", AGENT_MEMORY_R5_CHECKOUT_SHA},
+            {"runner_source_sha256", AGENT_MEMORY_R5_RUNNER_SHA256},
+            {"index_source_sha256", AGENT_MEMORY_R5_INDEX_SHA256},
+            {"compiler", std::string(AGENT_MEMORY_EVALUATOR_COMPILER_ID) + " " + AGENT_MEMORY_EVALUATOR_COMPILER_VERSION},
+            {"cxx_standard", AGENT_MEMORY_EVALUATOR_CXX_STANDARD},
+            {"base_flags_sha256", AGENT_MEMORY_EVALUATOR_BASE_CXX_FLAGS_SHA256},
+            {"configuration_flags_sha256", AGENT_MEMORY_EVALUATOR_ACTIVE_CONFIGURATION_FLAGS_SHA256},
+            {"build_configuration", AGENT_MEMORY_EVALUATOR_BUILD_CONFIGURATION},
+            {"source_manifest_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256},
+            {"controls", controls()}, {"correctness", Json::array()}, {"performance", Json::array()}};
+        output["correctness"].push_back(correctness_case("cancellation",
+            {{large, 0.0F, -large}, {large, 1.0F, -large}, {0.0F, 0.0F, 0.0F}},
+            {{large, 1.0F, large}}, SimilarityMetric::Cosine, "cosine"));
+        output["correctness"].push_back(correctness_case("near_tie_and_exact_tie",
+            {{1.0F, 0.0078277587890625F}, {1.0F, 0.0078125F}, {1.0F, 0.0078125F}},
+            {{1.0F, 0.0F}}, SimilarityMetric::Cosine, "cosine"));
+        output["correctness"].push_back(correctness_case("tiny_cosine",
+            {{1.0e-30F, 0.0F}, {0.0F, 1.0e-30F}, {-1.0e-30F, 0.0F}},
+            {{1.0e-30F, 0.0F}}, SimilarityMetric::Cosine, "cosine"));
+        for(const auto metric : {SimilarityMetric::Cosine, SimilarityMetric::DotProduct, SimilarityMetric::Euclidean}) {
+            const std::string name = metric == SimilarityMetric::Cosine ? "cosine"
+                : (metric == SimilarityMetric::DotProduct ? "dot" : "negative_squared_l2");
+            output["correctness"].push_back(correctness_case("random_" + name,
+                random_corpus, random_queries, metric, name));
         }
-        write_case(*output, cases[index]);
+        for(const auto shape : {std::pair<std::size_t, std::size_t>{128, 8}, {1024, 128},
+                              {8192, 32}, {65536, 32}, {128, 768}}) {
+            output["performance"].push_back(performance_case(shape.first, shape.second, SimilarityMetric::Cosine, "cosine"));
+            output["performance"].push_back(performance_case(shape.first, shape.second, SimilarityMetric::DotProduct, "dot"));
+        }
+        std::ofstream stream(argv[1]);
+        if(!stream) {
+            throw std::runtime_error("cannot open output");
+        }
+        stream << output.dump() << '\n';
+        if(!stream) {
+            throw std::runtime_error("cannot write output");
+        }
+        return 0;
+    } catch(const std::exception& error) {
+        std::cerr << error.what() << '\n';
+        return 2;
     }
-    *output << "]}\n";
-    return parity ? 0 : 1;
 }
