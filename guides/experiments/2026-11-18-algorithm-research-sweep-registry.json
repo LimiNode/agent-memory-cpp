@@ -268,6 +268,37 @@
           "validation_summary": "3 self-tests and complete matched matrix; not substituted for actual MSVC evidence"
         }
       ]
+    },
+    {
+      "experiment_id": "r5_production_shaped_admission",
+      "algorithm_id": "hybrid_retrieval_scaffolding",
+      "owner_pull_request": "https://github.com/LimiNode/agent-memory-cpp/pull/666",
+      "latest_code_commit": "df17946cb6cbad36f0da25caa6823dc67d3f41d7",
+      "evidence_role": "BOUNDED_EXECUTION_INDEX",
+      "decision_status": "CONDITIONAL",
+      "decision_scope": "Candidate crossover is conditional on the synthetic candidate/metadata regime; production defaults KEEP CURRENT. Generated admission replacements are not product-path activation.",
+      "production_activation": false,
+      "timing_scope": "Primary retrieve() includes fixture-index search, deterministic reranker, per-query lookup-index construction, admission checks and response materialization; fixture setup is excluded. Secondary setup+retrieve is separate and not used for crossover.",
+      "limitations": ["Synthetic fixture index and deterministic reranker, not full product-path qualification", "12 repeated samples per fixed fixture, not independent requests or stable tails", "First observed mean crossover is machine/metadata dependent, not a stable threshold", "Ordinary C++ new/new[] allocation counters do not measure every allocator or peak RSS"],
+      "first_observed_mean_crossovers": [
+        {"metadata_width": 2, "sorted_candidate_count": 500, "hash_candidate_count": 50},
+        {"metadata_width": 8, "sorted_candidate_count": 500, "hash_candidate_count": 100},
+        {"metadata_width": 32, "sorted_candidate_count": 100, "hash_candidate_count": 100}
+      ],
+      "runs": [
+        {
+          "source_commit": "df17946cb6cbad36f0da25caa6823dc67d3f41d7",
+          "execution_checkout_commit": "df17946cb6cbad36f0da25caa6823dc67d3f41d7",
+          "execution_status": "EXECUTED",
+          "environment": "Local actual MSVC 19.44.35228.0 / Release / C++17 / one benchmark thread / shared host",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/blob/93855f56d432cbe8347c6ef4587b748c7540fbbe/guides/experiments/2026-11-19-r5-reranker-admission.receipt.json",
+          "receipt_sha256": "1eced1960433147dd5b6294cb06628b81916af3fa6b2ffe80de6972292249827",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/blob/93855f56d432cbe8347c6ef4587b748c7540fbbe/guides/experiments/2026-11-19-r5-reranker-admission.receipt.json.sha256",
+          "raw_output_sha256": "65a1cdc9ff6a0eca7e54b6093719f0ec697079220fde33c057793d3e0002dcd1",
+          "source_manifest_sha256": "0cff4e6862e7ddaa357a5d93bc9a57129b124f2dba50dee08d5784f4eafa0938",
+          "validation_summary": "3 focused CTests, 18 cases / 648 measured query samples, 11 fail-closed controls per arm; production linear parity and raw/source/generated/sidecar checks PASS"
+        }
+      ]
     }
   ]
 }

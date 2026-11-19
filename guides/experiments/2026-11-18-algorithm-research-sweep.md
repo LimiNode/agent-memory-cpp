@@ -139,6 +139,7 @@ per-head CI artifacts. They are not copied into this registry PR.
 | [#664](https://github.com/LimiNode/agent-memory-cpp/pull/664), exact vector | v2 source `6272e7b2`, GNU receipt plus sidecar; actual local MSVC source `1fc9c8b3`; six correctness cases, ten timing cases and nine mutations | `KEEP CURRENT` compensated cosine. Sequential FP64 loses the cancellation term; FP32 also fails tiny cosine. Arithmetic controls are not replacement indexes. |
 | [#664](https://github.com/LimiNode/agent-memory-cpp/pull/664), E-means | v2 source/checkout `6272e7b2`, compact receipt plus sidecar; two real CPU methods and 13 negative controls | `DEFER`, synthetic smoke only. Full training input and measured assignment work are matched; update cost and wall time are not. Native IVF scans and the Python capped-scan proxy are distinct. |
 | [#665](https://github.com/LimiNode/agent-memory-cpp/pull/665), lexical top-k | Historical Linux source `7a99add2`/synthetic checkout `9724be45`; separate final `59ce09c3` GNU and actual MSVC local receipts | `CONDITIONAL` follow-up only for large N/small K. Near-N, ties and no-match cases prevent a universal-selector claim. |
+| [#666](https://github.com/LimiNode/agent-memory-cpp/pull/666), admission/copy qualification | Actual MSVC source/checkout `df17946c`; compact receipt plus sidecar; three focused CTests, 18 cases/648 samples, 11 fail-closed controls per arm | `CONDITIONAL` crossover on this synthetic regime; `KEEP CURRENT` production default. |
 
 For E-means, v1 is `INVALID_FOR_COMPARISON`: unequal effective training inputs
 and moving-pass MSE labels invalidated the old timing ratio and quality
@@ -160,5 +161,12 @@ receipts. Their owning validators enforce the raw-result contracts. Its
 self-test retains the 14 previous rejection controls and adds six ledger
 counterexamples: `PRIMARY` promotion, missing receipt digest, malformed
 execution SHA, activation, non-project owner and CI/docs-only evidence.
-R5.2 admission/copy evidence will be appended only after its own executed
-Draft research PR exists; no result is inferred in advance.
+
+R5.2 measures only `retrieve()` in its primary timer: fixture-index search,
+deterministic reranker, per-query lookup-index construction, admission checks
+and response materialization are included; fixture/index/engine setup is not.
+The wider setup-plus-retrieve timer is separately recorded and not used for
+break-even. The first observed mean sorted/hash crossovers were `500/50`,
+`500/100`, and `100/100` candidates at metadata widths 2, 8, and 32. These are
+machine-dependent observations, not stable thresholds or production choices.
+The generated arms remain research-only, with unchanged production source.
