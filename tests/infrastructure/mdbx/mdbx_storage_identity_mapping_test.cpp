@@ -7,6 +7,8 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 #include <variant>
 
@@ -105,6 +107,16 @@ int main() {
                "snapshot import did not advance block sequence");
         expect(!reopened.find_document(document), "snapshot replacement left stale document");
 
+        // A destructive partial snapshot may remove rows, but it must not
+        // lower the numeric high-water mark and thereby recycle an old id.
+        reopened.load_records({
+            DocumentStorageIdentityRecord{DocumentStorageId{1}, DocumentId{"doc:partial"}, false}
+        });
+        expect(
+            reopened.ensure_document(DocumentId{"doc:after-partial"}).value() == 9U,
+            "partial snapshot recycled a previously allocated document id"
+        );
+
         reopened.load_records({
             DocumentStorageIdentityRecord{DocumentStorageId{1}, DocumentId{"doc:tie"}, false},
             BlockStorageIdentityRecord{
@@ -193,11 +205,58 @@ int main() {
         }
         expect(reverse_mismatch_rejected, "reverse mapping mismatch was accepted");
 
+        const auto bounded_path = test_path();
+        {
+            MdbxStorageIdentityMappingOptions bounded_options;
+            bounded_options.path = bounded_path.string();
+            bounded_options.table_prefix = "identity bounded";
+            bounded_options.max_records = 1U;
+            MdbxStorageIdentityMapping bounded(bounded_options);
+            static_cast<void>(bounded.ensure_document(DocumentId{"doc:bounded"}));
+            bool allocation_limit_rejected = false;
+            try {
+                static_cast<void>(bounded.ensure_document(DocumentId{"doc:overflow"}));
+            } catch(const std::length_error&) {
+                allocation_limit_rejected = true;
+            }
+            expect(allocation_limit_rejected, "allocation ignored max_records");
+        }
+
+        const auto transaction_path = test_path();
+        {
+            auto context = MdbxStorageContext::open(transaction_path.string());
+            MdbxStorageIdentityMappingOptions transaction_options;
+            transaction_options.table_prefix = "identity transaction";
+            transaction_options.context = context;
+            MdbxStorageIdentityMapping transaction_mapping(transaction_options);
+            mdbxc::KeyValueTable<std::string, std::string> probe(
+                context->connection(), "identity_transaction_probe");
+            auto transaction = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            const auto assigned = transaction_mapping.ensure_document_in_transaction(
+                DocumentId{"doc:transaction"}, transaction);
+            probe.insert_or_assign("marker", std::to_string(assigned.value()), transaction);
+            transaction.commit();
+            expect(assigned.value() == 1U, "transaction-scoped allocation changed id");
+            auto read = context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+            expect(probe.find("marker", read) == std::optional<std::string>{"1"},
+                   "mapping and caller write did not share one transaction");
+            read.commit();
+
+            auto rolled_back = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            static_cast<void>(transaction_mapping.ensure_document_in_transaction(
+                DocumentId{"doc:rolled-back"}, rolled_back));
+            rolled_back.rollback();
+            expect(transaction_mapping.ensure_document(DocumentId{"doc:rolled-back"}).value() == 2U,
+                   "transaction rollback did not discard mapping allocation");
+        }
+
         std::error_code error;
         std::filesystem::remove(path, error);
         std::filesystem::remove(markerless_path, error);
         std::filesystem::remove(missing_sequence_path, error);
         std::filesystem::remove(reverse_mismatch_path, error);
+        std::filesystem::remove(bounded_path, error);
+        std::filesystem::remove(transaction_path, error);
         std::cout << "mdbx storage identity mapping: PASS\n";
         return 0;
     } catch(const std::exception& exception) {

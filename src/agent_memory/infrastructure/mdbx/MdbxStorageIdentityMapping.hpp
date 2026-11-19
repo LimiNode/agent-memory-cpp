@@ -18,6 +18,10 @@
 
 #include "MdbxStorageContext.hpp"
 
+namespace mdbxc {
+class Transaction;
+}
+
 namespace agent_memory {
 
 /// \brief Configuration for the opt-in persistent identity dictionary.
@@ -49,6 +53,23 @@ public:
         const DocumentId& document_id,
         const ContentBlockId& block_id
     ) override;
+
+    /// Allocates or resolves a document mapping in a caller-owned writable
+    /// transaction.  The caller owns commit/rollback and may combine this
+    /// operation with canonical-content and index writes.
+    [[nodiscard]] DocumentStorageId ensure_document_in_transaction(
+        const DocumentId& document_id,
+        mdbxc::Transaction& transaction
+    );
+
+    /// Allocates or resolves a block mapping in a caller-owned writable
+    /// transaction.  The parent document must already be admitted in the same
+    /// transaction or in an earlier committed state.
+    [[nodiscard]] BlockStorageId ensure_block_in_transaction(
+        const DocumentId& document_id,
+        const ContentBlockId& block_id,
+        mdbxc::Transaction& transaction
+    );
     [[nodiscard]] std::optional<DocumentStorageId> find_document(
         const DocumentId& document_id
     ) const override;
@@ -62,6 +83,12 @@ public:
         const ContentBlockId& block_id
     ) override;
     [[nodiscard]] std::vector<StorageIdentityRecord> snapshot_records() const override;
+    /// Replaces the materialized mapping rows from a validated snapshot.
+    /// Numeric high-water marks are preserved from the existing state, so a
+    /// partial snapshot cannot recycle an old numeric identity.  The operation
+    /// is destructive for active/retired textual rows not present in the
+    /// snapshot; callers needing merge semantics must materialize a complete
+    /// snapshot before calling this method.
     void load_records(const std::vector<StorageIdentityRecord>& records) override;
 
     /// Resolves a physical document id from one consistent read snapshot.
