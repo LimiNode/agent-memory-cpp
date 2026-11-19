@@ -171,7 +171,11 @@ BlockStorageId MdbxStorageIdentityMapping::ensure_block(
         throw std::invalid_argument("block mapping requires an assigned document");
     }
     const auto document = decode_document_storage_identity_record(*document_payload);
-    if(document.document_id != document_id || document.retired) {
+    if(document.document_id != document_id) {
+        txn.rollback();
+        throw std::runtime_error("document identity key mismatch while admitting block");
+    }
+    if(document.retired) {
         txn.rollback();
         throw std::invalid_argument("block mapping requires an active document");
     }

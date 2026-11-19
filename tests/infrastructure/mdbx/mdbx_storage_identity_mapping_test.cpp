@@ -68,7 +68,7 @@ int main() {
             bool block_reuse_rejected = false;
             try {
                 static_cast<void>(mapping.ensure_block(document, block));
-            } catch(const std::runtime_error&) {
+            } catch(const std::invalid_argument&) {
                 block_reuse_rejected = true;
             }
             expect(block_reuse_rejected, "document retirement did not retire its blocks");
