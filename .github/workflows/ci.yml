@@ -268,6 +268,33 @@ jobs:
       - name: Self-test R3A corpus acquisition validator
         run: python tools/lexical-research/prepare_r3a_corpus.py --self-test
 
+      - name: Validate algorithm research sweep registry
+        run: |
+          python tools/agent-memory-bench/validate-algorithm-research-sweep.py --self-test
+          python tools/agent-memory-bench/validate-algorithm-research-sweep.py
+
+      - name: Reject corrupted algorithm research sweep registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          corrupted_registry="$(mktemp --suffix=.json)"
+          trap 'rm -f "$corrupted_registry"' EXIT
+          python - "$corrupted_registry" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          source = Path("guides/experiments/2026-11-18-algorithm-research-sweep-registry.json")
+          target = Path(sys.argv[1])
+          document = json.loads(source.read_text(encoding="utf-8"))
+          document["production_activation"] = True
+          target.write_text(json.dumps(document), encoding="utf-8")
+          PY
+          if python tools/agent-memory-bench/validate-algorithm-research-sweep.py "$corrupted_registry"; then
+            echo "corrupted registry was accepted" >&2
+            exit 1
+          fi
+
       - name: Validate source-bound release contract and receipt
         env:
           AGENT_MEMORY_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
