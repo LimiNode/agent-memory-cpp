@@ -18,5 +18,6 @@
 #include "storage/IDerivedPublicationStore.hpp"
 #include "storage/DerivedPublicationAdmission.hpp"
 #include "storage/IPromptAssemblyProfileStorage.hpp"
+#include "storage/StorageIdentityMapping.hpp"
 
 #endif
