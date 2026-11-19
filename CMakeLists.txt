@@ -114,6 +114,7 @@ add_library(agent_memory STATIC
     src/agent_memory/storage/IResourceIndexRecordOwnerStorage.cpp
     src/agent_memory/storage/IResourceManifestStorage.cpp
     src/agent_memory/storage/IPromptAssemblyProfileStorage.cpp
+    src/agent_memory/storage/StorageIdentityMapping.cpp
 )
 add_library(agent_memory::agent_memory ALIAS agent_memory)
 
