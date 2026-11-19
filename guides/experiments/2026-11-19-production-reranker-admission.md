@@ -78,6 +78,7 @@ record before valid candidates.
 ## Reproduction
 
 ```text
+python -m pip install -r tools/requirements-tools.txt
 cmake -S . -B build-reranker-r52 \
   -DCMAKE_BUILD_TYPE=Release \
   -DAGENT_MEMORY_BUILD_BENCHMARKS=ON \
@@ -103,3 +104,45 @@ a required matrix lane. Generic core-library Windows checks are not counted
 as execution evidence for this benchmark. Production defaults remain
 `KEEP CURRENT`; any candidate crossover is `CONDITIONAL` on the recorded
 synthetic candidate count/metadata regime, not authorization for activation.
+
+## Executed local decision experiment
+
+The clean-source run at `df17946cb6cbad36f0da25caa6823dc67d3f41d7`
+used actual MSVC 19.44.35228.0, Release/C++17, on Windows AMD64 and an
+Intel Xeon E5-2696 v3. Three focused CTest passed, followed by all 18 cases
+(648 retained query samples), source/generated-transform validation and the
+raw-receipt SHA-256 sidecar check. The compact
+[receipt](2026-11-19-r5-reranker-admission.receipt.json) and adjacent `.sha256`
+preserve this tested source; later documentation commits do not relabel it.
+Full raw data remain outside Git and in fresh per-platform CI artifacts.
+
+Primary `retrieve()` p50 in milliseconds, including per-query lookup
+construction and materialization but excluding fixture preparation:
+
+| Candidates | Extra metadata keys | Linear | Sorted | Hash |
+| ---: | ---: | ---: | ---: | ---: |
+| 10 | 2 | 0.0340 | 0.0393 | 0.0357 |
+| 100 | 2 | 0.5745 | 0.5828 | 0.5297 |
+| 500 | 2 | 4.0972 | 3.0347 | 2.6965 |
+| 2000 | 2 | 44.2335 | 13.7050 | 11.4774 |
+| 2000 | 32 | 102.9341 | 75.3033 | 71.9109 |
+
+First tested candidate count with mean time no greater than linear:
+
+| Extra metadata keys | Sorted | Hash |
+| ---: | ---: | ---: |
+| 2 | 500 | 50 |
+| 8 | 500 | 100 |
+| 32 | 100 | 100 |
+
+These are observed crossovers, not stable thresholds. For example, metadata
+copying reduces the relative benefit at 32 keys; shared-host load affects
+small differences. The fixture does not establish the production distribution
+of candidate counts or metadata widths. **CONDITIONAL** applies only to
+continuing indexed-gate qualification in the large-candidate regime;
+**KEEP CURRENT** applies to production defaults. No implementation is adopted.
+
+The allocation series counts ordinary C++ `new`/`new[]` requests inside the
+primary scope. It is not peak memory or RSS and does not cover direct C or
+over-aligned allocation APIs. No stable p99 or independent-request inference
+is made from twelve repeated synthetic samples.
