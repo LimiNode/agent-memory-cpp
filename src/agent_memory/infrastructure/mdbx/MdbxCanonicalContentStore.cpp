@@ -663,6 +663,8 @@ DecodedBody decode_body(std::string_view payload) {
     if (result.encoding_generation != RAW_ENCODING_GENERATION || result.codec != RAW_CODEC)
         throw std::runtime_error("invalid canonical physical encoding descriptor");
     const auto n = r.size();
+    if (n > kMaxNavigationBlocks)
+        throw std::runtime_error("canonical body block count exceeds navigation bound");
     result.blocks.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
         ContentBlock block;

@@ -58,6 +58,17 @@ void make_revision_block_count_oversized(std::string& payload) {
     payload.replace(count_start, position - count_start, "1048577:");
 }
 
+void make_body_block_count_oversized(std::string& payload) {
+    std::size_t position = 0U;
+    skip_length_field(payload, position); // body codec version
+    skip_length_field(payload, position); // body revision
+    skip_length_field(payload, position); // encoding generation
+    skip_length_field(payload, position); // codec name
+    const auto count_start = position;
+    read_length_field(payload, position);
+    payload.replace(count_start, position - count_start, "1048577:");
+}
+
 CanonicalDocumentRevision fixture() {
     return {
         DocumentId{"navigation-mdbx"},
@@ -102,6 +113,7 @@ bool same_children(const CanonicalChildrenResult& left,
        left.document_id != right.document_id ||
        left.document_revision != right.document_revision ||
        left.parent_id != right.parent_id ||
+       left.message != right.message ||
        left.entries.size() != right.entries.size()) {
         return false;
     }
@@ -124,6 +136,7 @@ bool same_subtree(const CanonicalSubtreeResult& left,
     if(left.status != right.status || left.truncated != right.truncated ||
        left.document_id != right.document_id ||
        left.document_revision != right.document_revision ||
+       left.message != right.message ||
        left.blocks.size() != right.blocks.size()) {
         return false;
     }
@@ -211,6 +224,14 @@ int main() {
                    store.read_subtree(initial.document_id, 0, text_budget_request)),
                "backend text-budget outcome diverged from the reference adapter");
 
+        const CanonicalSubtreeRequest missing_root_request{
+            ContentBlockId{"missing"}, 16U, 64U, true};
+        expect(same_subtree(
+                   reference_navigation.read_subtree(
+                       initial.document_id, 0, missing_root_request),
+                   store.read_subtree(initial.document_id, 0, missing_root_request)),
+               "backend missing-root outcome diverged from the reference adapter");
+
         const auto reference_missing = reference_navigation.read_children(
             DocumentId{"missing"}, 0, std::nullopt, 0);
         expect(same_children(reference_missing,
@@ -272,6 +293,31 @@ int main() {
             row_key("navigation-mdbx", 0), original_revision_payload, revision_transaction);
         revision_transaction.commit();
 
+        mdbxc::KeyValueTable<std::string, std::string> bodies(
+            context->connection(), "b4_custom_prefix_canonical_bodies");
+        auto body_transaction =
+            context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        auto body_payload = bodies.find(body_key("navigation-mdbx", 1), body_transaction);
+        expect(body_payload.has_value(), "initial body row was not found");
+        const auto original_body_payload = *body_payload;
+        make_body_block_count_oversized(*body_payload);
+        bodies.insert_or_assign(
+            body_key("navigation-mdbx", 1), *body_payload, body_transaction);
+        body_transaction.commit();
+        bool oversized_body_rejected = false;
+        try {
+            (void)store.read_revision(initial.document_id, 0);
+        } catch(const std::runtime_error&) {
+            oversized_body_rejected = true;
+        }
+        expect(oversized_body_rejected,
+               "full canonical body read accepted an oversized block count");
+        body_transaction =
+            context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        bodies.insert_or_assign(
+            body_key("navigation-mdbx", 1), original_body_payload, body_transaction);
+        body_transaction.commit();
+
         const auto metadata_only = store.read_subtree(
             initial.document_id, 0, {ContentBlockId{"first"}, 16U, 0U, false});
         expect(metadata_only.status == CanonicalNavigationStatus::Ok &&
@@ -307,8 +353,6 @@ int main() {
                    {ContentBlockId{"first"}, 4U, 64U, true}).blocks[0].text == "First v2",
                "new revision was not visible by exact pin");
 
-        mdbxc::KeyValueTable<std::string, std::string> bodies(
-            context->connection(), "b4_custom_prefix_canonical_bodies");
         auto transaction = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
         auto payload = bodies.find(body_key("navigation-mdbx", 2), transaction);
         expect(payload.has_value() && !payload->empty(), "body row was not found");
