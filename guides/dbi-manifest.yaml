@@ -249,6 +249,100 @@ canonical:
     migration_peak: 1
 
 profile_deltas:
+  # Experimental numeric-storage profiles.  These DBIs are not opened by the
+  # legacy store and are admitted only as an explicit, exclusive profile.
+  # Physical names are `<sanitized table_prefix>_<name>`; the default prefix
+  # used by both pilots is `agent_memory`.
+  - name: numeric_knowledge_unit_key_pilot
+    dbis: 3
+    migration_peak: 3
+    default: false
+    activation: optional_exclusive_profile
+    schema_version: knowledge_unit_numeric_key.v1
+    comparator_policy: integer_keys_for_primary_and_ledger_bytewise_metadata
+    dbi_budget: 3
+    note: Numeric KnowledgeUnitId pilot (#657). Payload bytes remain opaque; the legacy store and its textual DBIs are untouched. A post-numeric migration gate is required before activation.
+    dbi_entries:
+      - name: knowledge_units_numeric_v1
+        owner: numeric_knowledge_unit_pilot
+        table_type: KeyValueTable
+        opens: numeric_knowledge_unit_key_pilot
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [KnowledgeUnitId]
+        comparator: MDBX_INTEGERKEY
+        flags: [MDBX_INTEGERKEY]
+        schema_version: knowledge_unit_numeric_key.v1
+      - name: knowledge_units_numeric_v1_used
+        owner: numeric_knowledge_unit_pilot
+        table_type: KeyValueTable
+        opens: numeric_knowledge_unit_key_pilot
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [KnowledgeUnitId]
+        comparator: MDBX_INTEGERKEY
+        flags: [MDBX_INTEGERKEY]
+        schema_version: knowledge_unit_numeric_key.v1
+      - name: knowledge_units_numeric_v1_meta
+        owner: numeric_knowledge_unit_pilot
+        table_type: KeyValueTable
+        opens: numeric_knowledge_unit_key_pilot
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [SchemaKey]
+        comparator: MDBX_BYTEWISE
+        flags: []
+        schema_version: knowledge_unit_numeric_key.v1
+  - name: storage_identity_mapping_pilot
+    dbis: 4
+    migration_peak: 4
+    default: false
+    activation: optional_exclusive_profile
+    schema_version: storage_identity_mapping.v1
+    comparator_policy: bytewise_logical_keys_and_native_numeric_reverse_keys
+    dbi_budget: 4
+    note: Transactional document/block identity dictionary pilot (#658). Forward records use bytewise logical keys; reverse tables use native integer keys. No production adapter is wired to this profile.
+    dbi_entries:
+      - name: identity_records_v1
+        owner: storage_identity_mapping_pilot
+        table_type: KeyValueTable
+        opens: storage_identity_mapping
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [DocumentId, ContentBlockId]
+        comparator: MDBX_BYTEWISE
+        flags: []
+        schema_version: storage_identity_mapping.v1
+      - name: identity_documents_v1
+        owner: storage_identity_mapping_pilot
+        table_type: KeyValueTable
+        opens: storage_identity_mapping
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [DocumentStorageId]
+        comparator: MDBX_INTEGERKEY
+        flags: [MDBX_INTEGERKEY]
+        schema_version: storage_identity_mapping.v1
+      - name: identity_blocks_v1
+        owner: storage_identity_mapping_pilot
+        table_type: KeyValueTable
+        opens: storage_identity_mapping
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [BlockStorageId]
+        comparator: MDBX_INTEGERKEY
+        flags: [MDBX_INTEGERKEY]
+        schema_version: storage_identity_mapping.v1
+      - name: identity_meta_v1
+        owner: storage_identity_mapping_pilot
+        table_type: KeyValueTable
+        opens: storage_identity_mapping
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [SchemaKey, SequenceKey]
+        comparator: MDBX_BYTEWISE
+        flags: []
+        schema_version: storage_identity_mapping.v1
   - name: exact_index_generations
     dbis: 1
     migration_peak: 1
@@ -791,6 +885,9 @@ profile_deltas:
     schema_status: capacity_reserve_only
 
 expanded_peak_reference:
+  # Optional numeric pilots are not part of this default reference.  Enabling
+  # both consumes an additional seven DBI slots (3 + 4) and must be checked
+  # against max_dbs_default and minimum_free_slots before activation.
   canonical_full_inventory: 30
   legacy_document_resource_adapter: 6
   shared_runtime_queue: 5

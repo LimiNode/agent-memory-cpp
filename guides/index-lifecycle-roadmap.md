@@ -123,12 +123,23 @@ that directory for a diagnostic run; failure paths retain it automatically.
 checkouts, installed dependency packages and a fresh artifact destination. It
 builds those packages itself, then runs OLD create, NEW upgrade, NEW interrupted
 build, NEW reopen, NEW uncommitted-pointer crash, NEW reopen, OLD verify as
-separate processes. OLD is pinned to the post-Raw-Markdown baseline
-`52004324bc0d2b07c3657245195db349dd391774`. The receipt records both commits,
-source/dependency trees, options/toolchains, executable and fixture digests,
-canonical logical snapshot and process exit codes. Synthetic SHA-derived
-reference vectors qualify lifecycle, not embedding quality. The packaging
-workflow retains the receipt, log and canonical snapshot as an artifact.
+separate processes. The packaging workflow invokes it explicitly with
+`--allow-pre-numeric-baseline`; that receipt is `HISTORICAL_ONLY` and carries
+`post_migration_upgrade_proof=false`. It is retained for reproducibility, but
+does not qualify a numeric MDBX layout.
+
+Before any numeric physical layout is activated, run the same tool with
+`--post-numeric-upgrade`, an explicit numeric OLD revision, and a fresh-process
+OLD/NEW pair. Both revisions must advertise `knowledge_units_numeric_v1` in
+`guides/dbi-manifest.yaml`. The post-numeric receipt must record logical
+decoded-row equality (counts, revisions, scopes, digests, no-reuse and derived
+index consistency), exact source/dependency/schema hashes, and the separate
+reopen/crash process observations. A successful historical replay must never be
+relabelled as this gate.
+
+Synthetic SHA-derived reference vectors qualify lifecycle, not embedding
+quality. The packaging workflow retains the selected receipt, log and
+canonical snapshot as an artifact.
 
 Authorization callbacks run inside the query's read transaction and must not
 reenter this context or perform canonical writes. The store and test hook are
