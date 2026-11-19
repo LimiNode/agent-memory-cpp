@@ -79,9 +79,21 @@ speed number.
 
 ## Follow-up evidence
 
-[PR #664](https://github.com/LimiNode/agent-memory-cpp/pull/664) (tested at
-`21095e4b5e54d8e04018e5e072f69117379107af`) supplies a separate Faiss 1.16.0
-CPU `NumpyEmeans` versus Lloyd synthetic smoke. The run is receipt-bound and
-executed, but remains `DEFER` with `production_activation: false`; it does not
-close the matched-corpus, portable-serving, or O-means gates above. This note
-retains its historical feasibility scope and does not rewrite earlier receipts.
+[PR #664](https://github.com/LimiNode/agent-memory-cpp/pull/664) now supplies a
+[corrected v2 Faiss 1.16.0 CPU `NumpyEmeans` versus Lloyd synthetic smoke](https://github.com/LimiNode/agent-memory-cpp/blob/6272e7b230f7dbbc5d2b235614b9d5badb95ea7e/guides/experiments/2026-11-19-emeans-vs-lloyd.md),
+with code/source HEAD `6272e7b230f7dbbc5d2b235614b9d5badb95ea7e`.
+Its original v1 comparison at `21095e4b5e54d8e04018e5e072f69117379107af` is
+`INVALID_FOR_COMPARISON`: unequal effective training rows and moving-pass
+E-means labels invalidated the timing ratio and quality comparison. Those
+conclusions are withdrawn without changing historical raw output or receipts.
+
+The v2 compact receipt is published separately in #664 at
+`guides/experiments/2026-11-19-r5-emeans-vs-lloyd-v2.receipt.json`; use its
+execution SHA and raw digest as evidence, not the documentation SHA above.
+Full raw output remains external and in per-head CI artifacts. The corrected
+control checks full training input, measured assignment work, independent final
+MSE, split disjointness and native IVF scan counters; its capped-scan proxy is
+not native serving latency. It remains `DEFER` with
+`production_activation: false` and does not close the representative-corpus,
+portable-serving or O-means gates above. This note retains its feasibility
+scope and does not rewrite earlier receipts.
