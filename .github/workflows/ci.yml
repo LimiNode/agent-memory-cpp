@@ -774,7 +774,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            compiler: GNU
+            system: Linux
+          - os: windows-latest
+            compiler: MSVC
+            system: Windows
     defaults:
       run:
         shell: bash
@@ -829,6 +835,8 @@ jobs:
             --receipt build-production-reranker/production-reranker-admission.json \
             --sidecar build-production-reranker/production-reranker-admission.sha256.json \
             --expected-head "$EXPECTED_HEAD" \
+            --expected-compiler "${{ matrix.compiler }}" \
+            --expected-system "${{ matrix.system }}" \
             --actual-checkout-sha "$actual_checkout_sha" --write-sidecar
 
       - name: Upload production-shaped reranker receipt

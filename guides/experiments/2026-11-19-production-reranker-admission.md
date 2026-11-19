@@ -34,7 +34,10 @@ their parity and fail-closed controls are mandatory, not inferred from such a
 gate. This is an experimental replacement inside generated sources only.
 
 The primary timer and allocation counters surround only `engine.retrieve()`.
-Fixture/index/engine construction and diagnostic query copying are excluded.
+Fixture/index/engine construction and the diagnostic return-value copy are
+excluded. The fixture index's `last_query = query` observation happens inside
+`search()` and is included equally in all arms; it is instrumentation overhead,
+not a production index cost.
 The same fixture is prepared immediately before each call, so these are warm
 synthetic queries, not independent cold requests. A separately named
 `setup_and_retrieve_timing` retains the original wider scope; its time must be
@@ -98,6 +101,11 @@ mean-based crossover per metadata width. It validates the receipt and its SHA-25
 the exact PR HEAD and uploads the artifact. `QUALIFICATION_ONLY` is the only
 supported interpretation of this experiment until a separately reviewed
 production design exists.
+
+The validator requires the compiler/version, C++17, Release configuration,
+platform, processor and pointer width. Each CI arm additionally supplies its
+expected compiler and platform; missing/fake environment and cross-platform
+mislabeling are negative controls, not accepted provenance.
 
 Both Ubuntu/GNU and Windows/MSVC compile and execute the actual new target in
 a required matrix lane. Generic core-library Windows checks are not counted
