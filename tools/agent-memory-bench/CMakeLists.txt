@@ -107,6 +107,30 @@ target_link_libraries(agent-memory-reranker-admission-scaling
         agent_memory::json
 )
 
+add_executable(agent-memory-exact-selection-benchmark
+    exact_selection_benchmark.cpp
+)
+
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+    RESULT_VARIABLE agent_memory_exact_selection_git_result
+    OUTPUT_VARIABLE agent_memory_exact_selection_source_commit
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(LENGTH "${agent_memory_exact_selection_source_commit}" agent_memory_exact_selection_source_length)
+if(NOT agent_memory_exact_selection_git_result EQUAL 0
+   OR NOT agent_memory_exact_selection_source_length EQUAL 40
+   OR NOT "${agent_memory_exact_selection_source_commit}" MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR "Exact selection benchmark requires a pinned source Git SHA")
+endif()
+target_compile_definitions(agent-memory-exact-selection-benchmark
+    PRIVATE
+        AGENT_MEMORY_EXACT_SELECTION_SOURCE_COMMIT="${agent_memory_exact_selection_source_commit}"
+)
+target_link_libraries(agent-memory-exact-selection-benchmark
+    PRIVATE
+        agent_memory::json
+)
 function(agent_memory_set_evaluator_source_manifest target)
     set(manifest_text "")
     foreach(source_file IN LISTS ARGN)
@@ -176,6 +200,8 @@ function(agent_memory_set_evaluator_build_environment target)
         AGENT_MEMORY_EVALUATOR_ACTIVE_CONFIGURATION_FLAGS_SHA256="${active_configuration_flags_definition}"
     )
 endfunction()
+
+agent_memory_set_evaluator_build_environment(agent-memory-exact-selection-benchmark)
 
 agent_memory_set_evaluator_source_manifest(agent-memory-autoencoder-eval
     "${CMAKE_CURRENT_SOURCE_DIR}/autoencoder_evaluation.cpp"
