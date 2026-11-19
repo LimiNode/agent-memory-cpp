@@ -1438,10 +1438,21 @@ jobs:
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build full research CTest
-        run: cmake --build build-research-full --config Release
+        run: cmake --build build-research-full --config Release --parallel 2
 
       - name: Run full research CTest
-        run: ctest --test-dir build-research-full --build-config Release --output-on-failure
+        run: ctest --test-dir build-research-full --build-config Release --output-on-failure --output-junit r5-integration-junit.xml
+
+      - name: Preserve combined CTest logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r5-combined-ctest-logs
+          path: |
+            build-research-full/Testing/Temporary/LastTest.log
+            build-research-full/r5-integration-junit.xml
+            build-research-full/CMakeCache.txt
+          if-no-files-found: error
 
   exact-lexical-topk-decision:
     if: needs.changes.outputs.research == 'true'
@@ -1764,3 +1775,36 @@ jobs:
           check_required "$RESEARCH_REQUIRED" "$R5_EMEANS_RESULT" "R5 E-means CPU"
 
           exit "$failed"
+
+  r5-integration-evidence:
+    name: R5 combined integration evidence
+    if: always() && startsWith(github.ref, 'refs/heads/preflight/r5-closure')
+    needs: [ci-gate, research-full]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r tools/requirements-tools.txt
+      - uses: actions/download-artifact@v4
+        with:
+          path: .build/r5-integration-downloads
+      - name: Audit and bind the actual combined run
+        env:
+          R5_CI_GATE_RESULT: ${{ needs.ci-gate.result }}
+          R5_FULL_RESULT: ${{ needs.research-full.result }}
+        run: |
+          python tools/agent-memory-bench/collect-r5-integration-evidence.py --self-test
+          python tools/agent-memory-bench/collect-r5-integration-evidence.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r5-combined-integration-${{ github.sha }}
+          include-hidden-files: true
+          path: |
+            .build/r5-integration-evidence/
+            .build/r5-integration-downloads/
+          if-no-files-found: error
