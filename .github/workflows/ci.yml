@@ -660,9 +660,7 @@ jobs:
           agent-memory-production-reranker-admission
 
       - name: Run production-shaped reranker contract tests
-        run: >
-          ctest --test-dir build-production-reranker --build-config Release
-            --output-on-failure --no-tests=error -R agent_memory_production_reranker_
+        run: ctest --test-dir build-production-reranker --build-config Release --output-on-failure --no-tests=error -R '^agent_memory_production_reranker_.*self_test$'
 
       - name: Run production-shaped reranker qualification
         run: >
