@@ -38,7 +38,11 @@ and the centroid byte representation are SHA-256 bound in the receipt. The
 minimum training-vectors-per-centroid guard is explicit and a failed guard is
 `NOT_EXECUTED`, not a partial quality claim. Held-out nearest-centroid work is
 performed in bounded query/centroid blocks; no `Q x K x D` distance tensor is
-materialised. The CI self-test also runs a small pinned `faiss-cpu` positive
+materialised. For a block size `B`, query count `Q`, centroid count `K`, and
+dimension `D`, the largest logical temporary tile is
+`min(Q,B) x min(K,B) x D`; the receipt records its element and byte bounds.
+The byte figures are float64 tensor estimates and exclude allocator overhead
+and result vectors. The CI self-test also runs a small pinned `faiss-cpu` positive
 control: full-probe `IndexIVFFlat` results must match `IndexFlatL2`, while a
 mutated quantizer centroid must be rejected by the digest gate.
 

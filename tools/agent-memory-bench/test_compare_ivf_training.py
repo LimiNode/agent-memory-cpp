@@ -47,12 +47,26 @@ def test_bounded_selection_and_ties():
     distances, ids = module.nearest_centroids_bounded(vectors, centroids, 1)
     assert ids.tolist() == [0, 1, 0], "equal-distance tie must choose the lowest centroid id"
     assert distances.tolist() == [0.0, 0.0, 1.0]
+    wide_distances, wide_ids = module.nearest_centroids_bounded(vectors, centroids, 64)
+    assert wide_ids.tolist() == ids.tolist()
+    assert wide_distances.tolist() == distances.tolist()
+    bound = module.distance_workspace_bound(3, 2, 2, 1)
+    assert bound["query_tile"] == 1
+    assert bound["centroid_tile"] == 1
+    assert bound["distance_tensor_elements"] == 2
+    assert bound["estimated_peak_intermediate_bytes"] == 48
     try:
         module.nearest_centroids_bounded(vectors, centroids, 0)
     except ValueError:
         pass
     else:
         raise AssertionError("non-positive block size must fail closed")
+    try:
+        module.nearest_centroids_bounded(np.empty((0, 2), dtype="float32"), centroids, 1)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("empty query tile must fail closed")
 
 
 def test_faiss_pretrained_ivf_positive_and_mutation_control():
@@ -107,6 +121,16 @@ def test_faiss_pretrained_ivf_positive_and_mutation_control():
     assert receipt["status"] == "MEASURED"
     assert receipt["centroid_digest"] == receipt["installed_centroid_digest"]
     assert receipt["query_count"] == len(queries)
+    assert receipt["distance_workspace_bound"]["query_tile"] == 2
+    assert receipt["distance_workspace_bound"]["centroid_tile"] == 2
+
+    for field, value in (("nlist", 0), ("nprobe", 0), ("distance_block_size", 0)):
+        invalid = vars(args).copy()
+        invalid[field] = value
+        invalid_receipt = module.run_lloyd(
+            train, queries, SimpleNamespace(**invalid), "train-sha", "query-sha"
+        )
+        assert invalid_receipt["status"] == "NOT_EXECUTED", field
 
 
 if __name__ == "__main__":

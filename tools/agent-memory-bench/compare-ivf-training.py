@@ -68,6 +68,36 @@ def centroid_digest(centroids: Any) -> str:
     return hashlib.sha256(canonical.tobytes(order="C")).hexdigest()
 
 
+def distance_workspace_bound(
+    query_count: int, centroid_count: int, dimension: int, block_size: int
+) -> dict[str, int]:
+    """Describe the bounded temporary distance tile.
+
+    The implementation evaluates one ``query_tile x centroid_tile x
+    dimension`` block at a time.  The byte counts are an explicit upper bound
+    for the float64 distance tensor and its two arithmetic temporaries; they
+    exclude NumPy allocator overhead and the result vectors.
+    """
+
+    if query_count <= 0 or centroid_count <= 0 or dimension <= 0:
+        raise ValueError("query, centroid, and dimension counts must be positive")
+    if block_size <= 0:
+        raise ValueError("distance block size must be positive")
+    query_tile = min(query_count, block_size)
+    centroid_tile = min(centroid_count, block_size)
+    tensor_elements = query_tile * centroid_tile * dimension
+    tensor_bytes = tensor_elements * 8
+    return {
+        "query_tile": query_tile,
+        "centroid_tile": centroid_tile,
+        "dimension": dimension,
+        "distance_tensor_elements": tensor_elements,
+        "distance_tensor_bytes": tensor_bytes,
+        "estimated_arithmetic_tensor_bytes": tensor_bytes * 2,
+        "estimated_peak_intermediate_bytes": tensor_bytes * 3,
+    }
+
+
 def not_executed(reason: str, args: argparse.Namespace) -> dict[str, Any]:
     return {
         "schema": "ivf-training-comparison-v2",
@@ -114,10 +144,11 @@ def nearest_centroids_bounded(vectors, centroids, block_size: int):
 
     import numpy as np
 
-    if block_size <= 0:
-        raise ValueError("distance block size must be positive")
     if vectors.ndim != 2 or centroids.ndim != 2 or vectors.shape[1] != centroids.shape[1]:
         raise ValueError("vectors and centroids must be two-dimensional with equal dimension")
+    distance_workspace_bound(
+        vectors.shape[0], centroids.shape[0], vectors.shape[1], block_size
+    )
 
     best_distances = np.full(vectors.shape[0], np.inf, dtype="float64")
     best_ids = np.full(vectors.shape[0], centroids.shape[0], dtype="int64")
@@ -146,6 +177,13 @@ def nearest_centroids_bounded(vectors, centroids, block_size: int):
 
 def build_pretrained_index(faiss, train, centroids):
     """Build an IVF index from supplied centroids without retraining it."""
+
+    if train.ndim != 2 or centroids.ndim != 2:
+        raise ValueError("train and centroids must be two-dimensional")
+    if train.shape[0] == 0 or centroids.shape[0] == 0 or train.shape[1] == 0:
+        raise ValueError("train and centroids must be non-empty")
+    if train.shape[1] != centroids.shape[1]:
+        raise ValueError("train and centroids must have equal dimension")
 
     quantizer = faiss.IndexFlatL2(train.shape[1])
     quantizer.add(centroids)
@@ -197,6 +235,8 @@ def run_lloyd(
         return {"status": "NOT_EXECUTED", "reason": "nlist must be in [1, training_rows]"}
     if args.nprobe <= 0 or args.top_k <= 0:
         return {"status": "NOT_EXECUTED", "reason": "nprobe and top_k must be positive"}
+    if args.distance_block_size <= 0:
+        return {"status": "NOT_EXECUTED", "reason": "distance block size must be positive"}
     if args.min_training_vectors_per_centroid <= 0:
         return {
             "status": "NOT_EXECUTED",
@@ -218,6 +258,9 @@ def run_lloyd(
     centroids = np.asarray(kmeans.centroids, dtype="float32").reshape(args.nlist, train.shape[1])
     trained_digest = centroid_digest(centroids)
     _, assignments = nearest_centroids_bounded(train, centroids, args.distance_block_size)
+    workspace = distance_workspace_bound(
+        train.shape[0], centroids.shape[0], train.shape[1], args.distance_block_size
+    )
     counts = np.bincount(assignments, minlength=args.nlist)
     if int(counts.min()) < args.min_training_vectors_per_centroid:
         return {
@@ -270,6 +313,7 @@ def run_lloyd(
         "train_input_digest": train_digest,
         "query_input_digest": query_digest,
         "distance_block_size": int(args.distance_block_size),
+        "distance_workspace_bound": workspace,
         "mutation_controls": {
             "second_index_train": "forbidden_by_construction",
             "centroid_digest_mismatch": "fail_closed",
