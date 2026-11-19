@@ -1,0 +1,370 @@
+#!/usr/bin/env python3
+"""Validate the production-shaped reranker admission receipt and sidecar."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import copy
+import itertools
+import runpy
+from pathlib import Path
+from typing import Any
+
+
+EXPECTED_VARIANTS = {
+    "linear_scan",
+    "sorted_identity_index",
+    "hash_identity_index",
+}
+EXPECTED_COUNTS = [10, 50, 100, 500, 1000, 2000]
+EXPECTED_CONTROLS = {
+    "foreign_chunk",
+    "foreign_resource",
+    "mismatched_section",
+    "protected_metadata_mutation",
+    "duplicate_id",
+    "non_finite_score",
+    "positive_infinity",
+    "negative_infinity",
+    "untrusted_tier",
+    "untrusted_enrichment",
+    "oversized_output",
+}
+SOURCE_PATHS = [
+    "tools/agent-memory-bench/production_reranker_admission.cpp",
+    "tools/agent-memory-bench/generate-production-reranker-variants.py",
+    "tools/agent-memory-bench/validate-production-reranker-admission.py",
+    "src/agent_memory/retrieval/HybridRetrievalEngine.cpp",
+    "src/agent_memory/retrieval/HybridRetrievalEngine.hpp",
+    "src/agent_memory/lexical/IReranker.hpp",
+    "src/agent_memory/lexical/ILexicalIndex.hpp",
+]
+FIXTURE_DESCRIPTION = (
+    "candidate_counts=10,50,100,500,1000,2000;metadata_widths=2,8,32;"
+    "warmups=2;repeats=12;orders=all-six-permutations;"
+    "variants=linear_scan,sorted_identity_index,hash_identity_index"
+)
+
+
+def source_manifest_digest(root: Path) -> str:
+    manifest = "".join(f"{path}:{_digest(root / path)}\n" for path in SOURCE_PATHS)
+    return hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+
+
+def _is_sha(value: Any, length: int) -> bool:
+    return isinstance(value, str) and len(value) == length and all(
+        character in "0123456789abcdef" for character in value
+    )
+
+
+def _digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _finite_samples(timing: Any) -> bool:
+    if not isinstance(timing, dict):
+        return False
+    samples = timing.get("samples_ms")
+    if not isinstance(samples, list) or not samples:
+        return False
+    if timing.get("sample_count") != len(samples) or len(samples) != 12:
+        return False
+    if not all(type(value) in (int, float) and math.isfinite(value) and value > 0 for value in samples):
+        return False
+    ordered = sorted(samples)
+    summaries = {
+        "mean_ms": sum(samples) / len(samples),
+        "p50_ms": ordered[int(0.5 * (len(samples) - 1))],
+        "p95_ms": ordered[int(0.95 * (len(samples) - 1))],
+        "min_ms": min(samples),
+        "max_ms": max(samples),
+    }
+    return all(
+        type(timing.get(key)) in (int, float)
+        and math.isclose(timing[key], value, rel_tol=1e-9, abs_tol=1e-12)
+        for key, value in summaries.items()
+    )
+
+
+def validate_receipt(receipt: Any, *, expected_head: str, actual_checkout_sha: str) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(receipt, dict):
+        return ["receipt must be a JSON object"]
+    if receipt.get("schema_version") != 1:
+        errors.append("schema_version must be 1")
+    if receipt.get("benchmark_name") != "production_reranker_admission":
+        errors.append("benchmark_name is not production_reranker_admission")
+    if not _is_sha(receipt.get("source_commit"), 40):
+        errors.append("source_commit must be a lowercase 40-character SHA")
+    elif receipt["source_commit"] != actual_checkout_sha:
+        errors.append("source_commit does not match actual compiled checkout SHA")
+    if not _is_sha(receipt.get("expected_pr_head_sha"), 40):
+        errors.append("expected_pr_head_sha must be a lowercase 40-character SHA")
+    elif receipt["expected_pr_head_sha"] != expected_head:
+        errors.append("expected_pr_head_sha does not match the requested PR HEAD")
+    for field in ("source_manifest_sha256", "fixture_sha256"):
+        if not _is_sha(receipt.get(field), 64):
+            errors.append(f"{field} must be a lowercase 64-character SHA-256")
+    if receipt.get("production_contract") != (
+        "HybridRetrievalEngine::retrieve() admission implementation merged by PR #625"
+    ):
+        errors.append("production_contract is not the declared PR #625 contract")
+    if receipt.get("candidate_counts") != EXPECTED_COUNTS:
+        errors.append("candidate_counts must cover 10, 50, 100, 500, 1000, and 2000")
+    if receipt.get("warmups") != 2 or receipt.get("repeats") != 12:
+        errors.append("warmups/repeats do not match the frozen fixture")
+    if set(receipt.get("variants", [])) != EXPECTED_VARIANTS:
+        errors.append("variants must contain linear, sorted, and hash controls exactly")
+    if set(receipt.get("fail_closed_controls", [])) != EXPECTED_CONTROLS:
+        errors.append("fail_closed_controls do not cover the required negative matrix")
+
+    cases = receipt.get("cases")
+    if not isinstance(cases, list) or len(cases) != len(EXPECTED_COUNTS) * 3:
+        errors.append("cases must contain one entry for every frozen candidate count")
+        return errors
+    for index, case in enumerate(cases):
+        prefix = f"cases[{index}]"
+        if not isinstance(case, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        if case.get("candidate_count") != EXPECTED_COUNTS[index % len(EXPECTED_COUNTS)]:
+            errors.append(f"{prefix}.candidate_count is out of order")
+        if case.get("metadata_width") != [2, 8, 32][index // len(EXPECTED_COUNTS)]:
+            errors.append(f"{prefix}.metadata_width is not frozen")
+        if "HybridRetrievalEngine::retrieve()" not in str(case.get("timing_scope", "")):
+            errors.append(f"{prefix}.timing_scope is not end-to-end")
+        variants = case.get("variants")
+        if not isinstance(variants, list) or len(variants) != 3 or {item.get("algorithm") for item in variants if isinstance(item, dict)} != EXPECTED_VARIANTS:
+            errors.append(f"{prefix}.variants are incomplete")
+            continue
+        orders = case.get("execution_orders")
+        if not isinstance(orders, list) or sorted(tuple(order) for order in orders) != sorted(list(itertools.permutations(range(3))) * 2):
+            errors.append(f"{prefix}.execution_orders must balance all six permutations")
+        for variant in variants:
+            name = variant.get("algorithm", "unknown")
+            variant_prefix = f"{prefix}.{name}"
+            if not _finite_samples(variant.get("timing")):
+                errors.append(f"{variant_prefix}.timing has invalid raw samples")
+            if not _finite_samples(variant.get("setup_and_retrieve_timing")):
+                errors.append(f"{variant_prefix}.setup_and_retrieve_timing has invalid samples")
+            elif _finite_samples(variant.get("timing")) and any(
+                total < query for total, query in zip(
+                    variant["setup_and_retrieve_timing"]["samples_ms"], variant["timing"]["samples_ms"]
+                )
+            ):
+                errors.append(f"{variant_prefix}.nested timing scopes contradict")
+            for allocation_field in ("allocation_counts", "allocated_bytes"):
+                values = variant.get(allocation_field)
+                if not isinstance(values, list) or len(values) != 12 or not all(type(value) is int and value >= 0 for value in values):
+                    errors.append(f"{variant_prefix}.{allocation_field} is not a complete raw allocation series")
+            for field in (
+                "full_retrieve_path",
+                "index_construction_included",
+                "correctness_parity",
+                "materialization_checked",
+                "fail_closed_controls_checked",
+                "fixture_engine_setup_excluded",
+            ):
+                if variant.get(field) is not True:
+                    errors.append(f"{variant_prefix}.{field} must be true")
+    break_even = receipt.get("break_even")
+    if not isinstance(break_even, dict) or "definition" not in break_even or "scope" not in break_even:
+        errors.append("break_even must state its definition and bounded scope")
+    else:
+        if errors:
+            return errors
+        expected_crossovers = []
+        for width in (2, 8, 32):
+            crossing = {"metadata_width": width, "sorted_first_tested_count": None, "hash_first_tested_count": None}
+            for case in cases:
+                if case.get("metadata_width") != width:
+                    continue
+                means = {arm["algorithm"]: sum(arm["timing"]["samples_ms"]) / 12 for arm in case["variants"]}
+                if any(not math.isclose(case.get("mean_ms_by_variant", {}).get(name, -1), mean, rel_tol=1e-9) for name, mean in means.items()):
+                    errors.append("mean_ms_by_variant must match raw samples")
+                for field, variant in (("sorted_first_tested_count", "sorted_identity_index"), ("hash_first_tested_count", "hash_identity_index")):
+                    if crossing[field] is None and means[variant] <= means["linear_scan"]:
+                        crossing[field] = case["candidate_count"]
+            expected_crossovers.append(crossing)
+        if break_even.get("by_metadata_width") != expected_crossovers:
+            errors.append("break_even does not match observed mean crossovers")
+    return errors
+
+
+def validate_sidecar(
+    sidecar: Any,
+    receipt_bytes: bytes,
+    *,
+    expected_head: str,
+    actual_checkout_sha: str,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(sidecar, dict):
+        return ["sidecar must be a JSON object"]
+    if sidecar.get("receipt_sha256") != hashlib.sha256(receipt_bytes).hexdigest():
+        errors.append("sidecar receipt_sha256 does not match receipt bytes")
+    if sidecar.get("expected_pr_head_sha") != expected_head:
+        errors.append("sidecar expected_pr_head_sha mismatch")
+    if sidecar.get("source_commit") != actual_checkout_sha:
+        errors.append("sidecar source_commit mismatch")
+    return errors
+
+
+def self_test() -> None:
+    expected = "a" * 40
+    valid = {
+        "schema_version": 1,
+        "benchmark_name": "production_reranker_admission",
+        "source_commit": expected,
+        "expected_pr_head_sha": expected,
+        "source_manifest_sha256": "b" * 64,
+        "fixture_sha256": "c" * 64,
+        "production_contract": "HybridRetrievalEngine::retrieve() admission implementation merged by PR #625",
+        "candidate_counts": EXPECTED_COUNTS,
+        "warmups": 2,
+        "repeats": 12,
+        "variants": sorted(EXPECTED_VARIANTS),
+        "fail_closed_controls": sorted(EXPECTED_CONTROLS),
+        "break_even": {"definition": "bounded", "scope": "fixture", "by_metadata_width": [
+            {"metadata_width": width, "sorted_first_tested_count": 10, "hash_first_tested_count": 10}
+            for width in (2, 8, 32)
+        ]},
+        "cases": [],
+    }
+    for width, count in itertools.product((2, 8, 32), EXPECTED_COUNTS):
+        valid["cases"].append({
+            "candidate_count": count,
+            "metadata_width": width,
+            "timing_scope": "HybridRetrievalEngine::retrieve() end-to-end",
+            "execution_orders": list(itertools.permutations(range(3))) * 2,
+            "mean_ms_by_variant": {name: 1.0 for name in EXPECTED_VARIANTS},
+            "variants": [
+                {
+                    "algorithm": name,
+                    "timing": {"samples_ms": [1.0] * 12, "sample_count": 12, "mean_ms": 1.0, "p50_ms": 1.0, "p95_ms": 1.0, "min_ms": 1.0, "max_ms": 1.0},
+                    "setup_and_retrieve_timing": {"samples_ms": [2.0] * 12, "sample_count": 12, "mean_ms": 2.0, "p50_ms": 2.0, "p95_ms": 2.0, "min_ms": 2.0, "max_ms": 2.0},
+                    "fixture_engine_setup_excluded": True,
+                    "allocation_counts": [1] * 12,
+                    "allocated_bytes": [1] * 12,
+                    "full_retrieve_path": True,
+                    "index_construction_included": True,
+                    "correctness_parity": True,
+                    "materialization_checked": True,
+                    "fail_closed_controls_checked": True,
+                }
+                for name in sorted(EXPECTED_VARIANTS)
+            ],
+        })
+    assert not validate_receipt(valid, expected_head=expected, actual_checkout_sha=expected)
+    invalid = json.loads(json.dumps(valid))
+    invalid["cases"][0]["variants"][0]["full_retrieve_path"] = False
+    assert validate_receipt(invalid, expected_head=expected, actual_checkout_sha=expected)
+    for field in ("correctness_parity", "index_construction_included", "materialization_checked", "fail_closed_controls_checked", "fixture_engine_setup_excluded"):
+        invalid = copy.deepcopy(valid)
+        invalid["cases"][0]["variants"][0][field] = False
+        assert validate_receipt(invalid, expected_head=expected, actual_checkout_sha=expected)
+    invalid = copy.deepcopy(valid)
+    invalid["cases"][0]["execution_orders"] = [[0, 1, 2]] * 12
+    assert validate_receipt(invalid, expected_head=expected, actual_checkout_sha=expected)
+    invalid = copy.deepcopy(valid)
+    invalid["break_even"]["by_metadata_width"][0]["hash_first_tested_count"] = 1000
+    assert validate_receipt(invalid, expected_head=expected, actual_checkout_sha=expected)
+    invalid = copy.deepcopy(valid)
+    invalid["cases"][0]["variants"][0]["setup_and_retrieve_timing"] = {
+        key: ([0.5] * 12 if key == "samples_ms" else 12 if key == "sample_count" else 0.5)
+        for key in valid["cases"][0]["variants"][0]["setup_and_retrieve_timing"]
+    }
+    assert any("nested timing scopes contradict" in error for error in validate_receipt(
+        invalid, expected_head=expected, actual_checkout_sha=expected
+    ))
+    receipt_bytes = json.dumps(valid, sort_keys=True).encode("utf-8")
+    sidecar = {
+        "receipt_sha256": hashlib.sha256(receipt_bytes).hexdigest(),
+        "expected_pr_head_sha": expected,
+        "source_commit": expected,
+    }
+    assert not validate_sidecar(
+        sidecar,
+        receipt_bytes,
+        expected_head=expected,
+        actual_checkout_sha=expected,
+    )
+    sidecar["receipt_sha256"] = "0" * 64
+    assert validate_sidecar(
+        sidecar,
+        receipt_bytes,
+        expected_head=expected,
+        actual_checkout_sha=expected,
+    )
+    print("production-shaped reranker receipt validator self-test: PASS")
+
+
+def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--receipt", type=Path)
+    parser.add_argument("--sidecar", type=Path)
+    parser.add_argument("--expected-head")
+    parser.add_argument("--actual-checkout-sha")
+    parser.add_argument("--write-sidecar", action="store_true")
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return 0
+    if not args.receipt or not args.sidecar or not args.expected_head or not args.actual_checkout_sha:
+        parser.error("--receipt, --sidecar, --expected-head, and --actual-checkout-sha are required")
+    receipt_bytes = args.receipt.read_bytes()
+    receipt = json.loads(receipt_bytes.decode("utf-8"))
+    if args.write_sidecar:
+        args.sidecar.write_text(json.dumps({
+            "receipt_sha256": hashlib.sha256(receipt_bytes).hexdigest(),
+            "source_commit": args.actual_checkout_sha,
+            "expected_pr_head_sha": args.expected_head,
+        }, indent=2) + "\n", encoding="utf-8")
+    sidecar = json.loads(args.sidecar.read_text(encoding="utf-8"))
+    try:
+        errors = validate_receipt(
+            receipt,
+            expected_head=args.expected_head,
+            actual_checkout_sha=args.actual_checkout_sha,
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        errors = [f"malformed receipt: {error}"]
+    root = Path(__file__).resolve().parents[2]
+    if receipt.get("source_manifest_sha256") != source_manifest_digest(root):
+        errors.append("source_manifest_sha256 does not match checked-out harness and production source bytes")
+    if receipt.get("fixture_sha256") != hashlib.sha256(FIXTURE_DESCRIPTION.encode("utf-8")).hexdigest():
+        errors.append("fixture_sha256 does not match frozen experiment parameters")
+    generator = runpy.run_path(str(root / "tools/agent-memory-bench/generate-production-reranker-variants.py"))
+    generated = generator["generate"](
+        (root / "src/agent_memory/retrieval/HybridRetrievalEngine.cpp").read_text(encoding="utf-8"),
+        (root / "src/agent_memory/retrieval/HybridRetrievalEngine.hpp").read_text(encoding="utf-8"),
+    )
+    generated_digests = {
+        name: hashlib.sha256(contents.encode("utf-8")).hexdigest()
+        for name, contents in generated.items() if name.endswith(".cpp")
+    }
+    if receipt.get("generated_source_sha256") != generated_digests:
+        errors.append("generated_source_sha256 does not match source-bound transformations")
+    errors.extend(
+        validate_sidecar(
+            sidecar,
+            receipt_bytes,
+            expected_head=args.expected_head,
+            actual_checkout_sha=args.actual_checkout_sha,
+        )
+    )
+    if errors:
+        for error in errors:
+            print(f"FAIL: {error}")
+        return 1
+    print("production-shaped reranker receipt: PASS")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

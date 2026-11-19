@@ -117,6 +117,78 @@ target_link_libraries(agent-memory-reranker-admission-scaling
         agent_memory::json
 )
 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(agent_memory_production_reranker_generated "${CMAKE_CURRENT_BINARY_DIR}/production-reranker-variants")
+execute_process(
+    COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generate-production-reranker-variants.py"
+        --output-dir "${agent_memory_production_reranker_generated}"
+    COMMAND_ERROR_IS_FATAL ANY
+)
+add_executable(agent-memory-production-reranker-admission
+    production_reranker_admission.cpp
+    "${agent_memory_production_reranker_generated}/LinearResearchHybridRetrievalEngine.cpp"
+    "${agent_memory_production_reranker_generated}/SortedResearchHybridRetrievalEngine.cpp"
+    "${agent_memory_production_reranker_generated}/HashResearchHybridRetrievalEngine.cpp"
+)
+target_include_directories(agent-memory-production-reranker-admission PRIVATE
+    "${agent_memory_production_reranker_generated}")
+foreach(variant IN ITEMS Linear Sorted Hash)
+    file(SHA256 "${agent_memory_production_reranker_generated}/${variant}ResearchHybridRetrievalEngine.cpp"
+        agent_memory_production_reranker_${variant}_sha256)
+    target_compile_definitions(agent-memory-production-reranker-admission PRIVATE
+        AGENT_MEMORY_PRODUCTION_RERANKER_${variant}_SHA256="${agent_memory_production_reranker_${variant}_sha256}")
+endforeach()
+
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+    RESULT_VARIABLE agent_memory_production_reranker_git_result
+    OUTPUT_VARIABLE agent_memory_production_reranker_source_commit
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(LENGTH "${agent_memory_production_reranker_source_commit}" agent_memory_production_reranker_source_length)
+if(NOT agent_memory_production_reranker_git_result EQUAL 0
+   OR NOT agent_memory_production_reranker_source_length EQUAL 40
+   OR NOT "${agent_memory_production_reranker_source_commit}" MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR "Production-shaped reranker admission requires a pinned source Git SHA")
+endif()
+set(AGENT_MEMORY_PRODUCTION_RERANKER_EXPECTED_PR_HEAD_SHA "unconfigured"
+    CACHE STRING "Expected pull-request HEAD for the production-shaped reranker receipt")
+set(agent_memory_production_reranker_manifest_text "")
+foreach(agent_memory_production_reranker_source IN ITEMS
+    "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/production_reranker_admission.cpp"
+    "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/generate-production-reranker-variants.py"
+    "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/validate-production-reranker-admission.py"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/retrieval/HybridRetrievalEngine.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/retrieval/HybridRetrievalEngine.hpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical/IReranker.hpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical/ILexicalIndex.hpp"
+)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${agent_memory_production_reranker_source}")
+    file(SHA256 "${agent_memory_production_reranker_source}" agent_memory_production_reranker_file_sha256)
+    file(RELATIVE_PATH agent_memory_production_reranker_source_relative
+        "${PROJECT_SOURCE_DIR}" "${agent_memory_production_reranker_source}")
+    string(APPEND agent_memory_production_reranker_manifest_text
+        "${agent_memory_production_reranker_source_relative}:${agent_memory_production_reranker_file_sha256}\n")
+endforeach()
+string(SHA256 agent_memory_production_reranker_source_manifest_sha256
+    "${agent_memory_production_reranker_manifest_text}")
+string(SHA256 agent_memory_production_reranker_fixture_sha256
+    "candidate_counts=10,50,100,500,1000,2000;metadata_widths=2,8,32;warmups=2;repeats=12;orders=all-six-permutations;variants=linear_scan,sorted_identity_index,hash_identity_index")
+target_compile_definitions(agent-memory-production-reranker-admission
+    PRIVATE
+        AGENT_MEMORY_PRODUCTION_RERANKER_SOURCE_COMMIT="${agent_memory_production_reranker_source_commit}"
+        AGENT_MEMORY_PRODUCTION_RERANKER_EXPECTED_PR_HEAD_SHA="${AGENT_MEMORY_PRODUCTION_RERANKER_EXPECTED_PR_HEAD_SHA}"
+        AGENT_MEMORY_PRODUCTION_RERANKER_SOURCE_MANIFEST_SHA256="${agent_memory_production_reranker_source_manifest_sha256}"
+        AGENT_MEMORY_PRODUCTION_RERANKER_FIXTURE_SHA256="${agent_memory_production_reranker_fixture_sha256}"
+)
+target_link_libraries(agent-memory-production-reranker-admission
+    PRIVATE
+        agent_memory::agent_memory
+        agent_memory::json
+)
+
 add_executable(agent-memory-exact-selection-benchmark
     exact_selection_benchmark.cpp
 )
@@ -241,6 +313,7 @@ agent_memory_set_evaluator_source_manifest(agent-memory-autoencoder-eval
     "${PROJECT_SOURCE_DIR}/src/agent_memory/index/AutoencoderBinaryEncoder.cpp"
 )
 agent_memory_set_evaluator_build_environment(agent-memory-autoencoder-eval)
+agent_memory_set_evaluator_build_environment(agent-memory-production-reranker-admission)
 
 target_link_libraries(agent-memory-autoencoder-eval
     PRIVATE
