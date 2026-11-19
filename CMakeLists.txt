@@ -104,6 +104,7 @@ add_library(agent_memory STATIC
     src/agent_memory/retrieval/Retrieval.cpp
     src/agent_memory/storage/IDocumentStorage.cpp
     src/agent_memory/storage/CanonicalContentStore.cpp
+    src/agent_memory/storage/CanonicalFlatStorage.cpp
     src/agent_memory/storage/FileRawBlobStore.cpp
     src/agent_memory/storage/FramedZstdCodec.cpp
     src/agent_memory/storage/IKnowledgeUnitStore.cpp
