@@ -3,7 +3,7 @@
 ## Scope and source identity
 
 This registry records the algorithm research surface at `main` commit
-`caaacc67d367a13717c2da96a1e2ce6da9bd6524`. It is a research planning and
+`e34a59a19abc4346cd541bd0ce139df098eb011e`. It is a research planning and
 evidence index; it does not change production APIs, ABI, persisted formats,
 retrieval defaults, or dependency policy.
 
