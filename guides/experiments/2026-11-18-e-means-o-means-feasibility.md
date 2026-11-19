@@ -48,6 +48,16 @@ Training and serving are separate measurements. A GPU result is marked
 `OFFLINE_ONLY` until the trained centroid artifact can be consumed by a
 portable native C++ serving experiment.
 
+## Experiment ownership and terminology
+
+This feasibility note owns the decision boundary and the stop conditions only.
+PR #638 owns the single executable IVF comparison and its pinned Faiss
+positive control; it must not be duplicated here. PR #640 records the wider
+algorithm registry and evidence status. New routing documents may use `PRR`
+(Prototype–Representative Routing) and `PR-IVF` (Prototype–Representative
+Inverted File), but this note does not claim either design is implemented.
+The links are ownership references, not evidence that an experiment ran.
+
 ## Acceptance gates
 
 The next research PR may implement only an offline harness after all of these
