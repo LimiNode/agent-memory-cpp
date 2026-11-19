@@ -9,6 +9,7 @@
 
 #include "storage/IDocumentStorage.hpp"
 #include "storage/CanonicalContentStore.hpp"
+#include "storage/CanonicalContentStorage.hpp"
 #include "storage/FileRawBlobStore.hpp"
 #include "storage/IResourceIndexRecordOwnerStorage.hpp"
 #include "storage/IResourceManifestStorage.hpp"

@@ -1,5 +1,6 @@
 #include "MdbxCanonicalContentStore.hpp"
 
+#include <agent_memory/storage/CanonicalContentStorage.hpp>
 #include <agent_memory/storage/CanonicalContentStoreInternal.hpp>
 #include "MdbxStorageErrors.hpp"
 
@@ -31,21 +32,7 @@ constexpr std::uint64_t RAW_ENCODING_GENERATION = 1;
 constexpr std::string_view RAW_CODEC = "raw";
 constexpr std::uint8_t SHA256_DIGEST_ALGORITHM = 1;
 
-// The shared BlobDigest value type is specified by the artifact-provenance
-// contract but is not materialized in the C++ domain yet. C1 keeps the same
-// algorithm-tagged wire shape locally so it can be mechanically adopted later.
-struct LogicalBodyDigest final {
-    std::uint8_t algorithm = SHA256_DIGEST_ALGORITHM; ///< Algorithm tag.
-    std::array<std::uint8_t, 32> value{}; ///< Full SHA-256 digest bytes.
-};
-
-bool operator==(const LogicalBodyDigest& left, const LogicalBodyDigest& right) noexcept {
-    return left.algorithm == right.algorithm && left.value == right.value;
-}
-
-bool operator!=(const LogicalBodyDigest& left, const LogicalBodyDigest& right) noexcept {
-    return !(left == right);
-}
+using LogicalBodyDigest = storage::CanonicalStorageDigest;
 
 class Sha256 final {
   public:
@@ -326,59 +313,50 @@ struct DecodedRevision final {
 std::string encode_revision(const CanonicalDocumentRevision& revision,
                             std::uint64_t body_revision,
                             const LogicalBodyDigest& logical_body_digest) {
-    std::string out;
-    put_string(out, REV_VERSION);
-    put_u64(out, body_revision);
-    put_digest(out, logical_body_digest);
-    put_string(out, revision.document_id.value());
-    put_u64(out, revision.revision);
-    metadata_put(out, revision.metadata);
-    put_size(out, revision.blocks.size());
+    storage::CanonicalStorageRevisionRecord record;
+    record.document_id = revision.document_id.value();
+    record.document_revision = revision.revision;
+    record.body_revision = body_revision;
+    record.logical_body_digest = logical_body_digest;
+    for (const auto& item : revision.metadata.values())
+        record.metadata.values.push_back(item);
+    record.blocks.reserve(revision.blocks.size());
     for (const auto& block : revision.blocks) {
-        put_string(out, block.id.value());
-        put_u64(out, block.revision);
-        put_size(out, static_cast<std::size_t>(block.kind));
-        put_size(out, block.parent_id ? 1 : 0);
+        storage::CanonicalStorageBlock stored;
+        stored.id = block.id.value();
+        stored.revision = block.revision;
+        stored.kind = static_cast<std::uint8_t>(block.kind);
         if (block.parent_id)
-            put_string(out, block.parent_id->value());
+            stored.parent_id = block.parent_id->value();
+        record.blocks.push_back(std::move(stored));
     }
-    return out;
+    return storage::CanonicalContentStorageCodec::encode_revision(record);
 }
 
 DecodedRevision decode_revision(std::string_view payload) {
-    Reader r(payload);
-    if (r.string() != REV_VERSION)
-        throw std::runtime_error("unsupported canonical revision payload");
-    const auto body_revision = r.u64();
-    const auto logical_body_digest = r.digest();
-    if (logical_body_digest.algorithm != SHA256_DIGEST_ALGORITHM)
-        throw std::runtime_error("unsupported canonical logical digest algorithm");
-    CanonicalDocumentRevision revision{DocumentId{r.string()}, r.u64(), metadata_get(r), {}};
-    const auto n = r.size();
-    revision.blocks.reserve(n);
-    for (std::size_t i = 0; i < n; ++i) {
-        ContentBlock b;
-        b.id = ContentBlockId{r.string()};
-        b.revision = r.u64();
-        const auto kind = r.size();
-        if (kind > 2)
-            throw std::runtime_error("invalid canonical block kind");
-        b.kind = static_cast<ContentBlockKind>(kind);
-        const auto has_parent = r.size();
-        if (has_parent > 1)
-            throw std::runtime_error("invalid canonical parent marker");
-        if (has_parent == 1)
-            b.parent_id = ContentBlockId{r.string()};
-        revision.blocks.push_back(std::move(b));
+    const auto stored = storage::CanonicalContentStorageCodec::decode_revision(payload);
+    CanonicalDocumentRevision revision{DocumentId{stored.document_id},
+                                       stored.document_revision,
+                                       Metadata{},
+                                       {}};
+    for (const auto& item : stored.metadata.values)
+        revision.metadata.set(item.first, item.second);
+    revision.blocks.reserve(stored.blocks.size());
+    for (const auto& block : stored.blocks) {
+        ContentBlock decoded;
+        decoded.id = ContentBlockId{block.id};
+        decoded.revision = block.revision;
+        decoded.kind = static_cast<ContentBlockKind>(block.kind);
+        if (block.parent_id)
+            decoded.parent_id = ContentBlockId{*block.parent_id};
+        revision.blocks.push_back(std::move(decoded));
     }
-    r.end();
-    return {std::move(revision), body_revision, logical_body_digest};
+    return {std::move(revision), stored.body_revision, stored.logical_body_digest};
 }
 
 struct EncodedBody final {
     std::string payload; ///< Complete versioned physical body payload.
     LogicalBodyDigest logical_body_digest; ///< Algorithm-tagged decoded digest.
-    std::uint64_t physical_checksum = 0; ///< Checksum over the physical payload.
 };
 
 struct DecodedBody final {
@@ -437,59 +415,47 @@ std::string encode_body_payload(const std::vector<ContentBlock>& blocks,
 
 EncodedBody encode_body(const CanonicalDocumentRevision& revision, std::uint64_t body_revision) {
     EncodedBody result;
-    result.logical_body_digest = logical_body_digest_impl(revision.blocks);
-    result.payload = encode_body_payload(revision.blocks,
-                                         body_revision,
-                                         RAW_ENCODING_GENERATION,
-                                         RAW_CODEC,
-                                         result.logical_body_digest);
-    result.physical_checksum = digest_bytes(result.payload);
-    put_u64(result.payload, result.physical_checksum);
+    storage::CanonicalStorageBodyRecord record;
+    record.body_revision = body_revision;
+    record.encoding_generation = RAW_ENCODING_GENERATION;
+    record.codec = std::string(RAW_CODEC);
+    record.blocks.reserve(revision.blocks.size());
+    for (const auto& block : revision.blocks) {
+        storage::CanonicalStorageBlock stored;
+        stored.id = block.id.value();
+        stored.revision = block.revision;
+        stored.kind = static_cast<std::uint8_t>(block.kind);
+        if (block.parent_id)
+            stored.parent_id = block.parent_id->value();
+        stored.text = block.text;
+        record.blocks.push_back(std::move(stored));
+    }
+    result.logical_body_digest =
+        storage::CanonicalContentStorageCodec::logical_body_digest(record.blocks);
+    record.logical_body_digest = result.logical_body_digest;
+    result.payload = storage::CanonicalContentStorageCodec::encode_body(record);
     return result;
 }
 
 DecodedBody decode_body(std::string_view payload) {
-    Reader r(payload);
-    if (r.string() != BODY_VERSION)
-        throw std::runtime_error("unsupported canonical body payload");
+    const auto stored = storage::CanonicalContentStorageCodec::decode_body(payload);
     DecodedBody result;
-    result.body_revision = r.u64();
-    result.encoding_generation = r.u64();
-    result.codec = r.string();
-    if (result.encoding_generation != RAW_ENCODING_GENERATION || result.codec != RAW_CODEC)
-        throw std::runtime_error("invalid canonical physical encoding descriptor");
-    const auto n = r.size();
-    result.blocks.reserve(n);
-    for (std::size_t i = 0; i < n; ++i) {
+    result.body_revision = stored.body_revision;
+    result.encoding_generation = stored.encoding_generation;
+    result.codec = stored.codec;
+    result.logical_body_digest = stored.logical_body_digest;
+    result.physical_checksum = stored.physical_checksum;
+    result.blocks.reserve(stored.blocks.size());
+    for (const auto& stored_block : stored.blocks) {
         ContentBlock block;
-        block.id = ContentBlockId{r.string()};
-        const auto kind = r.size();
-        if (kind > 2)
-            throw std::runtime_error("invalid canonical body kind");
-        block.kind = static_cast<ContentBlockKind>(kind);
-        const auto has_parent = r.size();
-        if (has_parent > 1)
-            throw std::runtime_error("invalid canonical body parent marker");
-        if (has_parent == 1)
-            block.parent_id = ContentBlockId{r.string()};
-        block.text = r.string();
+        block.id = ContentBlockId{stored_block.id};
+        block.revision = stored_block.revision;
+        block.kind = static_cast<ContentBlockKind>(stored_block.kind);
+        if (stored_block.parent_id)
+            block.parent_id = ContentBlockId{*stored_block.parent_id};
+        block.text = stored_block.text;
         result.blocks.push_back(std::move(block));
     }
-    result.logical_body_digest = r.digest();
-    if (result.logical_body_digest.algorithm != SHA256_DIGEST_ALGORITHM)
-        throw std::runtime_error("unsupported canonical logical digest algorithm");
-    result.physical_checksum = r.u64();
-    r.end();
-    const auto canonical_payload = encode_body_payload(
-        result.blocks,
-        result.body_revision,
-        result.encoding_generation,
-        result.codec,
-        result.logical_body_digest);
-    if (logical_body_digest_impl(result.blocks) != result.logical_body_digest)
-        throw std::runtime_error("canonical logical body digest mismatch");
-    if (digest_bytes(canonical_payload) != result.physical_checksum)
-        throw std::runtime_error("canonical physical body checksum mismatch");
     return result;
 }
 
@@ -514,23 +480,18 @@ CanonicalDocumentRevision bind_body(const DecodedRevision& decoded_revision,
 }
 
 std::string encode_ledger(const std::set<ContentBlockId>& ids) {
-    std::string out;
-    put_string(out, LEDGER_VERSION);
-    put_size(out, ids.size());
+    storage::CanonicalStorageLedgerRecord record;
+    record.block_ids.reserve(ids.size());
     for (const auto& id : ids)
-        put_string(out, id.value());
-    return out;
+        record.block_ids.push_back(id.value());
+    return storage::CanonicalContentStorageCodec::encode_ledger(record);
 }
 
 std::set<ContentBlockId> decode_ledger(std::string_view payload) {
-    Reader r(payload);
-    if (r.string() != LEDGER_VERSION)
-        throw std::runtime_error("unsupported canonical ledger payload");
+    const auto stored = storage::CanonicalContentStorageCodec::decode_ledger(payload);
     std::set<ContentBlockId> ids;
-    const auto n = r.size();
-    for (std::size_t i = 0; i < n; ++i)
-        ids.insert(ContentBlockId{r.string()});
-    r.end();
+    for (const auto& id : stored.block_ids)
+        ids.insert(ContentBlockId{id});
     return ids;
 }
 
@@ -540,7 +501,18 @@ namespace detail {
 
 std::array<std::uint8_t, 32> canonical_decoded_content_digest(
     const std::vector<ContentBlock>& blocks) {
-    return logical_body_digest_impl(blocks).value;
+    std::vector<storage::CanonicalStorageBlock> stored;
+    stored.reserve(blocks.size());
+    for (const auto& block : blocks) {
+        storage::CanonicalStorageBlock value;
+        value.id = block.id.value();
+        value.kind = static_cast<std::uint8_t>(block.kind);
+        if (block.parent_id)
+            value.parent_id = block.parent_id->value();
+        value.text = block.text;
+        stored.push_back(std::move(value));
+    }
+    return storage::CanonicalContentStorageCodec::logical_body_digest(stored).value;
 }
 
 } // namespace detail
@@ -595,7 +567,8 @@ class MdbxCanonicalContentStore::Impl final {
         if (!ledger)
             throw std::runtime_error("canonical head references missing ledger");
         loaded.ledger = decode_ledger(*ledger);
-        const auto head_revision = parse_u64(*head, "head revision");
+        const auto head_revision =
+            storage::CanonicalContentStorageCodec::decode_head(*head).document_revision;
         const auto payload = revisions.find(key(id.value(), head_revision), txn);
         if (!payload)
             throw std::runtime_error("canonical head references missing revision");
@@ -650,7 +623,10 @@ class MdbxCanonicalContentStore::Impl final {
                 txn);
         }
         heads.insert_or_assign(
-            revision.document_id.value(), std::to_string(revision.revision), txn);
+            revision.document_id.value(),
+            storage::CanonicalContentStorageCodec::encode_head(
+                storage::CanonicalStorageHeadRecord{revision.revision}),
+            txn);
         ledgers.insert_or_assign(revision.document_id.value(), encode_ledger(ledger), txn);
     }
 
@@ -760,7 +736,10 @@ MdbxCanonicalContentStore::read_current(const DocumentId& id) const {
         txn.commit();
         return std::nullopt;
     }
-    auto result = m_impl->read_revision(id, parse_u64(*head, "head revision"), txn);
+    auto result = m_impl->read_revision(
+        id,
+        storage::CanonicalContentStorageCodec::decode_head(*head).document_revision,
+        txn);
     txn.commit();
     return result;
 }
