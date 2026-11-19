@@ -1,4 +1,5 @@
 #include <agent_memory/infrastructure/mdbx/MdbxCanonicalContentStore.hpp>
+#include <agent_memory/storage/CanonicalNavigationStore.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 #include <filesystem>
@@ -73,6 +74,71 @@ CanonicalDocumentRevision fixture() {
     };
 }
 
+bool same_outline(const CanonicalOutline& left, const CanonicalOutline& right) {
+    if(left.document_id != right.document_id ||
+       left.document_revision != right.document_revision ||
+       left.entries.size() != right.entries.size()) {
+        return false;
+    }
+    for(std::size_t index = 0; index < left.entries.size(); ++index) {
+        const auto& lhs = left.entries[index];
+        const auto& rhs = right.entries[index];
+        if(lhs.locator.document_id != rhs.locator.document_id ||
+           lhs.locator.document_revision != rhs.locator.document_revision ||
+           lhs.locator.block_id != rhs.locator.block_id ||
+           lhs.locator.block_revision != rhs.locator.block_revision ||
+           lhs.kind != rhs.kind || lhs.parent_id != rhs.parent_id ||
+           lhs.depth != rhs.depth || lhs.text_bytes != rhs.text_bytes ||
+           lhs.child_count != rhs.child_count) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool same_children(const CanonicalChildrenResult& left,
+                   const CanonicalChildrenResult& right) {
+    if(left.status != right.status || left.truncated != right.truncated ||
+       left.document_id != right.document_id ||
+       left.document_revision != right.document_revision ||
+       left.parent_id != right.parent_id ||
+       left.entries.size() != right.entries.size()) {
+        return false;
+    }
+    for(std::size_t index = 0; index < left.entries.size(); ++index) {
+        const auto& lhs = left.entries[index];
+        const auto& rhs = right.entries[index];
+        if(lhs.locator.block_id != rhs.locator.block_id ||
+           lhs.locator.block_revision != rhs.locator.block_revision ||
+           lhs.kind != rhs.kind || lhs.parent_id != rhs.parent_id ||
+           lhs.depth != rhs.depth || lhs.text_bytes != rhs.text_bytes ||
+           lhs.child_count != rhs.child_count) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool same_subtree(const CanonicalSubtreeResult& left,
+                  const CanonicalSubtreeResult& right) {
+    if(left.status != right.status || left.truncated != right.truncated ||
+       left.document_id != right.document_id ||
+       left.document_revision != right.document_revision ||
+       left.blocks.size() != right.blocks.size()) {
+        return false;
+    }
+    for(std::size_t index = 0; index < left.blocks.size(); ++index) {
+        const auto& lhs = left.blocks[index];
+        const auto& rhs = right.blocks[index];
+        if(lhs.id != rhs.id || lhs.revision != rhs.revision ||
+           lhs.kind != rhs.kind || lhs.parent_id != rhs.parent_id ||
+           lhs.text != rhs.text) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -89,6 +155,11 @@ int main() {
         const auto initial = fixture();
         expect(store.create_document(initial), "initial document was not stored");
 
+        InMemoryCanonicalContentStore reference_store;
+        expect(reference_store.create_document(initial),
+               "reference document was not stored");
+        CanonicalNavigationStore reference_navigation(reference_store);
+
         const auto outline = store.read_outline(initial.document_id, 0, 16);
         expect(outline && outline->document_revision == 0 && outline->entries.size() == 5U,
                "exact revision outline was not returned");
@@ -104,6 +175,48 @@ int main() {
                    children.truncated && children.entries.size() == 1U &&
                    children.entries.front().locator.block_id == ContentBlockId{"first"},
                "children budget was not explicit");
+
+        const auto reference_outline = reference_navigation.read_outline(
+            initial.document_id, 0, 16);
+        expect(reference_outline && same_outline(*reference_outline, *outline),
+               "backend outline diverged from the reference adapter");
+
+        const auto reference_children = reference_navigation.read_children(
+            initial.document_id, 0, ContentBlockId{"root"}, 1);
+        expect(same_children(reference_children, children),
+               "backend children diverged from the reference adapter");
+
+        const CanonicalSubtreeRequest conformance_request{
+            ContentBlockId{"first"}, 4U, 64U, true};
+        const auto reference_subtree = reference_navigation.read_subtree(
+            initial.document_id, 0, conformance_request);
+        expect(same_subtree(reference_subtree,
+                            store.read_subtree(initial.document_id, 0,
+                                               conformance_request)),
+               "backend subtree diverged from the reference adapter");
+
+        const CanonicalSubtreeRequest metadata_request{
+            ContentBlockId{"first"}, 16U, 0U, false};
+        expect(same_subtree(
+                   reference_navigation.read_subtree(
+                       initial.document_id, 0, metadata_request),
+                   store.read_subtree(initial.document_id, 0, metadata_request)),
+               "backend metadata-only subtree diverged from the reference adapter");
+
+        const CanonicalSubtreeRequest text_budget_request{
+            std::nullopt, 16U, 3U, true};
+        expect(same_subtree(
+                   reference_navigation.read_subtree(
+                       initial.document_id, 0, text_budget_request),
+                   store.read_subtree(initial.document_id, 0, text_budget_request)),
+               "backend text-budget outcome diverged from the reference adapter");
+
+        const auto reference_missing = reference_navigation.read_children(
+            DocumentId{"missing"}, 0, std::nullopt, 0);
+        expect(same_children(reference_missing,
+                             store.read_children(DocumentId{"missing"}, 0,
+                                                 std::nullopt, 0)),
+               "backend missing-revision precedence diverged from the reference adapter");
 
         const auto zero_children_missing = store.read_children(
             DocumentId{"missing"}, 0, std::nullopt, 0);
