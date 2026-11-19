@@ -1342,6 +1342,7 @@ jobs:
       - mdbx
       - mdbx-benchmark
       - native-mih-benchmark
+      - exact-vector-numerical-frontier
       - r4-native-benchmark
       - thq-faiss-additive-control
       - thq-packed-codec-contract
@@ -1367,6 +1368,7 @@ jobs:
           STORAGE_RESULT: ${{ needs.mdbx.result }}
           MDBX_BENCHMARK_RESULT: ${{ needs.mdbx-benchmark.result }}
           MIH_RESULT: ${{ needs.native-mih-benchmark.result }}
+          NUMERICAL_FRONTIER_RESULT: ${{ needs.exact-vector-numerical-frontier.result }}
           R4_RESULT: ${{ needs.r4-native-benchmark.result }}
           FAISS_RESULT: ${{ needs.thq-faiss-additive-control.result }}
           THQ_RESULT: ${{ needs.thq-packed-codec-contract.result }}
@@ -1402,6 +1404,7 @@ jobs:
           check_required "$STORAGE_REQUIRED" "$STORAGE_RESULT" "MDBX storage"
           check_required "$RESEARCH_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
           check_required "$RESEARCH_REQUIRED" "$MIH_RESULT" "native MIH"
+          check_required "$RESEARCH_REQUIRED" "$NUMERICAL_FRONTIER_RESULT" "exact-vector numerical frontier"
           check_required "$RESEARCH_REQUIRED" "$R4_RESULT" "R4 benchmark"
           check_required "$RESEARCH_REQUIRED" "$FAISS_RESULT" "Faiss control"
           check_required "$RESEARCH_REQUIRED" "$THQ_RESULT" "THQ packed codec"
