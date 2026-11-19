@@ -47,4 +47,3 @@ The benchmark gate is separate from correctness. It must report fixed-seed
 large-document runs for point block, bounded subtree, single-block update,
 and full materialization, including physical bytes, allocations, CPU, and
 latency. No performance claim is made by this Draft PR.
-
