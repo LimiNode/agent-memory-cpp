@@ -72,7 +72,8 @@ def generate(source: str, header: str) -> dict[str, str]:
         # All remaining production code, including scoring and construction,
         # remains byte-identical after reversing these identifier substitutions.
         generated[f"{name}.cpp"] = changed_source.replace("ExactLexicalIndex", name)
-        generated[f"{name}.hpp"] = header.replace("ExactLexicalIndex", name).replace(guard, guard + "_" + variant.upper())
+        variant_guard = f"AGENT_MEMORY_HEADER_LEXICAL_RESEARCH_{variant.upper()}_EXACT_LEXICAL_INDEX_HPP_INCLUDED"
+        generated[f"{name}.hpp"] = header.replace("ExactLexicalIndex", name).replace(guard, variant_guard)
     return generated
 
 
@@ -86,6 +87,8 @@ def self_test(root: Path) -> None:
     header = (root / "src/agent_memory/lexical/ExactLexicalIndex.hpp").read_text(encoding="utf-8")
     generated = generate(source, header)
     for variant, name in VARIANTS.items():
+        if generated[f"{name}.hpp"].count("_HPP_INCLUDED") != 2:
+            raise AssertionError("generated include guard does not retain the project naming suffix")
         restored = generated[f"{name}.cpp"].replace(name, "ExactLexicalIndex").replace(REPLACEMENTS[variant], SORT_BLOCK)
         if restored != source:
             raise AssertionError("variant changes production code outside selection and identifier rename")
