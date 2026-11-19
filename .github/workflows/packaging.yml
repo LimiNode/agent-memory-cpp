@@ -31,6 +31,7 @@ jobs:
           --new-commit "$(git rev-parse HEAD)"
           --build-root .build/exact-upgrade
           --artifacts .artifacts/exact-upgrade
+          --allow-pre-numeric-baseline
       - uses: actions/upload-artifact@v4
         if: always()
         with:
