@@ -93,6 +93,34 @@ def validate_receipt(payload: Any, expected_head: str | None = None) -> list[str
                 continue
             if case.get("timing_scope") != "fixture_interleaved_variant_selection":
                 errors.append(f"cases[{index}] must declare interleaved timing scope")
+            base_order = case.get("execution_order")
+            if not isinstance(base_order, list) or not base_order:
+                errors.append(f"cases[{index}].execution_order must be a non-empty array")
+                base_order = []
+            elif not all(isinstance(name, str) and name for name in base_order):
+                errors.append(f"cases[{index}].execution_order must contain non-empty variant names")
+            variant_names = set(variants)
+            if (
+                len(base_order) != len(variant_names)
+                or not all(isinstance(name, str) for name in base_order)
+                or set(base_order) != variant_names
+            ):
+                errors.append(f"cases[{index}].execution_order must list each variant exactly once")
+            repeats = case.get("repeats")
+            execution_orders = case.get("execution_orders")
+            if not isinstance(repeats, int) or repeats <= 0:
+                errors.append(f"cases[{index}].repeats must be a positive integer")
+                repeats = 0
+            if not isinstance(execution_orders, list) or len(execution_orders) != repeats:
+                errors.append(f"cases[{index}].execution_orders must contain one order per repeat")
+                execution_orders = []
+            if base_order:
+                for repeat, order in enumerate(execution_orders):
+                    expected = [base_order[(repeat + offset) % len(base_order)] for offset in range(len(base_order))]
+                    if order != expected:
+                        errors.append(
+                            f"cases[{index}].execution_orders[{repeat}] must be the cyclic rotation of execution_order"
+                        )
             for name, measurement in variants.items():
                 if not isinstance(measurement, dict):
                     errors.append(f"cases[{index}].variants.{name} must be an object")
@@ -122,12 +150,20 @@ def self_test() -> None:
         },
         "cases": [{
             "timing_scope": "fixture_interleaved_variant_selection",
+            "execution_order": ["full_sort", "partial_sort"],
+            "repeats": 2,
+            "execution_orders": [["full_sort", "partial_sort"], ["partial_sort", "full_sort"]],
             "variants": {
                 "full_sort": {
                     "interleaved": True,
                     "samples_ms": [1.0, 1.1],
                     "sample_count": 2,
-                }
+                },
+                "partial_sort": {
+                    "interleaved": True,
+                    "samples_ms": [1.2, 1.3],
+                    "sample_count": 2,
+                },
             },
         }],
     }
@@ -142,6 +178,12 @@ def self_test() -> None:
     mutations.append(mutation)
     mutation = json.loads(json.dumps(valid))
     mutation["cases"][0]["variants"]["full_sort"]["sample_count"] = 1
+    mutations.append(mutation)
+    mutation = json.loads(json.dumps(valid))
+    mutation["cases"][0].pop("execution_orders")
+    mutations.append(mutation)
+    mutation = json.loads(json.dumps(valid))
+    mutation["cases"][0]["execution_orders"][1] = ["full_sort", "partial_sort"]
     mutations.append(mutation)
     for candidate in mutations:
         if not validate_receipt(candidate, "b" * 40):

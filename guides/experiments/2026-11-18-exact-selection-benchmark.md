@@ -26,8 +26,10 @@ it to both the expected PR HEAD and actual compiled checkout SHA. Its
 * candidate counts 128, 1,024, 8,192, and 65,536;
 * top-k values 16, 64, 128, and 256;
 * two warmups and eight measured candidate-set selections per variant;
-* all variants interleaved on the same fixture for each repeat, with raw
-  per-variant samples retained in the receipt;
+* all variants interleaved on the same fixture for each repeat; the execution
+  order is cyclically rotated on every repeat so each variant occupies each
+  position equally, with raw per-variant samples and the actual per-repeat
+  orders retained in the receipt;
 * full sort is the independent result oracle; mutation self-tests alter a score
   and an identity and must fail parity.
 
@@ -45,8 +47,8 @@ noise floor and do not justify a selection.
 
 These are directional kernel measurements, not a production speed claim. The
 receipt records compiler/generator identity, expected PR HEAD, actual checkout
-SHA, warmup count, repeat count, execution order, and raw samples. The result
-supports a follow-up benchmark on the real lexical score/filter path,
+SHA, warmup count, repeat count, the base order, cyclic per-repeat execution
+orders, and raw samples. The result supports a follow-up benchmark on the real lexical score/filter path,
 with allocations, metadata filters, query term distributions, and exact
 tie/empty-result semantics included. No production API, ABI, persisted schema,
 or retrieval default is changed by this PR.

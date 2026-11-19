@@ -196,27 +196,41 @@ using Selector = std::vector<Entry>(*)(
         states.back().samples.reserve(repeats);
     }
     volatile std::uint64_t checksum = 0;
+    const auto run_in_order = [&] (
+        const std::size_t rotation,
+        const bool record_measurement,
+        Json* recorded_order
+    ) {
+        if(recorded_order != nullptr) {
+            *recorded_order = Json::array();
+        }
+        for(std::size_t offset = 0; offset < states.size(); ++offset) {
+            auto& state = states[(rotation + offset) % states.size()];
+            if(recorded_order != nullptr) {
+                recorded_order->push_back(std::string(state.name));
+            }
+            const auto started = record_measurement ? Clock::now() : Clock::time_point{};
+            const auto result = state.selector(input, top_k);
+            const auto elapsed = record_measurement
+                ? std::chrono::duration<double, std::milli>(Clock::now() - started).count()
+                : 0.0;
+            if(!result.empty()) {
+                checksum ^= result.front().id;
+            }
+            if(record_measurement) {
+                state.exact_parity = state.exact_parity && same_results(result, oracle);
+                state.samples.push_back(elapsed);
+            }
+        }
+    };
     for(std::size_t index = 0; index < warmups; ++index) {
-        for(const auto& state : states) {
-            const auto result = state.selector(input, top_k);
-            if(!result.empty()) {
-                checksum ^= result.front().id;
-            }
-        }
+        run_in_order(index % states.size(), false, nullptr);
     }
+    Json execution_orders = Json::array();
     for(std::size_t index = 0; index < repeats; ++index) {
-        for(auto& state : states) {
-            const auto started = Clock::now();
-            const auto result = state.selector(input, top_k);
-            const auto elapsed = std::chrono::duration<double, std::milli>(
-                Clock::now() - started
-            ).count();
-            if(!result.empty()) {
-                checksum ^= result.front().id;
-            }
-            state.exact_parity = state.exact_parity && same_results(result, oracle);
-            state.samples.push_back(elapsed);
-        }
+        Json order;
+        run_in_order(index % states.size(), true, &order);
+        execution_orders.push_back(std::move(order));
     }
     if(checksum == 0xdeadbeefU) {
         std::cerr << "unreachable checksum guard\n";
@@ -236,6 +250,7 @@ using Selector = std::vector<Entry>(*)(
         {"variants", variants},
         {"warmups", warmups},
         {"repeats", repeats},
+        {"execution_orders", execution_orders},
         {"timing_scope", "fixture_interleaved_variant_selection"}
     };
 }
@@ -309,6 +324,25 @@ using Selector = std::vector<Entry>(*)(
     if(same_results(full_sort(boundary, 0U), boundary_mutation)) {
         return false;
     }
+    const std::vector<std::string_view> order{
+        "full_sort", "partial_sort", "nth_element_then_sort", "bounded_heap"
+    };
+    const auto measurements = measure_interleaved(input, oracle, 7U, order);
+    const auto execution_orders = measurements.at("execution_orders");
+    if(execution_orders.size() != 8U) {
+        return false;
+    }
+    for(std::size_t repeat = 0; repeat < execution_orders.size(); ++repeat) {
+        if(execution_orders[repeat].size() != order.size()) {
+            return false;
+        }
+        for(std::size_t offset = 0; offset < order.size(); ++offset) {
+            const auto expected = std::string(order[(repeat + offset) % order.size()]);
+            if(execution_orders[repeat][offset] != expected) {
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -367,6 +401,7 @@ using Selector = std::vector<Entry>(*)(
         {"effective_top_k", effective_top_k(input, top_k)},
         {"score_distribution", distribution},
         {"execution_order", execution_order},
+        {"execution_orders", measurements.at("execution_orders")},
         {"variants", measurements.at("variants")},
         {"warmups", measurements.at("warmups")},
         {"repeats", measurements.at("repeats")},
@@ -419,7 +454,7 @@ int main(int argc, char** argv) {
         {"candidate_identity_contract", "repeated_ids_allowed; multiplicity_preserved; score_desc_id_asc_order"},
         {"boundary_contract", "empty_and_top_k_zero_return_empty; effective_top_k=min(top_k,candidate_count)"},
         {"scope", "ranking-selection kernel only; not ExactLexicalIndex end-to-end"},
-        {"timing_semantics", "one sample is one complete candidate-set selection; variants are interleaved on one fixture; warmups excluded"},
+        {"timing_semantics", "one sample is one complete candidate-set selection; variants are cyclically interleaved on one fixture; warmups excluded"},
         {"production_api_changed", false},
         {"status", "EXECUTED"},
         {"cases", Json::array({
