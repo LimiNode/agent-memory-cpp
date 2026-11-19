@@ -2,6 +2,8 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+#include <mdbx_containers/KeyValueTable.hpp>
+
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -62,6 +64,67 @@ int main() {
                "numeric key did not survive reopen");
         expect(!reopened.find(KnowledgeUnitId{5}),
                "erased numeric row reappeared after reopen");
+
+        const auto markerless_path = std::filesystem::temp_directory_path() /
+            "agent_memory_numeric_key_pilot_markerless_test.mdbx";
+        std::filesystem::remove(markerless_path, error);
+        {
+            auto context = MdbxStorageContext::open(markerless_path.string());
+            mdbxc::KeyValueTable<std::uint64_t, std::string> records(
+                context->connection(), "agent_memory_knowledge_units_numeric_v1");
+            mdbxc::KeyValueTable<std::uint64_t, std::string> used_ids(
+                context->connection(), "agent_memory_knowledge_units_numeric_v1_used");
+            auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            records.insert_or_assign(7U, "markerless", txn);
+            used_ids.insert_or_assign(7U, "used", txn);
+            txn.commit();
+        }
+        bool markerless_rejected = false;
+        try {
+            MdbxKnowledgeUnitNumericKeyPilotOptions markerless_options;
+            markerless_options.path = markerless_path.string();
+            static_cast<void>(MdbxKnowledgeUnitNumericKeyPilot(markerless_options));
+        } catch(const std::runtime_error&) {
+            markerless_rejected = true;
+        }
+        expect(markerless_rejected, "markerless non-empty pilot tables were accepted");
+        std::filesystem::remove(markerless_path, error);
+
+        const auto corrupt_path = std::filesystem::temp_directory_path() /
+            "agent_memory_numeric_key_pilot_corrupt_ledger_test.mdbx";
+        std::filesystem::remove(corrupt_path, error);
+        MdbxKnowledgeUnitNumericKeyPilotOptions corrupt_options;
+        corrupt_options.path = corrupt_path.string();
+        {
+            MdbxKnowledgeUnitNumericKeyPilot corrupt_pilot(corrupt_options);
+            corrupt_pilot.put(KnowledgeUnitId{11}, "eleven");
+        }
+        {
+            auto context = MdbxStorageContext::open(corrupt_path.string());
+            mdbxc::KeyValueTable<std::uint64_t, std::string> used_ids(
+                context->connection(), "agent_memory_knowledge_units_numeric_v1_used");
+            auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            used_ids.insert_or_assign(11U, "forged", txn);
+            txn.commit();
+        }
+        {
+            MdbxKnowledgeUnitNumericKeyPilot corrupt_pilot(corrupt_options);
+            bool corruption_rejected = false;
+            try {
+                static_cast<void>(corrupt_pilot.find(KnowledgeUnitId{11}));
+            } catch(const std::runtime_error&) {
+                corruption_rejected = true;
+            }
+            expect(corruption_rejected, "forged ledger marker was accepted by find");
+            corruption_rejected = false;
+            try {
+                static_cast<void>(corrupt_pilot.scan(KnowledgeUnitId{1}, KnowledgeUnitId{20}));
+            } catch(const std::runtime_error&) {
+                corruption_rejected = true;
+            }
+            expect(corruption_rejected, "forged ledger marker was accepted by scan");
+        }
+        std::filesystem::remove(corrupt_path, error);
 
         std::filesystem::remove(path, error);
         std::cout << "mdbx numeric knowledge-unit key pilot: PASS\n";

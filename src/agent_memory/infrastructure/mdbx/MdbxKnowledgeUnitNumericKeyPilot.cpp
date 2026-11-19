@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <utility>
@@ -32,6 +33,35 @@ std::string table_name(const std::string& prefix, std::string_view suffix) {
     return result;
 }
 
+bool has_any_row(
+    mdbxc::KeyValueTable<std::uint64_t, std::string>& table,
+    const mdbxc::Transaction& transaction
+) {
+    bool present = false;
+    table.for_each_range(
+        0U,
+        std::numeric_limits<std::uint64_t>::max(),
+        [&present](const std::uint64_t, const std::string&) {
+            present = true;
+            return false;
+        },
+        transaction
+    );
+    return present;
+}
+
+void require_used_marker(
+    const std::optional<std::string>& marker,
+    const char* invalid_message
+) {
+    if(!marker) {
+        throw std::runtime_error("numeric knowledge-unit ledger is missing");
+    }
+    if(*marker != kUsedMarker) {
+        throw std::runtime_error(invalid_message);
+    }
+}
+
 } // namespace
 
 class MdbxKnowledgeUnitNumericKeyPilot::Impl final {
@@ -54,6 +84,12 @@ class MdbxKnowledgeUnitNumericKeyPilot::Impl final {
             throw std::runtime_error("unsupported numeric knowledge-unit pilot schema");
         }
         if(!marker) {
+            if(has_any_row(records, txn) || has_any_row(used_ids, txn)) {
+                txn.rollback();
+                throw std::runtime_error(
+                    "numeric knowledge-unit pilot rejects markerless non-empty tables"
+                );
+            }
             metadata.insert_or_assign(
                 std::string{kSchemaKey}, std::string{kSchemaVersion}, txn);
         }
@@ -83,6 +119,10 @@ void MdbxKnowledgeUnitNumericKeyPilot::put(
     const auto key = id.value();
     const auto current = m_impl->records.find(key, txn);
     const auto ledger = m_impl->used_ids.find(key, txn);
+    if(ledger && *ledger != kUsedMarker) {
+        txn.rollback();
+        throw std::runtime_error("numeric knowledge-unit ledger marker is invalid");
+    }
     if(ledger && !current) {
         txn.rollback();
         throw std::runtime_error("numeric knowledge-unit id reuse is forbidden");
@@ -102,7 +142,12 @@ std::optional<std::string> MdbxKnowledgeUnitNumericKeyPilot::find(
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
     const auto payload = m_impl->records.find(id.value(), txn);
-    if(payload && !m_impl->used_ids.find(id.value(), txn)) {
+    const auto ledger = m_impl->used_ids.find(id.value(), txn);
+    if(ledger && *ledger != kUsedMarker) {
+        txn.rollback();
+        throw std::runtime_error("numeric knowledge-unit ledger marker is invalid");
+    }
+    if(payload && !ledger) {
         txn.rollback();
         throw std::runtime_error("numeric knowledge-unit ledger is missing");
     }
@@ -114,12 +159,17 @@ bool MdbxKnowledgeUnitNumericKeyPilot::erase(KnowledgeUnitId id) {
     if(id.empty()) return false;
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    const auto ledger = m_impl->used_ids.find(id.value(), txn);
+    if(ledger && *ledger != kUsedMarker) {
+        txn.rollback();
+        throw std::runtime_error("numeric knowledge-unit ledger marker is invalid");
+    }
     const auto payload = m_impl->records.find(id.value(), txn);
     if(!payload) {
         txn.rollback();
         return false;
     }
-    if(!m_impl->used_ids.find(id.value(), txn)) {
+    if(!ledger) {
         txn.rollback();
         throw std::runtime_error("numeric knowledge-unit ledger is missing");
     }
@@ -144,6 +194,17 @@ std::vector<KnowledgeUnitId> MdbxKnowledgeUnitNumericKeyPilot::scan(
             result.emplace_back(key);
             return result.size() < limit;
         }, txn);
+    for(const auto id : result) {
+        try {
+            require_used_marker(
+                m_impl->used_ids.find(id.value(), txn),
+                "numeric knowledge-unit ledger marker is invalid"
+            );
+        } catch(...) {
+            txn.rollback();
+            throw;
+        }
+    }
     txn.commit();
     return result;
 }
