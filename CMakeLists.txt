@@ -183,6 +183,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxResourceImporter.cpp
             src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitNumericKeyPilot.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitTypedStore.cpp
     )
 
     agent_memory_provide_mdbx_containers(AGENT_MEMORY_MDBX_CONTAINERS_TARGET)
