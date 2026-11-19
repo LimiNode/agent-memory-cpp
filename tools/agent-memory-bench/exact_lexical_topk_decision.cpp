@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -227,18 +228,22 @@ namespace {
         Candidate() = default;
         explicit Candidate(Hit value) : hit(std::move(value)) {}
         Candidate(const Candidate& other) : hit(other.hit) { ++copies; }
-        Candidate(Candidate&& other) noexcept : hit(std::move(other.hit)) { ++moves; }
+        Candidate(Candidate&& other) noexcept(std::is_nothrow_move_constructible_v<Hit>)
+            : hit(std::move(other.hit)) { ++moves; }
         Candidate& operator=(const Candidate& other) {
             hit = other.hit;
             ++copies;
             return *this;
         }
-        Candidate& operator=(Candidate&& other) noexcept {
+        Candidate& operator=(Candidate&& other) noexcept(std::is_nothrow_move_assignable_v<Hit>) {
             hit = std::move(other.hit);
             ++moves;
             return *this;
         }
     };
+
+    static_assert(std::is_nothrow_move_constructible_v<Candidate> == std::is_nothrow_move_constructible_v<Hit>);
+    static_assert(std::is_nothrow_move_assignable_v<Candidate> == std::is_nothrow_move_assignable_v<Hit>);
 
     thread_local std::size_t Candidate::copies = 0;
     thread_local std::size_t Candidate::moves = 0;
