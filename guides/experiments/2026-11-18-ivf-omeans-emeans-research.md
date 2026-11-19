@@ -85,3 +85,13 @@ metrics, and a matched retrieval comparison. A result on an RTX 4090 must not
 be reported as an RTX 5090 result. If the pinned O-means or E-means adapter is
 unavailable, the correct result is `NOT_EXECUTED`; production work continues
 independently.
+
+## Follow-up evidence
+
+[PR #664](https://github.com/LimiNode/agent-memory-cpp/pull/664) (tested at
+`21095e4b5e54d8e04018e5e072f69117379107af`) adds a separate Faiss 1.16.0 CPU
+`NumpyEmeans` versus Lloyd synthetic smoke. It is an executed, receipt-bound
+control, but it is not a replacement for a pinned O-means adapter or a matched
+R4 corpus; its `DEFER` disposition and `production_activation: false` remain
+in force. This follow-up does not rewrite the historical receipts owned by
+this PR.
