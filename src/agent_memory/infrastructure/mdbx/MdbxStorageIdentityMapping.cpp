@@ -165,6 +165,16 @@ BlockStorageId MdbxStorageIdentityMapping::ensure_block(
     if(document_id.empty() || block_id.empty()) throw std::invalid_argument("block identity must not be empty");
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    const auto document_payload = m_impl->records.find(document_key(document_id), txn);
+    if(!document_payload) {
+        txn.rollback();
+        throw std::invalid_argument("block mapping requires an assigned document");
+    }
+    const auto document = decode_document_storage_identity_record(*document_payload);
+    if(document.document_id != document_id || document.retired) {
+        txn.rollback();
+        throw std::invalid_argument("block mapping requires an active document");
+    }
     const auto key = block_key(document_id, block_id);
     if(const auto encoded = m_impl->records.find(key, txn)) {
         const auto decoded = decode_block_storage_identity_record(*encoded);

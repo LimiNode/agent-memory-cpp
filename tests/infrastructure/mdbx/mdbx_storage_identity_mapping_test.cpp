@@ -38,6 +38,15 @@ int main() {
             expect(document_id.value() == 1U, "document allocation did not start at one");
             expect(mapping.ensure_document(document) == document_id,
                    "document intern was not idempotent");
+            bool unknown_parent_rejected = false;
+            try {
+                static_cast<void>(mapping.ensure_block(
+                    DocumentId{"doc:missing"}, ContentBlockId{"block:missing"}));
+            } catch(const std::invalid_argument&) {
+                unknown_parent_rejected = true;
+            }
+            expect(unknown_parent_rejected,
+                   "block mapping accepted an unassigned document");
             const auto block_id = mapping.ensure_block(document, block);
             expect(block_id.value() == 1U, "block allocation did not start at one");
             expect(mapping.resolve_document(document_id) == std::optional<DocumentId>{document},
