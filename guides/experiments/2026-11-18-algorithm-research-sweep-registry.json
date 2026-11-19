@@ -195,6 +195,7 @@
           "execution_status": "EXECUTED",
           "environment": "Local actual MSVC 19.44.35228.0 / Release / C++17",
           "receipt_locator": "E:/_repoz/agent-memory-workspaces/2026-11-19-r5-exact-vector-v2-msvc/exact-vector.receipt.json",
+          "receipt_sidecar_locator": "E:/_repoz/agent-memory-workspaces/2026-11-19-r5-exact-vector-v2-msvc/exact-vector.receipt.json.sha256",
           "receipt_sha256": "afdc8522477e9d3a70c1430273711a9a6b228b210d491f49c16cd296ba521daf",
           "raw_output_sha256": "dd9a1765951eaa922d342ea050b914e9c5203cdaa8515d952725e884b48fa3a5",
           "validation_summary": "6 correctness cases, 10 timing cases, 9 evidence mutations; actual MSVC is not inferred from MinGW"
@@ -244,6 +245,7 @@
           "execution_status": "EXECUTED",
           "environment": "Historical Ubuntu / GNU 15.2 / Release CI pilot",
           "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44614602649 (exact-lexical-topk-decision artifact, receipt.json)",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44614602649 (exact-lexical-topk-decision artifact, receipt.json.sha256)",
           "receipt_sha256": "55ca25cd96095a29c11401dc28d3ce7a3a594c45fe89a0345484676275c89097",
           "validation_summary": "16 cases and 1024 samples; original source/checkout preserved, not rebound to the current HEAD"
         },
@@ -253,6 +255,7 @@
           "execution_status": "EXECUTED",
           "environment": "Local actual MSVC 19.44.35228.0 / Release / C++17",
           "receipt_locator": "E:/_repoz/agent-memory-cpp/.worktrees/exact-lexical-topk-decision/.build/vs/receipt.json",
+          "receipt_sidecar_locator": "E:/_repoz/agent-memory-cpp/.worktrees/exact-lexical-topk-decision/.build/vs/receipt.json.sha256",
           "receipt_sha256": "bfded1f443cc85a55b80c8723efc1a6bd2bc9b76fb749066994e727d2f6d0b19",
           "source_manifest_sha256": "747fb62a8ad7bade19883185605da6a6f4017dbeaecaf826e48efdcb76d1f167",
           "validation_summary": "3 self-tests and complete matched matrix; final actual-Hit noexcept and generated-header guard contracts"
@@ -263,6 +266,7 @@
           "execution_status": "EXECUTED",
           "environment": "Local GNU 15.2 / Release / C++17",
           "receipt_locator": "E:/_repoz/agent-memory-cpp/.worktrees/exact-lexical-topk-decision/.build/exact-lexical-topk/receipt.json",
+          "receipt_sidecar_locator": "E:/_repoz/agent-memory-cpp/.worktrees/exact-lexical-topk-decision/.build/exact-lexical-topk/receipt.json.sha256",
           "receipt_sha256": "3b4b62fd412fafbdaf89ab24adda7212e64ec8db1b4956eb95a29f2193c7548c",
           "source_manifest_sha256": "747fb62a8ad7bade19883185605da6a6f4017dbeaecaf826e48efdcb76d1f167",
           "validation_summary": "3 self-tests and complete matched matrix; not substituted for actual MSVC evidence"
@@ -273,7 +277,7 @@
       "experiment_id": "r5_production_shaped_admission",
       "algorithm_id": "hybrid_retrieval_scaffolding",
       "owner_pull_request": "https://github.com/LimiNode/agent-memory-cpp/pull/666",
-      "latest_code_commit": "df17946cb6cbad36f0da25caa6823dc67d3f41d7",
+      "latest_code_commit": "3c146981cc2efafcaadfed698000395bc95805ba",
       "evidence_role": "BOUNDED_EXECUTION_INDEX",
       "decision_status": "CONDITIONAL",
       "decision_scope": "Candidate crossover is conditional on the synthetic candidate/metadata regime; production defaults KEEP CURRENT. Generated admission replacements are not product-path activation.",
