@@ -8,6 +8,7 @@ import json
 import math
 import copy
 import itertools
+import re
 import runpy
 from pathlib import Path
 from typing import Any
@@ -88,7 +89,10 @@ def _finite_samples(timing: Any) -> bool:
     )
 
 
-def validate_receipt(receipt: Any, *, expected_head: str, actual_checkout_sha: str) -> list[str]:
+def validate_receipt(
+    receipt: Any, *, expected_head: str, actual_checkout_sha: str,
+    expected_compiler: str | None = None, expected_system: str | None = None,
+) -> list[str]:
     errors: list[str] = []
     if not isinstance(receipt, dict):
         return ["receipt must be a JSON object"]
@@ -107,6 +111,30 @@ def validate_receipt(receipt: Any, *, expected_head: str, actual_checkout_sha: s
     for field in ("source_manifest_sha256", "fixture_sha256"):
         if not _is_sha(receipt.get(field), 64):
             errors.append(f"{field} must be a lowercase 64-character SHA-256")
+    environment = receipt.get("build_environment")
+    if not isinstance(environment, dict):
+        errors.append("build_environment must be an object")
+    else:
+        if environment.get("compiler_id") not in {"GNU", "MSVC", "Clang", "AppleClang"}:
+            errors.append("build_environment.compiler_id is unsupported")
+        version = environment.get("compiler_version")
+        if not isinstance(version, str) or not re.fullmatch(r"[0-9]+(?:\.[0-9]+)+(?:[-a-zA-Z0-9.]*)", version):
+            errors.append("build_environment.compiler_version must identify the toolchain")
+        if type(environment.get("cxx_standard")) is not int or environment["cxx_standard"] != 17:
+            errors.append("build_environment.cxx_standard must be 17")
+        if environment.get("build_configuration") != "Release":
+            errors.append("build_environment.build_configuration must be Release")
+        if environment.get("system_name") not in {"Windows", "Linux", "Darwin"}:
+            errors.append("build_environment.system_name is unsupported")
+        if type(environment.get("pointer_bits")) is not int or environment["pointer_bits"] not in {32, 64}:
+            errors.append("build_environment.pointer_bits must be 32 or 64")
+        processor = environment.get("system_processor")
+        if not isinstance(processor, str) or not processor.strip():
+            errors.append("build_environment.system_processor is required")
+        if expected_compiler is not None and environment.get("compiler_id") != expected_compiler:
+            errors.append("build_environment.compiler_id does not match the required compiler")
+        if expected_system is not None and environment.get("system_name") != expected_system:
+            errors.append("build_environment.system_name does not match the required platform")
     if receipt.get("production_contract") != (
         "HybridRetrievalEngine::retrieve() admission implementation merged by PR #625"
     ):
@@ -221,6 +249,11 @@ def self_test() -> None:
         "expected_pr_head_sha": expected,
         "source_manifest_sha256": "b" * 64,
         "fixture_sha256": "c" * 64,
+        "build_environment": {
+            "compiler_id": "MSVC", "compiler_version": "19.44.35228.0",
+            "cxx_standard": 17, "build_configuration": "Release",
+            "system_name": "Windows", "system_processor": "AMD64", "pointer_bits": 64,
+        },
         "production_contract": "HybridRetrievalEngine::retrieve() admission implementation merged by PR #625",
         "candidate_counts": EXPECTED_COUNTS,
         "warmups": 2,
@@ -258,6 +291,23 @@ def self_test() -> None:
             ],
         })
     assert not validate_receipt(valid, expected_head=expected, actual_checkout_sha=expected)
+    for field, value in (
+        ("compiler_id", "FAKE"), ("compiler_version", "unknown"),
+        ("cxx_standard", 3), ("build_configuration", "Debug"),
+        ("system_name", "FAKE"), ("system_processor", ""), ("pointer_bits", 0),
+    ):
+        invalid = copy.deepcopy(valid)
+        invalid["build_environment"][field] = value
+        assert validate_receipt(invalid, expected_head=expected, actual_checkout_sha=expected)
+    invalid = copy.deepcopy(valid)
+    del invalid["build_environment"]
+    assert validate_receipt(invalid, expected_head=expected, actual_checkout_sha=expected)
+    assert not validate_receipt(valid, expected_head=expected, actual_checkout_sha=expected,
+                                expected_compiler="MSVC", expected_system="Windows")
+    assert validate_receipt(valid, expected_head=expected, actual_checkout_sha=expected,
+                            expected_compiler="GNU")
+    assert validate_receipt(valid, expected_head=expected, actual_checkout_sha=expected,
+                            expected_system="Linux")
     invalid = json.loads(json.dumps(valid))
     invalid["cases"][0]["variants"][0]["full_retrieve_path"] = False
     assert validate_receipt(invalid, expected_head=expected, actual_checkout_sha=expected)
@@ -310,6 +360,8 @@ def main() -> int:
     parser.add_argument("--sidecar", type=Path)
     parser.add_argument("--expected-head")
     parser.add_argument("--actual-checkout-sha")
+    parser.add_argument("--expected-compiler", choices=("GNU", "MSVC", "Clang", "AppleClang"))
+    parser.add_argument("--expected-system", choices=("Windows", "Linux", "Darwin"))
     parser.add_argument("--write-sidecar", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -331,6 +383,8 @@ def main() -> int:
             receipt,
             expected_head=args.expected_head,
             actual_checkout_sha=args.actual_checkout_sha,
+            expected_compiler=args.expected_compiler,
+            expected_system=args.expected_system,
         )
     except (KeyError, TypeError, ValueError) as error:
         errors = [f"malformed receipt: {error}"]
