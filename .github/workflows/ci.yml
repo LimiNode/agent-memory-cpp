@@ -612,6 +612,80 @@ jobs:
       - name: Test native MIH benchmark harness
         run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_
 
+  production-reranker-admission:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: Production-shaped reranker admission (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install research CTest configure prerequisites
+        run: python -m pip install -r tools/requirements-tools.txt
+
+      - name: Configure production-shaped reranker admission
+        run: >
+          cmake -S . -B build-production-reranker
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DAGENT_MEMORY_PRODUCTION_RERANKER_EXPECTED_PR_HEAD_SHA=${{ github.event.pull_request.head.sha || github.sha }}
+          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
+
+      - name: Build production-shaped reranker admission
+        run: >
+          cmake --build build-production-reranker --config Release --target
+          agent-memory-production-reranker-admission
+
+      - name: Run production-shaped reranker contract tests
+        run: >
+          ctest --test-dir build-production-reranker --build-config Release
+            --output-on-failure --no-tests=error -R agent_memory_production_reranker_
+
+      - name: Run production-shaped reranker qualification
+        run: >
+          python -c "from pathlib import Path; import subprocess;
+          files=[p for p in Path('build-production-reranker').rglob('*') if p.is_file() and p.name in ('agent-memory-production-reranker-admission','agent-memory-production-reranker-admission.exe')];
+          assert len(files)==1, files;
+          subprocess.run([str(files[0].resolve()),'build-production-reranker/production-reranker-admission.json'],check=True)"
+
+      - name: Validate production-shaped reranker receipt
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual_checkout_sha="$(git rev-parse HEAD)"
+          python tools/agent-memory-bench/validate-production-reranker-admission.py \
+            --receipt build-production-reranker/production-reranker-admission.json \
+            --sidecar build-production-reranker/production-reranker-admission.sha256.json \
+            --expected-head "$EXPECTED_HEAD" \
+            --actual-checkout-sha "$actual_checkout_sha" --write-sidecar
+
+      - name: Upload production-shaped reranker receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-reranker-admission-receipt-${{ matrix.os }}
+          path: |
+            build-production-reranker/production-reranker-admission.json
+            build-production-reranker/production-reranker-admission.sha256.json
+          if-no-files-found: error
+
   r4-native-benchmark:
     if: needs.changes.outputs.research == 'true'
     needs: changes
@@ -1272,6 +1346,7 @@ jobs:
       - mdbx
       - mdbx-benchmark
       - native-mih-benchmark
+      - production-reranker-admission
       - r4-native-benchmark
       - thq-faiss-additive-control
       - thq-packed-codec-contract
@@ -1297,6 +1372,7 @@ jobs:
           STORAGE_RESULT: ${{ needs.mdbx.result }}
           MDBX_BENCHMARK_RESULT: ${{ needs.mdbx-benchmark.result }}
           MIH_RESULT: ${{ needs.native-mih-benchmark.result }}
+          PRODUCTION_RERANKER_RESULT: ${{ needs.production-reranker-admission.result }}
           R4_RESULT: ${{ needs.r4-native-benchmark.result }}
           FAISS_RESULT: ${{ needs.thq-faiss-additive-control.result }}
           THQ_RESULT: ${{ needs.thq-packed-codec-contract.result }}
@@ -1332,6 +1408,7 @@ jobs:
           check_required "$STORAGE_REQUIRED" "$STORAGE_RESULT" "MDBX storage"
           check_required "$RESEARCH_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
           check_required "$RESEARCH_REQUIRED" "$MIH_RESULT" "native MIH"
+          check_required "$RESEARCH_REQUIRED" "$PRODUCTION_RERANKER_RESULT" "production-shaped reranker admission"
           check_required "$RESEARCH_REQUIRED" "$R4_RESULT" "R4 benchmark"
           check_required "$RESEARCH_REQUIRED" "$FAISS_RESULT" "Faiss control"
           check_required "$RESEARCH_REQUIRED" "$THQ_RESULT" "THQ packed codec"
