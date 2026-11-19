@@ -76,3 +76,12 @@ Until those gates produce a representative result, the disposition is
 `DEFER`: E-means/O-means is not a production ANN recommendation and must not
 be compared with lexical or quantization methods by one undifferentiated
 speed number.
+
+## Follow-up evidence
+
+[PR #664](https://github.com/LimiNode/agent-memory-cpp/pull/664) (tested at
+`21095e4b5e54d8e04018e5e072f69117379107af`) supplies a separate Faiss 1.16.0
+CPU `NumpyEmeans` versus Lloyd synthetic smoke. The run is receipt-bound and
+executed, but remains `DEFER` with `production_activation: false`; it does not
+close the matched-corpus, portable-serving, or O-means gates above. This note
+retains its historical feasibility scope and does not rewrite earlier receipts.
