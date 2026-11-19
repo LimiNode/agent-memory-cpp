@@ -132,7 +132,10 @@ checkouts, installed dependency packages and a fresh artifact destination. It
 builds those packages itself, then runs OLD create, NEW upgrade, NEW interrupted
 build, NEW reopen, NEW uncommitted-pointer crash, NEW reopen, OLD verify as
 separate processes. OLD is pinned to the post-Raw-Markdown baseline
-`52004324bc0d2b07c3657245195db349dd391774`. The receipt records both commits,
+`52004324bc0d2b07c3657245195db349dd391774` by default. That frozen baseline
+requires `--allow-pre-numeric-baseline` and produces historical-only evidence;
+post-migration qualification must pass an explicit `--old-commit` and use the
+new exact source pair. The receipt records both commits,
 source/dependency trees, options/toolchains, executable and fixture digests,
 canonical logical snapshot and process exit codes. Synthetic SHA-derived
 reference vectors qualify lifecycle, not embedding quality. The packaging
