@@ -19,10 +19,6 @@ serving, and MDBX persistence, see the [codec evaluation report](codec-evaluatio
 The canonical three-mode serving comparison (full-flat packed 1M,
 Prototype-IVF/balanced cascade, and Modern R4) is defined in
 [2026-10-02-serving-mode-bakeoff.md](2026-10-02-serving-mode-bakeoff.md).
-The naming and compatibility boundary for that historical route evidence is
-defined in [prototype/representative routing lineage](../prototype-representative-routing-lineage.md):
-PRR is the family name and PR-IVF is a future concrete member, not a silent
-rename of existing NeuRoute R4 receipts.
 
 For the structured-memory and activation reference drawn from AH-MemoryHub,
 see [associative and heterarchical memory reference](2026-10-01-associative-heterarchical-memory-reference.md).
