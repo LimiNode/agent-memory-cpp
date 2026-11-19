@@ -256,6 +256,7 @@ profile_deltas:
   - name: numeric_knowledge_unit_key_pilot
     dbis: 3
     migration_peak: 3
+    names: [knowledge_units_numeric_v1, knowledge_units_numeric_v1_used, knowledge_units_numeric_v1_meta]
     default: false
     activation: optional_exclusive_profile
     schema_version: knowledge_unit_numeric_key.v1
@@ -266,36 +267,40 @@ profile_deltas:
       - name: knowledge_units_numeric_v1
         owner: numeric_knowledge_unit_pilot
         table_type: KeyValueTable
-        opens: numeric_knowledge_unit_key_pilot
+        opens: NumericKnowledgeUnitPilot
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [KnowledgeUnitId]
         comparator: MDBX_INTEGERKEY
         flags: [MDBX_INTEGERKEY]
         schema_version: knowledge_unit_numeric_key.v1
+        migration_peak: 1
       - name: knowledge_units_numeric_v1_used
         owner: numeric_knowledge_unit_pilot
         table_type: KeyValueTable
-        opens: numeric_knowledge_unit_key_pilot
+        opens: NumericKnowledgeUnitPilot
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [KnowledgeUnitId]
         comparator: MDBX_INTEGERKEY
         flags: [MDBX_INTEGERKEY]
         schema_version: knowledge_unit_numeric_key.v1
+        migration_peak: 1
       - name: knowledge_units_numeric_v1_meta
         owner: numeric_knowledge_unit_pilot
         table_type: KeyValueTable
-        opens: numeric_knowledge_unit_key_pilot
+        opens: NumericKnowledgeUnitPilot
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [SchemaKey]
         comparator: MDBX_BYTEWISE
         flags: []
         schema_version: knowledge_unit_numeric_key.v1
+        migration_peak: 1
   - name: storage_identity_mapping_pilot
     dbis: 4
     migration_peak: 4
+    names: [identity_records_v1, identity_documents_v1, identity_blocks_v1, identity_meta_v1]
     default: false
     activation: optional_exclusive_profile
     schema_version: storage_identity_mapping.v1
@@ -306,43 +311,47 @@ profile_deltas:
       - name: identity_records_v1
         owner: storage_identity_mapping_pilot
         table_type: KeyValueTable
-        opens: storage_identity_mapping
+        opens: StorageIdentityMapping
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [DocumentId, ContentBlockId]
         comparator: MDBX_BYTEWISE
         flags: []
         schema_version: storage_identity_mapping.v1
+        migration_peak: 1
       - name: identity_documents_v1
         owner: storage_identity_mapping_pilot
         table_type: KeyValueTable
-        opens: storage_identity_mapping
+        opens: StorageIdentityMapping
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [DocumentStorageId]
         comparator: MDBX_INTEGERKEY
         flags: [MDBX_INTEGERKEY]
         schema_version: storage_identity_mapping.v1
+        migration_peak: 1
       - name: identity_blocks_v1
         owner: storage_identity_mapping_pilot
         table_type: KeyValueTable
-        opens: storage_identity_mapping
+        opens: StorageIdentityMapping
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [BlockStorageId]
         comparator: MDBX_INTEGERKEY
         flags: [MDBX_INTEGERKEY]
         schema_version: storage_identity_mapping.v1
+        migration_peak: 1
       - name: identity_meta_v1
         owner: storage_identity_mapping_pilot
         table_type: KeyValueTable
-        opens: storage_identity_mapping
+        opens: StorageIdentityMapping
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
         physical_key: [SchemaKey, SequenceKey]
         comparator: MDBX_BYTEWISE
         flags: []
         schema_version: storage_identity_mapping.v1
+        migration_peak: 1
   - name: exact_index_generations
     dbis: 1
     migration_peak: 1

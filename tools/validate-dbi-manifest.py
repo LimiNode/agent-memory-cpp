@@ -55,6 +55,8 @@ ALLOWED_SELECTORS = {
     "UpstreamSync",
     "RawArtifactCatalog",
     "ExactIndexGenerationStore",
+    "NumericKnowledgeUnitPilot",
+    "StorageIdentityMapping",
 }
 
 ALLOWED_WIRE_SYNC_SUPPORT = {
