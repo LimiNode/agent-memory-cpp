@@ -51,9 +51,10 @@ portable native C++ serving experiment.
 ## Experiment ownership and terminology
 
 This feasibility note owns the decision boundary and the stop conditions only.
-PR #638 owns the single executable IVF comparison and its pinned Faiss
-positive control; it must not be duplicated here. PR #640 records the wider
-algorithm registry and evidence status. New routing documents may use `PRR`
+[PR #638](https://github.com/LimiNode/agent-memory-cpp/pull/638) owns the
+single executable IVF comparison and its pinned Faiss positive control; it
+must not be duplicated here. [PR #640](https://github.com/LimiNode/agent-memory-cpp/pull/640)
+records the wider algorithm registry and evidence status. New routing documents may use `PRR`
 (Prototype–Representative Routing) and `PR-IVF` (Prototype–Representative
 Inverted File), but this note does not claim either design is implemented.
 The links are ownership references, not evidence that an experiment ran.
