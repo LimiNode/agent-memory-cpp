@@ -1903,6 +1903,19 @@ if(AGENT_MEMORY_BUILD_TESTS)
         message(STATUS "Python3 interpreter not found; skipping DBI manifest validator tests")
     endif()
     if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(
+            NAME agent_memory_exact_vector_index_decision
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/validate_exact_vector_index_decision.py
+                --executable $<TARGET_FILE:agent-memory-exact-vector-index-decision>
+                --raw ${CMAKE_CURRENT_BINARY_DIR}/exact-vector-index-decision.json
+                --receipt ${CMAKE_CURRENT_BINARY_DIR}/exact-vector-index-decision.receipt.json
+                --sidecar ${CMAKE_CURRENT_BINARY_DIR}/exact-vector-index-decision.sha256
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
         add_test(
             NAME agent_memory_benchmark_cli_synthetic_sweep
             COMMAND

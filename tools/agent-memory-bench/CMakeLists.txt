@@ -8,6 +8,15 @@ target_link_libraries(agent-memory-bench
     agent_memory::json
 )
 
+add_executable(agent-memory-exact-vector-index-decision
+    exact_vector_index_decision.cpp
+)
+
+target_link_libraries(agent-memory-exact-vector-index-decision
+    PRIVATE
+        agent_memory::agent_memory
+)
+
 add_executable(agent-memory-autoencoder-eval
     autoencoder_evaluation.cpp
 )
