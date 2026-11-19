@@ -615,13 +615,24 @@ jobs:
           ctest --test-dir build-native-mih --build-config Release
           --output-on-failure -R "agent_memory_mih_native_|agent_memory_exact_selection_self_test"
 
+      - name: Self-test exact selection receipt validator
+        run: python tools/agent-memory-bench/validate-exact-selection-receipt.py --self-test
+
       - name: Generate exact selection receipt
         run: >
           mkdir -p artifacts &&
           ./build-native-mih/tools/agent-memory-bench/agent-memory-exact-selection-benchmark
-          artifacts/exact-selection-benchmark.json &&
+          artifacts/exact-selection-benchmark.json
+          --expected-pr-head "${{ github.event.pull_request.head.sha || github.sha }}" &&
           sha256sum artifacts/exact-selection-benchmark.json
           > artifacts/exact-selection-benchmark.json.sha256
+
+      - name: Validate exact selection receipt integrity and provenance
+        run: >
+          python tools/agent-memory-bench/validate-exact-selection-receipt.py
+          artifacts/exact-selection-benchmark.json
+          artifacts/exact-selection-benchmark.json.sha256
+          --expected-head "${{ github.event.pull_request.head.sha || github.sha }}"
 
       - name: Upload exact selection receipt
         uses: actions/upload-artifact@v4

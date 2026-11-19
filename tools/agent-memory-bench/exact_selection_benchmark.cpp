@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <string>
 #include <queue>
 #include <string_view>
 #include <utility>
@@ -18,6 +19,18 @@ using Clock = std::chrono::steady_clock;
 
 #ifndef AGENT_MEMORY_EXACT_SELECTION_SOURCE_COMMIT
 #define AGENT_MEMORY_EXACT_SELECTION_SOURCE_COMMIT "unknown"
+#endif
+#ifndef AGENT_MEMORY_EVALUATOR_CONFIGURED_ENVIRONMENT_SHA256
+#define AGENT_MEMORY_EVALUATOR_CONFIGURED_ENVIRONMENT_SHA256 "unknown"
+#endif
+#ifndef AGENT_MEMORY_EVALUATOR_COMPILER_ID
+#define AGENT_MEMORY_EVALUATOR_COMPILER_ID "unknown"
+#endif
+#ifndef AGENT_MEMORY_EVALUATOR_COMPILER_VERSION
+#define AGENT_MEMORY_EVALUATOR_COMPILER_VERSION "unknown"
+#endif
+#ifndef AGENT_MEMORY_EVALUATOR_GENERATOR
+#define AGENT_MEMORY_EVALUATOR_GENERATOR "unknown"
 #endif
 
 struct Entry final {
@@ -38,6 +51,8 @@ using Selector = std::vector<Entry>(*)(
     const std::vector<Entry>&,
     std::size_t
 );
+
+[[nodiscard]] Selector selector_for(const std::string_view name);
 
 [[nodiscard]] std::size_t effective_top_k(
     const std::vector<Entry>& input,
@@ -160,47 +175,68 @@ using Selector = std::vector<Entry>(*)(
     return result;
 }
 
-template <typename Function>
-[[nodiscard]] Json measure(
+[[nodiscard]] Json measure_interleaved(
     const std::vector<Entry>& input,
     const std::vector<Entry>& oracle,
     const std::size_t top_k,
-    Function&& function
+    const std::vector<std::string_view>& execution_order
 ) {
     constexpr std::size_t warmups = 2;
     constexpr std::size_t repeats = 8;
+    struct VariantState final {
+        std::string_view name;
+        Selector selector;
+        std::vector<double> samples;
+        bool exact_parity = true;
+    };
+    std::vector<VariantState> states;
+    states.reserve(execution_order.size());
+    for(const auto name : execution_order) {
+        states.push_back(VariantState{name, selector_for(name), {}, true});
+        states.back().samples.reserve(repeats);
+    }
     volatile std::uint64_t checksum = 0;
     for(std::size_t index = 0; index < warmups; ++index) {
-        const auto result = function(input, top_k);
-        if(!result.empty()) {
-            checksum ^= result.front().id;
+        for(const auto& state : states) {
+            const auto result = state.selector(input, top_k);
+            if(!result.empty()) {
+                checksum ^= result.front().id;
+            }
         }
     }
-
-    std::vector<double> samples;
-    samples.reserve(repeats);
-    bool exact_parity = true;
     for(std::size_t index = 0; index < repeats; ++index) {
-        const auto started = Clock::now();
-        const auto result = function(input, top_k);
-        const auto elapsed = std::chrono::duration<double, std::milli>(
-            Clock::now() - started
-        ).count();
-        if(!result.empty()) {
-            checksum ^= result.front().id;
+        for(auto& state : states) {
+            const auto started = Clock::now();
+            const auto result = state.selector(input, top_k);
+            const auto elapsed = std::chrono::duration<double, std::milli>(
+                Clock::now() - started
+            ).count();
+            if(!result.empty()) {
+                checksum ^= result.front().id;
+            }
+            state.exact_parity = state.exact_parity && same_results(result, oracle);
+            state.samples.push_back(elapsed);
         }
-        exact_parity = exact_parity && same_results(result, oracle);
-        samples.push_back(elapsed);
     }
     if(checksum == 0xdeadbeefU) {
         std::cerr << "unreachable checksum guard\n";
     }
 
+    Json variants = Json::object();
+    for(const auto& state : states) {
+        variants[std::string(state.name)] = Json{
+            {"exact_parity", state.exact_parity},
+            {"sample_count", state.samples.size()},
+            {"samples_ms", state.samples},
+            {"warmups", warmups},
+            {"interleaved", true}
+        };
+    }
     return Json{
-        {"exact_parity", exact_parity},
-        {"sample_count", repeats},
-        {"samples_ms", samples},
-        {"warmups", warmups}
+        {"variants", variants},
+        {"warmups", warmups},
+        {"repeats", repeats},
+        {"timing_scope", "fixture_interleaved_variant_selection"}
     };
 }
 
@@ -324,29 +360,39 @@ template <typename Function>
 ) {
     const auto input = make_distribution_fixture(candidate_count, distribution);
     const auto oracle = full_sort(input, top_k);
-    Json variants = Json::object();
-    for(const auto name : execution_order) {
-        variants[std::string(name)] = measure(
-            input,
-            oracle,
-            top_k,
-            selector_for(name)
-        );
-    }
+    const auto measurements = measure_interleaved(input, oracle, top_k, execution_order);
     return Json{
         {"candidate_count", candidate_count},
         {"top_k", top_k},
         {"effective_top_k", effective_top_k(input, top_k)},
         {"score_distribution", distribution},
         {"execution_order", execution_order},
-        {"variants", variants}
+        {"variants", measurements.at("variants")},
+        {"warmups", measurements.at("warmups")},
+        {"repeats", measurements.at("repeats")},
+        {"timing_scope", measurements.at("timing_scope")}
     };
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
-    if(argc > 1 && std::string_view(argv[1]) == "--self-test") {
+    bool self_test_requested = false;
+    std::string output_path = "exact-selection-benchmark.json";
+    std::string expected_pr_head = "not_supplied";
+    for(int index = 1; index < argc; ++index) {
+        const std::string_view argument(argv[index]);
+        if(argument == "--self-test") {
+            self_test_requested = true;
+        } else if(argument == "--expected-pr-head" && index + 1 < argc) {
+            expected_pr_head = argv[++index];
+        } else if(argument.rfind("--expected-pr-head=", 0) == 0U) {
+            expected_pr_head = std::string(argument.substr(19));
+        } else {
+            output_path = argv[index];
+        }
+    }
+    if(self_test_requested) {
         if(!self_test()) {
             std::cerr << "exact selection self-test: FAIL\n";
             return 1;
@@ -355,19 +401,25 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    const std::string output_path = argc > 1
-        ? argv[1]
-        : "exact-selection-benchmark.json";
     const Json receipt{
         {"schema_version", 2},
         {"benchmark_name", "exact_selection_ranking_kernel"},
         {"source_commit", AGENT_MEMORY_EXACT_SELECTION_SOURCE_COMMIT},
+        {"expected_pr_head_sha", expected_pr_head},
+        {"actual_checkout_sha", AGENT_MEMORY_EXACT_SELECTION_SOURCE_COMMIT},
+        {"provenance_scope", "expected_pr_head_and_actual_checkout_are_recorded_separately"},
+        {"build_identity", Json{
+            {"compiler_id", AGENT_MEMORY_EVALUATOR_COMPILER_ID},
+            {"compiler_version", AGENT_MEMORY_EVALUATOR_COMPILER_VERSION},
+            {"generator", AGENT_MEMORY_EVALUATOR_GENERATOR},
+            {"configured_environment_sha256", AGENT_MEMORY_EVALUATOR_CONFIGURED_ENVIRONMENT_SHA256}
+        }},
         {"corpus_seed", "0x5eed1234"},
         {"correctness_oracle", "full_sort_with_score_desc_id_asc_tie_break"},
         {"candidate_identity_contract", "repeated_ids_allowed; multiplicity_preserved; score_desc_id_asc_order"},
         {"boundary_contract", "empty_and_top_k_zero_return_empty; effective_top_k=min(top_k,candidate_count)"},
         {"scope", "ranking-selection kernel only; not ExactLexicalIndex end-to-end"},
-        {"timing_semantics", "one sample is one complete candidate-set selection; warmups excluded"},
+        {"timing_semantics", "one sample is one complete candidate-set selection; variants are interleaved on one fixture; warmups excluded"},
         {"production_api_changed", false},
         {"status", "EXECUTED"},
         {"cases", Json::array({

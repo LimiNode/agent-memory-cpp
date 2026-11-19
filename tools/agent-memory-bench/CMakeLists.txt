@@ -106,6 +106,8 @@ function(agent_memory_set_evaluator_build_environment target)
     )
 endfunction()
 
+agent_memory_set_evaluator_build_environment(agent-memory-exact-selection-benchmark)
+
 agent_memory_set_evaluator_source_manifest(agent-memory-autoencoder-eval
     "${CMAKE_CURRENT_SOURCE_DIR}/autoencoder_evaluation.cpp"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/eval/AutoencoderBinaryArtifact.cpp"
