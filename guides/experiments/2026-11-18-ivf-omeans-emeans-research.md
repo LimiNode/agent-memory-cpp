@@ -88,10 +88,22 @@ independently.
 
 ## Follow-up evidence
 
-[PR #664](https://github.com/LimiNode/agent-memory-cpp/pull/664) (tested at
-`21095e4b5e54d8e04018e5e072f69117379107af`) adds a separate Faiss 1.16.0 CPU
-`NumpyEmeans` versus Lloyd synthetic smoke. It is an executed, receipt-bound
-control, but it is not a replacement for a pinned O-means adapter or a matched
-R4 corpus; its `DEFER` disposition and `production_activation: false` remain
-in force. This follow-up does not rewrite the historical receipts owned by
-this PR.
+[PR #664](https://github.com/LimiNode/agent-memory-cpp/pull/664) now carries the
+[corrected v2 CPU `NumpyEmeans` versus Lloyd synthetic smoke](https://github.com/LimiNode/agent-memory-cpp/blob/6272e7b230f7dbbc5d2b235614b9d5badb95ea7e/guides/experiments/2026-11-19-emeans-vs-lloyd.md),
+with code/source HEAD `6272e7b230f7dbbc5d2b235614b9d5badb95ea7e`.
+The original v1 comparison at `21095e4b5e54d8e04018e5e072f69117379107af` is
+`INVALID_FOR_COMPARISON`: Lloyd silently subsampled its training input, and
+E-means MSE used moving-pass labels rather than final-centroid reassignment.
+Its timing ratio and comparative quality conclusions are withdrawn; historical
+raw files and receipts remain unchanged.
+
+The v2 compact receipt is published separately in #664 at
+`guides/experiments/2026-11-19-r5-emeans-vs-lloyd-v2.receipt.json`; its actual
+execution SHA and raw digest, not this documentation link, identify the run.
+Full raw output belongs outside Git and in per-head CI artifacts. v2 enforces
+the same complete training input and measured assignment-work budget, final
+independent MSE, disjoint split hashes, native IVF `ndis`, and a separately
+labelled capped-scan proxy. It remains `DEFER` with
+`production_activation: false`: no pinned O-means adapter, representative R4
+corpus or portable native serving result is implied. This follow-up does not
+rewrite the historical receipts owned by this PR.
