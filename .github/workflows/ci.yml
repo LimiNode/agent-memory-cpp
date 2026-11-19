@@ -1299,6 +1299,7 @@ jobs:
         with:
           name: r5-vector-${{ matrix.os }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: .build/r5-vector/exact-vector-index-decision.*
+          include-hidden-files: true
           if-no-files-found: error
 
   r5-emeans-cpu:
@@ -1346,6 +1347,7 @@ jobs:
         with:
           name: r5-emeans-${{ github.event.pull_request.head.sha || github.sha }}
           path: .build/r5-emeans/emeans.*
+          include-hidden-files: true
           if-no-files-found: error
 
   ci-gate:
