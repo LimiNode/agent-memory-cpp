@@ -35,6 +35,15 @@ namespace {
 #ifndef AGENT_MEMORY_RERANKER_ADMISSION_PRODUCTION_CONTRACT_COMMIT
 #define AGENT_MEMORY_RERANKER_ADMISSION_PRODUCTION_CONTRACT_COMMIT "unconfigured"
 #endif
+#ifndef AGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA
+#define AGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA "unconfigured"
+#endif
+#ifndef AGENT_MEMORY_RERANKER_ADMISSION_SOURCE_MANIFEST_SHA256
+#define AGENT_MEMORY_RERANKER_ADMISSION_SOURCE_MANIFEST_SHA256 "unconfigured"
+#endif
+#ifndef AGENT_MEMORY_RERANKER_ADMISSION_FIXTURE_SHA256
+#define AGENT_MEMORY_RERANKER_ADMISSION_FIXTURE_SHA256 "unconfigured"
+#endif
 
     constexpr std::size_t kRepeats = 12;
     constexpr std::size_t kWarmups = 2;
@@ -399,7 +408,8 @@ namespace {
         const auto hash_build_ms = std::chrono::duration<double, std::milli>(Clock::now() - hash_started).count();
 
         const auto expected = production.run(candidate_count);
-        Json variants = Json::array();
+        Json admission_variants = Json::array();
+        Json production_measurement;
         std::array<std::vector<double>, 3> samples;
         std::array<std::vector<std::size_t>, 3> allocation_counts;
         std::array<std::vector<std::size_t>, 3> allocation_bytes;
@@ -452,8 +462,8 @@ namespace {
             return values.empty() ? 0.0 : static_cast<double>(total) / values.size();
         };
         for(unsigned variant = 0; variant < 3U; ++variant) {
-            variants.push_back(Json{
-                {"algorithm", variant == 0U ? "production_hybrid_engine_admission" : variant == 1U ? "sorted_identity_index" : "hash_identity_index"},
+            const auto measurement = Json{
+                {"algorithm", variant == 0U ? "production_hybrid_engine_retrieve" : variant == 1U ? "sorted_identity_index" : "hash_identity_index"},
                 {"timing", summarize(samples[variant])},
                 {"allocation_counts", allocation_counts[variant]},
                 {"allocated_bytes", allocation_bytes[variant]},
@@ -461,7 +471,12 @@ namespace {
                 {"allocated_bytes_mean", average_size(allocation_bytes[variant])},
                 {"trusted_record_copy_count", expected.size()},
                 {"correctness_parity", true}
-            });
+            };
+            if(variant == 0U) {
+                production_measurement = measurement;
+            } else {
+                admission_variants.push_back(measurement);
+            }
         }
         return Json{
             {"candidate_count", candidate_count},
@@ -469,8 +484,10 @@ namespace {
             {"sorted_index_build_ms", sorted_build_ms},
             {"hash_index_build_ms", hash_build_ms},
             {"build_timing_scope", "index construction is measured separately from lookup/admission timing"},
-            {"lookup_timing_scope", "production variant is the actual HybridRetrievalEngine retrieve() path; indexed variants measure admission lookup only"},
-            {"variants", std::move(variants)}
+            {"production_timing_scope", "full HybridRetrievalEngine retrieve() including fixture index search, reranker, metadata filtering, and result materialization"},
+            {"admission_timing_scope", "sorted and hash variants measure admission lookup only after their separately timed index construction; these timings are not production retrieve() latency"},
+            {"production_end_to_end", std::move(production_measurement)},
+            {"admission_only", std::move(admission_variants)}
         };
     }
 
@@ -551,13 +568,18 @@ int main(int argc, char** argv) {
     const std::string output_path = argc > 1 ? argv[1] : "reranker-admission-scaling.json";
     try {
         Json report{
-            {"schema_version", 1},
+            {"schema_version", 2},
             {"benchmark_name", "reranker_admission_scaling"},
             {"scope", "isolated executable model of HybridRetrievalEngine admission contract; not a production latency claim"},
             {"source_commit", AGENT_MEMORY_RERANKER_ADMISSION_SOURCE_COMMIT},
+            {"expected_pr_head_sha", AGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA},
+            {"source_manifest_sha256", AGENT_MEMORY_RERANKER_ADMISSION_SOURCE_MANIFEST_SHA256},
+            {"fixture_sha256", AGENT_MEMORY_RERANKER_ADMISSION_FIXTURE_SHA256},
             {"production_contract_source_commit", AGENT_MEMORY_RERANKER_ADMISSION_PRODUCTION_CONTRACT_COMMIT},
             {"production_contract", "HybridRetrievalEngine admission implementation merged by PR #625"},
             {"timing_semantics", "balanced six-order query-independent samples; warmups excluded; sample_count is not independent-request count"},
+            {"production_timing_scope", "full HybridRetrievalEngine retrieve() path including fixture index search, reranker, metadata filtering, and result materialization"},
+            {"admission_timing_scope", "sorted and hash controls are lookup-only after separately timed index construction; not production retrieve() latency"},
             {"metadata_widths", Json::array({2, 8, 32})},
             {"cases", Json::array({
                 run_case(10, 2), run_case(50, 2), run_case(100, 8),

@@ -43,6 +43,12 @@ reranker outputs must fail closed. Mandatory metadata filtering is checked on
 the production query path. Allocation accounting disables its counter on both
 normal and exceptional exits.
 
-The result is a qualification receipt only. A production admission rewrite
-requires matched workloads, a separate end-to-end benchmark, and confirmation
-that all security and provenance invariants remain unchanged.
+The result is a qualification receipt only. The receipt keeps
+`production_end_to_end` separate from `admission_only`; their timing samples
+must not be used as a direct production speedup comparison. CI validates the
+expected pull-request HEAD, actual compiled checkout SHA, production-contract
+SHA, source-manifest SHA-256, fixture SHA-256, raw samples, and a SHA-256
+sidecar. Negative validator controls cover wrong HEAD, missing digest fields,
+and corrupt receipt/sidecar bytes. A production admission rewrite requires
+matched workloads, a separate end-to-end benchmark, and confirmation that all
+security and provenance invariants remain unchanged.

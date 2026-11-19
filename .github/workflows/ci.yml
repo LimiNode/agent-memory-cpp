@@ -484,6 +484,7 @@ jobs:
           -DAGENT_MEMORY_BUILD_TESTS=ON
           -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
           -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DAGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build storage benchmark harness
@@ -619,11 +620,22 @@ jobs:
       - name: Run reranker admission scaling
         run: ./build-native-mih/tools/agent-memory-bench/agent-memory-reranker-admission-scaling build-native-mih/reranker-admission-scaling.json
 
+      - name: Validate reranker admission receipt
+        run: |
+          python tools/agent-memory-bench/validate-reranker-admission-receipt.py --self-test
+          python tools/agent-memory-bench/validate-reranker-admission-receipt.py \
+            --receipt build-native-mih/reranker-admission-scaling.json \
+            --expected-head "${{ github.event.pull_request.head.sha }}" \
+            --actual-checkout-sha "$(git rev-parse HEAD)" \
+            --write-sidecar build-native-mih/reranker-admission-scaling.sha256.json
+
       - name: Upload reranker admission scaling receipt
         uses: actions/upload-artifact@v4
         with:
           name: reranker-admission-scaling-receipt
-          path: build-native-mih/reranker-admission-scaling.json
+          path: |
+            build-native-mih/reranker-admission-scaling.json
+            build-native-mih/reranker-admission-scaling.sha256.json
           if-no-files-found: error
 
   r4-native-benchmark:
