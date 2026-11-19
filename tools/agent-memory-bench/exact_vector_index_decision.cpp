@@ -15,7 +15,16 @@
 #include <vector>
 
 namespace {
-using namespace agent_memory;
+using agent_memory::ChunkId;
+using agent_memory::Embedding;
+using agent_memory::ExactVectorIndex;
+using agent_memory::ExactVectorIndexOptions;
+using agent_memory::SimilarityMetric;
+using agent_memory::VectorRecord;
+using agent_memory::VectorSearchQuery;
+using agent_memory::VectorSearchResult;
+using agent_memory::VectorSimilarityComputer;
+using agent_memory::vector_similarity_backend_name;
 using Json = nlohmann::json;
 using Clock = std::chrono::steady_clock;
 using Corpus = std::vector<std::vector<float>>;
