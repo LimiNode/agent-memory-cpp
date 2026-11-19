@@ -232,21 +232,42 @@ std::optional<PromptBuildResult> build_exact_prompt(
                 error = "required prompt block is missing";
                 return std::nullopt;
             }
-            if(!selected[index] || !reference.control_instruction) {
-                continue;
-            }
-            const auto iterator = std::find_if(
-                revision->blocks.begin(), revision->blocks.end(),
-                [&](const ContentBlock& block) { return block.id == reference.block_id; });
-            if(iterator == revision->blocks.end()) {
-                error = "selected prompt block is unavailable";
-                return std::nullopt;
-            }
+        }
+
+        // The production compiler owns canonical rendering, trust and budget
+        // semantics. This multi-document research harness only adapts its
+        // candidate mask to the canonical profile API and combines the
+        // independently compiled document prompts.
+        PromptAssemblyProfile canonical_profile;
+        canonical_profile.profile_id = policy.policy_id + ":" +
+            policy_document.document_id.value();
+        canonical_profile.revision = 1;
+        canonical_profile.default_enabled = false;
+        canonical_profile.limits.max_result_bytes = 256U * 1024U;
+        canonical_profile.selections.reserve(policy_document.blocks.size());
+        for(std::size_t index = 0; index < policy_document.blocks.size(); ++index) {
+            const auto& reference = policy_document.blocks[index];
+            PromptBlockSelection selection;
+            selection.block_id = reference.block_id;
+            selection.enabled = selected[index] && reference.control_instruction;
+            selection.control_instruction = reference.control_instruction;
+            selection.required = false;
+            canonical_profile.selections.push_back(std::move(selection));
+        }
+        const auto compiled = compile_prompt(*revision, canonical_profile, {});
+        if(!compiled.succeeded()) {
+            error = compiled.message.empty() ? "canonical prompt compilation failed" :
+                compiled.message;
+            return std::nullopt;
+        }
+        if(!compiled.prompt->text.empty()) {
             if(!prompt.empty()) {
                 prompt += "\n\n";
             }
-            prompt += iterator->text;
+            prompt += compiled.prompt->text;
         }
+        append_config_field(config_bytes, "canonical-configuration");
+        append_config_field(config_bytes, compiled.prompt->manifest.configuration_digest);
     }
     if(prompt.empty()) {
         error = "resolved control prompt is empty";
