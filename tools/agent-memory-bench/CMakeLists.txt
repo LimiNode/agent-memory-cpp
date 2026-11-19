@@ -818,3 +818,77 @@ target_link_libraries(agent-memory-precomputed-artifact-verify
     PRIVATE
         agent_memory::json
 )
+
+# Production-shaped ExactLexicalIndex top-k decision experiment.  The target
+# compares source-pinned class-renamed search variants and isolated selectors;
+# it does not alter production sources, public APIs, or retrieval defaults.
+add_executable(agent-memory-exact-lexical-topk-decision
+    exact_lexical_topk_decision.cpp
+)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(agent_memory_lexical_topk_generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated-lexical-topk")
+execute_process(
+    COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generate-exact-lexical-topk-variants.py"
+        --source-root "${PROJECT_SOURCE_DIR}"
+        --output-dir "${agent_memory_lexical_topk_generated_dir}"
+    RESULT_VARIABLE agent_memory_lexical_topk_generate_result
+    OUTPUT_VARIABLE agent_memory_lexical_topk_generated_sha256
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT agent_memory_lexical_topk_generate_result EQUAL 0)
+    message(FATAL_ERROR "Pinned lexical selector source generation failed: ${agent_memory_lexical_topk_generated_sha256}")
+endif()
+foreach(agent_memory_lexical_topk_class IN ITEMS
+    ResearchPartialSortExactLexicalIndex
+    ResearchNthElementExactLexicalIndex
+    ResearchBoundedHeapExactLexicalIndex)
+    target_sources(agent-memory-exact-lexical-topk-decision PRIVATE
+        "${agent_memory_lexical_topk_generated_dir}/${agent_memory_lexical_topk_class}.cpp")
+endforeach()
+target_include_directories(agent-memory-exact-lexical-topk-decision PRIVATE
+    "${agent_memory_lexical_topk_generated_dir}"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical")
+
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+    RESULT_VARIABLE agent_memory_lexical_topk_git_result
+    OUTPUT_VARIABLE agent_memory_lexical_topk_source_commit
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(LENGTH "${agent_memory_lexical_topk_source_commit}" agent_memory_lexical_topk_source_length)
+if(NOT agent_memory_lexical_topk_git_result EQUAL 0
+   OR NOT agent_memory_lexical_topk_source_length EQUAL 40
+   OR NOT "${agent_memory_lexical_topk_source_commit}" MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR "Exact lexical top-k decision requires a pinned source Git SHA")
+endif()
+set(AGENT_MEMORY_LEXICAL_TOPK_EXPECTED_PR_HEAD_SHA
+    "${agent_memory_lexical_topk_source_commit}"
+    CACHE STRING "Expected pull-request HEAD recorded by the lexical top-k receipt")
+string(LENGTH "${AGENT_MEMORY_LEXICAL_TOPK_EXPECTED_PR_HEAD_SHA}" agent_memory_lexical_topk_expected_length)
+if(NOT agent_memory_lexical_topk_expected_length EQUAL 40
+   OR NOT "${AGENT_MEMORY_LEXICAL_TOPK_EXPECTED_PR_HEAD_SHA}" MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR "AGENT_MEMORY_LEXICAL_TOPK_EXPECTED_PR_HEAD_SHA must be a lowercase 40-character SHA")
+endif()
+
+agent_memory_set_evaluator_source_manifest(agent-memory-exact-lexical-topk-decision
+    "${CMAKE_CURRENT_SOURCE_DIR}/exact_lexical_topk_decision.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/generate-exact-lexical-topk-variants.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/validate-exact-lexical-topk-decision.py"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical/ExactLexicalIndex.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical/ExactLexicalIndex.hpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical/Lexical.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical/Lexical.hpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/domain/Metadata.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/domain/Metadata.hpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/domain/MetadataFilter.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/domain/MetadataFilter.hpp")
+target_compile_definitions(agent-memory-exact-lexical-topk-decision PRIVATE
+    AGENT_MEMORY_LEXICAL_TOPK_SOURCE_COMMIT="${agent_memory_lexical_topk_source_commit}"
+    AGENT_MEMORY_LEXICAL_TOPK_GENERATED_SOURCE_SHA256="${agent_memory_lexical_topk_generated_sha256}"
+    AGENT_MEMORY_LEXICAL_TOPK_EXPECTED_PR_HEAD_SHA="${AGENT_MEMORY_LEXICAL_TOPK_EXPECTED_PR_HEAD_SHA}")
+agent_memory_set_evaluator_build_environment(agent-memory-exact-lexical-topk-decision)
+target_link_libraries(agent-memory-exact-lexical-topk-decision
+    PRIVATE
+        agent_memory::agent_memory
+        agent_memory::json
+)

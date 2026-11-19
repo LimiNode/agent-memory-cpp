@@ -1208,6 +1208,59 @@ jobs:
       - name: Run full research CTest
         run: ctest --test-dir build-research-full --build-config Release --output-on-failure
 
+  exact-lexical-topk-decision:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: Exact lexical top-k decision
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install research test dependencies
+        run: python -m pip install -r tools/requirements-tools.txt
+
+      - name: Configure production-shaped lexical benchmark
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >
+          cmake -S . -B build-lexical-topk -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=ON -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF -DAGENT_MEMORY_ENABLE_MDBX=OFF
+          -DAGENT_MEMORY_LEXICAL_TOPK_EXPECTED_PR_HEAD_SHA="$EXPECTED_HEAD"
+
+      - name: Build and self-test
+        run: |
+          cmake --build build-lexical-topk --config Release --target agent-memory-exact-lexical-topk-decision --parallel 2
+          ctest --test-dir build-lexical-topk --build-config Release --output-on-failure --no-tests=error -R '^agent_memory_exact_lexical_topk_decision_.*self_test$'
+
+      - name: Run and validate source-bound receipt
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          build-lexical-topk/tools/agent-memory-bench/agent-memory-exact-lexical-topk-decision --output build-lexical-topk/receipt.json
+          (cd build-lexical-topk && sha256sum receipt.json > receipt.json.sha256 && sha256sum -c receipt.json.sha256)
+          python tools/agent-memory-bench/validate-exact-lexical-topk-decision.py build-lexical-topk/receipt.json \
+            --expected-head "$EXPECTED_HEAD" --actual-checkout "$(git rev-parse HEAD)" \
+            --source-root . --sha256-sidecar build-lexical-topk/receipt.json.sha256
+
+      - name: Preserve receipt and SHA-256 sidecar
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-lexical-topk-decision
+          path: |
+            build-lexical-topk/receipt.json
+            build-lexical-topk/receipt.json.sha256
+
   persistent-lexical-oracle:
     if: needs.changes.outputs.research == 'true'
     needs: changes
@@ -1278,6 +1331,7 @@ jobs:
       - ann-cascade
       - lexical-parity
       - persistent-lexical-oracle
+      - exact-lexical-topk-decision
       - bge-m3-sparse-pilot
       - research-full
     runs-on: ubuntu-latest
@@ -1303,6 +1357,7 @@ jobs:
           ANN_RESULT: ${{ needs.ann-cascade.result }}
           PARITY_RESULT: ${{ needs.lexical-parity.result }}
           ORACLE_RESULT: ${{ needs.persistent-lexical-oracle.result }}
+          LEXICAL_TOPK_RESULT: ${{ needs.exact-lexical-topk-decision.result }}
           BGE_RESULT: ${{ needs.bge-m3-sparse-pilot.result }}
           FULL_RESULT: ${{ needs.research-full.result }}
         shell: bash
@@ -1338,6 +1393,7 @@ jobs:
           check_required "$RESEARCH_REQUIRED" "$ANN_RESULT" "ANN cascade"
           check_required "$RESEARCH_REQUIRED" "$PARITY_RESULT" "C++ lexical parity"
           check_required "$RESEARCH_REQUIRED" "$ORACLE_RESULT" "persistent lexical oracle"
+          check_required "$RESEARCH_REQUIRED" "$LEXICAL_TOPK_RESULT" "exact lexical top-k decision"
           check_required "$RESEARCH_REQUIRED" "$BGE_RESULT" "BGE-M3 sparse pilot self-test"
           check_required "$FULL_REQUIRED" "$FULL_RESULT" "full research CTest"
 
