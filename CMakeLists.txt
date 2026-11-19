@@ -562,8 +562,27 @@ if(AGENT_MEMORY_BUILD_TESTS)
             NAME agent_memory_neuroute_full_corpus_codec_native_self_test
             COMMAND agent-memory-neuroute-full-corpus-codec --self-test
         )
+        add_test(
+            NAME agent_memory_exact_lexical_topk_decision_self_test
+            COMMAND agent-memory-exact-lexical-topk-decision --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
     endif()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        add_test(
+            NAME agent_memory_exact_lexical_topk_decision_validator_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/validate-exact-lexical-topk-decision.py
+                --self-test
+        )
+        add_test(
+            NAME agent_memory_exact_lexical_topk_decision_source_transform_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/generate-exact-lexical-topk-variants.py
+                --source-root ${CMAKE_CURRENT_SOURCE_DIR} --self-test
+        )
+    endif()
     execute_process(
         COMMAND ${Python3_EXECUTABLE} -c "import numpy; import yaml"
         RESULT_VARIABLE AGENT_MEMORY_PYTHON_TOOLS_IMPORT_RESULT
