@@ -85,6 +85,12 @@ scope. Raw samples and exact execution orders are retained separately. The
 complete matrix has 16 cases and 1,024 measured operation samples. End-to-end
 and isolated measurements are not interleaved as if the scopes were equal.
 
+Fine-grained end-to-end phase timing is `NOT_MEASURED`: this instrument does
+not insert timers into candidate generation, BM25 scoring, filtering, metadata
+copying, or output construction. Isolated selection samples cannot be
+subtracted from complete search to manufacture a phase breakdown. A separately
+controlled stage-profile experiment remains a follow-up, not a completed gate.
+
 The executable counts C++ `new`/`new[]` calls and requested bytes inside each
 timed operation, including aligned allocations. This is not retained bytes,
 RSS, or peak memory, and excludes allocations performed directly through C
@@ -129,19 +135,50 @@ validator, independently of the declared Git SHA. Compiler, version, generator,
 and configured build-environment digest are recorded. The fixture is frozen in
 the benchmark source, which is included in that manifest.
 
-The research CI lane runs three self-tests, the complete matrix, receipt
+The research CI lane has Ubuntu/GNU and Windows/MSVC matrix arms, each of which
+builds and executes this actual benchmark rather than relying on a generic
+core build. Each arm runs three self-tests, the complete matrix, receipt
 validation, and SHA-256 sidecar validation, then uploads the raw receipt and
 sidecar. A required failure fails the common CI gate. Negative controls cover
 wrong HEAD/checkout, malformed digest, non-execution, result parity, missing
 variant, invalid samples, unbalanced order, wrong K, metadata accounting, and
 receipt byte corruption. Pinned-source transformation adds three further
 negative controls. Generated variants and raw reports are not committed.
+The C++ controls also exercise an actually empty production index, absent
+metadata, no filters, and rejected invalid import with unchanged existing
+results for all four index implementations.
 
 ## Results and next decision
 
-Execution results are retained in the PR's source-bound CI artifact; this note
-does not predeclare success or a numerical winner. Before considering a
+Execution results are retained in each platform's source-bound CI artifact.
+The initial Linux pilot below does not substitute for the later Windows lane.
+Before considering a
 production selector change, independently review those matched end-to-end
 artifacts and repeat with representative token lengths, metadata sizes,
 selectivities, and query distributions. The present fixed three-token corpus
 and one filter cannot establish those broader claims.
+
+## Initial Linux pilot, preserved historical receipt
+
+The initial Ubuntu/GNU 15.2.0 Release run used benchmark commit
+`7a99add27e71fbe5010ac43443a97a4c8f2b2545`, synthetic merge checkout
+`9724be450f6ff436652066deacf6f8ea338fc55c`, and
+[CI run 44614602649](https://github.com/LimiNode/agent-memory-cpp/actions/runs/44614602649).
+Its `exact-lexical-topk-decision` artifact contains a validated receipt with
+SHA-256 `55ca25cd96095a29c11401dc28d3ce7a3a594c45fe89a0345484676275c89097`.
+This is the receipt from before adding explicit Windows execution; its source
+bindings and results are not rewritten to a later HEAD.
+
+Median complete search time in milliseconds at 65,536 documents (eight samples
+per variant; directional synthetic evidence only):
+
+| Case | Full sort | Partial sort | Nth-element + sort | Bounded heap |
+| --- | ---: | ---: | ---: | ---: |
+| Mixed scores, K=16 | 36.7489 | 24.7793 | 25.5771 | 24.8523 |
+| Ties, K=52,427 of 52,428 candidates | 21.1164 | 31.1728 | 21.5933 | 36.1097 |
+| No matching term | 12.3767 | 12.5627 | 12.5556 | 12.5132 |
+
+All 16 cases/1,024 samples satisfied selection and returned-value parity.
+The observed reversal between small K and K near N argues against declaring
+one universal winner from this fixture. It does not establish production
+latency, phase attribution, a stable tail, or an activation recommendation.

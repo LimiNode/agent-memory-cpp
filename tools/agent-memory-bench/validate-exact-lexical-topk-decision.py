@@ -174,6 +174,8 @@ def validate(receipt: Any, *, expected_head: str | None = None, actual_checkout:
         raise ValueError("oracle must be score_desc_id_asc")
     if receipt.get("production_api_changed") is not False or receipt.get("production_defaults_changed") is not False:
         raise ValueError("production implementation/defaults must remain unchanged")
+    if receipt.get("end_to_end_stage_breakdown") != "NOT_MEASURED":
+        raise ValueError("intrusive end-to-end phase timing is not measured by this instrument")
     fixture = receipt.get("fixture")
     if not isinstance(fixture, dict) or fixture.get("io_scope") != "in_memory_no_io" or fixture.get("metadata_and_filter_included") is not True:
         raise ValueError("fixture must declare metadata/filter and no-I/O scope")
@@ -289,6 +291,7 @@ def _valid_fixture() -> dict[str, Any]:
         "oracle": "score_desc_id_asc",
         "production_api_changed": False,
         "production_defaults_changed": False,
+        "end_to_end_stage_breakdown": "NOT_MEASURED",
         "cases": cases,
         "builds": [{"document_count": count, "variant": variant, "build_ms": 1.0, "allocation_count": 1, "allocated_bytes": 8} for count in EXPECTED_COUNTS for variant in VARIANTS],
     }

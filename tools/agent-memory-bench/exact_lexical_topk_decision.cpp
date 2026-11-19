@@ -18,6 +18,7 @@
 #include <iostream>
 #include <new>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -615,7 +616,22 @@ namespace {
         IndexSet indexes;
         for(std::size_t i = 0; i < indexes.size(); ++i) {
             indexes[i] = make_index(i);
+            if(!indexes[i]->search(query_for({"empty-index", {"common"}, 16}, 16)).empty()) return false;
             populate_index(*indexes[i], 128);
+            auto missing_metadata = query_for({"missing-metadata", {"common"}, 16}, 16);
+            missing_metadata.metadata_filters = {{"absent_key", "public"}};
+            if(!indexes[i]->search(missing_metadata).empty()) return false;
+            auto unfiltered = query_for({"no-filter", {"common"}, 129}, 129);
+            unfiltered.metadata_filters.clear();
+            if(indexes[i]->search(unfiltered).size() != 128U) return false;
+            // Invalid import must fail before changing the valid index.
+            const auto before = candidates_from(indexes[i]->search(unfiltered));
+            auto invalid = agent_memory::LexicalDocumentRecord{};
+            bool rejected = false;
+            try { indexes[i]->upsert(std::move(invalid)); }
+            catch(const std::invalid_argument&) { rejected = true; }
+            if(!rejected || indexes[i]->size() != 128U
+               || !same_results(candidates_from(indexes[i]->search(unfiltered)), before)) return false;
         }
         for(const auto& terms : {std::vector<std::string>{"common", "anchor"}, std::vector<std::string>{"common"}, std::vector<std::string>{"missing"}}) {
             for(const auto limit : {0U, 1U, 16U, 101U, 102U, 128U, 129U}) {
@@ -696,6 +712,7 @@ namespace {
             {"selection_variants", variant_names},
             {"oracle", "score_desc_id_asc"},
             {"timing_semantics", "warmups excluded; raw samples are complete operations; kernel and end-to-end scopes are separate"},
+            {"end_to_end_stage_breakdown", "NOT_MEASURED"},
             {"production_api_changed", false},
             {"production_defaults_changed", false},
             {"cases", cases},
