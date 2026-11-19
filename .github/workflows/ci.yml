@@ -295,6 +295,11 @@ jobs:
             exit 1
           fi
 
+      - name: Validate R5 historical evidence dispositions
+        run: |
+          python tools/agent-memory-bench/validate-r5-evidence-dispositions.py
+          python tools/agent-memory-bench/validate-r5-evidence-dispositions.py --self-test
+
       - name: Validate source-bound release contract and receipt
         env:
           AGENT_MEMORY_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}

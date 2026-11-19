@@ -14,6 +14,13 @@ against its final centroids. The old training-time ratio and method-quality
 comparison are withdrawn. Importing a real E-means implementation was confirmed;
 the previous numbers did not establish a fair comparison.
 
+The [R5 evidence disposition manifest](2026-11-20-r5-evidence-dispositions.json)
+preserves the raw, sidecar and receipt hashes and records the revoked claims,
+allowed historical meaning, forbidden uses and corrected v2 receipt binding.
+`validate-r5-evidence-dispositions.py` rejects `PRIMARY` and production-decision
+use by content hash, including renamed copies. Original historical JSON and
+SHA-256 sidecars are not rewritten.
+
 ## Corrected v2 experiment
 
 The executable uses pinned `faiss-cpu==1.16.0` and `numpy==2.4.6`, one Faiss
@@ -110,6 +117,14 @@ PR #638 owns the IVF-training control; PR #641 remains the feasibility and
 ownership record. This follow-up does not rewrite their historical evidence.
 O-means, GPU training, representative frozen R4 data, portable native serving
 and production adoption remain untested. Disposition: `DEFER`.
+
+R5 closure records the representative comparison explicitly as
+`NOT_EXECUTED: REPRESENTATIVE_CORPUS_UNAVAILABLE`. The already-frozen tiny
+embedding fixtures are regression inputs, not representative disjoint
+train/base/query/heldout training sets. This bounded closure does not download
+a new corpus or add a dependency merely to produce a positive comparison.
+The executed v2 synthetic smoke remains `EXECUTED`, separately from that
+unexecuted representative evaluation.
 
 Reproduce in an isolated environment (use `Scripts/python` on Windows or
 `bin/python` on POSIX):

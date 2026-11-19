@@ -1,0 +1,55 @@
+{
+  "schema": "r5.evidence_dispositions.v1",
+  "owner_pull_request": "https://github.com/LimiNode/agent-memory-cpp/pull/664",
+  "production_activation": false,
+  "entries": [
+    {
+      "experiment_id": "r5_emeans_v1",
+      "status": "INVALID_FOR_COMPARISON",
+      "reason": "Lloyd silently sampled 2048 of 4096 training rows while E-means used all rows; E-means final-pass moving labels were not reassigned against final centroids for MSE.",
+      "withdrawn_claims": ["The v1 training-time ratio is a matched-input comparison", "The v1 method MSE and recall establish an E-means quality advantage"],
+      "allowed_historical_interpretation": "These original bytes record execution and availability of the real CPU NumpyEmeans API, with the original methodological errors. EXECUTED describes occurrence, not comparison validity.",
+      "forbidden_uses": ["PRIMARY", "PRODUCTION_DECISION", "REPRESENTATIVE_QUALITY", "CURRENT_HEAD_EXECUTION"],
+      "artifacts": [
+        {"role": "raw", "path": "artifacts/r5-emeans-vs-lloyd/emeans.raw.json", "sha256": "68addc695eefbc561b9a7ec0488f3b2262758976f02c83a751f7ab00c227d081"},
+        {"role": "raw_sidecar", "path": "artifacts/r5-emeans-vs-lloyd/emeans.raw.sha256", "sha256": "b7d56ce940107d21c4f8158647af199d238da989cd7152c09dbc0711d7aa2fbe"},
+        {"role": "receipt", "path": "artifacts/r5-emeans-vs-lloyd/emeans.receipt.json", "sha256": "495e468e37bcaa81056ff7f16224ff0d19b919bedec34bb23958ec2a70419494"}
+      ],
+      "replacement": {
+        "experiment_id": "r5_emeans_v2",
+        "receipt_path": "guides/experiments/2026-11-19-r5-emeans-vs-lloyd-v2.receipt.json",
+        "receipt_sha256": "0229176e93f80cc891ac43a828be3c6cbbd15c513d953145565e1091f22f450a",
+        "execution_status": "EXECUTED",
+        "decision": "DEFER",
+        "scope": "Synthetic smoke with full common training input and initial centroids; matched measured assignment work is not equal total work or wall time. Native IVF and Python capped-scan proxy remain separate."
+      }
+    },
+    {
+      "experiment_id": "r5_exact_vector_v1",
+      "status": "SUPERSEDED",
+      "reason": "The named compensated_long_double oracle used sequential long double, kernel_only_ms measured full prebuilt search, and the named near-tie fixture was an exact tie. MSVC long double is not an independent wider oracle.",
+      "withdrawn_claims": ["The v1 oracle is compensated and independently wider on every platform", "The v1 kernel_only_ms is an arithmetic-kernel measurement", "The v1 near-tie fixture proves genuine near-tie ordering"],
+      "allowed_historical_interpretation": "These original bytes are preliminary local observations with their original labels. They do not bind a current source head or provide the corrected v2 numerical or timing contract.",
+      "forbidden_uses": ["PRIMARY", "PRODUCTION_DECISION", "REPRESENTATIVE_QUALITY", "CURRENT_HEAD_EXECUTION"],
+      "artifacts": [
+        {"role": "raw", "path": "artifacts/r5-exact-vector-index/decision.raw.json", "sha256": "cdb93342c42f1e97ab145742ae2a03b178182c83f8fe70fa9070b14793110f1c"},
+        {"role": "raw_sidecar", "path": "artifacts/r5-exact-vector-index/decision.raw.sha256", "sha256": "47394bba8503fb0c18c8d42f2a69b952058a68ab31be958a4aeeee8167fd9114"},
+        {"role": "receipt", "path": "artifacts/r5-exact-vector-index/decision.receipt.json", "sha256": "8ac54c73be2543f9a4cbb110e4f4907c291cf3bcac4e0e293bf99a5d6446acbb"}
+      ],
+      "replacement": {
+        "experiment_id": "r5_exact_vector_v2",
+        "receipt_path": "guides/experiments/2026-11-19-r5-exact-vector-v2.receipt.json",
+        "receipt_sha256": "faeb068bb94bc570d843e6ea5b2ef3d388b86f3486ecaf3baa7416dc474f0c68",
+        "execution_status": "EXECUTED",
+        "decision": "KEEP CURRENT",
+        "scope": "Independent Decimal precision-100 oracle on six exported correctness fixtures; full prebuilt search and arithmetic-only timing have separate scopes."
+      }
+    }
+  ],
+  "representative_emeans_comparison": {
+    "execution_status": "NOT_EXECUTED",
+    "reason": "REPRESENTATIVE_CORPUS_UNAVAILABLE",
+    "scope": "No suitable independently frozen representative train/base/query/heldout vector corpus was supplied for this bounded R5 closure. Existing tiny model fixtures are regression inputs, not representative training sets. No new corpus, model dependency, native serving or quality conclusion is created.",
+    "decision": "DEFER"
+  }
+}

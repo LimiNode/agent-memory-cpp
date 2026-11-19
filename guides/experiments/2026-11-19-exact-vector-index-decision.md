@@ -22,6 +22,13 @@ exact tie. MSVC long double also provides no independent wider reference.
 These labels must not be reused as claims. v2 below replaces the method,
 without rewriting historical hashes or SHAs.
 
+The [R5 evidence disposition manifest](2026-11-20-r5-evidence-dispositions.json)
+binds all three historical vector files by exact byte hash and marks them
+`SUPERSEDED`. It also binds the replacement v2 receipt. The disposition validator
+rejects their use as `PRIMARY` or a production decision even after renaming a
+receipt. `EXECUTED` in an archived JSON records occurrence, not methodological
+validity. The validator runs in the independent Documentation checks lane.
+
 ## v2: independent correctness and separately scoped timings
 
 `validate_exact_vector_index_decision.py` recomputes scores in Python Decimal
@@ -61,6 +68,13 @@ with precomputed record inverse norms; dot controls call the actual
 selection and materialization. Kernel timings are **not** end-to-end candidate
 speedups. Candidate order rotates between kernel samples. Candidate kernels
 that fail correctness are not promoted into alternative production indexes.
+
+The permanent `agent_memory_exact_vector_index_test` also contains the exact
+power-of-two R5 counterexample, with scalar/automatic dispatch and top-1/top-2.
+It requires the positive result to outrank a lexically earlier zero-score ID
+and to equal the representable FP32 score `2^-121`. Existing sign/permutation
+regressions remain; the independent Decimal oracle is not copied into core
+tests and still checks the broader exported research corpus separately.
 
 Large timing cases report sorted top-ten prefixes and cardinality, not a
 Decimal oracle over all 65536 records. The full independent correctness claim
