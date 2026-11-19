@@ -120,6 +120,68 @@ def _is_primary_receipt(path: Path, expected_source_sha256: str | None = None) -
     return payload.get("source_sha256") == expected_source_sha256
 
 
+def _ledger_errors(document: dict[str, Any], algorithm_ids: set[str]) -> list[str]:
+    """Check index metadata only; owners validate the referenced raw receipts."""
+    ledger = document.get("evidence_ledger")
+    if ledger is None:
+        return []
+    baseline = document.get("integration_baseline_commit")
+    errors = []
+    if not isinstance(baseline, str) or not HEX_SHA.fullmatch(baseline):
+        errors.append("integration_baseline_commit must be a separate full Git SHA")
+    if not isinstance(ledger, list) or not ledger:
+        return errors + ["evidence_ledger must be a non-empty array"]
+    seen = set()
+    for entry in ledger:
+        if not isinstance(entry, dict):
+            errors.append("ledger entry must be an object")
+            continue
+        identifier = entry.get("experiment_id")
+        if not isinstance(identifier, str) or not identifier or identifier in seen:
+            errors.append("ledger experiment_id must be non-empty and unique")
+        else:
+            seen.add(identifier)
+        if entry.get("algorithm_id") not in algorithm_ids:
+            errors.append("ledger algorithm_id must reference an inventory row")
+        if not PR_URL.fullmatch(str(entry.get("owner_pull_request", ""))):
+            errors.append("ledger owner must be a project PR")
+        if not HEX_SHA.fullmatch(str(entry.get("latest_code_commit", ""))):
+            errors.append("ledger latest_code_commit must be a full Git SHA")
+        if entry.get("evidence_role") != "BOUNDED_EXECUTION_INDEX":
+            errors.append("ledger must not promote pointers to PRIMARY evidence")
+        if entry.get("decision_status") not in {"KEEP CURRENT", "DEFER", "CONDITIONAL"}:
+            errors.append("ledger decision_status is not a bounded research decision")
+        if entry.get("production_activation") is not False:
+            errors.append("ledger production_activation must remain false")
+        for field in ("decision_scope", "timing_scope"):
+            if not isinstance(entry.get(field), str) or not entry[field].strip():
+                errors.append(f"ledger {field} must be non-empty")
+        if not isinstance(entry.get("limitations"), list) or not entry["limitations"]:
+            errors.append("ledger limitations must be explicit")
+        runs = entry.get("runs")
+        if not isinstance(runs, list) or not runs:
+            errors.append("ledger requires an executed run, not only CI/docs links")
+            continue
+        for run in runs:
+            if not isinstance(run, dict):
+                errors.append("ledger run must be an object")
+                continue
+            for field in ("source_commit", "execution_checkout_commit"):
+                if not HEX_SHA.fullmatch(str(run.get(field, ""))):
+                    errors.append(f"ledger run {field} must be a full Git SHA")
+            if run.get("execution_status") != "EXECUTED":
+                errors.append("ledger executed record must explicitly say EXECUTED")
+            for field in ("environment", "receipt_locator", "validation_summary"):
+                if not isinstance(run.get(field), str) or not run[field].strip():
+                    errors.append(f"ledger run {field} must be non-empty")
+            if not DIGEST_VALUE.fullmatch(str(run.get("receipt_sha256", ""))):
+                errors.append("ledger run must bind receipt bytes, not only a path")
+            _, invalid_digest = _digest_audit(run)
+            if invalid_digest:
+                errors.append("ledger run contains a malformed digest")
+    return errors
+
+
 def validate_registry(document: Any, repository_root: Path) -> list[str]:
     errors: list[str] = []
     if not isinstance(document, dict):
@@ -231,7 +293,7 @@ def validate_registry(document: Any, repository_root: Path) -> list[str]:
                 errors.append(f"{prefix}.{field} does not exist: {value}")
         if status in {"DEFER", "NEEDS_CORRECTION", "WORTH_BENCHMARK"} and not str(row.get("next_gate", "")).strip():
             errors.append(f"{prefix}.next_gate is required for status {status}")
-    return errors
+    return errors + _ledger_errors(document, seen_ids)
 
 
 def load_registry(path: Path) -> dict[str, Any]:
@@ -271,6 +333,19 @@ def run_self_test(registry_path: Path, repository_root: Path) -> None:
         "https://example.invalid/not-a-pr"
     ]
     mutations.append(("invalid cross-reference", mutation))
+    if valid.get("evidence_ledger"):
+        ledger_changes = [
+            ("PRIMARY ledger promotion", lambda x: x.__setitem__("evidence_role", "PRIMARY")),
+            ("receipt without digest", lambda x: x["runs"][0].pop("receipt_sha256")),
+            ("malformed execution SHA", lambda x: x["runs"][0].__setitem__("execution_checkout_commit", "stale")),
+            ("ledger activation", lambda x: x.__setitem__("production_activation", True)),
+            ("unknown ledger owner", lambda x: x.__setitem__("owner_pull_request", "https://example.invalid/ci")),
+            ("CI-only ledger evidence", lambda x: x.__setitem__("runs", [])),
+        ]
+        for name, change in ledger_changes:
+            mutation = copy.deepcopy(valid)
+            change(mutation["evidence_ledger"][0])
+            mutations.append((name, mutation))
     for name, candidate in mutations:
         if not validate_registry(candidate, repository_root):
             raise AssertionError(f"mutation control did not fail: {name}")

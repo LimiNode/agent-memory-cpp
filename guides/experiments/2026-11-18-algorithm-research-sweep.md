@@ -118,3 +118,47 @@ production activation remain outside this sweep.
    code and receipts separate from production index changes.
 3. Open separate design/feasibility PRs for quantization/ANN and hybrid
    retrieval only when the preceding evidence gates are satisfied.
+
+## R5.5 appended execution ledger
+
+The inventory above remains the audit at `e34a59a19abc4346cd541bd0ce139df098eb011e`.
+Its `source_commit`, algorithm statuses and pending evidence classifications are
+not rewritten to a later checkout. The separate `integration_baseline_commit`
+is `bfa01a22d4091bb5c5f7c17606199fda6342b790`. This separates historical source
+identity from the baseline used to combine the research PRs.
+
+The JSON `evidence_ledger` indexes bounded executed research, not production
+qualification. Each entry names its owner PR, latest code SHA, actual run source
+and checkout, environment, receipt locator and byte digest, timing scope,
+limitations and decision. Compact receipts and their sidecars remain owned by
+their research PR; raw dumps and local MSVC reports remain external or in
+per-head CI artifacts. They are not copied into this registry PR.
+
+| Owner | Recorded execution | Bounded decision |
+| --- | --- | --- |
+| [#664](https://github.com/LimiNode/agent-memory-cpp/pull/664), exact vector | v2 source `6272e7b2`, GNU receipt plus sidecar; actual local MSVC source `1fc9c8b3`; six correctness cases, ten timing cases and nine mutations | `KEEP CURRENT` compensated cosine. Sequential FP64 loses the cancellation term; FP32 also fails tiny cosine. Arithmetic controls are not replacement indexes. |
+| [#664](https://github.com/LimiNode/agent-memory-cpp/pull/664), E-means | v2 source/checkout `6272e7b2`, compact receipt plus sidecar; two real CPU methods and 13 negative controls | `DEFER`, synthetic smoke only. Full training input and measured assignment work are matched; update cost and wall time are not. Native IVF scans and the Python capped-scan proxy are distinct. |
+| [#665](https://github.com/LimiNode/agent-memory-cpp/pull/665), lexical top-k | Historical Linux source `7a99add2`/synthetic checkout `9724be45`; separate final `59ce09c3` GNU and actual MSVC local receipts | `CONDITIONAL` follow-up only for large N/small K. Near-N, ties and no-match cases prevent a universal-selector claim. |
+
+For E-means, v1 is `INVALID_FOR_COMPARISON`: unequal effective training inputs
+and moving-pass MSE labels invalidated the old timing ratio and quality
+comparison. Historical receipt bytes and identities are preserved rather than
+rebound to v2. Peak RSS is `NOT_MEASURED`; O-means, GPU training, representative
+R4 data and portable native serving remain unqualified.
+
+For lexical top-k, complete search includes the fixed in-memory metadata/filter
+and returned-value work, but stage attribution is `NOT_MEASURED`. Authorization,
+tenant isolation and revision freshness are `NOT_EXERCISED`. Repeated timings
+are samples, not independent requests or evidence of stable tail latency. The
+old successful Linux CI run remains evidence for its original source, not the
+latest HEAD. Neither CI success nor this guide promotes an inventory row to
+`PRIMARY`, changes a production default, or establishes representative quality.
+
+The registry validator checks ledger identity, owner, execution, digest and
+scope fields without fetching or scientifically re-validating another PR's
+receipts. Their owning validators enforce the raw-result contracts. Its
+self-test retains the 14 previous rejection controls and adds six ledger
+counterexamples: `PRIMARY` promotion, missing receipt digest, malformed
+execution SHA, activation, non-project owner and CI/docs-only evidence.
+R5.2 admission/copy evidence will be appended only after its own executed
+Draft research PR exists; no result is inferred in advance.
