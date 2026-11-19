@@ -3,7 +3,7 @@
 ## Scope and source identity
 
 This registry records the algorithm research surface at `main` commit
-`00a9695762ab3bbdc9d5193d371dd8b25ca7b51c`. It is a research planning and
+`caaacc67d367a13717c2da96a1e2ce6da9bd6524`. It is a research planning and
 evidence index; it does not change production APIs, ABI, persisted formats,
 retrieval defaults, or dependency policy.
 
@@ -23,6 +23,12 @@ cannot qualify a result.
 
 The `cross_references` object on each row points to the relevant Draft PRs and
 research guides. Those links provide review context, not proof of execution.
+
+PR #641 is the feasibility and limitations note for E-means/O-means. The
+executable comparison is owned by PR #638; no second executable study is
+created from the feasibility note. New routing documents may use `PRR`
+(Prototype–Representative Routing) and `PR-IVF` (Prototype–Representative
+Inverted File); archived R4 documents retain their original names.
 
 ## Inventory
 
@@ -66,8 +72,10 @@ held-out quality, candidate generation, exact rerank, and end-to-end lookup.
 For E-means/O-means and IVF, first produce a design/feasibility note covering
 centroid counts, training corpus size, empty clusters, held-out assignment
 error, recall, retraining cost, and whether offline training can feed native
-C++ serving. GPU/CUDA/Triton work is offline-only; unavailable hardware is
-reported as `NOT_EXECUTED`.
+C++ serving. In the agreed new-study terminology, prototype–representative
+routing is `PRR` and its inverted-file study is `PR-IVF`; these names apply to
+new documents only and do not rename archived R4 material. GPU/CUDA/Triton work
+is offline-only; unavailable hardware is reported as `NOT_EXECUTED`.
 
 ### Stage 3 — lexical and hybrid retrieval
 

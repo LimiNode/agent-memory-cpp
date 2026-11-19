@@ -804,6 +804,8 @@ jobs:
           python -m pip install faiss-cpu==1.15.0
       - name: Exercise Faiss additive fitters and replay contracts
         run: |
+          python tools/agent-memory-bench/validate-algorithm-research-sweep.py --self-test
+          python tools/agent-memory-bench/validate-algorithm-research-sweep.py
           python tools/agent-memory-bench/run-thq-additive-upper-bounds.py --self-test-faiss
           python tools/agent-memory-bench/run-thq-faiss-rq-replay.py --self-test
           python tools/agent-memory-bench/audit-thq-faiss-rq-replay.py --self-test

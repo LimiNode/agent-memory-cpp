@@ -7,6 +7,7 @@ import argparse
 import copy
 import json
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,7 @@ REQUIRED_ROW_FIELDS = {
     "cross_references",
 }
 HEX_SHA = re.compile(r"^[0-9a-f]{40}$")
+DIGEST_VALUE = re.compile(r"^(?:sha256:)?[0-9a-f]{64}$")
 PR_URL = re.compile(
     r"^https://github\.com/LimiNode/agent-memory-cpp/pull/[1-9][0-9]*$"
 )
@@ -51,23 +53,29 @@ def _is_safe_repo_path(value: Any) -> bool:
     )
 
 
-def _contains_digest(value: Any) -> bool:
+def _digest_audit(value: Any) -> tuple[bool, bool]:
+    """Return (has_digest_field, has_invalid_digest_field)."""
+
+    has_digest = False
+    invalid_digest = False
     if isinstance(value, dict):
         for key, child in value.items():
-            if isinstance(child, str) and child.strip() and (
-                key == "digest"
-                or key.endswith("_digest")
-                or key.endswith("_sha256")
-            ):
-                return True
-            if _contains_digest(child):
-                return True
+            if key == "digest" or key.endswith("_digest") or key.endswith("_sha256"):
+                has_digest = True
+                if not isinstance(child, str) or not DIGEST_VALUE.fullmatch(child):
+                    invalid_digest = True
+            child_has_digest, child_invalid = _digest_audit(child)
+            has_digest = has_digest or child_has_digest
+            invalid_digest = invalid_digest or child_invalid
     elif isinstance(value, list):
-        return any(_contains_digest(child) for child in value)
-    return False
+        for child in value:
+            child_has_digest, child_invalid = _digest_audit(child)
+            has_digest = has_digest or child_has_digest
+            invalid_digest = invalid_digest or child_invalid
+    return has_digest, invalid_digest
 
 
-def _is_primary_receipt(path: Path) -> bool:
+def _read_primary_receipt(path: Path) -> dict[str, Any] | None:
     """Require receipt-shaped content, not merely a path that exists.
 
     A guide or registry entry is a useful pointer, but it is not executable
@@ -79,19 +87,37 @@ def _is_primary_receipt(path: Path) -> bool:
         or path.name.endswith(".result.json")
         or path.name.endswith("-result.json")
     ):
-        return False
+        return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return False
+        return None
     if not isinstance(payload, dict):
+        return None
+    has_digest, invalid_digest = _digest_audit(payload)
+    statuses = [
+        payload[field]
+        for field in ("status", "execution_status", "outcome")
+        if isinstance(payload.get(field), str) and payload[field].strip()
+    ]
+    if (
+        not has_digest
+        or invalid_digest
+        or not statuses
+        or "NOT_EXECUTED" in statuses
+        or len(set(statuses)) != 1
+    ):
+        return None
+    return payload
+
+
+def _is_primary_receipt(path: Path, expected_source_sha256: str | None = None) -> bool:
+    payload = _read_primary_receipt(path)
+    if payload is None:
         return False
-    has_digest = _contains_digest(payload)
-    has_status = any(
-        isinstance(payload.get(field), str) and payload[field].strip()
-        for field in ("status", "execution_status", "outcome", "interpretation")
-    )
-    return has_digest and has_status
+    if expected_source_sha256 is None:
+        return True
+    return payload.get("source_sha256") == expected_source_sha256
 
 
 def validate_registry(document: Any, repository_root: Path) -> list[str]:
@@ -145,6 +171,17 @@ def validate_registry(document: Any, repository_root: Path) -> list[str]:
             errors.append(
                 f"{prefix}.EVIDENCE_PENDING must not claim evidence_refs; use cross_references"
             )
+        receipt_binding = row.get("receipt_binding", {})
+        if not isinstance(receipt_binding, dict):
+            errors.append(f"{prefix}.receipt_binding must be an object")
+            receipt_binding = {}
+        expected_source_sha256 = receipt_binding.get("source_sha256")
+        if expected_source_sha256 is not None and (
+            not isinstance(expected_source_sha256, str)
+            or not DIGEST_VALUE.fullmatch(expected_source_sha256)
+        ):
+            errors.append(f"{prefix}.receipt_binding.source_sha256 must be a SHA-256 digest")
+            expected_source_sha256 = None
         for ref in references:
             if not _is_safe_repo_path(ref):
                 errors.append(f"{prefix}.evidence_refs contains an unsafe path: {ref!r}")
@@ -152,9 +189,11 @@ def validate_registry(document: Any, repository_root: Path) -> list[str]:
             ref_path = repository_root / ref
             if not ref_path.is_file():
                 errors.append(f"{prefix}.evidence_refs path does not exist: {ref}")
-            elif evidence_status == "PRIMARY" and not _is_primary_receipt(ref_path):
+            elif evidence_status == "PRIMARY" and not _is_primary_receipt(
+                ref_path, expected_source_sha256
+            ):
                 errors.append(
-                    f"{prefix}.PRIMARY evidence_ref is not a receipt with execution/digest fields: {ref}"
+                    f"{prefix}.PRIMARY evidence_ref is not a bound receipt with execution/digest fields: {ref}"
                 )
         cross_references = row.get("cross_references")
         if not isinstance(cross_references, dict):
@@ -232,18 +271,65 @@ def run_self_test(registry_path: Path, repository_root: Path) -> None:
         "https://example.invalid/not-a-pr"
     ]
     mutations.append(("invalid cross-reference", mutation))
-    mutation = copy.deepcopy(valid)
-    mutation["rows"][1]["evidence_refs"] = [
-        "guides/experiments/2026-09-10-bit-mih-oracle-result.json"
-    ]
-    mutation["rows"][1]["evidence_status"] = "PRIMARY"
-    mutation["rows"][1]["evidence_refs"][0] = (
-        "guides/experiments/2026-11-18-algorithm-research-sweep-registry.json"
-    )
-    mutations.append(("primary registry without digest", mutation))
     for name, candidate in mutations:
         if not validate_registry(candidate, repository_root):
             raise AssertionError(f"mutation control did not fail: {name}")
+
+    receipt_payload = {
+        "source_sha256": "a" * 64,
+        "result_sha256": "b" * 64,
+        "status": "EXECUTED",
+    }
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".result.json", dir=repository_root, delete=False, encoding="utf-8"
+    ) as stream:
+        receipt_path = Path(stream.name)
+        stream.write(json.dumps(receipt_payload))
+    relative_receipt = receipt_path.relative_to(repository_root).as_posix()
+    try:
+        primary = copy.deepcopy(valid)
+        primary["rows"][1]["evidence_status"] = "PRIMARY"
+        primary["rows"][1]["evidence_refs"] = [relative_receipt]
+        primary["rows"][1]["receipt_binding"] = {"source_sha256": "a" * 64}
+        if validate_registry(primary, repository_root):
+            raise AssertionError("execution-bound primary receipt must validate")
+
+        receipt_mutations = [
+            ("fake SHA", {**receipt_payload, "result_sha256": "fake-sha"}),
+            ("empty digest", {**receipt_payload, "result_sha256": ""}),
+            (
+                "interpretation only",
+                {"source_sha256": "a" * 64, "result_sha256": "b" * 64, "interpretation": "EXECUTED"},
+            ),
+            (
+                "contradictory execution status",
+                {**receipt_payload, "execution_status": "NOT_EXECUTED"},
+            ),
+        ]
+        for name, payload in receipt_mutations:
+            receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+            if not validate_registry(primary, repository_root):
+                raise AssertionError(f"receipt mutation did not fail: {name}")
+
+        missing = copy.deepcopy(primary)
+        missing["rows"][1]["evidence_refs"] = ["guides/experiments/missing.result.json"]
+        if not validate_registry(missing, repository_root):
+            raise AssertionError("missing receipt mutation did not fail")
+
+        self_reference = copy.deepcopy(primary)
+        self_reference["rows"][1]["evidence_refs"] = [
+            "guides/experiments/2026-11-18-algorithm-research-sweep-registry.json"
+        ]
+        if not validate_registry(self_reference, repository_root):
+            raise AssertionError("self-reference mutation did not fail")
+
+        wrong_binding = copy.deepcopy(primary)
+        wrong_binding["rows"][1]["receipt_binding"] = {"source_sha256": "c" * 64}
+        receipt_path.write_text(json.dumps(receipt_payload), encoding="utf-8")
+        if not validate_registry(wrong_binding, repository_root):
+            raise AssertionError("wrong source/receipt binding did not fail")
+    finally:
+        receipt_path.unlink(missing_ok=True)
 
 
 def main() -> int:

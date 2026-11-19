@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "source_commit": "00a9695762ab3bbdc9d5193d371dd8b25ca7b51c",
+  "source_commit": "caaacc67d367a13717c2da96a1e2ce6da9bd6524",
   "production_activation": false,
   "rows": [
     {
@@ -24,9 +24,9 @@
       "family": "binary_retrieval",
       "scope": "candidate generation followed by exact rerank",
       "status": "ALREADY_IMPLEMENTED",
-      "evidence_status": "PRIMARY",
+      "evidence_status": "EVIDENCE_PENDING",
       "source_snapshot": "src/agent_memory/index/MultiProbeHammingIndex.cpp",
-      "evidence_refs": ["guides/experiments/2026-09-10-bit-mih-oracle-result.json"],
+      "evidence_refs": [],
       "cross_references": {
         "pull_requests": [],
         "research_guides": ["guides/experiments/2026-07-20-binary-flat-vs-exact-vector.md", "guides/experiments/2026-08-10-ann-cascade-comparison.md"]
