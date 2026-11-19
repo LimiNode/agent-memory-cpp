@@ -968,6 +968,17 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         COMMAND agent_memory_mdbx_knowledge_unit_store_test
     )
 
+    add_executable(agent_memory_mdbx_knowledge_unit_numeric_key_pilot_test
+        infrastructure/mdbx/mdbx_knowledge_unit_numeric_key_pilot_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_knowledge_unit_numeric_key_pilot_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_knowledge_unit_numeric_key_pilot_test
+        COMMAND agent_memory_mdbx_knowledge_unit_numeric_key_pilot_test
+    )
+
     add_executable(agent_memory_mdbx_article_to_citation_vertical_test
         infrastructure/mdbx/mdbx_article_to_citation_vertical_test.cpp
     )
