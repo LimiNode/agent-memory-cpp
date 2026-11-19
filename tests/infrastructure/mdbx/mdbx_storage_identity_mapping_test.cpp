@@ -2,10 +2,13 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 
+#include <mdbx_containers/KeyValueTable.hpp>
+
 #include <chrono>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
+#include <variant>
 
 namespace {
 
@@ -102,8 +105,99 @@ int main() {
                "snapshot import did not advance block sequence");
         expect(!reopened.find_document(document), "snapshot replacement left stale document");
 
+        reopened.load_records({
+            DocumentStorageIdentityRecord{DocumentStorageId{1}, DocumentId{"doc:tie"}, false},
+            BlockStorageIdentityRecord{
+                BlockStorageId{1}, DocumentId{"doc:tie"}, ContentBlockId{"block:tie"}, false
+            }
+        });
+        const auto tied_snapshot = reopened.snapshot_records();
+        expect(
+            tied_snapshot.size() == 2U
+                && std::holds_alternative<DocumentStorageIdentityRecord>(tied_snapshot.front()),
+            "snapshot ordering is not deterministic across equal document/block ids"
+        );
+
+        const auto markerless_path = test_path();
+        {
+            auto context = MdbxStorageContext::open(markerless_path.string());
+            mdbxc::KeyValueTable<std::string, std::string> records(
+                context->connection(), "identity_pilot_identity_records_v1");
+            auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            records.insert_or_assign("d:8:doc:one", "markerless", txn);
+            txn.commit();
+        }
+        bool markerless_rejected = false;
+        try {
+            MdbxStorageIdentityMappingOptions markerless_options;
+            markerless_options.path = markerless_path.string();
+            markerless_options.table_prefix = "identity pilot";
+            static_cast<void>(MdbxStorageIdentityMapping(markerless_options));
+        } catch(const std::runtime_error&) {
+            markerless_rejected = true;
+        }
+        expect(markerless_rejected, "markerless non-empty mapping was accepted");
+
+        const auto missing_sequence_path = test_path();
+        {
+            MdbxStorageIdentityMappingOptions sequence_options;
+            sequence_options.path = missing_sequence_path.string();
+            sequence_options.table_prefix = "identity pilot";
+            MdbxStorageIdentityMapping mapping(sequence_options);
+            static_cast<void>(mapping.ensure_document(DocumentId{"doc:sequence"}));
+        }
+        {
+            auto context = MdbxStorageContext::open(missing_sequence_path.string());
+            mdbxc::KeyValueTable<std::string, std::string> metadata(
+                context->connection(), "identity_pilot_identity_meta_v1");
+            auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            metadata.erase("@next_document_id", txn);
+            txn.commit();
+        }
+        bool missing_sequence_rejected = false;
+        try {
+            MdbxStorageIdentityMappingOptions sequence_options;
+            sequence_options.path = missing_sequence_path.string();
+            sequence_options.table_prefix = "identity pilot";
+            static_cast<void>(MdbxStorageIdentityMapping(sequence_options));
+        } catch(const std::runtime_error&) {
+            missing_sequence_rejected = true;
+        }
+        expect(missing_sequence_rejected, "missing sequence metadata was accepted");
+
+        const auto reverse_mismatch_path = test_path();
+        {
+            MdbxStorageIdentityMappingOptions mismatch_options;
+            mismatch_options.path = reverse_mismatch_path.string();
+            mismatch_options.table_prefix = "identity pilot";
+            MdbxStorageIdentityMapping mapping(mismatch_options);
+            static_cast<void>(mapping.ensure_document(DocumentId{"doc:mismatch"}));
+        }
+        {
+            auto context = MdbxStorageContext::open(reverse_mismatch_path.string());
+            mdbxc::KeyValueTable<std::uint64_t, std::string> reverse(
+                context->connection(), "identity_pilot_identity_documents_v1");
+            auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            reverse.insert_or_assign(1U, "d:13:doc:other", txn);
+            txn.commit();
+        }
+        bool reverse_mismatch_rejected = false;
+        try {
+            MdbxStorageIdentityMappingOptions mismatch_options;
+            mismatch_options.path = reverse_mismatch_path.string();
+            mismatch_options.table_prefix = "identity pilot";
+            MdbxStorageIdentityMapping mapping(mismatch_options);
+            static_cast<void>(mapping.ensure_document(DocumentId{"doc:mismatch"}));
+        } catch(const std::runtime_error&) {
+            reverse_mismatch_rejected = true;
+        }
+        expect(reverse_mismatch_rejected, "reverse mapping mismatch was accepted");
+
         std::error_code error;
         std::filesystem::remove(path, error);
+        std::filesystem::remove(markerless_path, error);
+        std::filesystem::remove(missing_sequence_path, error);
+        std::filesystem::remove(reverse_mismatch_path, error);
         std::cout << "mdbx storage identity mapping: PASS\n";
         return 0;
     } catch(const std::exception& exception) {

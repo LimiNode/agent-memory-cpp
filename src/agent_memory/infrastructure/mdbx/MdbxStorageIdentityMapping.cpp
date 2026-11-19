@@ -21,6 +21,11 @@ constexpr std::string_view kSchemaVersion = "storage_identity_mapping.v1";
 constexpr std::string_view kNextDocumentKey = "@next_document_id";
 constexpr std::string_view kNextBlockKey = "@next_block_id";
 
+std::size_t checked_max_records(std::size_t value) {
+    if(value == 0U) throw std::invalid_argument("max_records must be positive");
+    return value;
+}
+
 std::string sanitize_table_part(std::string value) {
     if(value.empty()) value = "agent_memory";
     for(char& c : value) {
@@ -79,6 +84,60 @@ std::uint64_t next_id(
     return 1;
 }
 
+std::optional<std::uint64_t> max_numeric_key(
+    mdbxc::KeyValueTable<std::uint64_t, std::string>& table,
+    const mdbxc::Transaction& txn
+) {
+    std::optional<std::uint64_t> result;
+    table.for_each_range(
+        0U,
+        std::numeric_limits<std::uint64_t>::max(),
+        [&result](const std::uint64_t key, const std::string&) {
+            result = key;
+            return true;
+        },
+        txn
+    );
+    return result;
+}
+
+bool has_any_record(
+    mdbxc::KeyValueTable<std::string, std::string>& table,
+    const mdbxc::Transaction& txn
+) {
+    bool present = false;
+    table.for_each_range(
+        std::string{},
+        std::string(1, static_cast<char>(0xff)),
+        [&present](const std::string&, const std::string&) {
+            present = true;
+            return false;
+        },
+        txn
+    );
+    return present;
+}
+
+void validate_sequence_metadata(
+    mdbxc::KeyValueTable<std::string, std::string>& metadata,
+    std::string_view metadata_key,
+    mdbxc::KeyValueTable<std::uint64_t, std::string>& reverse,
+    const mdbxc::Transaction& txn
+) {
+    const auto highest = max_numeric_key(reverse, txn);
+    const auto encoded_next = metadata.find(std::string{metadata_key}, txn);
+    if(!encoded_next) {
+        if(highest) {
+            throw std::runtime_error("storage identity sequence metadata is missing");
+        }
+        return;
+    }
+    const auto next = parse_id(*encoded_next);
+    if(highest && *highest >= next) {
+        throw std::runtime_error("storage identity sequence metadata is behind reverse mapping");
+    }
+}
+
 void advance_id(
     mdbxc::KeyValueTable<std::string, std::string>& metadata,
     std::string_view key,
@@ -97,7 +156,7 @@ void advance_id(
 class MdbxStorageIdentityMapping::Impl final {
 public:
     explicit Impl(MdbxStorageIdentityMappingOptions options)
-        : max_records(options.max_records)
+        : max_records(checked_max_records(options.max_records))
         , context(options.context ? std::move(options.context)
                                   : MdbxStorageContext::open(std::move(options.path),
                                                              options.relative_to_exe,
@@ -113,9 +172,23 @@ public:
                 throw std::runtime_error("unsupported storage identity mapping schema");
             }
         } else {
+            if(
+                has_any_record(records, txn)
+                || max_numeric_key(document_reverse, txn)
+                || max_numeric_key(block_reverse, txn)
+                || metadata.find(std::string{kNextDocumentKey}, txn)
+                || metadata.find(std::string{kNextBlockKey}, txn)
+            ) {
+                txn.rollback();
+                throw std::runtime_error(
+                    "storage identity mapping rejects markerless non-empty state"
+                );
+            }
             metadata.insert_or_assign(
                 std::string{kSchemaKey}, std::string{kSchemaVersion}, txn);
         }
+        validate_sequence_metadata(metadata, kNextDocumentKey, document_reverse, txn);
+        validate_sequence_metadata(metadata, kNextBlockKey, block_reverse, txn);
         txn.commit();
     }
 
@@ -130,9 +203,7 @@ public:
 
 MdbxStorageIdentityMapping::MdbxStorageIdentityMapping(
     MdbxStorageIdentityMappingOptions options)
-    : m_impl(std::make_unique<Impl>(std::move(options))) {
-    if(m_impl->max_records == 0) throw std::invalid_argument("max_records must be positive");
-}
+    : m_impl(std::make_unique<Impl>(std::move(options))) {}
 
 MdbxStorageIdentityMapping::~MdbxStorageIdentityMapping() = default;
 
@@ -145,8 +216,12 @@ DocumentStorageId MdbxStorageIdentityMapping::ensure_document(const DocumentId& 
         const auto decoded = decode_document_storage_identity_record(*encoded);
         if(decoded.document_id != document_id) throw std::runtime_error("document identity key mismatch");
         if(decoded.retired) throw std::runtime_error("retired document identity cannot be reused");
-        if(!m_impl->document_reverse.find(decoded.storage_id.value(), txn)) {
+        const auto reverse_key = m_impl->document_reverse.find(decoded.storage_id.value(), txn);
+        if(!reverse_key) {
             throw std::runtime_error("document reverse mapping is missing");
+        }
+        if(*reverse_key != key) {
+            throw std::runtime_error("document reverse mapping does not match forward key");
         }
         txn.commit();
         return decoded.storage_id;
@@ -186,8 +261,12 @@ BlockStorageId MdbxStorageIdentityMapping::ensure_block(
             throw std::runtime_error("block identity key mismatch");
         }
         if(decoded.retired) throw std::runtime_error("retired block identity cannot be reused");
-        if(!m_impl->block_reverse.find(decoded.storage_id.value(), txn)) {
+        const auto reverse_key = m_impl->block_reverse.find(decoded.storage_id.value(), txn);
+        if(!reverse_key) {
             throw std::runtime_error("block reverse mapping is missing");
+        }
+        if(*reverse_key != key) {
+            throw std::runtime_error("block reverse mapping does not match forward key");
         }
         txn.commit();
         return decoded.storage_id;
@@ -240,6 +319,9 @@ std::optional<DocumentId> MdbxStorageIdentityMapping::resolve_document(
     if(!encoded) throw std::runtime_error("document reverse record is missing");
     const auto record = decode_document_storage_identity_record(*encoded);
     if(record.storage_id != id) throw std::runtime_error("document reverse id mismatch");
+    if(document_key(record.document_id) != *key) {
+        throw std::runtime_error("document reverse key mismatch");
+    }
     txn.commit();
     return record.document_id;
 }
@@ -255,6 +337,9 @@ std::optional<std::pair<DocumentId, ContentBlockId>> MdbxStorageIdentityMapping:
     if(!encoded) throw std::runtime_error("block reverse record is missing");
     const auto record = decode_block_storage_identity_record(*encoded);
     if(record.storage_id != id) throw std::runtime_error("block reverse id mismatch");
+    if(block_key(record.document_id, record.block_id) != *key) {
+        throw std::runtime_error("block reverse key mismatch");
+    }
     txn.commit();
     return std::make_pair(record.document_id, record.block_id);
 }
@@ -267,6 +352,9 @@ bool MdbxStorageIdentityMapping::retire_document(const DocumentId& document_id) 
     const auto encoded = m_impl->records.find(key, txn);
     if(!encoded) { txn.commit(); return false; }
     const auto record = decode_document_storage_identity_record(*encoded);
+    if(record.document_id != document_id) {
+        throw std::runtime_error("document identity key mismatch while retiring");
+    }
     if(record.retired) { txn.commit(); return false; }
     auto retired = record;
     retired.retired = true;
@@ -275,6 +363,9 @@ bool MdbxStorageIdentityMapping::retire_document(const DocumentId& document_id) 
         std::string{"b:"}, std::string{"b;"}, txn);
     for(const auto& row : block_rows) {
         const auto block = decode_block_storage_identity_record(row.second);
+        if(block_key(block.document_id, block.block_id) != row.first) {
+            throw std::runtime_error("block identity key mismatch while retiring document");
+        }
         if(block.document_id == document_id && !block.retired) {
             auto retired_block = block;
             retired_block.retired = true;
@@ -295,6 +386,9 @@ bool MdbxStorageIdentityMapping::retire_block(
     const auto encoded = m_impl->records.find(key, txn);
     if(!encoded) { txn.commit(); return false; }
     const auto record = decode_block_storage_identity_record(*encoded);
+    if(record.document_id != document_id || record.block_id != block_id) {
+        throw std::runtime_error("block identity key mismatch while retiring");
+    }
     if(record.retired) { txn.commit(); return false; }
     auto retired = record;
     retired.retired = true;
@@ -314,7 +408,9 @@ std::vector<StorageIdentityRecord> MdbxStorageIdentityMapping::snapshot_records(
     txn.commit();
     std::sort(result.begin(), result.end(), [](const StorageIdentityRecord& lhs, const StorageIdentityRecord& rhs) {
         const auto id = [](const StorageIdentityRecord& value) { return std::visit([](const auto& item) { return item.storage_id.value(); }, value); };
-        return id(lhs) < id(rhs);
+        if(id(lhs) != id(rhs)) return id(lhs) < id(rhs);
+        if(lhs.index() != rhs.index()) return lhs.index() < rhs.index();
+        return encode_storage_identity_record(lhs) < encode_storage_identity_record(rhs);
     });
     return result;
 }
