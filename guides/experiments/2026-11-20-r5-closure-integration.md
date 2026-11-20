@@ -81,9 +81,10 @@ files overlap, so independence does not mean conflict-free sequential merges.
 | #664 | Actual vector index, independent oracle, CPU E-means | Historical v1 disposition is executable | MERGE_CANDIDATE pending combined run |
 | #665 | Full lexical path and direct stage profiling | Generated private class, not a production selector API | MERGE_CANDIDATE pending combined run |
 | #666 | Matched full retrieve path | Generated private admission variants, not a dispatcher | MERGE_CANDIDATE pending combined run and independent review |
+| #668 (supporting correction) | Restore existing frozen MIH fixture replay | No new algorithm; golden JSON/cutoffs unchanged, four CLI mutation controls | MERGE_CANDIDATE pending independent review, exact-head CI and combined run |
 
 `MERGE_CANDIDATE` is not an APPROVED review. Recommended initial order after
-independent review is #641 -> #633 -> #635 -> #638 -> #642 -> #664 ->
+independent review is #668 -> #641 -> #633 -> #635 -> #638 -> #642 -> #664 ->
 #665 -> #666 -> #640. The registry is last so it indexes the completed owner
 corrections without presenting its external pointers as replayed PRIMARY data.
 Before each merge recheck the actual main, source-pinned transforms,
@@ -118,6 +119,15 @@ failure exposed the existing native MIH reader's v1 construction guard against
 the frozen v2 conformance fixture; it requires a separate semantic correction,
 not a skipped test or a changed golden digest. This preliminary run is not
 closure acceptance evidence.
+
+The supporting [#668 correction](https://github.com/LimiNode/agent-memory-cpp/pull/668)
+is separately pinned in the same assembly-input manifest; it is not counted
+as one of the nine R5 studies. Its unique files receive the same blob checks
+and its shared CMake changes the same structural/runtime checks. The focused
+native sparse, frozen fixture and four-mutation CTests passed 3/3 locally.
+The former missing-dependency THQ tests also passed in the isolated pinned
+research Python environment. The final complete suite must include both
+the fixed positive fixture test and the new negative-control test.
 
 All four downloaded Linux/Windows closure raw receipts from owner runs
 [#665 CI 44644634821](https://github.com/LimiNode/agent-memory-cpp/actions/runs/44644634821)

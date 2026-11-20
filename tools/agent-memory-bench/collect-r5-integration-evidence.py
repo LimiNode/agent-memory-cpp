@@ -58,7 +58,14 @@ def validate_inputs(inputs):
     require(re.fullmatch(r"[0-9a-f]{40}", inputs.get("integration_baseline", "")), "baseline SHA")
     sources = inputs.get("sources", [])
     require(len(sources) == len(PRS) and {s.get("pr") for s in sources} == PRS, "nine unique PRs required")
-    for source in sources:
+    corrections = inputs.get("supporting_corrections", [])
+    require(isinstance(corrections, list), "supporting corrections must be a list")
+    correction_prs = [item.get("pr") for item in corrections]
+    require(all(type(pr) is int and pr > 0 and pr not in PRS for pr in correction_prs)
+            and len(correction_prs) == len(set(correction_prs)), "supporting correction PRs must be separate and unique")
+    require(all(isinstance(item.get("reason"), str) and item["reason"].strip() for item in corrections),
+            "supporting correction requires its observed reason")
+    for source in sources + corrections:
         require(re.fullmatch(r"[0-9a-f]{40}", source.get("head", "")), "source SHA")
 
 
@@ -124,7 +131,7 @@ def audit_assembly(inputs):
     owners = {}
     baseline = inputs["integration_baseline"]
     trees = {}
-    for source in inputs["sources"]:
+    for source in inputs["sources"] + inputs.get("supporting_corrections", []):
         head = source["head"]
         require(git("cat-file", "-t", head) == "commit", "input source is not a commit")
         require(git("merge-base", baseline, head) == baseline, "input is not based on integration baseline")
@@ -161,6 +168,12 @@ def self_test(inputs, workflow):
     duplicate = copy.deepcopy(inputs)
     duplicate["sources"][0] = duplicate["sources"][1]
     mutations.append(lambda: validate_inputs(duplicate))
+    duplicate_correction = copy.deepcopy(inputs)
+    duplicate_correction["supporting_corrections"] = [dict(inputs["sources"][0], reason="duplicate")]
+    mutations.append(lambda: validate_inputs(duplicate_correction))
+    unexplained = copy.deepcopy(inputs)
+    unexplained["supporting_corrections"] = [{"pr": 999, "head": "a" * 40}]
+    mutations.append(lambda: validate_inputs(unexplained))
     parsed = yaml.load(workflow, Loader=UniqueLoader)
     for key in sorted(RESEARCH_JOBS):
         changed = copy.deepcopy(parsed)

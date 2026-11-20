@@ -13,5 +13,8 @@
     {"pr": 664, "head": "76914c0c3422407325aaf097622fbd5478de2ab1"},
     {"pr": 665, "head": "f2bb63527f9d8289b5f592e89873641b552265ca"},
     {"pr": 666, "head": "fd29d257c4a6017f41870e3cf845125e7a473130"}
+  ],
+  "supporting_corrections": [
+    {"pr": 668, "head": "36da355177d9c9db12f14c9b29886077951a58c0", "reason": "Pre-existing native MIH reader used obsolete v1 construction against the frozen v2 fixture; restore full-suite conformance without changing golden bytes."}
   ]
 }
