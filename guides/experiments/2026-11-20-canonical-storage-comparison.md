@@ -114,6 +114,10 @@ completed TSV and receipt total 69355 bytes. No database, executable, failed-run
 directory or large report is committed. Keep this measured pair immutable;
 superseding evidence must use a new name and preserve its source binding.
 Future archival/release publication requires separate authorization.
+The benchmark CTest profile replays this full retained pair as well as its
+generated smoke pair; changing an aggregate or raw observation cannot silently
+leave the published evidence outside the contract checks. Exact-path Git
+attributes preserve the measured bytes, including the receipt's CRLF endings.
 
 - [Raw TSV](../../.artifacts/canonical-comparison-v2/balanced-5-60min.tsv),
   SHA-256 `8ff5103a866ff105f41d0c46aa192e3abbcfcd44439d22fcb3d96b69dbe464d1`.
