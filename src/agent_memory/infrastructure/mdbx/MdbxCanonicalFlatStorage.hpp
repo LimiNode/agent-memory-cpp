@@ -6,6 +6,8 @@
 /// \brief Opt-in numeric flat physical layout for canonical content.
 
 #include <agent_memory/storage/CanonicalContentStore.hpp>
+#include <agent_memory/domain/CanonicalNavigation.hpp>
+#include "MdbxCanonicalStorageMetrics.hpp"
 
 #if AGENT_MEMORY_HAS_MDBX
 
@@ -13,11 +15,17 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 
 namespace agent_memory {
+
+/// Two independent uint64 values, each big-endian, compared bytewise (flags 0).
+/// Unlike native MDBX_INTEGERKEY, this 16-byte composite key is endian-independent.
+[[nodiscard]] std::string canonical_flat_composite_key(std::uint64_t identity,
+                                                       std::uint64_t revision);
 
 /// \brief Options for the experimental numeric flat canonical layout.
 struct MdbxCanonicalFlatStorageOptions final {
@@ -27,13 +35,17 @@ struct MdbxCanonicalFlatStorageOptions final {
     std::int64_t max_dbs = kDefaultMdbxMaxDbs;
     std::size_t max_records = 1U * 1024U * 1024U;
     std::shared_ptr<MdbxStorageContext> context;
+    MdbxCanonicalStorageMetrics* metrics = nullptr;
+    /// Test/fault-injection seam, called inside the write transaction before head publication.
+    /// Throwing aborts every write in that transaction. Must not reenter this store.
+    std::function<void()> before_head_publication;
 };
 
 /// \brief Transactional, versioned flat canonical-content pilot.
 ///
 /// Document and block storage addresses are allocated by the persistent
 /// numeric identity mapping. Structure rows, immutable block-version rows and
-/// the current head are published in one caller-owned MDBX write transaction.
+/// the current head are published in one MDBX write transaction.
 /// The class is opt-in and does not replace MdbxCanonicalContentStore.
 class MdbxCanonicalFlatStorage final : public ICanonicalContentStore,
                                        public ICanonicalContentEditor {
@@ -55,6 +67,17 @@ class MdbxCanonicalFlatStorage final : public ICanonicalContentStore,
         const DocumentId&, std::optional<std::uint64_t> = std::nullopt) const override;
     [[nodiscard]] CanonicalEditResult commit(
         const CanonicalEditRequest&) override;
+
+    /// Reads the O(V) structure row and validates its tree/ledger in O(V log V),
+    /// without reading block payload values. Corruption throws; absence/budget returns no value.
+    [[nodiscard]] std::optional<CanonicalOutline> read_outline(
+        const DocumentId&, std::uint64_t, std::size_t max_entries = 4096) const;
+    [[nodiscard]] CanonicalChildrenResult read_children(
+        const DocumentId&, std::uint64_t, std::optional<ContentBlockId>,
+        std::size_t max_children = 4096) const;
+    /// Reads the structure once and only the selected payload values in one snapshot.
+    [[nodiscard]] CanonicalSubtreeResult read_subtree(
+        const DocumentId&, std::uint64_t, const CanonicalSubtreeRequest&) const;
 
   private:
     class Impl;

@@ -889,6 +889,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         NAME agent_memory_mdbx_canonical_flat_storage_test
         COMMAND agent_memory_mdbx_canonical_flat_storage_test
     )
+    set_tests_properties(agent_memory_mdbx_canonical_flat_storage_test PROPERTIES TIMEOUT 60)
 
     add_executable(agent_memory_mdbx_workspace_routing_test
         infrastructure/mdbx/mdbx_workspace_routing_test.cpp
