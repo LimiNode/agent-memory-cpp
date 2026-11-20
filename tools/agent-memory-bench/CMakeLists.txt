@@ -8,6 +8,49 @@ target_link_libraries(agent-memory-bench
     agent_memory::json
 )
 
+add_executable(agent-memory-exact-vector-numerical-frontier
+    exact_vector_numerical_frontier.cpp
+)
+
+target_link_libraries(agent-memory-exact-vector-numerical-frontier
+    PRIVATE
+        agent_memory::json
+)
+
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+    RESULT_VARIABLE agent_memory_numerical_frontier_git_result
+    OUTPUT_VARIABLE agent_memory_numerical_frontier_source_commit
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(LENGTH "${agent_memory_numerical_frontier_source_commit}" agent_memory_numerical_frontier_source_commit_length)
+if(NOT agent_memory_numerical_frontier_git_result EQUAL 0 OR
+   NOT agent_memory_numerical_frontier_source_commit_length EQUAL 40 OR
+   NOT "${agent_memory_numerical_frontier_source_commit}" MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR
+        "Exact-vector numerical frontier requires a 40-character lowercase source Git SHA")
+endif()
+set(AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA
+    "${agent_memory_numerical_frontier_source_commit}"
+    CACHE STRING
+    "Expected pull-request head SHA recorded by the numerical frontier receipt")
+string(LENGTH "${AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA}" agent_memory_numerical_frontier_expected_head_length)
+if(NOT agent_memory_numerical_frontier_expected_head_length EQUAL 40 OR
+   NOT "${AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA}" MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR
+        "AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA must be a 40-character lowercase Git SHA")
+endif()
+target_compile_definitions(agent-memory-exact-vector-numerical-frontier
+    PRIVATE
+        AGENT_MEMORY_NUMERICAL_FRONTIER_SOURCE_COMMIT="${agent_memory_numerical_frontier_source_commit}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_CHECKOUT_SHA="${agent_memory_numerical_frontier_source_commit}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA="${AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_BUILD_CONFIGURATION="${CMAKE_BUILD_TYPE}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_SYSTEM_PROCESSOR="${CMAKE_SYSTEM_PROCESSOR}"
+)
+
 add_executable(agent-memory-autoencoder-eval
     autoencoder_evaluation.cpp
 )
