@@ -55,6 +55,10 @@ ALLOWED_SELECTORS = {
     "UpstreamSync",
     "RawArtifactCatalog",
     "ExactIndexGenerationStore",
+    "NumericKnowledgeUnitPilot",
+    "StorageIdentityMapping",
+    "KnowledgeUnitTypedNumeric",
+    "CanonicalFlatStorage",
 }
 
 ALLOWED_WIRE_SYNC_SUPPORT = {
@@ -99,6 +103,15 @@ EXPECTED_SYNC_SYSTEM_DBIS = {
 }
 
 EXPECTED_PHYSICAL_KEYS = {
+    "ku_typed_v1": ["KnowledgeUnitId"],
+    "ku_typed_v1_used": ["KnowledgeUnitId"],
+    "ku_typed_v1_meta": ["SchemaKey", "SequenceKey"],
+    "ku_typed_v1_content": ["KnowledgeUnitKind", "ScopeId", "ContentHash"],
+    "ku_typed_v1_kind": ["ScopeId", "KnowledgeUnitKind", "KnowledgeUnitId"],
+    "canonical_flat_meta_v2": ["SchemaKey"],
+    "canonical_flat_heads_v2": ["DocumentStorageId"],
+    "canonical_flat_structures_v2": ["DocumentStorageId", "DocumentRevision"],
+    "canonical_flat_blocks_v2": ["BlockStorageId", "BlockRevision"],
     "embedding_meta": [
         "ScopeId", "ModelId", "ModelVersion", "ProjectionKind", "UnitId",
     ],
@@ -170,6 +183,94 @@ EXPECTED_REPLICATION_SEMANTICS = {
     "lexical_posting_segments": "derived_rebuildable",
     "derived_vector_blobs": "derived_rebuildable",
 }
+
+NUMERIC_PROFILE_SCHEMAS = {
+    "numeric_knowledge_unit_key_pilot": "knowledge_unit_numeric_key.v1",
+    "knowledge_unit_typed_numeric": "knowledge_unit_typed_numeric.v1",
+    "storage_identity_mapping_pilot": "storage_identity_mapping.v1",
+    "canonical_content_flat_v2": "canonical_flat_storage.v2.be64x2.envelope_sha256",
+}
+NUMERIC_PROFILE_NAMES = {
+    "numeric_knowledge_unit_key_pilot": [
+        "knowledge_units_numeric_v1", "knowledge_units_numeric_v1_used", "knowledge_units_numeric_v1_meta",
+    ],
+    "knowledge_unit_typed_numeric": [
+        "ku_typed_v1", "ku_typed_v1_used", "ku_typed_v1_meta", "ku_typed_v1_content", "ku_typed_v1_kind",
+    ],
+    "storage_identity_mapping_pilot": [
+        "identity_records_v1", "identity_documents_v1", "identity_blocks_v1", "identity_meta_v1",
+    ],
+    "canonical_content_flat_v2": [
+        "canonical_flat_meta_v2", "canonical_flat_heads_v2", "canonical_flat_structures_v2", "canonical_flat_blocks_v2",
+    ],
+}
+NATIVE_INTEGER_DBIS = {
+    "knowledge_units_numeric_v1", "knowledge_units_numeric_v1_used",
+    "ku_typed_v1", "ku_typed_v1_used",
+    "identity_documents_v1", "identity_blocks_v1", "canonical_flat_heads_v2",
+}
+
+
+def validate_shared_context_profiles(data: dict, deltas: dict, errors: list[str]) -> None:
+    profiles = data.get("shared_context_profiles")
+    if not isinstance(profiles, list) or not profiles:
+        fail(errors, "shared_context_profiles must be a non-empty list")
+        return
+    seen_profiles: set[str] = set()
+    for profile in profiles:
+        if not isinstance(profile, dict):
+            fail(errors, "shared context profile must be a mapping")
+            continue
+        name = profile.get("name")
+        if not isinstance(name, str) or not name or name in seen_profiles:
+            fail(errors, "shared context profile requires a unique name")
+        seen_profiles.add(str(name))
+        base = profile.get("base")
+        if base not in {"none", "expanded_peak_reference"}:
+            fail(errors, f"{name}: unknown shared context base")
+            continue
+        total = data["expanded_peak_reference"]["total"] if base != "none" else 0
+        physical_names: set[str] = set()
+        instances = profile.get("instances")
+        if not isinstance(instances, list) or not instances:
+            fail(errors, f"{name}: instances must be a non-empty list")
+            continue
+        selected: set[tuple[str, str]] = set()
+        dependencies: list[tuple[str, str]] = []
+        for instance in instances:
+            if not isinstance(instance, dict):
+                fail(errors, f"{name}: invalid profile instance")
+                continue
+            delta_name, prefix = instance.get("profile"), instance.get("table_prefix")
+            delta = deltas.get(delta_name)
+            if delta_name not in NUMERIC_PROFILE_SCHEMAS or not delta:
+                fail(errors, f"{name}: unknown numeric profile {delta_name!r}")
+                continue
+            if not isinstance(prefix, str) or not prefix.isascii():
+                fail(errors, f"{name}: table_prefix must be an ASCII string")
+                continue
+            prefix = re.sub(r"[^A-Za-z0-9]", "_", prefix or "agent_memory")
+            selected.add((delta_name, prefix))
+            dependencies.extend((required, prefix) for required in delta.get("requires_profiles", []))
+            for suffix in delta.get("names", []):
+                physical = prefix + "_" + suffix
+                if physical in physical_names:
+                    fail(errors, f"{name}: duplicate physical DBI after prefix sanitization: {physical}")
+                physical_names.add(physical)
+            total += delta.get("migration_peak", 0)
+        if any(dependency not in selected for dependency in dependencies):
+            fail(errors, f"{name}: missing same-prefix shared identity dependency")
+        if profile.get("total") != total:
+            fail(errors, f"{name}: shared context total mismatch")
+        capacity = profile.get("max_dbs")
+        if not isinstance(capacity, int) or capacity < total:
+            fail(errors, f"{name}: shared context exceeds max_dbs")
+            continue
+        free_slots = capacity - total
+        if profile.get("free_slots") != free_slots:
+            fail(errors, f"{name}: shared context free_slots mismatch")
+        if free_slots < data.get("minimum_free_slots", 0):
+            fail(errors, f"{name}: shared context violates minimum_free_slots")
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -290,6 +391,18 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
             fail(errors, f"duplicate profile delta: {name}")
         delta_names.add(name)
         delta_by_name[name] = row
+        numeric_schema = NUMERIC_PROFILE_SCHEMAS.get(name)
+        if numeric_schema:
+            if row.get("schema_version") != numeric_schema:
+                fail(errors, f"{name}: numeric schema_version mismatch")
+            if row.get("schema_marker_key") != "@schema_version":
+                fail(errors, f"{name}: numeric schema marker mismatch")
+            if row.get("default_table_prefix") != "agent_memory" or row.get("names_are_suffixes") is not True:
+                fail(errors, f"{name}: numeric table prefix contract mismatch")
+            if row.get("names") != NUMERIC_PROFILE_NAMES[name]:
+                fail(errors, f"{name}: numeric DBI names mismatch")
+            if name == "canonical_content_flat_v2" and row.get("requires_profiles") != ["storage_identity_mapping_pilot"]:
+                fail(errors, f"{name}: shared identity dependency mismatch")
         if "dbis" not in row or "migration_peak" not in row:
             fail(errors, f"{name}: profile delta requires dbis and migration_peak")
         for field in ("dbis", "migration_peak"):
@@ -335,6 +448,20 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
             if entry_name in explicit_dbi_names:
                 fail(errors, f"duplicate explicit DBI name across manifest: {entry_name}")
             explicit_dbi_names.add(entry_name)
+            if numeric_schema:
+                integer = entry_name in NATIVE_INTEGER_DBIS
+                comparator = "MDBX_INTEGERKEY" if integer else "MDBX_BYTEWISE"
+                flags = ["MDBX_INTEGERKEY"] if integer else []
+                if entry.get("comparator") != comparator or entry.get("flags") != flags:
+                    fail(errors, f"{entry_name}: numeric comparator/flags mismatch")
+                if entry.get("schema_version") != numeric_schema:
+                    fail(errors, f"{entry_name}: numeric schema_version mismatch")
+                if name in {"knowledge_unit_typed_numeric", "canonical_content_flat_v2"}:
+                    encoding = "native_uint64" if integer else (
+                        "be64x2" if entry_name in {"canonical_flat_structures_v2", "canonical_flat_blocks_v2"} else "bytes"
+                    )
+                    if entry.get("key_encoding") != encoding:
+                        fail(errors, f"{entry_name}: numeric key_encoding mismatch")
             if entry.get("table_type") not in ALLOWED_TABLE_TYPES:
                 fail(errors, f"{context}: unknown table_type {entry.get('table_type')!r}")
             if entry.get("opens") not in ALLOWED_SELECTORS:
@@ -425,6 +552,11 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
         fail(errors, "expanded peak exceeds max_dbs_default")
     if headroom < data.get("minimum_free_slots", 0):
         fail(errors, "expanded peak violates minimum_free_slots")
+
+    for required_profile in NUMERIC_PROFILE_SCHEMAS:
+        if required_profile not in delta_by_name:
+            fail(errors, f"missing numeric profile: {required_profile}")
+    validate_shared_context_profiles(data, delta_by_name, errors)
 
     runtime_mapping = data.get("runtime_integration_mapping", {})
     if runtime_mapping:
@@ -614,6 +746,52 @@ def run_self_test(manifest_path: Path) -> int:
         return 1
 
     cases = []
+
+    for field, wrong, expected in (
+        ("schema_version", "canonical_flat_storage.v1", "numeric schema_version mismatch"),
+        ("schema_marker_key", "@fake_schema", "numeric schema marker mismatch"),
+        ("default_table_prefix", "wrong_default", "numeric table prefix contract mismatch"),
+    ):
+        invalid = copy.deepcopy(base)
+        flat = next(row for row in invalid["profile_deltas"] if row["name"] == "canonical_content_flat_v2")
+        flat[field] = wrong
+        cases.append(("numeric profile " + field, invalid, expected))
+    for field, wrong, expected in (
+        ("flags", ["MDBX_INTEGERKEY"], "numeric comparator/flags mismatch"),
+        ("comparator", "MDBX_INTEGERKEY", "numeric comparator/flags mismatch"),
+        ("schema_version", "unknown", "numeric schema_version mismatch"),
+        ("key_encoding", "native_uint64", "numeric key_encoding mismatch"),
+        ("physical_key", ["BlockStorageId", "DocumentRevision"], "physical_key must be"),
+    ):
+        invalid = copy.deepcopy(base)
+        flat = next(row for row in invalid["profile_deltas"] if row["name"] == "canonical_content_flat_v2")
+        flat["dbi_entries"][-1][field] = wrong
+        cases.append(("flat block " + field, invalid, expected))
+
+    invalid = copy.deepcopy(base)
+    invalid["shared_context_profiles"][1].update(max_dbs=96, free_slots=7)
+    cases.append(("combined profile default capacity insufficient", invalid, "shared context violates minimum_free_slots"))
+
+    invalid = copy.deepcopy(base)
+    invalid["shared_context_profiles"][0]["instances"][1]["table_prefix"] = "other"
+    cases.append(("flat dictionary prefix mismatch", invalid, "missing same-prefix shared identity dependency"))
+
+    invalid = copy.deepcopy(base)
+    combined = invalid["shared_context_profiles"][0]
+    combined["instances"][0]["table_prefix"] = "tenant-a"
+    combined["instances"].append({"profile": "knowledge_unit_typed_numeric", "table_prefix": "tenant_a"})
+    combined.update(total=18, free_slots=78)
+    cases.append(("sanitized prefix collision", invalid, "duplicate physical DBI after prefix sanitization"))
+
+    multiple_namespaces = copy.deepcopy(base)
+    combined = multiple_namespaces["shared_context_profiles"][0]
+    combined["instances"].append({"profile": "knowledge_unit_typed_numeric", "table_prefix": "tenant_b"})
+    combined.update(total=18, free_slots=78)
+    positive_errors: list[str] = []
+    validate_manifest(multiple_namespaces, positive_errors)
+    if positive_errors:
+        print(f"ERROR: different table prefixes rejected: {positive_errors}", file=sys.stderr)
+        return 1
 
     duplicate_name = copy.deepcopy(base)
     duplicate_name["canonical"][1]["name"] = duplicate_name["canonical"][0]["name"]
