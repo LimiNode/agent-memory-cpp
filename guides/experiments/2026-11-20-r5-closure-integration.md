@@ -58,6 +58,12 @@ Actions retention is not a permanent evidence release. A later long-lived
 archive follows the existing experiment archive policy and requires separate
 publication authority. No release or tag is created by this preflight.
 
+The [original local R5 handoff](../../artifacts/r5-closure-handoff/original-handoff.md)
+is now preserved as accessible historical material, byte-for-byte (SHA-256
+`31c3e1862abb64530e9e4dfb1ed8d5125140920ee220927d9236515cbfbc409c`).
+Its previous HEADs, measurements and local 11-test observation retain their
+original scope; they are not the acceptance evidence for this closure run.
+
 ## Dependency and maintenance matrix
 
 All nine PRs are independently based on the integration baseline. Their build
