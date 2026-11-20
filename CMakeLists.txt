@@ -2435,6 +2435,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
     endif()
+    if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        # This control is a bounded C++ research executable, not a full
+        # research-test matrix; keep it available when research tests are off.
+        add_test(
+            NAME agent_memory_reranker_admission_scaling_self_test
+            COMMAND agent-memory-reranker-admission-scaling --self-test
+        )
+    endif()
     add_subdirectory(tests)
 endif()
 
