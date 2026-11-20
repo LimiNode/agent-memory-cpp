@@ -1,0 +1,20 @@
+{
+  "dataset_kind": "synthetic_smoke",
+  "exact_oracle": "faiss.IndexFlatL2",
+  "execution_status": "EXECUTED",
+  "faiss": "1.16.0",
+  "numpy": "2.4.6",
+  "production_activation": false,
+  "python": "3.11.9",
+  "raw_output": {
+    "path": "artifacts/r5-emeans-vs-lloyd/emeans.raw.json",
+    "sha256": "68addc695eefbc561b9a7ec0488f3b2262758976f02c83a751f7ab00c227d081"
+  },
+  "schema": "r5.emeans_vs_lloyd.receipt.v1",
+  "source_revision": "bfa01a22d4091bb5c5f7c17606199fda6342b790",
+  "runner_source": {
+    "path": "tools/agent-memory-bench/run_emeans_vs_lloyd.py",
+    "sha256": "7200611ac2cf5551c72e0333db198c915331f8de617152c0d1aa7306a58d194d"
+  },
+  "threads": 1
+}
