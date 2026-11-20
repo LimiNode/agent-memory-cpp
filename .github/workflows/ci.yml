@@ -444,6 +444,14 @@ jobs:
       - name: Test
         run: ctest --test-dir build-mdbx --build-config Release --output-on-failure
 
+      - name: Upload numeric reject-old and reopen receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: numeric-storage-conformance-receipts
+          path: build-mdbx/tests/numeric-conformance-*/run-*/receipt.json
+          if-no-files-found: warn
+
       - name: Upload lexical product-path qualification receipt
         uses: actions/upload-artifact@v4
         with:
