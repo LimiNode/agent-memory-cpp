@@ -26,6 +26,8 @@ and requires hydrated bytes to equal its exact canonical render. It rejects
 stale pinned revisions, wrong scope, insufficient body budget and canonical
 corruption. This single-writer fixture does not establish concurrent atomic
 admission or activate production retrieval.
+Scope isolation here is the host's explicit metadata predicate, not an
+assertion that the flat store provides a `ScopeId` partitioning API.
 
 The existing raw-product importer still uses its legacy canonical-content
 adapter internally; this check does not replace that adapter with numeric flat
