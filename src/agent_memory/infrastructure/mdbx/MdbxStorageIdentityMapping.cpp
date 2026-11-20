@@ -90,66 +90,13 @@ std::uint64_t next_id(
     return 1;
 }
 
-std::optional<std::uint64_t> max_numeric_key(
-    mdbxc::KeyValueTable<std::uint64_t, std::string>& table,
-    const mdbxc::Transaction& txn
-) {
-    std::optional<std::uint64_t> result;
-    table.for_each_range(
-        0U,
-        std::numeric_limits<std::uint64_t>::max(),
-        [&result](const std::uint64_t key, const std::string&) {
-            result = key;
-            return true;
-        },
-        txn
-    );
-    return result;
-}
-
-bool has_any_record(
-    mdbxc::KeyValueTable<std::string, std::string>& table,
-    const mdbxc::Transaction& txn
-) {
-    bool present = false;
-    table.for_each_range(
-        std::string{},
-        std::string(1, static_cast<char>(0xff)),
-        [&present](const std::string&, const std::string&) {
-            present = true;
-            return false;
-        },
-        txn
-    );
-    return present;
-}
-
-std::size_t count_records(
-    mdbxc::KeyValueTable<std::string, std::string>& table,
-    std::size_t limit,
-    const mdbxc::Transaction& txn
-) {
-    std::size_t count = 0;
-    table.for_each_range(
-        std::string{},
-        std::string(1, static_cast<char>(0xff)),
-        [&count, limit](const std::string&, const std::string&) {
-            if(count == limit) return false;
-            ++count;
-            return true;
-        },
-        txn
-    );
-    return count;
-}
-
 void validate_sequence_metadata(
     mdbxc::KeyValueTable<std::string, std::string>& metadata,
     std::string_view metadata_key,
     mdbxc::KeyValueTable<std::uint64_t, std::string>& reverse,
     const mdbxc::Transaction& txn
 ) {
-    const auto highest = max_numeric_key(reverse, txn);
+    const auto highest = reverse.max_key(txn);
     const auto encoded_next = metadata.find(std::string{metadata_key}, txn);
     if(!encoded_next) {
         if(highest) {
@@ -160,6 +107,24 @@ void validate_sequence_metadata(
     const auto next = parse_id(*encoded_next);
     if(highest && *highest >= next) {
         throw std::runtime_error("storage identity sequence metadata is behind reverse mapping");
+    }
+}
+
+void validate_transaction(
+    const MdbxStorageContext& context,
+    const mdbxc::Transaction& transaction,
+    bool writable
+) {
+    const auto handle = transaction.handle();
+    if(!handle || mdbx_txn_env(handle) != context.connection()->env_handle()) {
+        throw std::invalid_argument("identity mapping transaction belongs to another context or is inactive");
+    }
+    const auto flags = mdbx_txn_flags(handle);
+    if(flags == MDBX_TXN_INVALID || (flags & MDBX_TXN_BLOCKED) != 0) {
+        throw std::invalid_argument("identity mapping transaction is inactive or blocked");
+    }
+    if(writable && (flags & MDBX_TXN_RDONLY) != 0) {
+        throw std::invalid_argument("identity mapping requires a writable transaction");
     }
 }
 
@@ -198,9 +163,9 @@ public:
             }
         } else {
             if(
-                has_any_record(records, txn)
-                || max_numeric_key(document_reverse, txn)
-                || max_numeric_key(block_reverse, txn)
+                !records.empty(txn)
+                || !document_reverse.empty(txn)
+                || !block_reverse.empty(txn)
                 || metadata.find(std::string{kNextDocumentKey}, txn)
                 || metadata.find(std::string{kNextBlockKey}, txn)
             ) {
@@ -238,10 +203,14 @@ public:
             }
             return decoded.storage_id;
         }
-        if(count_records(records, max_records, txn) >= max_records) {
+        // count() reads MDBX table statistics, not mapping payloads.
+        if(records.count(txn) >= max_records) {
             throw std::length_error("storage identity mapping record limit reached");
         }
         const auto id = next_id(metadata, kNextDocumentKey, txn);
+        if(id == std::numeric_limits<std::uint64_t>::max()) {
+            throw std::runtime_error("storage identity sequence exhausted");
+        }
         const DocumentStorageIdentityRecord record{DocumentStorageId{id}, document_id, false};
         records.insert_or_assign(key, encode_storage_identity_record(record), txn);
         document_reverse.insert_or_assign(id, key, txn);
@@ -282,10 +251,13 @@ public:
             }
             return decoded.storage_id;
         }
-        if(count_records(records, max_records, txn) >= max_records) {
+        if(records.count(txn) >= max_records) {
             throw std::length_error("storage identity mapping record limit reached");
         }
         const auto id = next_id(metadata, kNextBlockKey, txn);
+        if(id == std::numeric_limits<std::uint64_t>::max()) {
+            throw std::runtime_error("storage identity sequence exhausted");
+        }
         const BlockStorageIdentityRecord record{BlockStorageId{id}, document_id, block_id, false};
         records.insert_or_assign(key, encode_storage_identity_record(record), txn);
         block_reverse.insert_or_assign(id, key, txn);
@@ -329,7 +301,9 @@ DocumentStorageId MdbxStorageIdentityMapping::ensure_document_in_transaction(
     const DocumentId& document_id,
     mdbxc::Transaction& transaction
 ) {
-    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    validate_transaction(*m_impl->context, transaction, true);
+    // MDBX serializes writers. Do not take the instance mutex after a caller
+    // has acquired its writer: an ordinary call can hold it awaiting that writer.
     return m_impl->ensure_document_in_transaction(document_id, transaction);
 }
 
@@ -338,7 +312,7 @@ BlockStorageId MdbxStorageIdentityMapping::ensure_block_in_transaction(
     const ContentBlockId& block_id,
     mdbxc::Transaction& transaction
 ) {
-    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    validate_transaction(*m_impl->context, transaction, true);
     return m_impl->ensure_block_in_transaction(document_id, block_id, transaction);
 }
 
@@ -347,11 +321,19 @@ std::optional<DocumentStorageId> MdbxStorageIdentityMapping::find_document(
     if(document_id.empty()) return std::nullopt;
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-    const auto encoded = m_impl->records.find(document_key(document_id), txn);
-    if(!encoded) { txn.commit(); return std::nullopt; }
+    const auto result = find_document_in_transaction(document_id, txn);
+    txn.commit();
+    return result;
+}
+
+std::optional<DocumentStorageId> MdbxStorageIdentityMapping::find_document_in_transaction(
+    const DocumentId& document_id, const mdbxc::Transaction& transaction) const {
+    validate_transaction(*m_impl->context, transaction, false);
+    if(document_id.empty()) return std::nullopt;
+    const auto encoded = m_impl->records.find(document_key(document_id), transaction);
+    if(!encoded) return std::nullopt;
     const auto record = decode_document_storage_identity_record(*encoded);
     if(record.document_id != document_id) throw std::runtime_error("document identity key mismatch");
-    txn.commit();
     return record.storage_id;
 }
 
@@ -360,13 +342,22 @@ std::optional<BlockStorageId> MdbxStorageIdentityMapping::find_block(
     if(document_id.empty() || block_id.empty()) return std::nullopt;
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-    const auto encoded = m_impl->records.find(block_key(document_id, block_id), txn);
-    if(!encoded) { txn.commit(); return std::nullopt; }
+    const auto result = find_block_in_transaction(document_id, block_id, txn);
+    txn.commit();
+    return result;
+}
+
+std::optional<BlockStorageId> MdbxStorageIdentityMapping::find_block_in_transaction(
+    const DocumentId& document_id, const ContentBlockId& block_id,
+    const mdbxc::Transaction& transaction) const {
+    validate_transaction(*m_impl->context, transaction, false);
+    if(document_id.empty() || block_id.empty()) return std::nullopt;
+    const auto encoded = m_impl->records.find(block_key(document_id, block_id), transaction);
+    if(!encoded) return std::nullopt;
     const auto record = decode_block_storage_identity_record(*encoded);
     if(record.document_id != document_id || record.block_id != block_id) {
         throw std::runtime_error("block identity key mismatch");
     }
-    txn.commit();
     return record.storage_id;
 }
 
@@ -410,6 +401,8 @@ bool MdbxStorageIdentityMapping::retire_document(const DocumentId& document_id) 
     if(document_id.empty()) return false;
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+    const auto count = m_impl->records.count(txn);
+    if(count > m_impl->max_records) throw std::length_error("storage identity namespace is too large");
     const auto key = document_key(document_id);
     const auto encoded = m_impl->records.find(key, txn);
     if(!encoded) { txn.commit(); return false; }
@@ -422,11 +415,18 @@ bool MdbxStorageIdentityMapping::retire_document(const DocumentId& document_id) 
     retired.retired = true;
     m_impl->records.insert_or_assign(key, encode_storage_identity_record(retired), txn);
     const auto prefix = block_prefix(document_id);
-    const auto block_rows = m_impl->records.range(
+    std::vector<std::pair<std::string, std::string>> block_rows;
+    block_rows.reserve(count);
+    m_impl->records.for_each_range(
         prefix,
         prefix + std::string(1, static_cast<char>(0xff)),
-        txn
-    );
+        [&](const std::string& row_key, const std::string& payload) {
+            if(block_rows.size() >= m_impl->max_records) {
+                throw std::length_error("storage identity namespace is too large");
+            }
+            block_rows.emplace_back(row_key, payload);
+            return true;
+        }, txn);
     for(const auto& row : block_rows) {
         const auto block = decode_block_storage_identity_record(row.second);
         if(block_key(block.document_id, block.block_id) != row.first) {
@@ -466,11 +466,29 @@ bool MdbxStorageIdentityMapping::retire_block(
 std::vector<StorageIdentityRecord> MdbxStorageIdentityMapping::snapshot_records() const {
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-    const auto rows = m_impl->records.range(std::string{}, std::string(1, static_cast<char>(0xff)), txn);
-    if(rows.size() > m_impl->max_records) throw std::runtime_error("storage identity snapshot is too large");
+    const auto count = m_impl->records.count(txn);
+    if(count > m_impl->max_records) throw std::length_error("storage identity snapshot is too large");
     std::vector<StorageIdentityRecord> result;
-    result.reserve(rows.size());
-    for(const auto& row : rows) result.push_back(decode_storage_identity_record(row.second));
+    result.reserve(count);
+    m_impl->records.for_each_range(
+        std::string{}, std::string(1, static_cast<char>(0xff)),
+        [&](const std::string& key, const std::string& payload) {
+            if(result.size() >= m_impl->max_records) {
+                throw std::length_error("storage identity snapshot is too large");
+            }
+            auto record = decode_storage_identity_record(payload);
+            const auto expected_key = std::visit([](const auto& value) {
+                if constexpr(std::is_same_v<std::decay_t<decltype(value)>, DocumentStorageIdentityRecord>) {
+                    return document_key(value.document_id);
+                } else {
+                    return block_key(value.document_id, value.block_id);
+                }
+            }, record);
+            if(key != expected_key) throw std::runtime_error("storage identity snapshot key mismatch");
+            result.push_back(std::move(record));
+            return true;
+        }, txn);
+    if(result.size() != count) throw std::runtime_error("storage identity snapshot contains an invalid key");
     txn.commit();
     std::sort(result.begin(), result.end(), [](const StorageIdentityRecord& lhs, const StorageIdentityRecord& rhs) {
         const auto id = [](const StorageIdentityRecord& value) { return std::visit([](const auto& item) { return item.storage_id.value(); }, value); };
@@ -483,25 +501,22 @@ std::vector<StorageIdentityRecord> MdbxStorageIdentityMapping::snapshot_records(
 
 void MdbxStorageIdentityMapping::load_records(const std::vector<StorageIdentityRecord>& input) {
     if(input.size() > m_impl->max_records) throw std::invalid_argument("storage identity snapshot is too large");
-    StorageIdentityMapping candidate;
+    StorageIdentityMappingOptions candidate_options;
+    candidate_options.max_records = m_impl->max_records;
+    StorageIdentityMapping candidate(candidate_options);
     candidate.load_records(input);
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
-    // Keep the existing sequence frontiers even when the imported snapshot is
-    // intentionally destructive and omits historical rows.  This preserves
-    // numeric no-reuse across partial snapshots.
-    const auto previous_next_document =
-        next_id(m_impl->metadata, kNextDocumentKey, txn);
-    const auto previous_next_block =
-        next_id(m_impl->metadata, kNextBlockKey, txn);
-    const auto rows = m_impl->records.range(std::string{}, std::string(1, static_cast<char>(0xff)), txn);
-    for(const auto& row : rows) m_impl->records.erase(row.first, txn);
-    const auto documents = m_impl->document_reverse.range(0, std::numeric_limits<std::uint64_t>::max(), txn);
-    for(const auto& row : documents) m_impl->document_reverse.erase(row.first, txn);
-    const auto blocks = m_impl->block_reverse.range(0, std::numeric_limits<std::uint64_t>::max(), txn);
-    for(const auto& row : blocks) m_impl->block_reverse.erase(row.first, txn);
-    std::uint64_t next_document = previous_next_document;
-    std::uint64_t next_block = previous_next_block;
+    // High-water preservation alone cannot prevent a snapshot from rebinding
+    // a previously assigned number. Only a fresh namespace admits an import.
+    if(!m_impl->records.empty(txn) || !m_impl->document_reverse.empty(txn)
+       || !m_impl->block_reverse.empty(txn)
+       || m_impl->metadata.find(std::string{kNextDocumentKey}, txn)
+       || m_impl->metadata.find(std::string{kNextBlockKey}, txn)) {
+        throw std::invalid_argument("identity snapshot import requires a fresh empty namespace");
+    }
+    std::uint64_t next_document = 1U;
+    std::uint64_t next_block = 1U;
     for(const auto& record : input) {
         std::visit([&](const auto& value) {
             if constexpr(std::is_same_v<std::decay_t<decltype(value)>, DocumentStorageIdentityRecord>) {
