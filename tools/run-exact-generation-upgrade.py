@@ -16,9 +16,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 OLD_COMMIT = "52004324bc0d2b07c3657245195db349dd391774"
-# This is the frozen pre-numeric-identity Raw Markdown baseline.  It remains
-# useful for historical replay, but it is not a post-migration upgrade gate.
-PRE_NUMERIC_BASELINE_LABEL = "pre_numeric_identity_raw_markdown_v1"
 
 
 def git(source: Path, *args: str) -> str:
@@ -33,36 +30,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--old-source", required=True, type=Path)
     parser.add_argument("--new-source", required=True, type=Path)
-    parser.add_argument(
-        "--old-commit",
-        default=OLD_COMMIT,
-        help=(
-            "Exact OLD revision for the fixture; defaults to the frozen "
-            "pre-numeric baseline"
-        ),
-    )
     parser.add_argument("--new-commit", required=True)
     parser.add_argument("--build-root", required=True, type=Path)
     parser.add_argument("--artifacts", required=True, type=Path)
     parser.add_argument("--mingw", action="store_true", help="Use installed GCC/Ninja on Windows")
-    parser.add_argument(
-        "--allow-pre-numeric-baseline",
-        action="store_true",
-        help=(
-            "Acknowledge that the hard-coded OLD revision predates the numeric "
-            "MDBX identity pilot; the receipt is historical-only evidence"
-        ),
-    )
     args = parser.parse_args()
-    pre_numeric_baseline = args.old_commit == OLD_COMMIT
-    if pre_numeric_baseline and not args.allow_pre_numeric_baseline:
-        raise RuntimeError(
-            "the hard-coded OLD revision is a pre-numeric baseline; choose a "
-            "post-migration OLD/NEW pair or pass --allow-pre-numeric-baseline "
-            "for historical replay"
-        )
     old, new = args.old_source.resolve(), args.new_source.resolve()
-    for source, expected in ((old, args.old_commit), (new, args.new_commit)):
+    for source, expected in ((old, OLD_COMMIT), (new, args.new_commit)):
         if git(source, "rev-parse", "HEAD") != expected:
             raise RuntimeError(f"revision mismatch: {source}")
         if git(source, "status", "--porcelain", "--untracked-files=normal"):
@@ -83,12 +57,7 @@ def main() -> None:
     receipt = {
         "schema": "agent_memory.exact_generation_upgrade.v1",
         "created_utc": datetime.now(timezone.utc).isoformat(),
-        "old_commit": args.old_commit, "new_commit": args.new_commit,
-        "compatibility_scope": (
-            PRE_NUMERIC_BASELINE_LABEL if pre_numeric_baseline
-            else "selected_old_new_commits"
-        ),
-        "post_migration_upgrade_proof": not pre_numeric_baseline,
+        "old_commit": OLD_COMMIT, "new_commit": args.new_commit,
         "old_src_tree": git(old, "rev-parse", "HEAD:src"),
         "new_src_tree": git(new, "rev-parse", "HEAD:src"),
         "dependencies_tree": git(new, "rev-parse", "HEAD:external"),
@@ -162,7 +131,7 @@ def main() -> None:
                                        ("new", "crash", 23), ("new", "verify", 0), ("old", "verify", 0)):
             output = run([executables[label], mode, db, cas, snapshot], expected, capture=True)
             receipt["processes"].append({"library": label, "mode": mode, "exit": expected, "output": output})
-        for source, expected in ((old, args.old_commit), (new, args.new_commit)):
+        for source, expected in ((old, OLD_COMMIT), (new, args.new_commit)):
             if git(source, "rev-parse", "HEAD") != expected or git(source, "status", "--porcelain"):
                 raise RuntimeError(f"source changed during upgrade proof: {source}")
         receipt["canonical_snapshot_sha256"] = sha(snapshot)

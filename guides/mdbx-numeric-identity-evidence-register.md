@@ -10,6 +10,11 @@ revision, source digest, or provenance contract. It does change the bytes used
 by selected DBIs, their comparator policy, and the evidence needed to call an
 old-to-new open an upgrade.
 
+This register is documentation-only. Executable replay classification is owned
+by [Index lifecycle](index-lifecycle-roadmap.md) and
+`tools/run-exact-generation-upgrade.py`; the register does not introduce a
+second classifier or treat an arbitrary commit selection as migration proof.
+
 The current `main` baseline still contains the historical
 `MdbxKnowledgeUnitStore` layout. The opt-in `StorageIdentityMapping` pilot is
 not, by itself, a migration of that store. Until a reviewed pilot wires a
