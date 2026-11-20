@@ -1,5 +1,13 @@
 # M0/KB-0 Technical Preview preflight
 
+> **Numeric-identity migration notice (2026-11-19).** This preflight is a
+> frozen pre-numeric physical-storage candidate. Its logical source and
+> freshness observations remain historical evidence, but its MDBX key bytes,
+> reopen/upgrade receipts, and release classification are not post-migration
+> evidence. Re-run the matrix at the exact numeric-key commit before using it
+> for a release or migration decision. See
+> [`mdbx-numeric-identity-evidence-register.md`](mdbx-numeric-identity-evidence-register.md).
+
 This document is an evidence report for the historical frozen candidate `main`
 after the guarded merge of PRs #607, #610 and #611. It is not a release, tag, API
 promise, or activation switch.

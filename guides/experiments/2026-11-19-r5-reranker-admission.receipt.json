@@ -1,0 +1,54 @@
+{
+  "schema": "r5.production_reranker_admission.receipt.v1",
+  "execution_status": "EXECUTED",
+  "status": "PASS",
+  "decision": "CONDITIONAL",
+  "production_default_decision": "KEEP CURRENT",
+  "production_activation": false,
+  "tested_source_head": "df17946cb6cbad36f0da25caa6823dc67d3f41d7",
+  "expected_pr_head": "df17946cb6cbad36f0da25caa6823dc67d3f41d7",
+  "compiled_checkout_sha": "df17946cb6cbad36f0da25caa6823dc67d3f41d7",
+  "source_manifest_sha256": "0cff4e6862e7ddaa357a5d93bc9a57129b124f2dba50dee08d5784f4eafa0938",
+  "fixture_sha256": "9f82a45dab15635555ff29586fcba9ab871fc7288f2d781ad1e381021e5a67fb",
+  "compiled_executable_sha256": "81da022df857b18eda3bd1154d217adbcfbcea986007b3b5aedcfe839ac84f87",
+  "raw_output_path": "E:/_repoz/agent-memory-workspaces/2026-11-19-r5-reranker-admission/admission-df17946c.raw.json",
+  "raw_output_sha256": "65a1cdc9ff6a0eca7e54b6093719f0ec697079220fde33c057793d3e0002dcd1",
+  "raw_sidecar_sha256": "068025930068125e2f4eeb8ffa5f502734c4ab17aa194224d73757b0e7c8101e",
+  "source_worktree_status": [],
+  "environment": {
+    "compiler": "MSVC 19.44.35228.0",
+    "build": "Release",
+    "cxx_standard": 17,
+    "platform": "Windows AMD64",
+    "cpu": "Intel(R) Xeon(R) CPU E5-2696 v3 @ 2.30GHz",
+    "benchmark_threads": 1,
+    "host_load_isolated": false
+  },
+  "timing_scopes": {
+    "primary": "retrieve() only: includes fixture-index search, deterministic reranker, per-query admission-index construction, validation and response materialization",
+    "secondary": "fixture/index/engine preparation plus retrieve(); not used for break-even",
+    "execution_order": "sequential, all six arm permutations twice per case",
+    "sample_semantics": "12 repeated executions of each fixed fixture; not independent requests or stable tail estimates"
+  },
+  "validation": {
+    "cases": 18,
+    "arms_per_case": 3,
+    "measured_query_samples": 648,
+    "focused_ctest_passed": 3,
+    "fail_closed_controls_per_arm": 11,
+    "production_linear_control_parity": true,
+    "raw_receipt_source_and_sidecar_validation": "PASS"
+  },
+  "first_observed_mean_crossovers": [
+    {"metadata_width": 2, "sorted_candidate_count": 500, "hash_candidate_count": 50},
+    {"metadata_width": 8, "sorted_candidate_count": 500, "hash_candidate_count": 100},
+    {"metadata_width": 32, "sorted_candidate_count": 100, "hash_candidate_count": 100}
+  ],
+  "limitations": [
+    "Synthetic fixture index and deterministic reranker; not full product-path qualification",
+    "First observed crossover is machine/metadata dependent, not a stable production threshold",
+    "Shared-host load and allocation instrumentation can perturb timing",
+    "No peak RSS claim; allocation series count ordinary C++ new/new[] requests, not all allocator APIs",
+    "No production adoption or API/default/persisted-format change"
+  ]
+}

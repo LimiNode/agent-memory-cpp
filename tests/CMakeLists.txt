@@ -115,6 +115,16 @@ target_link_libraries(agent_memory_canonical_navigation_test
 )
 add_test(NAME agent_memory_canonical_navigation_test COMMAND agent_memory_canonical_navigation_test)
 
+add_executable(agent_memory_canonical_navigation_store_test
+    storage/canonical_navigation_store_test.cpp
+)
+target_link_libraries(agent_memory_canonical_navigation_store_test
+    PRIVATE agent_memory::agent_memory
+)
+add_test(NAME agent_memory_canonical_navigation_store_test
+    COMMAND agent_memory_canonical_navigation_store_test
+)
+
 add_executable(agent_memory_prompt_composition_test
     domain/prompt_composition_test.cpp
 )
@@ -857,6 +867,29 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         NAME agent_memory_mdbx_canonical_content_store_test
         COMMAND agent_memory_mdbx_canonical_content_store_test
     )
+
+    add_executable(agent_memory_mdbx_canonical_navigation_test
+        infrastructure/mdbx/mdbx_canonical_navigation_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_canonical_navigation_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_canonical_navigation_test
+        COMMAND agent_memory_mdbx_canonical_navigation_test
+    )
+
+    add_executable(agent_memory_mdbx_canonical_large_body_test
+        infrastructure/mdbx/mdbx_canonical_large_body_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_canonical_large_body_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_canonical_large_body_test
+        COMMAND agent_memory_mdbx_canonical_large_body_test
+    )
+    set_tests_properties(agent_memory_mdbx_canonical_large_body_test PROPERTIES TIMEOUT 120)
 
     add_executable(agent_memory_mdbx_workspace_routing_test
         infrastructure/mdbx/mdbx_workspace_routing_test.cpp
