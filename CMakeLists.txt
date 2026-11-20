@@ -231,6 +231,10 @@ endif()
 
 if(AGENT_MEMORY_BUILD_BENCHMARKS)
     add_subdirectory(tools/agent-memory-bench)
+    add_test(
+        NAME agent_memory_exact_selection_self_test
+        COMMAND agent-memory-exact-selection-benchmark --self-test
+    )
     if(AGENT_MEMORY_ENABLE_MDBX)
         add_executable(agent_memory_segmented_lexical_benchmark
             tools/segmented-lexical-benchmark.cpp
@@ -304,6 +308,23 @@ endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
+    if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        add_test(
+            NAME agent_memory_exact_vector_numerical_frontier_self_test
+            COMMAND $<TARGET_FILE:agent-memory-exact-vector-numerical-frontier> --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_exact_vector_numerical_frontier_invalid_cli
+            COMMAND $<TARGET_FILE:agent-memory-exact-vector-numerical-frontier> --invalid-option
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        set_tests_properties(
+            agent_memory_exact_vector_numerical_frontier_invalid_cli
+            PROPERTIES
+                WILL_FAIL TRUE
+        )
+    endif()
     if(AGENT_MEMORY_BUILD_EXAMPLES)
         add_test(
             NAME agent_memory_canonical_content_example
