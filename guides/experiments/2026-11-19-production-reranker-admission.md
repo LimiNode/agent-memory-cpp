@@ -213,3 +213,37 @@ Configure also records whether the source worktree is clean. Development
 builds may still execute, but a dirty-source receipt is rejected as exact-source
 evidence. The source manifest includes the target's CMake definitions as well
 as the generator, profiler, runner, validator and production seams.
+
+### Executed closure check
+
+The clean Windows/MSVC 19.44.35228.0 Release/C++17 run at
+`9c8cd6a4e27496c7494fa715e5a428ab926c9682` passed 3/3 focused CTest,
+the complete 18-case primary matrix, six sorted-input cases and 36 measured
+duplicate-rejection scenarios. The source/generated hashes, compiler/platform
+and sidecar validator passed. Raw receipt SHA-256:
+`adbba41dbc5e804056cbea3fd7a00247e42972861d027ab43b9943b199bcbddb`.
+This is a local synthetic execution; fresh Linux/Windows CI receipts are
+separate source-bound artifacts and are not relabeled as this run.
+
+N=2000, two extra metadata keys; milliseconds, p50:
+
+| Arm | Primary retrieve | Instrumented retrieve | Lookup build | Validation/lookup | Trusted result copy | Response materialization |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Linear | 42.0080 | 45.5461 | 0 | 34.2157 | 2.5376 | 3.2713 |
+| Sorted | 12.7589 | 13.3906 | 1.0522 | 1.7710 | 2.0518 | 3.0198 |
+| Hash | 11.5729 | 12.9319 | 0.4712 | 0.9605 | 2.2433 | 3.0690 |
+
+The table does not subtract timings or sum independent medians. Instrumented
+timers include their own overhead, and stage nesting is checked sample by
+sample. The new first observed mean crossovers (sorted/hash) are 500/50 for
+width two, 50/50 for width eight and 50/100 for width thirty-two. Their change
+from earlier recorded runs reinforces the decision not to turn a synthetic
+crossover into a production dispatch threshold.
+
+There are 864 retained uninstrumented samples, 216 positive profile samples
+and 108 negative profile samples. They are repeated fixed-fixture executions,
+not 1188 independent real requests. All-repeated output fails after two
+validations; the late-duplicate path performs N validations and N-1 trusted
+copies as claimed. The validator preserves its earlier controls and adds
+fifteen closure mutations, including dirty-source evidence, missing profiled
+sources, stage nesting/depth, false memory/frequency claims and activation.
