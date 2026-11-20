@@ -22,6 +22,17 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def require_failure_diagnostic(stderr: str, expected: str) -> None:
+    # MDBX may log to stderr before the fixture's explicit failure observation.
+    if not expected:
+        raise RuntimeError("expected conformance diagnostic is required")
+    failures = [line[len("FAIL: "):] for line in stderr.splitlines() if line.startswith("FAIL: ")]
+    if len(failures) != 1 or not failures[0].strip():
+        raise RuntimeError("failed without exactly one conformance diagnostic")
+    if expected not in failures[0]:
+        raise RuntimeError("failure did not reach the intended check")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--executable", type=Path, required=True)
@@ -56,7 +67,7 @@ def main() -> int:
     }
     receipt_path = artifacts / "receipt.json"
 
-    def run(mode: str, database: Path, expected: int = 0) -> dict:
+    def run(mode: str, database: Path, expected: int = 0, diagnostic: str = "") -> dict:
         command = [str(executable), mode, str(database)]
         result = subprocess.run(command, capture_output=True, text=True, timeout=20)
         receipt["processes"].append({
@@ -70,8 +81,8 @@ def main() -> int:
             if "logical_snapshot_sha256" not in observation and observation != {"result": "PASS"}:
                 raise RuntimeError(f"{mode}: missing successful observation")
             return observation
-        if expected == 1 and not result.stderr.startswith("FAIL: "):
-            raise RuntimeError(f"{mode}: failed without the conformance diagnostic")
+        if expected == 1:
+            require_failure_diagnostic(result.stderr, diagnostic)
         return {}
 
     try:
@@ -101,9 +112,7 @@ def main() -> int:
             copied = artifacts / (control + ".mdbx")
             shutil.copyfile(numeric, copied)
             run(control, copied)
-            run("verify", copied, 1)
-            if diagnostic not in receipt["processes"][-1]["stderr"]:
-                raise RuntimeError(f"{control}: failure did not reach the intended check")
+            run("verify", copied, 1, diagnostic)
         receipt.update(
             result="PASS", fresh_process_reopen=True,
             explicit_reject_old=True, numeric_round_trip=True,

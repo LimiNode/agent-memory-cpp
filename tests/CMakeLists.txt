@@ -926,6 +926,10 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             --artifacts ${CMAKE_CURRENT_BINARY_DIR}/flat-markdown-consumer-$<CONFIG>
     )
     set_tests_properties(agent_memory_flat_markdown_consumer PROPERTIES TIMEOUT 120)
+    add_test(NAME agent_memory_numeric_storage_conformance_diagnostics
+        COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/tools/test-numeric-storage-conformance.py)
+    set_tests_properties(agent_memory_numeric_storage_conformance_diagnostics PROPERTIES TIMEOUT 20)
 
     add_executable(agent_memory_mdbx_workspace_routing_test
         infrastructure/mdbx/mdbx_workspace_routing_test.cpp
