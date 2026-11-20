@@ -215,3 +215,73 @@ Performance and applied retrieval quality remain `NOT_EXECUTED`. Freeze an
 exact prototype source revision and obtain independent correctness review
 before the first benchmark. No API, production setting or persisted format is
 changed.
+
+### Frozen bounded mechanics configuration (before implementation)
+
+Correctness was independently reviewed and frozen at
+`0326b890c9a32ae9f7f56d3ac018a2661a02e7a5`. The next opt-in
+`--certificate-benchmark` mode remains `NOT_EXECUTED` until its own reviewed
+source revision is committed. It has no tunable profile sweep:
+
+- dense document prefixes N = 4,096 / 65,536 / 1,000,000;
+- K = 16 / 128 and historical query rows 0 through 7, without selection;
+- five measured repeats and one warmup per N/K/query/arm;
+- three arms: existing scalar pair FP32, existing pair AVX2 block32 and the
+  frozen certified selector, without a rescue optimization;
+- paired arm order chosen from the six permutations by raw MT19937 output
+  with seed 20261120; every order and trial identifier is retained.
+
+Before any timed trial, exhaustive scalar scores and AVX2 score bits are
+checked for all 8,557,056 profile/query/document pairs (prefixes overlap). Every
+certificate interval must enclose its scalar score, and all 48 N/K/query
+certified results must reproduce ordered IDs and selected score bits. All
+actually refined scores are checked, not just the selected ones. Any mismatch
+rejects the whole run before measurement. Measured results are checked again
+outside their stopwatch; these checks are not subtracted from a measured phase.
+
+Each raw sample has one enclosing component-path stopwatch: required query
+LUT construction and validation, environment checks, scan, allocation and
+selection, and (for certification) duplicate-ID validation, envelope, integer
+selection, incumbent scoring and refinement are inside. Scalar/AVX2 arms build
+coordinate and pair LUTs only; certification additionally builds the actual
+global uint8 LUT. Unneeded byte/local LUTs are skipped, while the old default
+construction and 192-add reference order are unchanged. All arms share
+deterministic sequential distinct IDs; the selector's own redundant ID check
+remains charged. No timing is reconstructed by adding/subtracting phases.
+
+This is persistent dense mode only. Code-prefix copies and both persistent
+layout vectors are prepared before trials; their build wall time, payload
+capacities and common resident input/reference payloads are reported. Layout
+build is an explicitly excluded one-time cost, not a serving win. Each sample
+reports its temporary vector capacities (including both selection buffers for
+certification), exact-evaluation count/fraction, active pair/global LUT bytes
+and the larger allocated table object's size. Capacities are not process RSS.
+There is no random-ID gather, storage read, final rerank or quality arm.
+
+The raw report retains all 720 timed samples, configuration, compiler macros,
+input paths/byte counts, checks and descriptive timing summaries. The external
+receipt must bind exact source/base SHA, source and executable hashes, command,
+compiler/build flags and canonical input hashes; caller metadata alone is not
+a verified source identity. Repeated samples are not independent queries;
+there are only eight exposed query rows, so reported p50/p95 are descriptive
+nearest-rank sample distributions, not statistically qualified serving tails
+or held-out quality. Every raw row and reference case retains its ordered
+selected IDs and reference-score uint32 bits for an independent validator.
+The existing 10%-median/no-p95-regression criterion applies separately to each
+fixed N/K profile against its fastest eligible same-contract baseline. A dense
+component result cannot promote a production default. Mean exact-refinement
+fraction >= 0.90 on a profile is predeclared near-exhaustive and yields
+`KEEP_CURRENT`, even if its timing threshold happens to pass.
+
+The separate `audit-certified-adc.py` replays all raw rows, reference payloads,
+MT19937 order, integer refinement accounting, nearest-rank summaries and each
+profile decision. Its validator-only synthetic self-test rejects 17 independent
+corruptions without requiring the private historical data. The same checks run
+on the actual raw report after execution. This audit validates report integrity;
+it does not independently recompute document scores from unavailable inputs or
+authenticate a caller's source metadata. Source, executable and input bindings
+remain separate checks in the execution manifest and independent review.
+Aggregate integer exact-evaluation counts before division; the boundary gate
+uses integer `10*exact_sum >= 9*N*sample_count`, not a sum of rounded fractions.
+If no profile qualifies, close this scalar-screen/fixed-tau implementation
+only; the result does not reject every possible certified ADC design.
