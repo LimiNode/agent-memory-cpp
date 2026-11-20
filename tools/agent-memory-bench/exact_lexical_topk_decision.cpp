@@ -1,7 +1,15 @@
 #include <agent_memory/lexical/ExactLexicalIndex.hpp>
+#include <agent_memory/domain/Sha256.hpp>
+#include <agent_memory/retrieval/HybridRetrievalEngine.hpp>
 #include "ResearchPartialSortExactLexicalIndex.hpp"
 #include "ResearchNthElementExactLexicalIndex.hpp"
 #include "ResearchBoundedHeapExactLexicalIndex.hpp"
+#include "ResearchProfiledFullSortExactLexicalIndex.hpp"
+#include "ResearchProfiledPartialSortExactLexicalIndex.hpp"
+#include "ResearchProfiledNthElementExactLexicalIndex.hpp"
+#include "ResearchProfiledBoundedHeapExactLexicalIndex.hpp"
+#include "lexical_topk_stage_profile.hpp"
+#include "lexical_topk_profile_fixture.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -64,6 +72,10 @@ namespace {
         "full_sort", "partial_sort", "nth_element_then_sort", "bounded_heap"
     }};
     using IndexSet = std::array<std::unique_ptr<agent_memory::ILexicalIndex>, kVariants.size()>;
+    constexpr std::array<std::string_view, 7> kStages{{
+        "candidate_generation", "metadata_filtering", "bm25_scoring", "candidate_construction",
+        "top_k_selection", "result_materialization", "full_search"
+    }};
 
     thread_local bool g_count_allocations = false;
     thread_local std::size_t g_allocation_count = 0;
@@ -384,6 +396,13 @@ namespace {
         return std::make_unique<agent_memory::ResearchBoundedHeapExactLexicalIndex>();
     }
 
+    [[nodiscard]] std::unique_ptr<agent_memory::ILexicalIndex> make_profiled_index(const std::size_t variant) {
+        if(variant == 0U) return std::make_unique<agent_memory::ResearchProfiledFullSortExactLexicalIndex>();
+        if(variant == 1U) return std::make_unique<agent_memory::ResearchProfiledPartialSortExactLexicalIndex>();
+        if(variant == 2U) return std::make_unique<agent_memory::ResearchProfiledNthElementExactLexicalIndex>();
+        return std::make_unique<agent_memory::ResearchProfiledBoundedHeapExactLexicalIndex>();
+    }
+
     void populate_index(
         agent_memory::ILexicalIndex& index,
         const std::size_t count
@@ -586,7 +605,185 @@ namespace {
         };
     }
 
+    [[nodiscard]] std::string populate_profile(agent_memory::ILexicalIndex& index, const Json& definition) {
+        const auto count = definition.at("document_count").get<std::size_t>();
+        const auto token_count = definition.at("tokens_per_document").get<std::size_t>();
+        const auto width = definition.at("metadata_width").get<std::size_t>();
+        const auto filter_modulus = definition.at("filter_modulus").get<std::size_t>();
+        const auto common_every = definition.at("common_every").get<std::size_t>();
+        const auto anchor_every = definition.at("anchor_every").get<std::size_t>();
+        const auto ties = definition.at("ties").get<bool>();
+        agent_memory::Sha256Accumulator corpus_hash;
+        for(std::size_t i = 0; i < count; ++i) {
+            agent_memory::Metadata metadata;
+            metadata.set("scope", i % filter_modulus == 0U ? "public" : "private");
+            metadata.set("tenant", i % 2U == 0U ? "alpha" : "beta");
+            for(std::size_t field = 2; field < width; ++field) {
+                metadata.set("extra:" + std::to_string(field), "value:" + std::string(48, 'm'));
+            }
+            std::vector<agent_memory::Token> tokens;
+            tokens.reserve(token_count);
+            Json term_texts = Json::array();
+            for(std::size_t position = 0; position < token_count; ++position) {
+                std::string term;
+                if(ties) term = "common";
+                else if(position == 0U) term = i % common_every == 0U ? "common" : "filler";
+                else if(position == 1U) term = i % anchor_every == 0U ? "anchor" : "filler";
+                else term = "word:" + std::to_string((i + position) % 32U);
+                tokens.push_back(token(term, position));
+                term_texts.push_back(term);
+            }
+            const Json row{
+                {"chunk_id", chunk_name(i)}, {"resource_id", "resource:synthetic-profile"},
+                {"revision", {1, 11, 17}}, {"tokens", term_texts}, {"metadata", metadata.values()}
+            };
+            corpus_hash.update(row.dump());
+            corpus_hash.update("\n");
+            index.upsert(agent_memory::LexicalDocumentRecord{
+                agent_memory::ChunkId{chunk_name(i)},
+                agent_memory::ResourceRevision{agent_memory::ResourceId{"resource:synthetic-profile"}, 1, 11, 17},
+                std::move(tokens), std::move(metadata)
+            });
+        }
+        constexpr char hex[] = "0123456789abcdef";
+        const auto bytes = corpus_hash.finish();
+        std::string digest(64U, '0');
+        for(std::size_t i = 0; i < bytes.size(); ++i) {
+            digest[i * 2U] = hex[bytes[i] >> 4U];
+            digest[i * 2U + 1U] = hex[bytes[i] & 15U];
+        }
+        return digest;
+    }
+
+    [[nodiscard]] Json measure_stages(
+        const IndexSet& indexes,
+        const agent_memory::LexicalSearchQuery& query,
+        const std::vector<Candidate>& expected
+    ) {
+        Json variants = Json::object();
+        for(const auto name : kVariants) {
+            Json times = Json::object();
+            Json calls = Json::object();
+            for(const auto stage : kStages) {
+                times[std::string(stage)] = Json::array();
+                calls[std::string(stage)] = Json::array();
+            }
+            variants[std::string(name)] = Json{
+                {"elapsed_ns", times}, {"stage_calls", calls}, {"sample_count", kRepeats},
+                {"exact_parity", true}, {"result_count", expected.size()}
+            };
+        }
+        for(const auto& index : indexes) {
+            for(std::size_t repeat = 0; repeat < kWarmups; ++repeat) (void)index->search(query);
+        }
+        Json orders = Json::array();
+        for(std::size_t repeat = 0; repeat < kRepeats; ++repeat) {
+            Json order = Json::array();
+            for(std::size_t offset = 0; offset < kVariants.size(); ++offset) {
+                const auto variant = (repeat + offset) % kVariants.size();
+                const auto name = std::string(kVariants[variant]);
+                order.push_back(name);
+                agent_memory::lexical_topk_research::StageTimings sample;
+                std::vector<Hit> result;
+                {
+                    agent_memory::lexical_topk_research::ProfileBinding binding(sample);
+                    result = indexes[variant]->search(query);
+                }
+                auto& output = variants[name];
+                output["exact_parity"] = output["exact_parity"].get<bool>() && same_results(candidates_from(result), expected);
+                for(std::size_t stage = 0; stage < kStages.size(); ++stage) {
+                    output["elapsed_ns"][std::string(kStages[stage])].push_back(sample.elapsed_ns[stage]);
+                    output["stage_calls"][std::string(kStages[stage])].push_back(sample.calls[stage]);
+                }
+            }
+            orders.push_back(std::move(order));
+        }
+        return Json{
+            {"timing_scope", "DIRECT_INSTRUMENTED_SEARCH_STAGES"},
+            {"instrumentation", "per-record steady_clock calls; explicit timer overhead; not comparable to uninstrumented latency"},
+            {"candidate_generation_scope", "map iterator dereference/increment; begin and loop-condition overhead unattributed"},
+            {"result_materialization_scope", "final vector truncation/destruction only; metadata copies are candidate_construction"},
+            {"warmups", kWarmups}, {"repeats", kRepeats},
+            {"execution_orders", orders}, {"variants", variants}
+        };
+    }
+
+    [[nodiscard]] Json run_stage_profiles() {
+        const auto recipe = Json::parse(kLexicalProfileFixture);
+        Json profiles = Json::array();
+        for(const auto& definition : recipe.at("profiles")) {
+            const auto count = definition.at("document_count").get<std::size_t>();
+            IndexSet indexes;
+            IndexSet profiled;
+            std::string corpus_sha256;
+            for(std::size_t variant = 0; variant < kVariants.size(); ++variant) {
+                indexes[variant] = make_index(variant);
+                profiled[variant] = make_profiled_index(variant);
+                const auto original_hash = populate_profile(*indexes[variant], definition);
+                const auto profile_hash = populate_profile(*profiled[variant], definition);
+                if(variant == 0U) corpus_sha256 = original_hash;
+                if(original_hash != corpus_sha256 || profile_hash != corpus_sha256) {
+                    throw std::runtime_error("profile arms received different corpus bytes");
+                }
+            }
+            auto query = query_for({"profile", definition.at("terms").get<std::vector<std::string>>(), count}, count);
+            const auto candidate_count = indexes[0]->search(query).size();
+            Json cases = Json::array();
+            for(const auto kind : {"small_k", "near_n", "empty"}) {
+                const std::string case_name(kind);
+                query.terms = case_name == "empty" ? std::vector<std::string>{"absent:profile"}
+                    : definition.at("terms").get<std::vector<std::string>>();
+                query.limit = case_name == "near_n" ? (candidate_count > 1U ? candidate_count - 1U : 1U) : 16U;
+                const auto expected = candidates_from(indexes[0]->search(query));
+                cases.push_back(Json{
+                    {"name", case_name}, {"top_k", query.limit},
+                    {"candidate_count", case_name == "empty" ? 0U : candidate_count},
+                    {"result_count", expected.size()},
+                    {"matched_uninstrumented", measure_end_to_end(indexes, query, expected)},
+                    {"direct_instrumented", measure_stages(profiled, query, expected)}
+                });
+            }
+            profiles.push_back(Json{{"fixture", definition}, {"materialized_corpus_sha256", corpus_sha256}, {"cases", cases}});
+        }
+        return Json{
+            {"schema_version", 1}, {"kind", "SYNTHETIC"},
+            {"fixture_recipe_sha256", kLexicalProfileFixtureSha256},
+            {"fixture_hash_scope", "exact committed recipe bytes; corpus expansion source is independently source-bound"},
+            {"workload_distribution", "NOT_AVAILABLE"}, {"profiles", profiles}
+        };
+    }
+
+    [[nodiscard]] bool hybrid_filter_preservation_test() {
+        IndexSet indexes;
+        std::vector<Candidate> reference;
+        for(std::size_t variant = 0; variant < indexes.size(); ++variant) {
+            indexes[variant] = make_index(variant);
+            populate_index(*indexes[variant], 128U);
+            agent_memory::HybridRetrievalEngine engine(*indexes[variant]);
+            agent_memory::RetrievalRequest request;
+            request.query = "common anchor";
+            request.limit = 20U;
+            request.metadata_filters = {{"scope", "public"}, {"tenant", "alpha"}};
+            const auto response = engine.retrieve(request);
+            std::vector<Hit> hits;
+            for(const auto& item : response.items) {
+                if(!agent_memory::matches_metadata_filters(item.lexical.metadata, request.metadata_filters)
+                   || item.object.metadata.values() != item.lexical.metadata.values()
+                   || item.lexical.resource_id != agent_memory::ResourceId{"resource:synthetic"}) return false;
+                hits.push_back(item.lexical);
+            }
+            if(hits.empty()) return false;
+            const auto candidates = candidates_from(hits);
+            if(variant == 0U) reference = candidates;
+            else if(!same_results(candidates, reference)) return false;
+            request.metadata_filters.push_back({"tenant", "beta"});
+            if(!engine.retrieve(request).empty()) return false;
+        }
+        return true;
+    }
+
     [[nodiscard]] bool self_test() {
+        if(!hybrid_filter_preservation_test()) return false;
         std::vector<Candidate> input{
             Candidate{Hit{agent_memory::ChunkId{"chunk:b"}, 1.0F}},
             Candidate{Hit{agent_memory::ChunkId{"chunk:a"}, 1.0F}},
@@ -647,6 +844,23 @@ namespace {
                 }
             }
         }
+        for(std::size_t variant = 0; variant < kVariants.size(); ++variant) {
+            auto profiled = make_profiled_index(variant);
+            populate_index(*profiled, 128U);
+            for(const auto limit : {0U, 1U, 16U, 127U, 129U}) {
+                const auto query = query_for({"profile-control", {"common", "anchor"}, limit}, limit);
+                agent_memory::lexical_topk_research::StageTimings sample;
+                std::vector<Hit> result;
+                {
+                    agent_memory::lexical_topk_research::ProfileBinding binding(sample);
+                    result = profiled->search(query);
+                }
+                if(agent_memory::lexical_topk_research::g_timings != nullptr
+                   || !same_results(candidates_from(result), candidates_from(indexes[0]->search(query)))
+                   || sample.calls[static_cast<std::size_t>(agent_memory::lexical_topk_research::Stage::FullSearch)] != 1U
+                   || sample.calls[static_cast<std::size_t>(agent_memory::lexical_topk_research::Stage::CandidateGeneration)] != (limit == 0U ? 0U : 128U)) return false;
+            }
+        }
         return true;
     }
 
@@ -687,7 +901,7 @@ namespace {
             }
         }
         return Json{
-            {"schema_version", 1},
+            {"schema_version", 2},
             {"benchmark_name", "production_shaped_exact_lexical_topk_decision"},
             {"status", "EXECUTED"},
             {"source_commit", AGENT_MEMORY_LEXICAL_TOPK_SOURCE_COMMIT},
@@ -717,7 +931,14 @@ namespace {
             {"selection_variants", variant_names},
             {"oracle", "score_desc_id_asc"},
             {"timing_semantics", "warmups excluded; raw samples are complete operations; kernel and end-to-end scopes are separate"},
-            {"end_to_end_stage_breakdown", "NOT_MEASURED"},
+            {"end_to_end_stage_breakdown", "DIRECT_INSTRUMENTED_SEPARATE_SCOPE"},
+            {"stage_profiles", run_stage_profiles()},
+            {"retrieval_boundary", Json{
+                {"hybrid_filter_source_preservation", hybrid_filter_preservation_test() ? "PASS" : "FAIL"},
+                {"authorization", "NOT_EXECUTED"}, {"tenant_authority", "NOT_EXECUTED"},
+                {"revision_freshness", "NOT_EXECUTED"},
+                {"reason", "HybridRetrievalEngine request has no authorization/pinned-revision context; RevisionBoundRetrieval does not consume ILexicalIndex"}
+            }},
             {"production_api_changed", false},
             {"production_defaults_changed", false},
             {"cases", cases},

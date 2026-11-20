@@ -841,11 +841,16 @@ endif()
 foreach(agent_memory_lexical_topk_class IN ITEMS
     ResearchPartialSortExactLexicalIndex
     ResearchNthElementExactLexicalIndex
-    ResearchBoundedHeapExactLexicalIndex)
+    ResearchBoundedHeapExactLexicalIndex
+    ResearchProfiledFullSortExactLexicalIndex
+    ResearchProfiledPartialSortExactLexicalIndex
+    ResearchProfiledNthElementExactLexicalIndex
+    ResearchProfiledBoundedHeapExactLexicalIndex)
     target_sources(agent-memory-exact-lexical-topk-decision PRIVATE
         "${agent_memory_lexical_topk_generated_dir}/${agent_memory_lexical_topk_class}.cpp")
 endforeach()
 target_include_directories(agent-memory-exact-lexical-topk-decision PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
     "${agent_memory_lexical_topk_generated_dir}"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical")
 
@@ -874,6 +879,8 @@ agent_memory_set_evaluator_source_manifest(agent-memory-exact-lexical-topk-decis
     "${CMAKE_CURRENT_SOURCE_DIR}/exact_lexical_topk_decision.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/generate-exact-lexical-topk-variants.py"
     "${CMAKE_CURRENT_SOURCE_DIR}/validate-exact-lexical-topk-decision.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/lexical_topk_stage_profile.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/lexical-topk-stage-profiles.json"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical/ExactLexicalIndex.cpp"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical/ExactLexicalIndex.hpp"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical/Lexical.cpp"
@@ -881,7 +888,12 @@ agent_memory_set_evaluator_source_manifest(agent-memory-exact-lexical-topk-decis
     "${PROJECT_SOURCE_DIR}/src/agent_memory/domain/Metadata.cpp"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/domain/Metadata.hpp"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/domain/MetadataFilter.cpp"
-    "${PROJECT_SOURCE_DIR}/src/agent_memory/domain/MetadataFilter.hpp")
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/domain/MetadataFilter.hpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/retrieval/HybridRetrievalEngine.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/retrieval/HybridRetrievalEngine.hpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/retrieval/IRetrievalEngine.hpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/domain/Sha256.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/domain/Sha256.hpp")
 target_compile_definitions(agent-memory-exact-lexical-topk-decision PRIVATE
     AGENT_MEMORY_LEXICAL_TOPK_SOURCE_COMMIT="${agent_memory_lexical_topk_source_commit}"
     AGENT_MEMORY_LEXICAL_TOPK_GENERATED_SOURCE_SHA256="${agent_memory_lexical_topk_generated_sha256}"

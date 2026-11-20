@@ -85,11 +85,11 @@ scope. Raw samples and exact execution orders are retained separately. The
 complete matrix has 16 cases and 1,024 measured operation samples. End-to-end
 and isolated measurements are not interleaved as if the scopes were equal.
 
-Fine-grained end-to-end phase timing is `NOT_MEASURED`: this instrument does
-not insert timers into candidate generation, BM25 scoring, filtering, metadata
-copying, or output construction. Isolated selection samples cannot be
-subtracted from complete search to manufacture a phase breakdown. A separately
-controlled stage-profile experiment remains a follow-up, not a completed gate.
+Fine-grained end-to-end phase timing in the preserved v1 receipts is
+`NOT_MEASURED`: that instrument did not insert timers into the search stages.
+Isolated selection samples cannot be subtracted from complete search to
+manufacture a phase breakdown. The dated v2 follow-up below adds a separate
+directly instrumented scope; it does not relabel the historical v1 measurements.
 
 The executable counts C++ `new`/`new[]` calls and requested bytes inside each
 timed operation, including aligned allocations. This is not retained bytes,
@@ -182,3 +182,74 @@ All 16 cases/1,024 samples satisfied selection and returned-value parity.
 The observed reversal between small K and K near N argues against declaring
 one universal winner from this fixture. It does not establish production
 latency, phase attribution, a stable tail, or an activation recommendation.
+
+## 2026-11-20 R5 closure: direct stages and bounded workload profiles
+
+The v2 receipt retains the original 16-case uninstrumented search/kernel matrix
+and adds four explicitly `SYNTHETIC` fixture recipes with three query cases
+each. The committed `lexical-topk-stage-profiles.json` varies 3/16/128 tokens
+per document, 2/8/16/32 metadata fields, common and rare terms, 100%/50%/10%
+filter selectivity, repeated equal scores, small K, K near the candidate count,
+and empty results. These are controlled stress profiles, not measured user
+workload frequencies. The recipe SHA-256 covers its exact committed bytes, not
+a claimed hash of materialized corpus bytes; corpus expansion is bound by the
+separate source manifest.
+Each profile additionally records `materialized_corpus_sha256` over ordered
+compact JSON-lines containing chunk/resource/revision, token texts in position
+order, and metadata. Token ranges/kind follow the fixed generator recipe.
+The existing library SHA-256 accumulator hashes actual population input; Python
+independently expands the recipe and reproduces every corpus digest. All eight
+instrumented/uninstrumented arms must receive identical corpus bytes.
+
+Four additional class-renamed copies instrument the same pinned source.
+Reversing all declared timer/traversal substitutions and the selector change
+must recover the original source exactly. No production API, strategy hook or
+storage format is added. The original three uninstrumented variants remain
+the latency comparison, and their measurements are retained independently.
+
+The directly measured intervals are:
+
+| Stage | Actual interval |
+| --- | --- |
+| Candidate generation | Map iterator dereference/increment for each scanned record; `begin()` and loop-condition overhead remain unattributed. This index has no postings candidate generator. |
+| Metadata filtering | Actual `matches_metadata_filters()` call before scoring. |
+| BM25 scoring | Actual `score_record()` call for every metadata-eligible record. |
+| Candidate construction | Hit fields, metadata copying and candidate-vector insertion/growth. |
+| Top-K selection | Actual selector, including the heap's additional vector and moves. |
+| Result materialization | Final vector truncation and destruction of discarded hits only; the earlier metadata copies belong to candidate construction. Returning the already-built vector does not create another full copy phase. |
+| Full search | Enclosing function interval, including validation and timer overhead. |
+
+Raw nanosecond samples and invocation counts are recorded directly. They are
+not a subtraction of separate kernel timings. Every record adds clock calls;
+especially cheap stages are heavily perturbed. Instrumented totals are therefore
+not interchangeable with uninstrumented latency. The validator checks that
+disjoint stage intervals fit within their enclosing full-search interval and
+that call counts match an independently expanded recipe. Missing stages,
+tampered timings, changed recipes, wrong provenance, parity failures and
+invented workload distributions fail validation.
+
+The actual `HybridRetrievalEngine` is exercised over every uninstrumented
+selector, using both `scope=public` and `tenant=alpha` metadata predicates,
+contradicting filters and trusted source/metadata preservation. This proves
+filter propagation and result preservation, not authoritative access control.
+`RetrievalRequest` has no authorization or pinned-revision context;
+`RevisionBoundRetrieval` uses a different unit/projection boundary and does not
+consume `ILexicalIndex`. The unified authorization, tenant-authority and revision
+freshness integration remains `NOT_EXECUTED`: implementing the missing executor
+would exceed this research slice and overlap the storage/execution workstream.
+See `retrieval-execution-roadmap.md` for the hard-filter/frontier contract and
+`tests/retrieval/revision_bound_retrieval_test.cpp` for the separate existing
+revision-bound controls. Metadata predicates must not be promoted into a
+security/freshness guarantee.
+
+The C++ self-test also checks profiled/production parity and K=0 timer behavior.
+Current validators retain v1 schema support without modifying old receipts;
+v2 requires the new profile and boundary evidence. CI executes the expanded
+benchmark on GNU/Linux and MSVC/Windows and retains generated source files with
+the receipt and its sidecar. Peak RSS and retained workspace remain
+`NOT_MEASURED`; requested allocation totals are not those measurements.
+
+Decision remains `CONDITIONAL` for the selector experiments and `KEEP CURRENT`
+for production defaults. Without a representative query distribution and the
+unified product-boundary qualification, these synthetic profiles do not justify
+an implementation PR or dispatch threshold.
