@@ -246,14 +246,14 @@
       "experiment_id": "r5_exact_lexical_topk",
       "algorithm_id": "lexical_bm25_and_token_dictionary",
       "owner_pull_request": "https://github.com/LimiNode/agent-memory-cpp/pull/665",
-      "latest_code_commit": "59ce09c3e18feff33fc7d2a2292eb11d53bb3b43",
+      "latest_code_commit": "f2bb63527f9d8289b5f592e89873641b552265ca",
       "evidence_role": "BOUNDED_EXECUTION_INDEX",
       "decision_status": "CONDITIONAL",
       "production_default_decision": "KEEP CURRENT",
       "decision_scope": "Selection alternatives merit follow-up only for large N and small K; near-N and no-match cases do not support one universal selector or production activation.",
       "production_activation": false,
-      "timing_scope": "Production-shaped complete in-memory search includes fixed metadata/filter and returned-value work; selector-only controls and index construction remain separate; stage breakdown NOT_MEASURED.",
-      "limitations": ["Fixed three-token synthetic corpus and one public metadata filter", "Authorization, tenant isolation and freshness NOT_EXERCISED", "Repeated timings do not establish stable tails", "Historical Linux CI is not exact-head CI for the latest code"],
+      "timing_scope": "Uninstrumented complete in-memory search, selector-only kernels and index construction remain separate. Closure v2 additionally measures candidate traversal, filtering, BM25 scoring, candidate construction, selection, vector truncation and full search directly in a separately instrumented scope; never subtract these timings from uninstrumented samples.",
+      "limitations": ["Four SYNTHETIC token/metadata/filter profiles do not establish representative query frequencies", "Candidate generation means map iterator traversal; result materialization means vector truncation, while metadata copies belong to candidate construction", "Per-record clock calls perturb direct stage timings; separate phase medians are not additive", "Actual HybridRetrievalEngine metadata filters and source preservation PASS, but authoritative authorization, tenant isolation and revision freshness remain NOT_EXECUTED", "Peak RSS and retained workspace NOT_MEASURED; repeated samples do not establish stable tails", "Historical runs retain their original source identities; current CI compiles the recorded synthetic merge checkout, not the expected PR HEAD"],
       "runs": [
         {
           "experiment_id": "r5_exact_lexical_topk",
@@ -292,6 +292,38 @@
           "receipt_sha256": "3b4b62fd412fafbdaf89ab24adda7212e64ec8db1b4956eb95a29f2193c7548c",
           "source_manifest_sha256": "747fb62a8ad7bade19883185605da6a6f4017dbeaecaf826e48efdcb76d1f167",
           "validation_summary": "3 self-tests and complete matched matrix; not substituted for actual MSVC evidence"
+        },
+        {
+          "experiment_id": "r5_exact_lexical_topk",
+          "source_commit": "65a77fbd71f909b7b81b098063a9471da9a7284f",
+          "execution_checkout_commit": "65a77fbd71f909b7b81b098063a9471da9a7284f",
+          "expected_pr_head_sha": "f2bb63527f9d8289b5f592e89873641b552265ca",
+          "execution_status": "EXECUTED",
+          "environment": "GitHub Actions Ubuntu / GNU 15.2.0 / Unix Makefiles / Release / C++17 / x86_64",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44644634821 (exact-lexical-topk-decision-ubuntu-latest artifact, receipt.json)",
+          "receipt_validation_status": "EXTERNAL_POINTER_NOT_REPLAYED",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44644634821 (exact-lexical-topk-decision-ubuntu-latest artifact, receipt.json.sha256)",
+          "receipt_sha256": "c1de07a7a92883d41e0e694cc8ced88eb6a4f4dda9c03cf5d423465a89fe4d6b",
+          "source_manifest_sha256": "49458c61951989b37aded84c6494e090a88a7e017d5d0d28697337c25c1f373f",
+          "generated_source_manifest_sha256": "f1e8d700cb40c9cb5fe4ff85ef0a5b220d35cc8d347648cadf5f8d76bebf9ec5",
+          "fixture_recipe_sha256": "b38985811e7db76cab0172bdbb9af53b48da54e7a2507d7ac48e1218ac0547c5",
+          "validation_summary": "2026-11-20 owner-validator review of downloaded raw/sidecar against exact compiled checkout PASS; 3 focused CTests, 37 receipt negatives and 3 source-transform negatives; 16 legacy plus 12 profile cases, 1792 repeated operations; source/generated/corpus hashes, direct intervals and hybrid-filter preservation PASS. Registry only pins the reviewed external identity."
+        },
+        {
+          "experiment_id": "r5_exact_lexical_topk",
+          "source_commit": "65a77fbd71f909b7b81b098063a9471da9a7284f",
+          "execution_checkout_commit": "65a77fbd71f909b7b81b098063a9471da9a7284f",
+          "expected_pr_head_sha": "f2bb63527f9d8289b5f592e89873641b552265ca",
+          "execution_status": "EXECUTED",
+          "environment": "GitHub Actions Windows / MSVC 19.51.36260.0 / Visual Studio 18 2026 / Release / C++17 / AMD64",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44644634821 (exact-lexical-topk-decision-windows-latest artifact, receipt.json)",
+          "receipt_validation_status": "EXTERNAL_POINTER_NOT_REPLAYED",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44644634821 (exact-lexical-topk-decision-windows-latest artifact, receipt.json.sha256)",
+          "receipt_sha256": "5f94ffe4744b22ce39fea3994c8350550321072dcd88d331a75501f924ab8778",
+          "source_manifest_sha256": "92cd81088d74f92d93df87a556e35e8e2c8c477f493187aa5b326e23c315e297",
+          "generated_source_manifest_sha256": "f1e8d700cb40c9cb5fe4ff85ef0a5b220d35cc8d347648cadf5f8d76bebf9ec5",
+          "fixture_recipe_sha256": "b38985811e7db76cab0172bdbb9af53b48da54e7a2507d7ac48e1218ac0547c5",
+          "validation_summary": "2026-11-20 owner-validator review of downloaded raw/sidecar against exact compiled checkout PASS; 3 focused CTests, 37 receipt negatives and 3 source-transform negatives; 16 legacy plus 12 profile cases, 1792 repeated operations; actual MSVC/platform identity and source/generated/corpus hashes PASS. Registry only pins the reviewed external identity."
         }
       ]
     },
@@ -299,14 +331,15 @@
       "experiment_id": "r5_production_shaped_admission",
       "algorithm_id": "hybrid_retrieval_scaffolding",
       "owner_pull_request": "https://github.com/LimiNode/agent-memory-cpp/pull/666",
-      "latest_code_commit": "3c146981cc2efafcaadfed698000395bc95805ba",
+      "latest_code_commit": "fd29d257c4a6017f41870e3cf845125e7a473130",
       "evidence_role": "BOUNDED_EXECUTION_INDEX",
       "decision_status": "CONDITIONAL",
       "production_default_decision": "KEEP CURRENT",
       "decision_scope": "Candidate crossover is conditional on the synthetic candidate/metadata regime; production defaults KEEP CURRENT. Generated admission replacements are not product-path activation.",
       "production_activation": false,
-      "timing_scope": "Primary retrieve() includes fixture-index search, deterministic reranker, per-query lookup-index construction, admission checks and response materialization; fixture setup is excluded. Secondary setup+retrieve is separate and not used for crossover.",
-      "limitations": ["Synthetic fixture index and deterministic reranker, not full product-path qualification", "12 repeated samples per fixed fixture, not independent requests or stable tails", "First observed mean crossover is machine/metadata dependent, not a stable threshold", "Ordinary C++ new/new[] allocation counters do not measure every allocator or peak RSS"],
+      "timing_scope": "Primary uninstrumented retrieve() includes fixture-index search, deterministic reranker, per-query lookup-index construction, admission checks and response materialization; fixture setup is excluded. Closure v2 separately times index search, trusted pool copy, reranker, admission, lookup construction, validation, trusted result copy and response materialization directly. Nested stage timers and setup+retrieve are not interchangeable with primary latency.",
+      "limitations": ["SYNTHETIC fixture index and deterministic reranker, not full product-path qualification", "Actual request-size frequencies NOT_EXECUTED: REPRESENTATIVE_REQUEST_DISTRIBUTION_UNAVAILABLE", "Sorted trusted-input and repeated-ID cases are controlled fixtures, not a representative workload distribution", "864 uninstrumented primary, 216 positive instrumented and 108 negative instrumented samples are fixed-fixture repetitions, not independent requests or stable tails", "Instrumented timings include nested scopes and clock overhead; never subtract unrelated scopes", "First observed mean crossover is machine/metadata dependent, not a stable threshold; conditional dispatch remains DEFER", "Ordinary C++ new/new[] allocation counters do not measure every allocator; peak retained workspace and process RSS NOT_MEASURED"],
+      "first_observed_mean_crossovers_source_commit": "df17946cb6cbad36f0da25caa6823dc67d3f41d7",
       "first_observed_mean_crossovers": [
         {"metadata_width": 2, "sorted_candidate_count": 500, "hash_candidate_count": 50},
         {"metadata_width": 8, "sorted_candidate_count": 500, "hash_candidate_count": 100},
@@ -326,6 +359,36 @@
           "raw_output_sha256": "65a1cdc9ff6a0eca7e54b6093719f0ec697079220fde33c057793d3e0002dcd1",
           "source_manifest_sha256": "0cff4e6862e7ddaa357a5d93bc9a57129b124f2dba50dee08d5784f4eafa0938",
           "validation_summary": "3 focused CTests, 18 cases / 648 measured query samples, 11 fail-closed controls per arm; production linear parity and raw/source/generated/sidecar checks PASS"
+        },
+        {
+          "experiment_id": "r5_production_shaped_admission",
+          "source_commit": "50a3658359870cc5b8cb4d8a850986532f9477a2",
+          "execution_checkout_commit": "50a3658359870cc5b8cb4d8a850986532f9477a2",
+          "expected_pr_head_sha": "fd29d257c4a6017f41870e3cf845125e7a473130",
+          "execution_status": "EXECUTED",
+          "environment": "GitHub Actions Ubuntu / GNU 15.2.0 / Release / C++17 / x86_64 / clean configured source worktree",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44645703444 (production-reranker-admission-receipt-ubuntu-latest artifact, production-reranker-admission.json)",
+          "receipt_validation_status": "EXTERNAL_POINTER_NOT_REPLAYED",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44645703444 (production-reranker-admission-receipt-ubuntu-latest artifact, production-reranker-admission.sha256.json)",
+          "receipt_sha256": "1806f65ab584b5b62bc1769a2037ce678055c9d550cba23e5e472aae29fd0a7c",
+          "source_manifest_sha256": "f89f45061dedd4ac88d972a92a934a7396187cbbb7f143c5e42bc60be35b7dd9",
+          "fixture_sha256": "ac7da95c39b98136fb2d87c5e1d7d1ce73f6ed561022e82f0e628717080c4159",
+          "validation_summary": "2026-11-20 owner-validator review of downloaded raw/JSON-sidecar against exact compiled checkout PASS; 3 focused CTests, source/generated/fixture and clean-source gates; 18 primary cases, 6 sorted-input cases, 36 negative profile scenarios, 13 fail-closed controls per arm; 864 primary plus 324 separate instrumented samples. Registry only pins the reviewed external identity."
+        },
+        {
+          "experiment_id": "r5_production_shaped_admission",
+          "source_commit": "50a3658359870cc5b8cb4d8a850986532f9477a2",
+          "execution_checkout_commit": "50a3658359870cc5b8cb4d8a850986532f9477a2",
+          "expected_pr_head_sha": "fd29d257c4a6017f41870e3cf845125e7a473130",
+          "execution_status": "EXECUTED",
+          "environment": "GitHub Actions Windows / MSVC 19.51.36260.0 / Release / C++17 / AMD64 / clean configured source worktree",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44645703444 (production-reranker-admission-receipt-windows-latest artifact, production-reranker-admission.json)",
+          "receipt_validation_status": "EXTERNAL_POINTER_NOT_REPLAYED",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44645703444 (production-reranker-admission-receipt-windows-latest artifact, production-reranker-admission.sha256.json)",
+          "receipt_sha256": "a6d90d2fe685a95683ad18ce47ebff37cf05949f511342697ccbd449449aa1dd",
+          "source_manifest_sha256": "a8a9fb5c9f655903930bba7fedb335cacb8a246dc0a40918787337cfc362586d",
+          "fixture_sha256": "ac7da95c39b98136fb2d87c5e1d7d1ce73f6ed561022e82f0e628717080c4159",
+          "validation_summary": "2026-11-20 owner-validator review of downloaded raw/JSON-sidecar against exact compiled checkout PASS; 3 focused CTests, actual MSVC/platform identity and source/generated/fixture gates; 18 primary cases, 6 sorted-input cases, 36 negative profile scenarios, 13 fail-closed controls per arm; 864 primary plus 324 separate instrumented samples. Registry only pins the reviewed external identity."
         }
       ]
     }

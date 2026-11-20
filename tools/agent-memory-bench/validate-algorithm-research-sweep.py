@@ -73,6 +73,12 @@ EXTERNAL_RUN_BINDINGS = {
     "bfded1f443cc85a55b80c8723efc1a6bd2bc9b76fb749066994e727d2f6d0b19": ("r5_exact_lexical_topk", "59ce09c3e18feff33fc7d2a2292eb11d53bb3b43", "59ce09c3e18feff33fc7d2a2292eb11d53bb3b43"),
     "3b4b62fd412fafbdaf89ab24adda7212e64ec8db1b4956eb95a29f2193c7548c": ("r5_exact_lexical_topk", "59ce09c3e18feff33fc7d2a2292eb11d53bb3b43", "59ce09c3e18feff33fc7d2a2292eb11d53bb3b43"),
     "1eced1960433147dd5b6294cb06628b81916af3fa6b2ffe80de6972292249827": ("r5_production_shaped_admission", "df17946cb6cbad36f0da25caa6823dc67d3f41d7", "df17946cb6cbad36f0da25caa6823dc67d3f41d7"),
+    # Closure receipts additionally bind the expected PR HEAD. Actions compiled
+    # a synthetic merge checkout; neither identity may be relabelled as the other.
+    "c1de07a7a92883d41e0e694cc8ced88eb6a4f4dda9c03cf5d423465a89fe4d6b": ("r5_exact_lexical_topk", "65a77fbd71f909b7b81b098063a9471da9a7284f", "65a77fbd71f909b7b81b098063a9471da9a7284f", "f2bb63527f9d8289b5f592e89873641b552265ca"),
+    "5f94ffe4744b22ce39fea3994c8350550321072dcd88d331a75501f924ab8778": ("r5_exact_lexical_topk", "65a77fbd71f909b7b81b098063a9471da9a7284f", "65a77fbd71f909b7b81b098063a9471da9a7284f", "f2bb63527f9d8289b5f592e89873641b552265ca"),
+    "1806f65ab584b5b62bc1769a2037ce678055c9d550cba23e5e472aae29fd0a7c": ("r5_production_shaped_admission", "50a3658359870cc5b8cb4d8a850986532f9477a2", "50a3658359870cc5b8cb4d8a850986532f9477a2", "fd29d257c4a6017f41870e3cf845125e7a473130"),
+    "a6d90d2fe685a95683ad18ce47ebff37cf05949f511342697ccbd449449aa1dd": ("r5_production_shaped_admission", "50a3658359870cc5b8cb4d8a850986532f9477a2", "50a3658359870cc5b8cb4d8a850986532f9477a2", "fd29d257c4a6017f41870e3cf845125e7a473130"),
 }
 
 
@@ -202,6 +208,8 @@ def _ledger_receipt_errors(run: dict[str, Any], experiment_id: str, root: Path) 
     if status != "LOCAL_BYTES_VERIFIED":
         expected_binding = EXTERNAL_RUN_BINDINGS.get(str(run.get("receipt_sha256", "")).removeprefix("sha256:"))
         actual_binding = (experiment_id, run.get("source_commit"), run.get("execution_checkout_commit"))
+        if "expected_pr_head_sha" in run:
+            actual_binding += (run["expected_pr_head_sha"],)
         if expected_binding != actual_binding:
             return ["external receipt/source/algorithm differs from its reviewed identity"]
     if local:
@@ -508,6 +516,21 @@ def run_self_test(registry_path: Path, repository_root: Path) -> int:
             "receipt_validation_status": "LOCAL_BYTES_VERIFIED",
         })
         mutations.append(("nonexistent locally verified ledger receipt", mutation))
+        for ledger_index, entry in enumerate(valid["evidence_ledger"]):
+            for run_index, run in enumerate(entry["runs"]):
+                if "expected_pr_head_sha" not in run:
+                    continue
+                for name, field, value in (
+                    ("closure expected HEAD replaced by checkout", "expected_pr_head_sha", run["execution_checkout_commit"]),
+                    ("closure source replaced by PR HEAD", "source_commit", run["expected_pr_head_sha"]),
+                    ("closure checkout replaced by PR HEAD", "execution_checkout_commit", run["expected_pr_head_sha"]),
+                ):
+                    mutation = copy.deepcopy(valid)
+                    mutation["evidence_ledger"][ledger_index]["runs"][run_index][field] = value
+                    mutations.append((name, mutation))
+                mutation = copy.deepcopy(valid)
+                mutation["evidence_ledger"][ledger_index]["runs"][run_index].pop("expected_pr_head_sha")
+                mutations.append(("closure expected HEAD removed", mutation))
     for name, candidate in mutations:
         if not validate_registry(candidate, repository_root):
             raise AssertionError(f"mutation control did not fail: {name}")
