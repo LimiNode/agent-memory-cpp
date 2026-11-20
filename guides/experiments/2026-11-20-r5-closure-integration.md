@@ -24,6 +24,7 @@ exact published assembly SHA:
 ```sh
 python -m pip install -r tools/requirements-tools.txt
 python -m pip install scipy==1.17.1 scikit-learn==1.9.0 faiss-cpu==1.15.0
+python -m pip install torch==2.8.0+cpu --index-url https://download.pytorch.org/whl/cpu
 python tools/agent-memory-bench/collect-r5-integration-evidence.py --self-test
 python tools/agent-memory-bench/collect-r5-integration-evidence.py --audit-assembly
 gh workflow run ci.yml --repo LimiNode/agent-memory-cpp --ref preflight/r5-closure-integration
@@ -139,6 +140,13 @@ checkout. Expected PR HEADs remain separate from the compiled merge SHAs.
 This verifies the downloaded owner evidence, not a not-yet-executed combined
 CI run. The registry preserves its seven historical rows and adds these four
 reviewed external identities without relabeling any historical measurement.
+
+The subsequent local 343-test run passed 339 tests; four existing training
+self-tests failed before exercising their algorithms because the isolated
+Python environment lacked PyTorch. The full research lane now explicitly
+installs CPU-only PyTorch 2.8.0, matching existing research trainer requirements.
+No test is skipped to mask an unavailable import. A new complete run is
+required; the preliminary 339/343 result is not closure acceptance evidence.
 
 ## R6 preparation only
 
