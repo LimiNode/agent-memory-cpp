@@ -220,3 +220,53 @@ recovery receipt; both were absent on the inspection host. This does not deny
 the existing 1M/305-query frozen corpus history or invent a real query-size
 distribution. Compensated cosine remains `KEEP CURRENT`; no production policy
 or dependency is activated by this closure.
+
+## 2026-11-20 closure update: direct stages and current CI identities
+
+The latest lexical and admission code is respectively
+`f2bb63527f9d8289b5f592e89873641b552265ca` (#665) and
+`fd29d257c4a6017f41870e3cf845125e7a473130` (#666). Their completed owner CI
+runs [44644634821](https://github.com/LimiNode/agent-memory-cpp/actions/runs/44644634821)
+and [44645703444](https://github.com/LimiNode/agent-memory-cpp/actions/runs/44645703444)
+retain separate GNU/Linux and MSVC/Windows artifacts. The ledger adds those
+four reviewed receipt identities without modifying any of the seven earlier
+runs or their bindings. Earlier stage-availability and crossover observations
+above describe their named historical revisions, not the closure v2 results.
+
+Actions compiled synthetic merge checkouts `65a77fbd71f909b7b81b098063a9471da9a7284f`
+for lexical and `50a3658359870cc5b8cb4d8a850986532f9477a2` for admission.
+Each new row preserves that actual source/checkout separately from its expected
+PR HEAD. The checker pins all four identities together with the receipt digest
+and rejects their substitution or omission. The owner validators were replayed
+against downloaded raw files, sidecars and the exact compiled source trees on
+2026-11-20. This registry does not perform that replay: the rows remain
+`EXTERNAL_POINTER_NOT_REPLAYED`, not `LOCAL_BYTES_VERIFIED`. Admission artifacts
+use `production-reranker-admission.sha256.json`, not a text `.json.sha256`
+sidecar. The checker self-test adds 16 closure-provenance rejection controls,
+bringing its total to 57.
+
+Lexical v2 adds four explicitly `SYNTHETIC` document/token/metadata/filter
+profiles. Separate intrusive timers directly observe traversal, filtering,
+BM25 scoring, candidate construction, selection, final vector truncation and
+full search. Metadata copying belongs to candidate construction, not the final
+truncation stage. Timed stages are not inferred from kernel subtraction and
+must not be substituted for uninstrumented latency. Actual HybridRetrievalEngine
+filter/source-preservation controls pass; authoritative authorization, tenant
+isolation and revision freshness remain `NOT_EXECUTED` at this boundary.
+The selection decision remains `CONDITIONAL`; production defaults `KEEP CURRENT`.
+
+Admission v2 separately measures index search, trusted-pool copying, reranker,
+admission, lookup construction, validation, trusted-result copying and response
+materialization. Nested instrumented scopes are not additive or interchangeable
+with the primary uninstrumented `retrieve()` timer. The expanded matrix includes
+sorted trusted input and early/late repeated-ID rejection controls. Actual
+candidate-count frequencies remain `NOT_EXECUTED`, with reason
+`REPRESENTATIVE_REQUEST_DISTRIBUTION_UNAVAILABLE`; synthetic case counts are not
+request frequencies. Historical crossover numbers retain their old source
+attribution. Admission remains `CONDITIONAL`, conditional dispatch `DEFER`, and
+the production default `KEEP CURRENT`.
+
+Both studies leave peak retained workspace/process RSS `NOT_MEASURED` and make
+no stable-tail claim. These updates close bounded measurement gaps; they do not
+qualify production activation or replace the independent combined integration
+gate owned by the closure assembly.
