@@ -293,3 +293,15 @@ The evidence remains local, with public full-source replay `NOT_ESTABLISHED`;
 no machine-readable row is promoted to `PRIMARY`. No historical receipt,
 invalidation identity, registry binding or production-default decision is
 rewritten. Both new R6 PRs remain independent Draft changes on the R5 baseline.
+
+### Implementation-efficiency corrective contract
+
+The follow-up preserves the historical v1 result above and freezes isolated
+A0--A6 controls before selecting at most one combined candidate. The owner is
+the [dated FastScan corrective contract](2026-09-21-thq-fastscan-v3.md#2026-11-20-r6-implementation-efficiency-corrective-contract).
+It distinguishes scalar implementation overhead from certificate selectivity;
+no family-wide rejection or new production decision follows from v1.
+Correctness is verified locally on GNU/MSVC; full corrective timings remain
+pending. The separate corrected-source confirmation retains 720 new samples,
+unchanged refinement counts and six `KEEP_CURRENT` decisions. Neither run
+establishes fresh applied quality or public full-source replay.

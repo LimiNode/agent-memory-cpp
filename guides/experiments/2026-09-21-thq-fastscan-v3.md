@@ -393,3 +393,82 @@ original measured executable bytes were not separately retained. Its recorded
 hash was independently verified before that rebuild and is historical, not
 the identity of the executable currently at the manifest's build path.
 The original raw report and execution manifest remain byte-for-byte intact.
+
+## 2026-11-20 R6 implementation-efficiency corrective contract
+
+Status: planned, research-only; no production selection or merge authorization.
+This continuation preserves PR #677, its source-bound v1 timings and raw files.
+It is stacked on corrected source `34a24d2c29d9c701d5b289ecf42e1aac60e75434`;
+historical measured source remains `a587fa326d25b40a92dacf09ea93c772b9fcaa9c`.
+The existing FP32 pair-ADC contract and outward envelope remain normative.
+Ordered numeric IDs and reference FP32 score bits must agree, including ties.
+
+Question: is the v1 loss primarily implementation overhead, or inadequate
+certificate selectivity after an efficient, contract-equivalent implementation?
+The previous six KEEP_CURRENT decisions reject v1 only, not certified pruning.
+
+Before timing, validate isolated changes A1 SIMD integer scan, A2 monotone integer
+cutoff, A3 construction-validated trusted IDs, A4 caller-local reusable workspace,
+A5 block32 exact refinement and A6 dynamic tau. A0 calls unchanged v1.
+Each arm changes only its named mechanism relative to A0. At most one combined
+arm may follow, selected from isolated evidence, not an all-combinations sweep.
+Untrusted candidate IDs retain validation; no shared mutable query workspace.
+For cutoff use binary search on the *same outward lower-bound function* over
+Q=0..48960. Its constituent correctly rounded operations are monotone for positive
+finite scale; the greatest Q with lower(Q)<=tau is an exact prefix endpoint.
+Represent the empty prefix separately. Test every Q, threshold neighbours, ties,
+underflow, overflow and unsupported floating-point environments before use.
+
+Timing uses original eight exposed queries, N=4096/65536/1000000, K=16/128,
+one warmup and five repeats, fixed arm-order seed. These are mechanics, not
+held-out applied quality. Keep uninstrumented full-query timing separate from
+intrusive diagnostic stages (ID checks, LUT, envelope, scan, initial selection,
+incumbents, bounds, refinement, final selection, allocation). Baselines retain
+unchanged scalar pair and pair-AVX2, with equivalent prebuilt layout assumptions.
+Record persistent build and bytes separately. Random-ID runs charge gather and
+packing; byte_lut_unrolled4 is a separate, not bit-exact, engineering baseline.
+Do not silently substitute rebound candidate data for the historical stream.
+
+Record refinements, pruning, interval widths, integer ordering and fixed-tau
+excess work. Report workspace vector payload/capacity separately from process
+peak RSS and live allocation counts; unavailable measurements stay unavailable.
+No continuation/adoption claim without >=10% matched full-path gain, no p95 or
+memory-budget regression, and supported GNU/MSVC confirmation. Otherwise retain
+the narrow negative outcome. Production/API/default/schema/storage changes,
+dependency changes, release, tag and merge are outside this task.
+
+Retain immutable run directories with measured executable, source snapshot,
+producer, input hashes, raw samples and SHA-256 manifest *before rebuilding*.
+An independent auditor must reject score/order, sample, provenance or decision
+corruption. CI runs correctness controls, not the private full-data benchmark.
+Final outcomes distinguish IMPLEMENTATION_DEFECT_CONFIRMED,
+SIMD_PARITY_ACHIEVED_BUT_NO_GAIN, ALGORITHMIC_BOUND_LIMITATION, CONDITIONAL_WIN,
+RESEARCH_QUALIFIED and NOT_EXECUTED; no outcome is measured yet.
+
+### Corrected-source independent confirmatory execution
+
+One full GNU confirmation ran on unchanged corrected source `34a24d2c` using
+the same frozen inputs, eight queries, one warmup and five repeats. The raw
+720 samples independently pass all 17 validator mutation controls, input and
+retained executable/source/producer hashes. All six decisions remain
+`KEEP_CURRENT`, with identical exact-refinement counts to the historical run.
+This new measurement is not rebound to the old source or old executable.
+
+| N | K | Pair-AVX2 p50/p95 ms | Corrected v1 p50/p95 ms |
+| ---: | ---: | ---: | ---: |
+| 4096 | 16 | 0.2755 / 0.3460 | 1.9816 / 2.2583 |
+| 4096 | 128 | 0.2792 / 0.3571 | 1.9713 / 2.1406 |
+| 65536 | 16 | 4.1403 / 4.4067 | 24.1969 / 27.7988 |
+| 65536 | 128 | 4.1139 / 4.4642 | 26.9695 / 27.9574 |
+| 1000000 | 16 | 67.1640 / 70.7369 | 269.2313 / 409.1382 |
+| 1000000 | 128 | 66.3550 / 69.1184 | 393.8744 / 430.8196 |
+
+Canonical retained package:
+`.artifacts/r6-adc-efficiency/confirmatory-34a24d2c-gnu-v1/`.
+Raw SHA-256: `718ec34bdf43ec06b155d02ba1bdbe64dc7ebcaad607cdc7cf76589a250834ec`;
+manifest SHA-256:
+`0dd1cd7bc10fb9d0a2c7d95eb45b1228568d759a423c0b3ee52fda37978ab0e3`.
+The measured binary is retained as `measured.exe`, unlike the historical v1
+binary. Replay with `audit-adc-efficiency.py --directory <package>
+--legacy-confirm --verify-inputs --mutation-self-test`. Applied quality remains
+`NOT_EXECUTED`; public full source-data replay remains `NOT_ESTABLISHED`.
