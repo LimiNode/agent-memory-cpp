@@ -308,6 +308,17 @@ endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
+    if(AGENT_MEMORY_BUILD_RESEARCH_TESTS AND TARGET agent-memory-production-reranker-admission)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME agent_memory_production_reranker_admission_self_test
+            COMMAND agent-memory-production-reranker-admission --self-test)
+        add_test(NAME agent_memory_production_reranker_generator_self_test
+            COMMAND "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/generate-production-reranker-variants.py" --self-test)
+        add_test(NAME agent_memory_production_reranker_validator_self_test
+            COMMAND "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/validate-production-reranker-admission.py" --self-test)
+    endif()
     if(AGENT_MEMORY_BUILD_BENCHMARKS)
         add_test(
             NAME agent_memory_exact_vector_numerical_frontier_self_test
