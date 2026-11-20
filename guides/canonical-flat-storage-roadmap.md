@@ -1,57 +1,47 @@
 # Numeric flat canonical storage
 
-**Status:** Draft opt-in C1 profile. This document describes the experimental
-`MdbxCanonicalFlatStorage` adapter; it does not replace
-`MdbxCanonicalContentStore` and it does not change a production default.
+**Status:** Implemented experimental adapter; not a production default.
+The normative semantics and validation complexity are owned by
+[Canonical content storage](canonical-content-storage-roadmap.md#10-acceptance-gates).
+This note records only the adapter's physical schema.
 
 ## Physical contract
 
-The adapter uses the persistent `MdbxStorageIdentityMapping` dictionary for
-numeric `DocumentStorageId` and `BlockStorageId` values. The following
-profile-local DBIs are owned by the adapter (with the configured table
-prefix):
+All names below include the configured table prefix. The adapter shares the
+persistent identity dictionary described in
+[Storage identity mapping](storage-identity-mapping.md).
 
-| DBI | Key | Value |
+| DBI suffix | Key and comparator | Value |
 | --- | --- | --- |
-| `canonical_flat_meta_v1` | text marker | schema marker |
-| `canonical_flat_heads_v1` | numeric document id | current revision |
-| `canonical_flat_structures_v1` | `document-id/revision` | versioned `AMFS` structure row |
-| `canonical_flat_blocks_v1` | `block-id/revision` | versioned `AMFB` block row |
+| `canonical_flat_meta_v2` | text, flags 0 | `@schema_version` = `canonical_flat_storage.v2.be64x2.envelope_sha256` |
+| `canonical_flat_heads_v2` | native uint64, `MDBX_INTEGERKEY` | 8-byte little-endian document revision |
+| `canonical_flat_structures_v2` | BE64 document ID + BE64 revision, flags 0 | bound structure envelope |
+| `canonical_flat_blocks_v2` | BE64 block ID + BE64 revision, flags 0 | bound block envelope |
 
-The `AMFB` and `AMFS` codecs carry an explicit version, logical SHA-256
-digest, and physical checksum. A structure row contains the canonical preorder
-and metadata; block rows contain text and immutable block revision. A point
-read decodes one structure row and one selected block row. It does not
-materialize unrelated block text.
+The 16-byte composite keys sort lexicographically by the two unsigned numeric
+fields. Only these composite keys are portable encodings; native integer
+MDBX tables retain the environment's platform compatibility constraints.
 
-Creation and edit publication allocate mappings and write block versions,
-structure, and head in one caller-owned MDBX write transaction. If the write
-fails, the transaction is rolled back. Allocated numeric identities are
-monotonic and are never reused; an aborted allocation may remain reserved.
+An `AMF2` envelope binds its type, physical key, document identity and inner
+`AMFS`/`AMFB` v1 payload with SHA-256. Each structure also binds block storage
+IDs, text sizes, block payload digests and the historical no-reuse ledger.
+Existing immutable rows permit identical-only idempotence.
 
-Unknown, markerless, or corrupt profile state is rejected. `max_records` and
-the codec limits are checked before unbounded reservation or decoding. The
-profile is deliberately separate from the legacy textual canonical tables;
-no implicit migration is performed.
+Mappings, selected new block versions, structure and head are published in one
+write transaction. Expected-revision admission uses that same transaction.
+Aborted allocations roll back; committed historical IDs cannot be reused.
+Unchanged block payloads are not rewritten, but commit still reads the current
+revision to use the shared domain edit engine.
 
-## Validation boundary
+## Compatibility and evidence
 
-The focused MDBX test covers create/reopen, historical revision retention,
-numeric mapping, point block reads, optimistic edit publication, and
-markerless-state rejection. It is a conformance slice, not a production
-acceptance result. Before any activation, add a fresh-process OLD/NEW gate,
-corruption and fault-injection replay, and compare full materialization with
-the canonical reference adapter.
+Experimental v1 DBIs under the selected prefix are rejected. There is no
+implicit in-place migration: export/rebuild into a fresh namespace is required.
+Unknown markers, markerless state, incompatible comparators and corrupt
+bindings fail closed.
 
-The benchmark gate is separate from correctness. It must report fixed-seed
-large-document runs for point block, bounded subtree, single-block update,
-and full materialization. The opt-in
-`tools/mdbx-canonical-flat-benchmark.cpp` harness emits raw TSV observations and
-a SHA-bound JSON receipt for those four workloads at 64/256/1024 blocks with
-five repeats. It reports steady-clock latency and codec-payload byte estimates;
-CPU time and allocator counts are explicitly unavailable in this slice. The
-bounded-subtree row intentionally calls `read_revision()` followed by the
-existing reference `read_canonical_subtree()` API, so its physical source read
-is the full revision. It is not evidence of bounded MDBX I/O. Single-block
-edits likewise report the full-revision rewrite performed by the current
-adapter. No performance claim is made by this Draft PR.
+The focused regression exercises multistep history, render, reopen, concurrent
+writers, pre-head abort, no-reuse, selected-write counts and rehashed corruption.
+This is not production admission. Fresh-process upgrade/consumer qualification
+and measured C1 comparison have separate receipts; an unexecuted gate must not
+be reported as PASS. No default backend activation is implied.

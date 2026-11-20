@@ -250,6 +250,7 @@ if(AGENT_MEMORY_BUILD_BENCHMARKS)
         )
         target_link_libraries(agent_memory_mdbx_canonical_flat_benchmark
             PRIVATE agent_memory::agent_memory
+                    nlohmann_json::nlohmann_json
                     ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET}
         )
         target_compile_features(agent_memory_mdbx_canonical_flat_benchmark
