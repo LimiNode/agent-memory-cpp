@@ -72,19 +72,21 @@ files overlap, so independence does not mean conflict-free sequential merges.
 
 | PR | Role retained | Overlap / maintenance boundary | Disposition before closure CI |
 | --- | --- | --- | --- |
-| #640 | Registry and evidence disposition | Documentation gate; no second global registry | CORRECTIVE_REQUIRED |
+| #640 | Registry and evidence disposition | Documentation gate; no second global registry | MERGE_CANDIDATE pending exact-head CI and combined run |
 | #641 | Feasibility history, including Faiss version boundaries | No duplicate executable E-means study | MERGE_CANDIDATE after review |
 | #633 | Admission kernel/scaling controls | #666 owns matched full-path qualification | MERGE_CANDIDATE after review |
 | #635 | Numerical reduction controls | #664 owns actual-index Decimal qualification | MERGE_CANDIDATE after review |
 | #638 | IVF study scaffold and historical Lloyd control | #664 owns corrected executable E-means comparison | MERGE_CANDIDATE after review |
 | #642 | Selection-only kernels | #665 owns actual lexical-search qualification | MERGE_CANDIDATE after review |
-| #664 | Actual vector index, independent oracle, CPU E-means | Historical v1 disposition must be executable | CORRECTIVE_REQUIRED |
-| #665 | Full lexical path and direct stage profiling | Generated private class, not a production selector API | CORRECTIVE_REQUIRED |
-| #666 | Matched full retrieve path | Generated private admission variants, not a dispatcher | CORRECTIVE_REQUIRED |
+| #664 | Actual vector index, independent oracle, CPU E-means | Historical v1 disposition is executable | MERGE_CANDIDATE pending combined run |
+| #665 | Full lexical path and direct stage profiling | Generated private class, not a production selector API | MERGE_CANDIDATE pending combined run |
+| #666 | Matched full retrieve path | Generated private admission variants, not a dispatcher | MERGE_CANDIDATE pending combined run and independent review |
 
 `MERGE_CANDIDATE` is not an APPROVED review. Recommended initial order after
-independent review is #640 -> #641 -> #633 -> #635 -> #638 -> #642 -> #664 ->
-#665 -> #666. Before each merge recheck the actual main, source-pinned transforms,
+independent review is #641 -> #633 -> #635 -> #638 -> #642 -> #664 ->
+#665 -> #666 -> #640. The registry is last so it indexes the completed owner
+corrections without presenting its external pointers as replayed PRIMARY data.
+Before each merge recheck the actual main, source-pinned transforms,
 conflicts and exact-head CI. Preserve independent scopes during any restack;
 use expected-head safety if history rewriting is required. Never merge this
 assembled evidence branch as a shortcut around review of the nine PRs.
@@ -116,6 +118,17 @@ failure exposed the existing native MIH reader's v1 construction guard against
 the frozen v2 conformance fixture; it requires a separate semantic correction,
 not a skipped test or a changed golden digest. This preliminary run is not
 closure acceptance evidence.
+
+All four downloaded Linux/Windows closure raw receipts from owner runs
+[#665 CI 44644634821](https://github.com/LimiNode/agent-memory-cpp/actions/runs/44644634821)
+and [#666 CI 44645703444](https://github.com/LimiNode/agent-memory-cpp/actions/runs/44645703444)
+passed a separate source/fixture/generated manifest and sidecar replay. Exact
+synthetic merge checkouts were reconstructed with LF for Linux and CRLF for
+Windows; manually edited local trees are not assumed byte-identical to a CI
+checkout. Expected PR HEADs remain separate from the compiled merge SHAs.
+This verifies the downloaded owner evidence, not a not-yet-executed combined
+CI run. The registry preserves its seven historical rows and adds these four
+reviewed external identities without relabeling any historical measurement.
 
 ## R6 preparation only
 
