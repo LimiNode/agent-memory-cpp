@@ -18,6 +18,7 @@
 #if AGENT_MEMORY_HAS_MDBX
 #include "MdbxStorageContext.hpp"
 #include "MdbxStorageErrors.hpp"
+#include "MdbxCanonicalStorageMetrics.hpp"
 
 #include <array>
 #include <cstdint>
@@ -51,6 +52,8 @@ struct MdbxCanonicalContentStoreOptions final {
     std::string publication_guard_table_name;
     /// Optional compact fencing-token table used by guarded publication.
     std::string publication_token_guard_table_name;
+    /// Optional caller-owned counters; externally synchronize accesses while enabled.
+    MdbxCanonicalStorageMetrics* metrics = nullptr;
 };
 
 /// \brief Durable compare token checked in the canonical write transaction.
