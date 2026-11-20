@@ -1,0 +1,137 @@
+{
+  "dataset": {
+    "cross_split_duplicate_rows": {
+      "base/heldout": 0,
+      "base/query": 0,
+      "base/train": 0,
+      "heldout/query": 0,
+      "heldout/train": 0,
+      "query/train": 0
+    },
+    "encoding": "row-major little-endian float32",
+    "splits": {
+      "base": {
+        "rows": 4096,
+        "sha256": "8fdef5a24b0f9563c7b9e2985467f75dcb702df4bd9031ea3da1ae271666f0bb"
+      },
+      "heldout": {
+        "rows": 1024,
+        "sha256": "27e13f9f1a16e40d69c20471bd1dba93699978ac60164f689cababb8273a69a2"
+      },
+      "query": {
+        "rows": 128,
+        "sha256": "0ca47425d8a2d707df3e5080231022c54fd39a2a2b553b393fc9e7ef90bba166"
+      },
+      "train": {
+        "rows": 4096,
+        "sha256": "fec17dcf85b9d28075ebbdd07df10ae70fedf195787c82776c11c7eef9832ec6"
+      }
+    }
+  },
+  "disposition": "DEFER",
+  "environment": {
+    "blas_thread_env": {
+      "BLIS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    },
+    "cpu": "Intel64 Family 6 Model 63 Stepping 2, GenuineIntel",
+    "faiss": "1.16.0",
+    "faiss_compile_options": "",
+    "faiss_threads": 1,
+    "numpy": "2.4.6",
+    "numpy_build_configuration": {
+      "Build Dependencies": {
+        "blas": {
+          "detection method": "pkgconfig",
+          "found": true,
+          "include directory": "C:/Users/runneradmin/AppData/Local/Temp/cibw-run-6ukx7exl/cp311-win_amd64/build/venv/Lib/site-packages/scipy_openblas64/include",
+          "lib directory": "C:/Users/runneradmin/AppData/Local/Temp/cibw-run-6ukx7exl/cp311-win_amd64/build/venv/Lib/site-packages/scipy_openblas64/lib",
+          "name": "scipy-openblas",
+          "openblas configuration": "OpenBLAS 0.3.31.188.0  USE64BITINT DYNAMIC_ARCH NO_AFFINITY SkylakeX MAX_THREADS=24",
+          "pc file directory": "D:/a/numpy-release/numpy-release/.openblas",
+          "version": "0.3.31.188.0"
+        },
+        "lapack": {
+          "detection method": "pkgconfig",
+          "found": true,
+          "include directory": "C:/Users/runneradmin/AppData/Local/Temp/cibw-run-6ukx7exl/cp311-win_amd64/build/venv/Lib/site-packages/scipy_openblas64/include",
+          "lib directory": "C:/Users/runneradmin/AppData/Local/Temp/cibw-run-6ukx7exl/cp311-win_amd64/build/venv/Lib/site-packages/scipy_openblas64/lib",
+          "name": "scipy-openblas",
+          "openblas configuration": "OpenBLAS 0.3.31.188.0  USE64BITINT DYNAMIC_ARCH NO_AFFINITY SkylakeX MAX_THREADS=24",
+          "pc file directory": "D:/a/numpy-release/numpy-release/.openblas",
+          "version": "0.3.31.188.0"
+        }
+      },
+      "Compilers": {
+        "c": {
+          "commands": "cl",
+          "linker": "link",
+          "name": "msvc",
+          "version": "19.44.35226"
+        },
+        "c++": {
+          "commands": "cl",
+          "linker": "link",
+          "name": "msvc",
+          "version": "19.44.35226"
+        },
+        "cython": {
+          "commands": "cython",
+          "linker": "cython",
+          "name": "cython",
+          "version": "3.2.4"
+        }
+      },
+      "Machine Information": {
+        "build": {
+          "cpu": "x86_64",
+          "endian": "little",
+          "family": "x86_64",
+          "system": "windows"
+        },
+        "host": {
+          "cpu": "x86_64",
+          "endian": "little",
+          "family": "x86_64",
+          "system": "windows"
+        }
+      },
+      "Python Information": {
+        "path": "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\build-env-jxn7bo0g\\Scripts\\python.exe",
+        "version": "3.11"
+      },
+      "SIMD Extensions": {
+        "baseline": [
+          "X86_V2"
+        ],
+        "found": [
+          "X86_V3"
+        ]
+      }
+    },
+    "platform": "Windows-10-10.0.26100-SP0",
+    "python": "3.11.9",
+    "python_implementation": "CPython",
+    "threads": 1
+  },
+  "execution_status": "EXECUTED",
+  "production_activation": false,
+  "provenance": {
+    "actual_checkout_sha": "6272e7b230f7dbbc5d2b235614b9d5badb95ea7e",
+    "expected_pr_head_sha": "6272e7b230f7dbbc5d2b235614b9d5badb95ea7e",
+    "identity_semantics": "checkout before execution; source hashes bind uncommitted edits; PR HEAD may be unassigned",
+    "source_files_sha256": {
+      "tools/agent-memory-bench/run_emeans_vs_lloyd.py": "8e37ba4549bbd96139367439bd2479bc1add7f681645e49199de1d82fc01dc2c",
+      "tools/agent-memory-bench/validate_emeans_vs_lloyd.py": "064f849b388a1c2c616cc7c2cef883fe9c68ece536b4719b738730b6f064d479"
+    }
+  },
+  "raw_output": {
+    "path": "E:\\_repoz\\agent-memory-workspaces\\2026-11-19-r5-emeans-vs-lloyd-v2\\emeans.raw.json",
+    "sha256": "d4f2912c5adebfec29f9b895201fb3ca140d507b97546fd9c80ee54bf41d3608"
+  },
+  "schema": "r5.emeans_vs_lloyd.receipt.v2"
+}
