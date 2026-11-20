@@ -1,6 +1,9 @@
 *.py text eol=lf
 *.json text eol=lf
 
+artifacts/r5-emeans-vs-lloyd/emeans.raw.sha256 text eol=lf
+artifacts/r5-exact-vector-index/decision.raw.sha256 text eol=lf
+
 tests/eval/fixtures/precomputed-embedding-external-hash.json text eol=lf
 tests/eval/fixtures/precomputed-embedding-minilm-l6-v2.json text eol=lf
 tests/eval/fixtures/precomputed-embedding-minilm-l6-v2-large.json text eol=lf
