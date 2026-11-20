@@ -601,6 +601,7 @@ jobs:
           -DAGENT_MEMORY_BUILD_TESTS=ON
           -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
           -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DAGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA=${{ github.event.pull_request.head.sha || github.sha }}
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build native MIH benchmark harness
@@ -608,9 +609,104 @@ jobs:
           cmake --build build-native-mih --config Release --target
           agent-memory-mih-native-hot-path
           agent-memory-mih-native-sparse-arbitrary-m
+          agent-memory-reranker-admission-scaling
 
       - name: Test native MIH benchmark harness
         run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_
+
+      - name: Test reranker admission scaling
+        run: ./build-native-mih/tools/agent-memory-bench/agent-memory-reranker-admission-scaling --self-test
+
+      - name: Run reranker admission scaling
+        run: ./build-native-mih/tools/agent-memory-bench/agent-memory-reranker-admission-scaling build-native-mih/reranker-admission-scaling.json
+
+      - name: Validate reranker admission receipt
+        run: |
+          python tools/agent-memory-bench/validate-reranker-admission-receipt.py --self-test
+          python tools/agent-memory-bench/validate-reranker-admission-receipt.py \
+            --receipt build-native-mih/reranker-admission-scaling.json \
+            --expected-head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --actual-checkout-sha "$(git rev-parse HEAD)" \
+            --write-sidecar build-native-mih/reranker-admission-scaling.sha256.json
+
+      - name: Upload reranker admission scaling receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: reranker-admission-scaling-receipt
+          path: |
+            build-native-mih/reranker-admission-scaling.json
+            build-native-mih/reranker-admission-scaling.sha256.json
+          if-no-files-found: error
+
+  exact-vector-numerical-frontier:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: Exact-vector numerical frontier
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure numerical frontier harness
+        run: >
+          cmake -S . -B build-exact-vector-numerical-frontier
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DAGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA=${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Build exact-vector numerical frontier target
+        run: >
+          cmake --build build-exact-vector-numerical-frontier --config Release
+          --target agent-memory-exact-vector-numerical-frontier
+
+      - name: Run exact-vector numerical frontier self-test
+        run: >
+          ctest --test-dir build-exact-vector-numerical-frontier
+          --build-config Release --output-on-failure
+          -R '^agent_memory_exact_vector_numerical_frontier_(self_test|invalid_cli)$'
+
+      - name: Verify CLI failure is non-zero
+        run: |
+          set +e
+          build-exact-vector-numerical-frontier/tools/agent-memory-bench/agent-memory-exact-vector-numerical-frontier --invalid-option
+          status=$?
+          set -e
+          test "$status" -ne 0
+
+      - name: Validate receipt validator self-test
+        run: python tools/agent-memory-bench/validate_exact_vector_numerical_frontier.py --self-test
+
+      - name: Run bounded numerical frontier benchmark
+        run: >
+          build-exact-vector-numerical-frontier/tools/agent-memory-bench/agent-memory-exact-vector-numerical-frontier
+          --documents 64 --queries 8 --dimension 128 --warmups 2 --repeats 4
+          --output build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json
+
+      - name: Validate numerical frontier receipt
+        run: >
+          python tools/agent-memory-bench/validate_exact_vector_numerical_frontier.py
+          build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json
+          --expected-source-commit "$(git rev-parse HEAD)"
+          --expected-checkout-sha "$(git rev-parse HEAD)"
+          --expected-pr-head-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Record raw receipt SHA-256
+        run: >
+          sha256sum build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json
+          | tee build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json.sha256
+
+      - name: Upload numerical frontier receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-vector-numerical-frontier-receipt
+          path: |
+            build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json
+            build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json.sha256
+          if-no-files-found: error
 
   r4-native-benchmark:
     if: needs.changes.outputs.research == 'true'
@@ -1273,6 +1369,7 @@ jobs:
       - mdbx
       - mdbx-benchmark
       - native-mih-benchmark
+      - exact-vector-numerical-frontier
       - r4-native-benchmark
       - thq-faiss-additive-control
       - thq-packed-codec-contract
@@ -1298,6 +1395,7 @@ jobs:
           STORAGE_RESULT: ${{ needs.mdbx.result }}
           MDBX_BENCHMARK_RESULT: ${{ needs.mdbx-benchmark.result }}
           MIH_RESULT: ${{ needs.native-mih-benchmark.result }}
+          NUMERICAL_FRONTIER_RESULT: ${{ needs.exact-vector-numerical-frontier.result }}
           R4_RESULT: ${{ needs.r4-native-benchmark.result }}
           FAISS_RESULT: ${{ needs.thq-faiss-additive-control.result }}
           THQ_RESULT: ${{ needs.thq-packed-codec-contract.result }}
@@ -1333,6 +1431,7 @@ jobs:
           check_required "$STORAGE_REQUIRED" "$STORAGE_RESULT" "MDBX storage"
           check_required "$RESEARCH_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
           check_required "$RESEARCH_REQUIRED" "$MIH_RESULT" "native MIH"
+          check_required "$RESEARCH_REQUIRED" "$NUMERICAL_FRONTIER_RESULT" "exact-vector numerical frontier"
           check_required "$RESEARCH_REQUIRED" "$R4_RESULT" "R4 benchmark"
           check_required "$RESEARCH_REQUIRED" "$FAISS_RESULT" "Faiss control"
           check_required "$RESEARCH_REQUIRED" "$THQ_RESULT" "THQ packed codec"

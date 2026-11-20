@@ -304,6 +304,23 @@ endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
+    if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        add_test(
+            NAME agent_memory_exact_vector_numerical_frontier_self_test
+            COMMAND $<TARGET_FILE:agent-memory-exact-vector-numerical-frontier> --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_exact_vector_numerical_frontier_invalid_cli
+            COMMAND $<TARGET_FILE:agent-memory-exact-vector-numerical-frontier> --invalid-option
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        set_tests_properties(
+            agent_memory_exact_vector_numerical_frontier_invalid_cli
+            PROPERTIES
+                WILL_FAIL TRUE
+        )
+    endif()
     if(AGENT_MEMORY_BUILD_EXAMPLES)
         add_test(
             NAME agent_memory_canonical_content_example
@@ -528,6 +545,13 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND agent-memory-mih-native-sparse-arbitrary-m
                 --global-exact-fixture
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/eval/fixtures/mih-global-exact-conformance-v1.json"
+        )
+        add_test(
+            NAME agent_memory_mih_global_exact_fixture_mutation_self_test
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/test-mih-global-exact-fixture.py"
+                --binary $<TARGET_FILE:agent-memory-mih-native-sparse-arbitrary-m>
+                --fixture "${CMAKE_CURRENT_SOURCE_DIR}/tests/eval/fixtures/mih-global-exact-conformance-v1.json"
         )
         add_test(
             NAME agent_memory_standard_binary_encoder_evaluator_self_test
@@ -2426,6 +2450,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --raw ${CMAKE_CURRENT_SOURCE_DIR}/guides/experiments/2026-10-27-seg-v2-qualification.raw.tsv
                     --receipt ${CMAKE_CURRENT_SOURCE_DIR}/guides/experiments/2026-10-27-seg-v2-qualification.receipt.json
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+    endif()
+    if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        # This control is a bounded C++ research executable, not a full
+        # research-test matrix; keep it available when research tests are off.
+        add_test(
+            NAME agent_memory_reranker_admission_scaling_self_test
+            COMMAND agent-memory-reranker-admission-scaling --self-test
         )
     endif()
     add_subdirectory(tests)
