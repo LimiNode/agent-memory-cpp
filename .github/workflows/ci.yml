@@ -639,6 +639,7 @@ jobs:
           -DAGENT_MEMORY_BUILD_TESTS=ON
           -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
           -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DAGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA=${{ github.event.pull_request.head.sha || github.sha }}
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build native MIH benchmark harness
@@ -646,9 +647,34 @@ jobs:
           cmake --build build-native-mih --config Release --target
           agent-memory-mih-native-hot-path
           agent-memory-mih-native-sparse-arbitrary-m
+          agent-memory-reranker-admission-scaling
 
       - name: Test native MIH benchmark harness
         run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_
+
+      - name: Test reranker admission scaling
+        run: ./build-native-mih/tools/agent-memory-bench/agent-memory-reranker-admission-scaling --self-test
+
+      - name: Run reranker admission scaling
+        run: ./build-native-mih/tools/agent-memory-bench/agent-memory-reranker-admission-scaling build-native-mih/reranker-admission-scaling.json
+
+      - name: Validate reranker admission receipt
+        run: |
+          python tools/agent-memory-bench/validate-reranker-admission-receipt.py --self-test
+          python tools/agent-memory-bench/validate-reranker-admission-receipt.py \
+            --receipt build-native-mih/reranker-admission-scaling.json \
+            --expected-head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --actual-checkout-sha "$(git rev-parse HEAD)" \
+            --write-sidecar build-native-mih/reranker-admission-scaling.sha256.json
+
+      - name: Upload reranker admission scaling receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: reranker-admission-scaling-receipt
+          path: |
+            build-native-mih/reranker-admission-scaling.json
+            build-native-mih/reranker-admission-scaling.sha256.json
+          if-no-files-found: error
 
   r4-native-benchmark:
     if: needs.changes.outputs.research == 'true'
