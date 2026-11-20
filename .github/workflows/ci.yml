@@ -1544,6 +1544,7 @@ jobs:
           path: |
             build-lexical-topk/receipt.json
             build-lexical-topk/receipt.json.sha256
+            build-lexical-topk/tools/agent-memory-bench/generated-lexical-topk/
 
   persistent-lexical-oracle:
     if: needs.changes.outputs.research == 'true'
