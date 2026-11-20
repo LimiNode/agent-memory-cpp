@@ -421,6 +421,25 @@ cmake --build .build/cpp17 --config Release --parallel
 ctest --test-dir .build/cpp17 --build-config Release --output-on-failure
 ```
 
+Native MSVC MDBX builds use the same options with the Visual Studio generator:
+
+```powershell
+cmake -S . -B .build/mdbx-msvc -G "Visual Studio 17 2022" -A x64 `
+    -DAGENT_MEMORY_ENABLE_MDBX=ON -DAGENT_MEMORY_MDBX_DEPS_MODE=BUNDLED `
+    -DAGENT_MEMORY_ENABLE_JSON=OFF -DAGENT_MEMORY_BUILD_TESTS=ON `
+    -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+cmake --build .build/mdbx-msvc --config Release --parallel 2
+ctest --test-dir .build/mdbx-msvc -C Release --output-on-failure
+cmake --build .build/mdbx-msvc --config Debug --parallel 2
+ctest --test-dir .build/mdbx-msvc -C Debug --output-on-failure
+```
+
+CMake propagates `/Zc:__cplusplus` and `NOMINMAX` to MSVC library consumers and
+sets the language-level option on the source-built libmdbx C++ target. Do not
+replace `CMAKE_CXX_FLAGS` or require manual flags for this supported project
+configuration. This qualifies the pinned dependencies used here, not every
+upstream `mdbx-containers` configuration.
+
 ## CI Expectations
 
 GitHub Actions builds the default configuration on Windows, Linux, and macOS.
@@ -431,6 +450,9 @@ CI also includes a Linux MDBX wiring job. That job initializes only the flat
 `AGENT_MEMORY_ENABLE_MDBX=ON`, and runs CTest. Do not use recursive submodule
 checkout for this job; nested dependency checkouts would hide flat-layout
 regressions.
+
+The Windows MDBX matrix additionally runs native MSVC Release and Debug CTest
+with JSON disabled. Both configurations are required by the storage CI gate.
 
 MDBX-enabled test builds register `agent_memory_mdbx_document_storage_test`,
 which opens a temporary MDBX database and validates the document storage
