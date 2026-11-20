@@ -29,9 +29,10 @@ admission or activate production retrieval.
 Scope isolation here is the host's explicit metadata predicate, not an
 assertion that the flat store provides a `ScopeId` partitioning API.
 
-The existing raw-product importer still uses its legacy canonical-content
-adapter internally; this check does not replace that adapter with numeric flat
-storage. The fixture uses short scope/resource IDs because that legacy path's
+The existing raw-product importer still uses legacy KnowledgeUnit, lexical and
+projection stores; flat CanonicalContent is a separate host-composed store in
+this fixture, not an importer backend replacement. The fixture uses short
+scope/resource IDs because that legacy path's
 hex-framed string keys remain subject to the MDBX environment's maximum key
 size. Numeric flat composite keys are separately fixed at 16 bytes. A passing
 consumer does not establish that all production DBIs have migrated to numeric
