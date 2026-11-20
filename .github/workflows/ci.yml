@@ -1445,6 +1445,9 @@ jobs:
       - name: Build full research CTest
         run: cmake --build build-research-full --config Release --parallel 2
 
+      - name: Record the full configured CTest plan
+        run: ctest --test-dir build-research-full --show-only=json-v1 > build-research-full/r5-configured-tests.json
+
       - name: Run full research CTest
         run: ctest --test-dir build-research-full --build-config Release --output-on-failure --output-junit r5-integration-junit.xml
 
@@ -1456,6 +1459,7 @@ jobs:
           path: |
             build-research-full/Testing/Temporary/LastTest.log
             build-research-full/r5-integration-junit.xml
+            build-research-full/r5-configured-tests.json
             build-research-full/CMakeCache.txt
           if-no-files-found: error
 

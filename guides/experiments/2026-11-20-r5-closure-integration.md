@@ -39,16 +39,20 @@ The `r5-combined-integration-<assembly SHA>` Actions artifact contains:
 - a machine-readable receipt and SHA-256 sidecar;
 - a `git archive` of the exact tested source tree, with its SHA-256;
 - downloaded research receipts and sidecars from the same workflow run;
-- full combined CTest JUnit XML, `LastTest.log`, and CMake cache;
+- full configured CTest plan, JUnit XML, `LastTest.log`, and CMake cache;
 - byte hashes of every collected artifact and exact unique input blobs.
 
 The collector checks the workflow DAG and each required R5 gate. Unique input
 files must match their declared PR commit byte-for-byte as Git blobs. The
 three intentionally shared build files are checked by structural audit and
-the actual combined configure/build/CTest. Packaging remains a separate
+the actual combined configure/build/CTest. The executed JUnit names must match
+the complete configured CTest plan; four targeted tests cannot masquerade as
+the full suite. Packaging remains a separate
 workflow and must be linked separately; this receipt never implies packaging.
 The source archive excludes submodule payloads; their pinned commits remain in
-the Git tree. Initialize only the flat dependencies required by each job.
+the Git tree and receipt. Initialize only the flat dependencies required by
+each job. The archive preserves Git blobs, not Windows checkout line endings;
+the per-platform research receipts separately bind compiled checkout bytes.
 
 Actions retention is not a permanent evidence release. A later long-lived
 archive follows the existing experiment archive policy and requires separate

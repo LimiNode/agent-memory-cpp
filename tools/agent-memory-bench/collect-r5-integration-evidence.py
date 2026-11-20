@@ -95,15 +95,18 @@ def audit_workflow(text):
     return {"unique_jobs": len(jobs), "required_r5_gates_present": True}
 
 
-def validate_junit(text):
+def validate_junit(text, configured_names):
     tests = list(ET.fromstring(text).iter("testcase"))
     require(tests, "empty combined CTest result")
     names = [test.attrib["name"] for test in tests]
     require(len(names) == len(set(names)), "duplicate CTests")
+    require(configured_names and len(configured_names) == len(set(configured_names))
+            and set(names) == set(configured_names), "executed CTests differ from the full configured test plan")
     require(not any(test.find(tag) is not None for test in tests for tag in ("failure", "error", "skipped")),
             "combined CTest failure, error or skip")
     for fragment in ("exact_vector_index_decision", "exact_lexical_topk_decision",
-                     "production_reranker_admission", "exact_vector_numerical_frontier"):
+                     "production_reranker_admission", "exact_vector_numerical_frontier",
+                     "agent_memory_exact_vector_index_test"):
         require(any(fragment in name for name in names), f"combined CTest missing: {fragment}")
     return {"test_count": len(tests), "failed": 0, "skipped": 0}
 
@@ -166,14 +169,16 @@ def self_test(inputs, workflow):
         mutations.append(lambda payload=payload: audit_workflow(payload))
     mutations.append(lambda: audit_workflow(workflow + "\njobs: {}\n"))
     names = ("exact_vector_index_decision", "exact_lexical_topk_decision",
-             "production_reranker_admission", "exact_vector_numerical_frontier")
+             "production_reranker_admission", "exact_vector_numerical_frontier",
+             "agent_memory_exact_vector_index_test")
     valid_xml = "<testsuite>" + "".join(f'<testcase name="{name}" />' for name in names) + "</testsuite>"
-    validate_junit(valid_xml)
+    validate_junit(valid_xml, names)
     for tag in ("failure", "error", "skipped"):
         bad_xml = valid_xml.replace(" />", f"><{tag}/></testcase>", 1)
-        mutations.append(lambda text=bad_xml: validate_junit(text))
-    mutations.append(lambda: validate_junit("<testsuite/>"))
-    mutations.append(lambda: validate_junit(valid_xml.replace("</testsuite>", '<testcase name="exact_vector_index_decision"/></testsuite>')))
+        mutations.append(lambda text=bad_xml: validate_junit(text, names))
+    mutations.append(lambda: validate_junit("<testsuite/>", names))
+    mutations.append(lambda: validate_junit(valid_xml.replace("</testsuite>", '<testcase name="exact_vector_index_decision"/></testsuite>'), names))
+    mutations.append(lambda: validate_junit(valid_xml, names + ("unexecuted_configured_test",)))
     for mutation in mutations:
         try:
             mutation()
@@ -190,7 +195,10 @@ def collect(args, inputs, workflow):
     receipt = {"schema": "r5-combined-integration-v1", "status": "FAIL",
                "inputs": inputs, "production_activation": False,
                "scope": "Actual combined workflow only; packaging is a separate workflow.",
+               "source_archive_scope": "Git object tree, not literal Windows checkout bytes; per-platform receipts bind checkout EOL conversions and compiled source hashes.",
                "checkout_sha": git("rev-parse", "HEAD"), "source_tree": git("rev-parse", "HEAD^{tree}"),
+               "submodule_gitlinks": [entry for entry in git("ls-tree", "-r", "HEAD").splitlines()
+                                      if entry.startswith("160000 ")],
                "run_url": os.environ.get("GITHUB_SERVER_URL", "https://github.com") + "/" +
                           os.environ.get("GITHUB_REPOSITORY", "LimiNode/agent-memory-cpp") +
                           "/actions/runs/" + os.environ.get("GITHUB_RUN_ID", "local"),
@@ -212,7 +220,11 @@ def collect(args, inputs, workflow):
                         for path in directories), f"missing integration artifact group: {group}")
         results = list(artifacts.rglob("r5-integration-junit.xml"))
         require(len(results) == 1, "expected one full combined CTest XML")
-        receipt["ctest"] = validate_junit(results[0].read_text(encoding="utf-8"))
+        plans = list(artifacts.rglob("r5-configured-tests.json"))
+        require(len(plans) == 1, "expected one full configured CTest plan")
+        plan = json.loads(plans[0].read_text(encoding="utf-8"))
+        receipt["ctest"] = validate_junit(results[0].read_text(encoding="utf-8"),
+                                         [test["name"] for test in plan["tests"]])
         archive = output / "tested-source.tar.gz"
         subprocess.run(["git", "archive", "--format=tar.gz", f"--output={archive}", "HEAD"], check=True)
         receipt["source_archive_sha256"] = sha256(archive)
