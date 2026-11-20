@@ -2466,6 +2466,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
             PROPERTIES DEPENDS agent_memory_mdbx_canonical_flat_benchmark_self_test)
         set_tests_properties(agent_memory_mdbx_canonical_flat_benchmark_self_test
             agent_memory_mdbx_canonical_flat_benchmark_receipt_replay PROPERTIES TIMEOUT 60)
+        add_test(NAME agent_memory_mdbx_canonical_flat_benchmark_retained_receipt_replay
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate-mdbx-canonical-flat-benchmark.py
+                --raw .artifacts/canonical-comparison-v2/balanced-5-60min.tsv
+                --receipt .artifacts/canonical-comparison-v2/balanced-5-60min.receipt.json
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(agent_memory_mdbx_canonical_flat_benchmark_retained_receipt_replay
+            PROPERTIES TIMEOUT 30)
         add_test(
             NAME agent_memory_mdbx_canonical_flat_benchmark_validator_self_test
             COMMAND ${Python3_EXECUTABLE}
