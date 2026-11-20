@@ -2512,6 +2512,30 @@ if(AGENT_MEMORY_BUILD_TESTS)
             NAME agent_memory_thq_certified_adc_self_test
             COMMAND agent-memory-thq-fastscan-v3-benchmark --certificate-self-test
         )
+        get_target_property(_AGENT_MEMORY_FASTSCAN_DEFINITIONS
+            agent-memory-thq-fastscan-v3-benchmark COMPILE_DEFINITIONS)
+        if("AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2=1" IN_LIST _AGENT_MEMORY_FASTSCAN_DEFINITIONS)
+            add_test(
+                NAME agent_memory_thq_adc_efficiency_self_test
+                COMMAND agent-memory-thq-fastscan-v3-benchmark --efficiency-self-test
+            )
+        endif()
+    endif()
+    if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
+        add_test(
+            NAME agent_memory_adc_efficiency_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-adc-efficiency.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_adc_candidates_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-adc-candidates.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
     endif()
     add_subdirectory(tests)
 endif()

@@ -8,6 +8,7 @@
 #include <cstring>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -60,6 +61,10 @@ struct Options {
   bool self_test = false;
   bool certificate_self_test = false;
   bool certificate_benchmark = false;
+  bool efficiency_self_test = false;
+  bool efficiency_benchmark = false;
+  bool efficiency_diagnostic = false;
+  bool efficiency_candidates = false;
 };
 
 struct QueryTables {
@@ -128,6 +133,22 @@ Options parse_options(int argc, char** argv) {
       options.certificate_benchmark = true;
       continue;
     }
+    if (key == "--efficiency-self-test") {
+      options.efficiency_self_test = true;
+      continue;
+    }
+    if (key == "--efficiency-benchmark") {
+      options.efficiency_benchmark = true;
+      continue;
+    }
+    if (key == "--efficiency-diagnostic") {
+      options.efficiency_diagnostic = true;
+      continue;
+    }
+    if (key == "--efficiency-candidates") {
+      options.efficiency_candidates = true;
+      continue;
+    }
     if (i + 1 >= argc) throw std::runtime_error("missing value for " + key);
     const std::string value = argv[++i];
     if (key == "--codes") options.codes = value;
@@ -148,12 +169,20 @@ Options parse_options(int argc, char** argv) {
       profile_override = true;
   }
   if (static_cast<int>(options.self_test) + static_cast<int>(options.certificate_self_test) +
-      static_cast<int>(options.certificate_benchmark) > 1)
+      static_cast<int>(options.certificate_benchmark) + static_cast<int>(options.efficiency_self_test) +
+      static_cast<int>(options.efficiency_benchmark) + static_cast<int>(options.efficiency_diagnostic) +
+      static_cast<int>(options.efficiency_candidates) > 1)
     throw std::runtime_error("benchmark and self-test modes are mutually exclusive");
-  if (options.self_test || options.certificate_self_test) return options;
+  if (options.self_test || options.certificate_self_test || options.efficiency_self_test) return options;
   if (options.codes.empty() || options.thresholds.empty() || options.queries.empty())
     throw std::runtime_error("--codes, --thresholds and --queries are required");
-  if (options.certificate_benchmark) {
+  if (options.efficiency_candidates) {
+    if (profile_override || options.candidate_flat.empty() || options.candidate_raw.empty() ||
+        !options.documents.empty() || !options.qrel_ids.empty() || !options.qrel_scores.empty())
+      throw std::runtime_error("candidate efficiency mode requires flat/raw and fixed profiles, without quality inputs");
+    return options;
+  }
+  if (options.certificate_benchmark || options.efficiency_benchmark || options.efficiency_diagnostic) {
     if (profile_override || !options.candidate_flat.empty() || !options.candidate_raw.empty() ||
         !options.documents.empty() || !options.qrel_ids.empty() || !options.qrel_scores.empty())
       throw std::runtime_error("certificate benchmark has fixed dense profiles and no quality/gather inputs");
@@ -1221,6 +1250,1238 @@ void certificate_self_test() {
                    .dump(2) << '\n';
 }
 
+// R6 corrective arms deliberately leave the measured v1 functions above intact.
+constexpr std::int32_t kMaximumIntegerScore = static_cast<std::int32_t>(kPairs * 255);
+static_assert(kMaximumIntegerScore <= std::numeric_limits<std::uint16_t>::max(),
+    "integer ADC accumulation must fit without saturation or wrap");
+constexpr unsigned kSimdInteger = 1U, kIntegerCutoff = 2U, kTrustedIds = 4U;
+constexpr unsigned kReuseWorkspace = 8U, kSimdRefinement = 16U, kDynamicTau = 32U;
+// Select at most one combined mask after reviewing isolated-arm measurements.
+constexpr unsigned kEfficiencyCombinedMask = 31U;
+
+std::int32_t integer_cutoff(const QueryTables& tables, const ScoreEnvelope& envelope, float tau) {
+  require_certificate_environment();
+  if (!(tables.global_scale > 0.0F) || !std::isfinite(tables.global_scale) ||
+      !std::isfinite(envelope.residual_low) || !std::isfinite(envelope.residual_high) ||
+      !(envelope.accumulation_error >= 0.0) || !std::isfinite(envelope.accumulation_error))
+    throw std::runtime_error("cutoff requires a validated finite envelope and positive scale");
+  if (!std::isfinite(tau)) throw std::runtime_error("cutoff requires a finite incumbent");
+  // Positive-scale correctly rounded division/addition/subtraction and nextafter
+  // are monotone. Search the same outward bound, not an algebraic approximation.
+  std::int32_t low = -1, high = kMaximumIntegerScore + 1;
+  while (high - low > 1) {
+    const auto middle = low + (high - low) / 2;
+    if (must_refine(score_bounds(static_cast<std::uint16_t>(middle), tables, envelope).first, tau))
+      low = middle;
+    else high = middle;
+  }
+  return low;
+}
+
+class ValidatedIds {
+ public:
+  explicit ValidatedIds(std::vector<std::int32_t> ids) : ids_(std::move(ids)) {
+    auto sorted = ids_;
+    std::sort(sorted.begin(), sorted.end());
+    if ((!sorted.empty() && sorted.front() < 0) ||
+        std::adjacent_find(sorted.begin(), sorted.end()) != sorted.end())
+      throw std::runtime_error("trusted index construction requires distinct nonnegative IDs");
+  }
+  const std::vector<std::int32_t>& ids() const { return ids_; }
+ private:
+  std::vector<std::int32_t> ids_;
+};
+
+enum class EfficiencyStage : std::size_t {
+  IdValidation, QueryLut, Envelope, IntegerScan, InitialSelection,
+  Incumbents, BoundChecks, Refinement, FinalSelection, BufferAllocation, Count
+};
+
+struct EfficiencyStages {
+  std::array<double, static_cast<std::size_t>(EfficiencyStage::Count)> ms{};
+  Json payload() const {
+    const std::array<const char*, 10> names = {{"id_validation_copy_sort", "query_lut",
+        "error_envelope", "integer_scan", "initial_selection", "incumbent_scoring",
+        "bound_checks", "exact_refinement", "final_selection", "buffer_allocation"}};
+    Json result = Json::object();
+    for (std::size_t i = 0; i < names.size(); ++i) result[names[i]] = ms[i];
+    return result;
+  }
+};
+
+template <bool Diagnostic, typename Action>
+void efficiency_stage(EfficiencyStages& stages, EfficiencyStage stage, Action action) {
+  if constexpr (Diagnostic) {
+    const auto started = Clock::now();
+    action();
+    stages.ms[static_cast<std::size_t>(stage)] +=
+        std::chrono::duration<double, std::milli>(Clock::now() - started).count();
+  } else action();
+}
+
+struct EfficiencyWorkspace {
+  RefinedTop result;
+  std::vector<std::int32_t> sorted_ids;
+  std::vector<std::uint16_t> integers;
+  std::vector<std::size_t> seeds;
+  std::vector<std::size_t> heap;
+  std::size_t physical_exact_evaluations = 0;
+  std::size_t heap_replacements = 0;
+  std::size_t cutoff_updates = 0;
+  float initial_tau = 0.0F, final_tau = 0.0F;
+  EfficiencyStages stages;
+
+  void release_scratch() {
+    std::vector<std::int32_t>().swap(sorted_ids);
+    std::vector<std::uint16_t>().swap(integers);
+    std::vector<std::size_t>().swap(seeds);
+    std::vector<std::size_t>().swap(heap);
+  }
+};
+
+template <typename Scores>
+void bounded_top_indices(const Scores& scores, const std::vector<std::int32_t>& ids,
+                         std::size_t top, std::vector<std::size_t>& selected) {
+  selected.clear();
+  top = std::min(top, ids.size());
+  if (top == 0) return;
+  selected.reserve(top);
+  const auto better = [&scores, &ids](std::size_t lhs, std::size_t rhs) {
+    if (scores[lhs] != scores[rhs]) return scores[lhs] < scores[rhs];
+    return ids[lhs] < ids[rhs];
+  };
+  for (std::size_t i = 0; i < ids.size(); ++i) {
+    if (selected.size() < top) {
+      selected.push_back(i);
+      std::push_heap(selected.begin(), selected.end(), better);
+    } else if (better(i, selected.front())) {
+      std::pop_heap(selected.begin(), selected.end(), better);
+      selected.back() = i;
+      std::push_heap(selected.begin(), selected.end(), better);
+    }
+  }
+  std::sort_heap(selected.begin(), selected.end(), better);
+}
+
+#if AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2
+void exact_refine_block(const Layouts& layouts, const QueryTables& tables,
+                         std::size_t block_start, std::uint32_t required,
+                         EfficiencyWorkspace& workspace) {
+  // Same lookup and sequential FP32 addition order as the unchanged full-scan
+  // control. Unneeded lanes are counted as physical work, not logical refinements.
+  const auto* data = layouts.block32.data() + block_start * kOrdinalBytes;
+  for (std::size_t lane = 0; lane < kBlock; lane += 8) {
+    const auto selected = (required >> lane) & 255U;
+    if (selected == 0) continue;
+    std::size_t selected_count = 0;
+    for (std::size_t bit = 0; bit < 8; ++bit) selected_count += (selected >> bit) & 1U;
+    if (selected_count < 4) continue;  // Sparse groups retain the scalar path below.
+    __m256 sum = _mm256_setzero_ps();
+    for (std::size_t byte = 0; byte < kOrdinalBytes; ++byte) {
+      const auto packed = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(
+          data + byte * kBlock + lane));
+      const auto values = _mm256_cvtepu8_epi32(packed);
+      sum = _mm256_add_ps(sum, lookup16_fp32(tables.pair.data() + byte * 32,
+          _mm256_and_si256(values, _mm256_set1_epi32(15))));
+      sum = _mm256_add_ps(sum, lookup16_fp32(tables.pair.data() + byte * 32 + 16,
+          _mm256_srli_epi32(values, 4)));
+    }
+    alignas(32) float values[8];
+    _mm256_store_ps(values, sum);
+    workspace.physical_exact_evaluations += 8;
+    for (std::size_t bit = 0; bit < 8; ++bit) {
+      if (((selected >> bit) & 1U) == 0) continue;
+      if (!std::isfinite(values[bit])) throw std::runtime_error("nonfinite SIMD refinement");
+      workspace.result.scores[block_start + lane + bit] = values[bit];
+      ++workspace.result.exact_evaluations;
+    }
+  }
+}
+#endif
+
+template <unsigned Mask, bool Diagnostic>
+void efficiency_certified(const std::vector<std::uint8_t>& codes,
+                            const std::vector<std::int32_t>& untrusted_ids,
+                            const ValidatedIds& trusted, const Layouts& layouts,
+                            const QueryTables& tables, std::size_t top,
+                            EfficiencyWorkspace& workspace) {
+  static_assert(!((Mask & kSimdRefinement) && (Mask & kDynamicTau)),
+      "combined SIMD/dynamic scheduling needs a separate evaluated-lane heap contract");
+  const auto& ids = (Mask & kTrustedIds) ? trusted.ids() : untrusted_ids;
+  if (codes.size() % kOrdinalBytes != 0 || codes.size() / kOrdinalBytes != ids.size())
+    throw std::runtime_error("efficiency code/ID shape mismatch");
+  if constexpr ((Mask & kSimdInteger) || (Mask & kSimdRefinement)) {
+    if (layouts.documents != ids.size() || layouts.padded < ids.size() ||
+        layouts.padded % kBlock != 0 ||
+        layouts.block32.size() != layouts.padded * kOrdinalBytes)
+      throw std::runtime_error("efficiency layout shape mismatch");
+  }
+  workspace.result.exact_evaluations = 0;
+  workspace.physical_exact_evaluations = workspace.heap_replacements = workspace.cutoff_updates = 0;
+  workspace.stages = {};
+  efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::IdValidation, [&] {
+    if constexpr (!(Mask & kTrustedIds)) {
+      workspace.sorted_ids.assign(ids.begin(), ids.end());
+      std::sort(workspace.sorted_ids.begin(), workspace.sorted_ids.end());
+      if ((!workspace.sorted_ids.empty() && workspace.sorted_ids.front() < 0) ||
+          std::adjacent_find(workspace.sorted_ids.begin(), workspace.sorted_ids.end()) !=
+              workspace.sorted_ids.end())
+        throw std::runtime_error("efficiency requires distinct nonnegative IDs");
+    }
+  });
+  ScoreEnvelope envelope;
+  efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::Envelope,
+      [&] { envelope = make_score_envelope(tables); });
+  top = std::min(top, ids.size());
+  workspace.result.selected.clear();
+  if (top == 0) {
+    workspace.result.scores.clear();
+    workspace.result.vector_capacity_bytes = workspace.sorted_ids.capacity() * sizeof(std::int32_t);
+    return;
+  }
+  efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::BufferAllocation, [&] {
+    if constexpr (!(Mask & kSimdInteger)) workspace.integers.resize(ids.size());
+  });
+  efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::IntegerScan, [&] {
+    if constexpr (Mask & kSimdInteger)
+      score_global_u16_avx2<true>(layouts, tables, workspace.integers);
+    else for (std::size_t i = 0; i < ids.size(); ++i)
+      workspace.integers[i] = integer_pair_score(codes.data() + i * kOrdinalBytes, tables);
+  });
+  efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::InitialSelection, [&] {
+    if constexpr (Mask & kReuseWorkspace)
+      bounded_top_indices(workspace.integers, ids, top, workspace.seeds);
+    else workspace.seeds = top_indices(workspace.integers, ids.data(), ids.size(), top);
+  });
+  efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::BufferAllocation,
+      [&] { workspace.result.scores.assign(ids.size(), std::numeric_limits<float>::infinity()); });
+  float tau = -std::numeric_limits<float>::infinity();
+  efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::Incumbents, [&] {
+    for (const auto i : workspace.seeds) {
+      workspace.result.scores[i] = score_pair(codes.data() + i * kOrdinalBytes, tables);
+      if (!std::isfinite(workspace.result.scores[i])) throw std::runtime_error("nonfinite incumbent");
+      tau = std::max(tau, workspace.result.scores[i]);
+      ++workspace.result.exact_evaluations;
+      ++workspace.physical_exact_evaluations;
+    }
+  });
+  workspace.initial_tau = tau;
+  const auto better = [&workspace, &ids](std::size_t lhs, std::size_t rhs) {
+    if (workspace.result.scores[lhs] != workspace.result.scores[rhs])
+      return workspace.result.scores[lhs] < workspace.result.scores[rhs];
+    return ids[lhs] < ids[rhs];
+  };
+  if constexpr (Mask & kDynamicTau) {
+    workspace.heap.assign(workspace.seeds.begin(), workspace.seeds.end());
+    std::make_heap(workspace.heap.begin(), workspace.heap.end(), better);
+  }
+  std::int32_t cutoff = -1;
+  if constexpr (Mask & kIntegerCutoff) {
+    efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::BoundChecks,
+        [&] { cutoff = integer_cutoff(tables, envelope, tau); });
+    ++workspace.cutoff_updates;
+  }
+  for (std::size_t block = 0; block < ids.size(); block += kBlock) {
+    std::uint32_t required = 0;
+    const auto count = std::min(kBlock, ids.size() - block);
+    if constexpr (Mask & kSimdRefinement) {
+      efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::BoundChecks, [&] {
+        for (std::size_t lane = 0; lane < count; ++lane) {
+          const auto i = block + lane;
+          if (std::isfinite(workspace.result.scores[i])) continue;
+          const bool refine = (Mask & kIntegerCutoff) ?
+              static_cast<std::int32_t>(workspace.integers[i]) <= cutoff :
+              must_refine(score_bounds(workspace.integers[i], tables, envelope).first, tau);
+          if (refine) required |= std::uint32_t{1} << lane;
+        }
+      });
+#if AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2
+      efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::Refinement,
+          [&] { exact_refine_block(layouts, tables, block, required, workspace); });
+#else
+      throw std::runtime_error("SIMD refinement is not compiled");
+#endif
+    }
+    for (std::size_t lane = 0; lane < count; ++lane) {
+      const auto i = block + lane;
+      if (std::isfinite(workspace.result.scores[i])) continue;
+      bool refine = false;
+      if constexpr (Mask & kSimdRefinement) refine = ((required >> lane) & 1U) != 0;
+      else efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::BoundChecks, [&] {
+        if constexpr (Mask & kIntegerCutoff)
+          refine = static_cast<std::int32_t>(workspace.integers[i]) <= cutoff;
+        else refine = must_refine(score_bounds(workspace.integers[i], tables, envelope).first, tau);
+      });
+      if (!refine) continue;
+      efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::Refinement, [&] {
+        workspace.result.scores[i] = score_pair(codes.data() + i * kOrdinalBytes, tables);
+        if (!std::isfinite(workspace.result.scores[i])) throw std::runtime_error("nonfinite refinement");
+        ++workspace.result.exact_evaluations;
+        ++workspace.physical_exact_evaluations;
+      });
+      if constexpr (Mask & kDynamicTau) {
+        efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::BoundChecks, [&] {
+          if (better(i, workspace.heap.front())) {
+            std::pop_heap(workspace.heap.begin(), workspace.heap.end(), better);
+            workspace.heap.back() = i;
+            std::push_heap(workspace.heap.begin(), workspace.heap.end(), better);
+            ++workspace.heap_replacements;
+            const auto new_tau = workspace.result.scores[workspace.heap.front()];
+            if (new_tau > tau) throw std::runtime_error("dynamic incumbent increased");
+            if (new_tau != tau) {
+              tau = new_tau;
+              if constexpr (Mask & kIntegerCutoff) {
+                cutoff = integer_cutoff(tables, envelope, tau);
+                ++workspace.cutoff_updates;
+              }
+            }
+          }
+        });
+      }
+    }
+  }
+  workspace.final_tau = tau;
+  efficiency_stage<Diagnostic>(workspace.stages, EfficiencyStage::FinalSelection, [&] {
+    if constexpr (Mask & kReuseWorkspace)
+      bounded_top_indices(workspace.result.scores, ids, top, workspace.result.selected);
+    else workspace.result.selected = top_indices(workspace.result.scores, ids.data(), ids.size(), top);
+  });
+  workspace.result.vector_capacity_bytes = workspace.sorted_ids.capacity() * sizeof(std::int32_t) +
+      workspace.integers.capacity() * sizeof(std::uint16_t) +
+      workspace.seeds.capacity() * sizeof(std::size_t) +
+      workspace.heap.capacity() * sizeof(std::size_t) +
+      workspace.result.scores.capacity() * sizeof(float) +
+      workspace.result.selected.capacity() * sizeof(std::size_t);
+}
+
+std::vector<std::string> efficiency_arms() {
+  return {"pair_fp32_scalar", "pair_fp32_avx2_block32", "A0_original",
+      "A1_simd_integer", "A2_integer_cutoff", "A3_trusted_ids", "A4_reusable_workspace",
+      "A5_simd_refinement", "A6_dynamic_tau", "A7_combined", "A0_template_control"};
+}
+
+bool efficiency_reuses(std::size_t arm) {
+  return arm == 6 || (arm == 9 && (kEfficiencyCombinedMask & kReuseWorkspace));
+}
+
+template <bool Diagnostic>
+void dispatch_efficiency(std::size_t arm, const std::vector<std::uint8_t>& codes,
+                           const ValidatedIds& trusted, const Layouts& layouts,
+                           const QueryTables& tables, std::size_t top, EfficiencyWorkspace& workspace) {
+  const auto& ids = trusted.ids();
+  if (arm < 2) {
+    workspace.result = exhaustive_pair_top(codes, ids, tables, arm == 1 ? &layouts : nullptr, top);
+    workspace.physical_exact_evaluations = arm == 1 ? layouts.padded : ids.size();
+  } else if (arm == 2 && !Diagnostic) {
+    workspace.result = certified_top(codes, ids, tables, top);
+    workspace.physical_exact_evaluations = workspace.result.exact_evaluations;
+  } else {
+    switch (arm) {
+      case 2: efficiency_certified<0, Diagnostic>(codes, ids, trusted, layouts, tables, top, workspace); break;
+      case 3: efficiency_certified<kSimdInteger, Diagnostic>(codes, ids, trusted, layouts, tables, top, workspace); break;
+      case 4: efficiency_certified<kIntegerCutoff, Diagnostic>(codes, ids, trusted, layouts, tables, top, workspace); break;
+      case 5: efficiency_certified<kTrustedIds, Diagnostic>(codes, ids, trusted, layouts, tables, top, workspace); break;
+      case 6: efficiency_certified<kReuseWorkspace, Diagnostic>(codes, ids, trusted, layouts, tables, top, workspace); break;
+      case 7: efficiency_certified<kSimdRefinement, Diagnostic>(codes, ids, trusted, layouts, tables, top, workspace); break;
+      case 8: efficiency_certified<kDynamicTau, Diagnostic>(codes, ids, trusted, layouts, tables, top, workspace); break;
+      case 9:
+        efficiency_certified<kEfficiencyCombinedMask, Diagnostic>(codes, ids, trusted, layouts, tables, top, workspace);
+        break;
+      case 10: efficiency_certified<0, Diagnostic>(codes, ids, trusted, layouts, tables, top, workspace); break;
+      default: throw std::runtime_error("unknown efficiency arm");
+    }
+  }
+}
+
+Json efficiency_configuration() {
+  return {{"document_counts", {4096, 65536, kDocuments}}, {"top_k", {16, 128}},
+          {"query_indices", {0, 1, 2, 3, 4, 5, 6, 7}}, {"repeats", 5}, {"warmups", 1},
+          {"order_seed", 20261121}, {"arms", efficiency_arms()},
+          {"order_policy", "mt19937_raw_modulo_fisher_yates"}, {"quantile", "nearest_rank"},
+          {"combined_mask", kEfficiencyCombinedMask}, {"combined_components",
+              {"A1_simd_integer", "A2_integer_cutoff", "A3_trusted_ids", "A4_reusable_workspace", "A5_simd_refinement"}}};
+}
+
+void efficiency_benchmark(const Options& options) {
+  require_certificate_environment();
+  if (!AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2)
+    throw std::runtime_error("matched efficiency benchmark requires AVX2");
+  const auto elapsed_ms = [](Clock::time_point started) {
+    return std::chrono::duration<double, std::milli>(Clock::now() - started).count();
+  };
+  const auto codes = read_file<std::uint8_t>(options.codes);
+  const auto thresholds = read_file<float>(options.thresholds);
+  const auto queries = read_file<float>(options.queries);
+  if (codes.size() != kDocuments * kOrdinalBytes || thresholds.size() != kDimensions * 3 ||
+      queries.size() % kDimensions != 0 || queries.size() / kDimensions < 8)
+    throw std::runtime_error("efficiency source shape mismatch");
+  const auto arms = efficiency_arms();
+  const std::array<std::size_t, 3> counts = {4096, 65536, kDocuments};
+  const std::array<std::size_t, 2> top_values = {16, 128};
+  std::array<std::vector<float>, 8> reference_scores;
+  Json reference_cases = Json::array(), profiles = Json::array();
+  Json raw = Json::array(), diagnostic_rows = Json::array(), selectivity = Json::array();
+  Json summaries = Json::array();
+  std::size_t checked_scores = 0, checked_arm_cases = 0;
+  // Admission gate covers all integer scores, pair-AVX2 score bits and every
+  // refined score, before any uninstrumented timed trial is accepted.
+  for (const auto count : counts) {
+    const std::vector<std::uint8_t> prefix(codes.begin(), codes.begin() + count * kOrdinalBytes);
+    std::vector<std::int32_t> input_ids(count);
+    std::iota(input_ids.begin(), input_ids.end(), 0);
+    const ValidatedIds trusted(std::move(input_ids));
+    const auto& ids = trusted.ids();
+    const auto layouts = pack_layouts(prefix.data(), count);
+    for (std::size_t qi = 0; qi < 8; ++qi) {
+      const auto tables = make_tables(thresholds.data(), queries.data() + qi * kDimensions, false);
+      const auto envelope = make_score_envelope(tables);
+      const auto scalar = exhaustive_pair_top(prefix, ids, tables, nullptr, 128);
+      const auto simd = exhaustive_pair_top(prefix, ids, tables, &layouts, 128);
+      std::vector<std::uint16_t> integers;
+      score_global_u16_avx2<true>(layouts, tables, integers);
+      require_refined_bits(simd, scalar.scores);
+      require_same_top(simd, scalar.scores, ids, 128);
+      for (std::size_t i = 0; i < count; ++i) {
+        const auto integer = integer_pair_score(prefix.data() + i * kOrdinalBytes, tables);
+        if (integers[i] != integer) throw std::runtime_error("source SIMD integer mismatch");
+        require_encloses(score_bounds(integer, tables, envelope), scalar.scores[i]);
+      }
+      checked_scores += count;
+      for (const auto top : top_values) {
+        EfficiencyWorkspace original, dynamic;
+        dispatch_efficiency<false>(2, prefix, trusted, layouts, tables, top, original);
+        dispatch_efficiency<false>(8, prefix, trusted, layouts, tables, top, dynamic);
+        auto item = selected_payload(original.result, ids);
+        Json arm_expectations = Json::array();
+        for (std::size_t arm = 0; arm < arms.size(); ++arm) {
+          EfficiencyWorkspace workspace;
+          dispatch_efficiency<false>(arm, prefix, trusted, layouts, tables, top, workspace);
+          require_refined_bits(workspace.result, scalar.scores);
+          require_same_top(workspace.result, scalar.scores, ids, top);
+          arm_expectations.push_back({{"arm", arms[arm]},
+              {"exact_evaluations", workspace.result.exact_evaluations},
+              {"physical_exact_evaluations", workspace.physical_exact_evaluations},
+              {"vector_capacity_bytes", workspace.result.vector_capacity_bytes}});
+          ++checked_arm_cases;
+        }
+        item.update(Json{{"documents", count}, {"top_k", top}, {"query_index", qi}, {"arms", arm_expectations}});
+        reference_cases.push_back(std::move(item));
+        // These diagnostics are outside the full-query stopwatch and may make
+        // extra scans. Interval widths depend on Q, not document identity.
+        std::vector<double> widths;
+        widths.reserve(count);
+        for (std::size_t i = 0; i < count; ++i) {
+          const auto bounds = score_bounds(integers[i], tables, envelope);
+          widths.push_back(bounds.second - bounds.first);
+        }
+        const auto integer_top = top_indices(integers, ids.data(), count, top);
+        const auto exact_top = top_indices(scalar.scores, ids.data(), count, top);
+        const auto fixed_count = original.result.exact_evaluations;
+        const auto dynamic_count = dynamic.result.exact_evaluations;
+        if (dynamic_count > fixed_count) throw std::runtime_error("dynamic tau increased logical refinement");
+        const auto final_tau = scalar.scores[exact_top.back()];
+        const auto ideal_cutoff = integer_cutoff(tables, envelope, final_tau);
+        std::size_t ideal_screened = 0;
+        for (std::size_t i = 0; i < count; ++i)
+          ideal_screened += static_cast<std::int32_t>(integers[i]) <= ideal_cutoff;
+        selectivity.push_back({{"documents", count}, {"top_k", top}, {"query_index", qi},
+            {"fixed_exact_evaluations", fixed_count}, {"dynamic_exact_evaluations", dynamic_count},
+            {"fixed_tau_excess_evaluations", fixed_count - dynamic_count},
+            {"pruned_documents", count - fixed_count}, {"ideal_final_tau_screened", ideal_screened},
+            {"integer_top_k_overlap", overlap(integer_top, exact_top)},
+            {"bound_width_p50", nearest_rank(widths, 50)}, {"bound_width_p95", nearest_rank(widths, 95)},
+            {"bound_width_max", *std::max_element(widths.begin(), widths.end())}});
+      }
+      if (count == kDocuments) reference_scores[qi] = scalar.scores;
+    }
+  }
+  std::mt19937 order_rng(20261121);
+  std::size_t trial_id = 0, warmup_executions = 0;
+  for (const auto count : counts) {
+    auto started = Clock::now();
+    const std::vector<std::uint8_t> prefix(codes.begin(), codes.begin() + count * kOrdinalBytes);
+    const auto prefix_copy_ms = elapsed_ms(started);
+    started = Clock::now();
+    std::vector<std::int32_t> input_ids(count);
+    std::iota(input_ids.begin(), input_ids.end(), 0);
+    const ValidatedIds trusted(std::move(input_ids));
+    const auto trusted_id_build_ms = elapsed_ms(started);
+    const auto& ids = trusted.ids();
+    started = Clock::now();
+    const auto layouts = pack_layouts(prefix.data(), count);
+    const auto layout_build_ms = elapsed_ms(started);
+    Json cold_queries = Json::array();
+    for (const auto top : top_values) {
+      std::vector<EfficiencyWorkspace> reusable(arms.size());
+      for (std::size_t arm = 0; arm < arms.size(); ++arm) {
+        if (!efficiency_reuses(arm)) continue;
+        started = Clock::now();
+        const auto tables = make_tables(thresholds.data(), queries.data(), false);
+        dispatch_efficiency<false>(arm, prefix, trusted, layouts, tables, top, reusable[arm]);
+        const auto cold_ms = elapsed_ms(started);
+        require_same_top(reusable[arm].result, reference_scores[0], ids, top);
+        cold_queries.push_back({{"arm", arms[arm]}, {"top_k", top}, {"query_index", 0},
+            {"full_first_use_query_ms", cold_ms},
+            {"vector_capacity_bytes", reusable[arm].result.vector_capacity_bytes}});
+      }
+      std::vector<std::vector<double>> times(arms.size());
+      std::vector<std::size_t> exact_sums(arms.size(), 0);
+      for (std::size_t qi = 0; qi < 8; ++qi) {
+        if (options.efficiency_diagnostic) {
+          for (std::size_t arm = 2; arm < arms.size(); ++arm) {
+            EfficiencyWorkspace local;
+            auto& workspace = efficiency_reuses(arm) ? reusable[arm] : local;
+            const auto query_started = Clock::now();
+            started = Clock::now();
+            const auto tables = make_tables(thresholds.data(), queries.data() + qi * kDimensions, false);
+            const auto lut_ms = elapsed_ms(started);
+            dispatch_efficiency<true>(arm, prefix, trusted, layouts, tables, top, workspace);
+            if (!efficiency_reuses(arm)) workspace.release_scratch();
+            const auto total_ms = elapsed_ms(query_started);
+            workspace.stages.ms[static_cast<std::size_t>(EfficiencyStage::QueryLut)] = lut_ms;
+            require_refined_bits(workspace.result, reference_scores[qi]);
+            require_same_top(workspace.result, reference_scores[qi], ids, top);
+            auto row = selected_payload(workspace.result, ids);
+            row.update(Json{{"documents", count}, {"top_k", top}, {"query_index", qi}, {"arm", arms[arm]},
+                {"instrumented_total_ms", total_ms}, {"stages_ms", workspace.stages.payload()},
+                {"exact_evaluations", workspace.result.exact_evaluations},
+                {"physical_exact_evaluations", workspace.physical_exact_evaluations},
+                {"vector_capacity_bytes", workspace.result.vector_capacity_bytes},
+                {"workspace_reused", efficiency_reuses(arm)},
+                {"heap_replacements", workspace.heap_replacements}, {"cutoff_updates", workspace.cutoff_updates}});
+            diagnostic_rows.push_back(std::move(row));
+          }
+          continue;
+        }
+        for (std::size_t iteration = 0; iteration < 6; ++iteration) {
+          const bool warmup = iteration == 0;
+          std::vector<std::size_t> order(arms.size());
+          std::iota(order.begin(), order.end(), 0);
+          if (!warmup) for (std::size_t i = order.size(); i > 1; --i)
+            std::swap(order[i - 1], order[order_rng() % i]);
+          for (std::size_t position = 0; position < order.size(); ++position) {
+            const auto arm = order[position];
+            EfficiencyWorkspace local;
+            auto& workspace = efficiency_reuses(arm) ? reusable[arm] : local;
+            started = Clock::now();
+            const auto tables = make_tables(thresholds.data(), queries.data() + qi * kDimensions, false, arm >= 2);
+            dispatch_efficiency<false>(arm, prefix, trusted, layouts, tables, top, workspace);
+            // Charge transient scratch destruction, matching the v1 return path.
+            if (!efficiency_reuses(arm)) workspace.release_scratch();
+            const double total_ms = elapsed_ms(started);
+            if (!(total_ms > 0.0) || !std::isfinite(total_ms)) throw std::runtime_error("invalid full-query time");
+            require_refined_bits(workspace.result, reference_scores[qi]);
+            require_same_top(workspace.result, reference_scores[qi], ids, top);
+            if (warmup) { ++warmup_executions; continue; }
+            times[arm].push_back(total_ms);
+            exact_sums[arm] += workspace.result.exact_evaluations;
+            auto row = selected_payload(workspace.result, ids);
+            row.update(Json{{"trial_id", trial_id}, {"documents", count}, {"top_k", top},
+                {"query_index", qi}, {"repeat", iteration - 1}, {"arm", arms[arm]}, {"order_position", position},
+                {"total_ms", total_ms}, {"exact_evaluations", workspace.result.exact_evaluations},
+                {"physical_exact_evaluations", workspace.physical_exact_evaluations},
+                {"seed_count", arm >= 2 ? top : 0},
+                {"nonseed_refinements", arm >= 2 ? workspace.result.exact_evaluations - top : 0},
+                {"refinement_fraction", static_cast<double>(workspace.result.exact_evaluations) / count},
+                {"vector_capacity_bytes", workspace.result.vector_capacity_bytes},
+                {"workspace_reused", efficiency_reuses(arm)}});
+            raw.push_back(std::move(row));
+          }
+          if (!warmup) ++trial_id;
+        }
+      }
+      if (!options.efficiency_diagnostic) for (std::size_t arm = 0; arm < arms.size(); ++arm)
+        summaries.push_back({{"documents", count}, {"top_k", top}, {"arm", arms[arm]},
+            {"sample_count", times[arm].size()}, {"p50_ms", nearest_rank(times[arm], 50)},
+            {"p95_ms", nearest_rank(times[arm], 95)},
+            {"mean_refinement_fraction", static_cast<double>(exact_sums[arm]) / (count * times[arm].size())}});
+    }
+    profiles.push_back({{"documents", count}, {"prefix_copy_ms", prefix_copy_ms},
+        {"prefix_code_capacity_bytes", prefix.capacity()}, {"trusted_id_build_ms", trusted_id_build_ms},
+        {"ids_capacity_bytes", ids.capacity() * sizeof(std::int32_t)}, {"layout_build_ms", layout_build_ms},
+        {"padded_documents", layouts.padded}, {"plane_major_capacity_bytes", layouts.plane_major.capacity()},
+        {"block32_capacity_bytes", layouts.block32.capacity()}, {"cold_workspace_queries", cold_queries}});
+  }
+#if defined(__clang__)
+  const Json compiler = {{"id", "Clang"}, {"version", __clang_version__}};
+#elif defined(_MSC_VER)
+  const Json compiler = {{"id", "MSVC"}, {"version", _MSC_FULL_VER}};
+#else
+  const Json compiler = {{"id", "GNU"}, {"version", __VERSION__}};
+#endif
+  write_result({{"schema_version", 1},
+      {"family", options.efficiency_diagnostic ? "r6_certified_adc_efficiency_diagnostic" : "r6_certified_adc_efficiency"},
+      {"status", "EXECUTED"}, {"quality_status", "NOT_EXECUTED"},
+      {"source_identity", "EXTERNAL_MANIFEST_REQUIRED"}, {"configuration", efficiency_configuration()},
+      {"compiler", compiler}, {"cplusplus", __cplusplus}, {"flt_eval_method", FLT_EVAL_METHOD},
+      {"sizeof_size_t", sizeof(std::size_t)}, {"avx2_compiled", true},
+      {"inputs", {{"codes", {{"path", options.codes}, {"bytes", codes.size()}}},
+          {"thresholds", {{"path", options.thresholds}, {"bytes", thresholds.size() * sizeof(float)}}},
+          {"queries", {{"path", options.queries}, {"bytes", queries.size() * sizeof(float)}}}}},
+      {"preflight", {{"status", "PASS"}, {"score_comparisons", checked_scores},
+          {"integer_score_comparisons", checked_scores}, {"enclosure_checks", checked_scores},
+          {"arm_cases", checked_arm_cases}, {"all_refined_score_bits", "PASS"},
+          {"pair_avx2_bitwise_eligibility", "PASS"}}},
+      {"reference_cases", reference_cases}, {"persistent_profiles", profiles},
+      {"raw_samples", raw}, {"diagnostic_rows", diagnostic_rows}, {"selectivity", selectivity},
+      {"summaries", summaries}, {"trial_count", trial_id}, {"sample_count", raw.size()},
+      {"warmup_executions", warmup_executions}, {"decision_status", "INDEPENDENT_AUDIT_REQUIRED"},
+      {"timing_scope", "full per-query LUT construction, validation, envelope, scan, selection, refinement and scratch destruction; persistent layouts prebuilt"},
+      {"memory_accounting", "sum of simultaneously owned vector payload capacities; not RSS, allocator metadata or stack; reusable arms retain these buffers"},
+      {"allocation_profile", "buffer_allocation is not total allocator cost: ID-copy and selection allocations are inclusive in their stages, and SIMD output.assign allocation is inclusive in integer_scan; allocation counts NOT_MEASURED"},
+      {"diagnostic_method", "A0 is an instrumented template analogue checked against unchanged v1, not a profile of the original measured binary; reusable arms match the warmed timed contract; scratch destruction is included in total but unattributed to stages; intrusive clocks, never substitute stage sums or instrumented totals for uninstrumented latency"},
+      {"limitations", {"eight exposed historical queries, not applied quality", "repeat samples are not independent queries",
+          "sample p50/p95 are not qualified serving tails", "random-ID path NOT_EXECUTED in this dense mode",
+          "no storage, production, public reproducibility or peak-RSS claim"}}}, options.output);
+}
+
+Candidates parse_rebound_candidates(const std::vector<std::uint8_t>& records, const Json& metadata,
+                                      const std::vector<std::uint8_t>& canonical,
+                                      std::size_t expected_queries) {
+  constexpr std::size_t record_bytes = 100;
+  if (canonical.size() % kOrdinalBytes != 0 || records.size() % record_bytes != 0 ||
+      !metadata.at("query_count").is_number_integer() || !metadata.at("record_bytes").is_number_integer() ||
+      metadata.at("query_count") != expected_queries || metadata.at("record_bytes") != record_bytes ||
+      !metadata.at("rows").is_array() || metadata.at("rows").size() != expected_queries)
+    throw std::runtime_error("rebound candidate framing mismatch");
+  const auto total_records = records.size() / record_bytes;
+  Candidates result;
+  result.ids.reserve(total_records);
+  result.offsets.push_back(0);
+  for (std::size_t qi = 0; qi < expected_queries; ++qi) {
+    const auto& row = metadata.at("rows").at(qi);
+    const auto& declared = row.at("candidate_count");
+    const auto available = total_records - result.ids.size();
+    if (!row.at("query").is_number_integer() || row.at("query") != qi || !declared.is_number_integer() || declared <= 0 ||
+        declared > available || declared > canonical.size() / kOrdinalBytes)
+      throw std::runtime_error("rebound candidate ordinal/count mismatch");
+    const auto count = declared.get<std::size_t>();
+    std::vector<std::int32_t> group;
+    group.reserve(count);
+    for (std::size_t index = 0; index < count; ++index) {
+      const auto position = (result.ids.size() + index) * record_bytes;
+      const std::uint32_t id = static_cast<std::uint32_t>(records[position]) |
+          (static_cast<std::uint32_t>(records[position + 1]) << 8U) |
+          (static_cast<std::uint32_t>(records[position + 2]) << 16U) |
+          (static_cast<std::uint32_t>(records[position + 3]) << 24U);
+      if (id > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()) ||
+          id >= canonical.size() / kOrdinalBytes)
+        throw std::runtime_error("rebound candidate ID outside canonical corpus");
+      if (std::memcmp(records.data() + position + 4,
+                       canonical.data() + static_cast<std::size_t>(id) * kOrdinalBytes, kOrdinalBytes) != 0)
+        throw std::runtime_error("rebound candidate payload differs from canonical code");
+      group.push_back(static_cast<std::int32_t>(id));
+    }
+    const ValidatedIds validated(std::move(group));
+    result.ids.insert(result.ids.end(), validated.ids().begin(), validated.ids().end());
+    result.offsets.push_back(result.ids.size());
+  }
+  if (result.ids.size() != total_records) throw std::runtime_error("trailing rebound candidate records");
+  return result;
+}
+
+Layouts pack_candidate_block32(const std::vector<std::uint8_t>& codes) {
+  Layouts result;
+  result.documents = codes.size() / kOrdinalBytes;
+  result.padded = ((result.documents + kBlock - 1) / kBlock) * kBlock;
+  result.block32.assign(result.padded * kOrdinalBytes, 0);
+  // Both local SIMD arms need only block32, not the historical plane-major copy.
+  for (std::size_t id = 0; id < result.documents; ++id)
+    for (std::size_t byte = 0; byte < kOrdinalBytes; ++byte)
+      result.block32[((id / kBlock) * kOrdinalBytes + byte) * kBlock + id % kBlock] =
+          codes[id * kOrdinalBytes + byte];
+  return result;
+}
+
+std::unique_ptr<QueryTables> make_candidate_query_tables(const float* thresholds, const float* query,
+                                                         bool byte_lut, bool global_quantization) {
+  std::unique_ptr<QueryTables> result(new QueryTables(make_tables(thresholds, query, false, global_quantization)));
+  auto& tables = *result;
+  if (!byte_lut) return result;
+  // Build the required byte table without the legacy helper's unused local-U8 LUT.
+  for (std::size_t byte = 0; byte < kOrdinalBytes; ++byte)
+    for (std::size_t packed = 0; packed < 256; ++packed) {
+      float value = 0.0F;
+      for (std::size_t lane = 0; lane < 4; ++lane)
+        value += tables.coordinate[(byte * 4 + lane) * 4 + ((packed >> (lane * 2)) & 3U)];
+      if (!std::isfinite(value)) throw std::runtime_error("candidate byte LUT overflow");
+      tables.byte[byte * 256 + packed] = value;
+    }
+  return result;
+}
+
+float independent_candidate_byte_score(const std::uint8_t* code, const QueryTables& tables) {
+  std::array<float, 4> sums{};
+  for (std::size_t byte = 0; byte < kOrdinalBytes; ++byte) {
+    float coordinate_sum = 0.0F;
+    for (std::size_t lane = 0; lane < 4; ++lane)
+      coordinate_sum += tables.coordinate[(byte * 4 + lane) * 4 + level_at(code, byte * 4 + lane)];
+    sums[byte % 4] += coordinate_sum;
+  }
+  return (sums[0] + sums[1]) + (sums[2] + sums[3]);
+}
+
+struct CandidateOutcome {
+  RefinedTop result;
+  std::size_t physical_exact_evaluations = 0;
+  std::size_t preparation_capacity_bytes = 0;
+};
+
+std::vector<std::string> candidate_efficiency_arms() {
+  return {"pair_fp32_scalar", "pair_fp32_avx2_block32", "A0_original",
+          "A0_template_control", "A7_combined", "byte_lut_unrolled4"};
+}
+
+CandidateOutcome candidate_efficiency_query(std::size_t arm,
+    const std::vector<std::uint8_t>& canonical, const std::int32_t* input_ids, std::size_t count,
+    const float* thresholds, const float* query, std::size_t top) {
+  if (count == 0 || canonical.size() % kOrdinalBytes != 0)
+    throw std::runtime_error("candidate query requires nonempty IDs and aligned canonical codes");
+  for (std::size_t i = 0; i < count; ++i)
+    if (input_ids[i] < 0 || static_cast<std::size_t>(input_ids[i]) >= canonical.size() / kOrdinalBytes)
+      throw std::runtime_error("untrusted candidate ID outside canonical corpus");
+  const ValidatedIds validated(std::vector<std::int32_t>(input_ids, input_ids + count));
+  std::vector<std::uint8_t> gathered;
+  gather_codes(canonical, validated.ids().data(), count, gathered);
+  const auto layouts = arm == 1 || arm == 4 ? pack_candidate_block32(gathered) : Layouts{};
+  const auto table_storage = make_candidate_query_tables(thresholds, query, arm == 5, arm >= 2 && arm != 5);
+  const auto& tables = *table_storage;
+  EfficiencyWorkspace workspace;
+  if (arm == 5) {
+    workspace.result.scores.resize(count);
+    for (std::size_t i = 0; i < count; ++i) {
+      workspace.result.scores[i] = score_byte_unrolled4(gathered.data() + i * kOrdinalBytes, tables);
+      if (!std::isfinite(workspace.result.scores[i])) throw std::runtime_error("nonfinite candidate byte score");
+    }
+    workspace.result.selected = top_indices(workspace.result.scores, validated.ids().data(), count, top);
+    workspace.result.exact_evaluations = workspace.physical_exact_evaluations = count;
+    workspace.result.vector_capacity_bytes = workspace.result.scores.capacity() * sizeof(float) +
+        workspace.result.selected.capacity() * sizeof(std::size_t);
+  } else {
+    const auto dense_arm = arm == 3 ? 10 : arm == 4 ? 9 : arm;
+    dispatch_efficiency<false>(dense_arm, gathered, validated, layouts, tables, top, workspace);
+  }
+  workspace.result.scores.resize(count);  // Padding is physical SIMD work, not a document.
+  CandidateOutcome result;
+  result.preparation_capacity_bytes = validated.ids().capacity() * sizeof(std::int32_t) +
+      gathered.capacity() + layouts.block32.capacity() + layouts.plane_major.capacity();
+  result.physical_exact_evaluations = workspace.physical_exact_evaluations;
+  result.result = std::move(workspace.result);
+  return result;  // Local gather, layout and scratch destruction is inside the caller's timer.
+}
+
+Json candidate_outcome_payload(const CandidateOutcome& outcome, const std::vector<std::int32_t>& ids) {
+  auto payload = selected_payload(outcome.result, ids);
+  payload.update(Json{{"exact_evaluations", outcome.result.exact_evaluations},
+      {"physical_exact_evaluations", outcome.physical_exact_evaluations},
+      {"vector_capacity_bytes", outcome.result.vector_capacity_bytes},
+      {"preparation_capacity_bytes", outcome.preparation_capacity_bytes},
+      {"total_vector_capacity_bytes", outcome.preparation_capacity_bytes + outcome.result.vector_capacity_bytes},
+      {"query_tables_allocated_bytes", sizeof(QueryTables)}});
+  return payload;
+}
+
+void efficiency_candidate_benchmark(const Options& options) {
+  require_certificate_environment();
+  if (!AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2) throw std::runtime_error("candidate efficiency comparison requires AVX2");
+  const auto codes = read_file<std::uint8_t>(options.codes);
+  const auto thresholds = read_file<float>(options.thresholds);
+  const auto queries = read_file<float>(options.queries);
+  if (codes.size() != kDocuments * kOrdinalBytes || thresholds.size() != kDimensions * 3 ||
+      queries.size() != 152 * kDimensions) throw std::runtime_error("candidate efficiency source shape mismatch");
+  std::ifstream metadata_stream(options.candidate_raw);
+  if (!metadata_stream) throw std::runtime_error("cannot open rebound candidate metadata");
+  Json metadata;
+  metadata_stream >> metadata;
+  metadata_stream.clear();
+  metadata_stream.seekg(0, std::ios::end);
+  const auto metadata_bytes = metadata_stream.tellg();
+  if (metadata_bytes < 0) throw std::runtime_error("cannot determine rebound metadata bytes");
+  if (metadata.at("family") != "canonical_thq4_rebound_candidate_materialization_v1" ||
+      metadata.at("execution_status") != "EXECUTED" || metadata.at("canonical_thq4_sha256") !=
+          "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70")
+    throw std::runtime_error("rebound source identity mismatch");
+  const auto candidates = parse_rebound_candidates(read_file<std::uint8_t>(options.candidate_flat), metadata, codes, 152);
+  const auto arms = candidate_efficiency_arms();
+  const std::array<std::size_t, 2> top_values = {16, 128};
+  std::array<std::vector<std::int32_t>, 8> groups;
+  std::array<std::vector<float>, 8> pair_references, byte_references;
+  Json counts = Json::array(), reference_cases = Json::array(), raw = Json::array(), summaries = Json::array();
+  std::size_t score_checks = 0, arm_cases = 0;
+  for (std::size_t qi = 0; qi < 8; ++qi) {
+    groups[qi].assign(candidates.ids.begin() + candidates.offsets[qi],
+                       candidates.ids.begin() + candidates.offsets[qi + 1]);
+    const auto& ids = groups[qi];
+    counts.push_back(ids.size());
+    std::vector<std::uint8_t> gathered;
+    gather_codes(codes, ids.data(), ids.size(), gathered);
+    const auto layouts = pack_candidate_block32(gathered);
+    const auto pair_storage = make_candidate_query_tables(thresholds.data(), queries.data() + qi * kDimensions, false, true);
+    const auto byte_storage = make_candidate_query_tables(thresholds.data(), queries.data() + qi * kDimensions, true, false);
+    const auto& pair_tables = *pair_storage;
+    const auto& byte_tables = *byte_storage;
+    const auto envelope = make_score_envelope(pair_tables);
+    pair_references[qi].resize(ids.size()); byte_references[qi].resize(ids.size());
+    std::vector<float> simd;
+    std::vector<std::uint16_t> integers;
+    score_pair_fp32_avx2_block32(layouts, pair_tables, simd);
+    score_global_u16_avx2<true>(layouts, pair_tables, integers);
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+      const auto* code = gathered.data() + i * kOrdinalBytes;
+      pair_references[qi][i] = score_pair(code, pair_tables);
+      byte_references[qi][i] = independent_candidate_byte_score(code, byte_tables);
+      if (float_bits(simd[i]) != float_bits(pair_references[qi][i]) ||
+          integers[i] != integer_pair_score(code, pair_tables) ||
+          float_bits(score_byte_unrolled4(code, byte_tables)) != float_bits(byte_references[qi][i]))
+        throw std::runtime_error("candidate scalar/SIMD/independent-byte oracle mismatch");
+      require_encloses(score_bounds(integers[i], pair_tables, envelope), pair_references[qi][i]);
+    }
+    score_checks += ids.size();
+    for (const auto top : top_values) {
+      Json expectations = Json::array();
+      for (std::size_t arm = 0; arm < arms.size(); ++arm) {
+        const auto outcome = candidate_efficiency_query(arm, codes, ids.data(), ids.size(),
+            thresholds.data(), queries.data() + qi * kDimensions, top);
+        const auto& reference = arm == 5 ? byte_references[qi] : pair_references[qi];
+        require_refined_bits(outcome.result, reference);
+        require_same_top(outcome.result, reference, ids, top);
+        auto payload = candidate_outcome_payload(outcome, ids);
+        payload["arm"] = arms[arm];
+        expectations.push_back(std::move(payload));
+        ++arm_cases;
+      }
+      reference_cases.push_back({{"documents", ids.size()}, {"query_index", qi}, {"top_k", top}, {"arms", expectations}});
+    }
+  }
+  std::mt19937 order_rng(20261121);
+  std::size_t trial_id = 0, warmup_executions = 0;
+  for (const auto top : top_values) {
+    std::array<std::vector<double>, 6> times;
+    for (std::size_t qi = 0; qi < 8; ++qi) {
+      const auto& ids = groups[qi];
+      for (std::size_t iteration = 0; iteration < 6; ++iteration) {
+        const bool warmup = iteration == 0;
+        std::array<std::size_t, 6> order = {0, 1, 2, 3, 4, 5};
+        if (!warmup) for (std::size_t i = order.size(); i > 1; --i)
+          std::swap(order[i - 1], order[order_rng() % i]);
+        for (std::size_t position = 0; position < order.size(); ++position) {
+          const auto arm = order[position];
+          const auto started = Clock::now();
+          const auto outcome = candidate_efficiency_query(arm, codes, ids.data(), ids.size(),
+              thresholds.data(), queries.data() + qi * kDimensions, top);
+          const auto total_ms = std::chrono::duration<double, std::milli>(Clock::now() - started).count();
+          if (!(total_ms > 0.0) || !std::isfinite(total_ms)) throw std::runtime_error("invalid candidate full-query time");
+          const auto& reference = arm == 5 ? byte_references[qi] : pair_references[qi];
+          require_refined_bits(outcome.result, reference);
+          require_same_top(outcome.result, reference, ids, top);
+          if (warmup) { ++warmup_executions; continue; }
+          times[arm].push_back(total_ms);
+          auto row = candidate_outcome_payload(outcome, ids);
+          row.update(Json{{"trial_id", trial_id}, {"documents", ids.size()}, {"query_index", qi}, {"top_k", top},
+              {"repeat", iteration - 1}, {"arm", arms[arm]}, {"order_position", position}, {"total_ms", total_ms},
+              {"gather_included", true}, {"packing_included", arm == 1 || arm == 4}, {"workspace_reused", false}});
+          raw.push_back(std::move(row));
+        }
+        if (!warmup) ++trial_id;
+      }
+    }
+    for (std::size_t arm = 0; arm < arms.size(); ++arm)
+      summaries.push_back({{"top_k", top}, {"arm", arms[arm]}, {"sample_count", times[arm].size()},
+          {"p50_ms", nearest_rank(times[arm], 50)}, {"p95_ms", nearest_rank(times[arm], 95)}});
+  }
+#if defined(__clang__)
+  const Json compiler = {{"id", "Clang"}, {"version", __clang_version__}};
+#elif defined(_MSC_VER)
+  const Json compiler = {{"id", "MSVC"}, {"version", _MSC_FULL_VER}};
+#else
+  const Json compiler = {{"id", "GNU"}, {"version", __VERSION__}};
+#endif
+  write_result({{"schema_version", 1}, {"family", "r6_certified_adc_candidates"}, {"status", "EXECUTED"},
+      {"quality_status", "NOT_EXECUTED"}, {"source_identity", "EXTERNAL_MANIFEST_REQUIRED"},
+      {"decision_status", "INDEPENDENT_AUDIT_REQUIRED"}, {"compiler", compiler},
+      {"avx2_compiled", true}, {"flt_eval_method", FLT_EVAL_METHOD}, {"sizeof_size_t", sizeof(std::size_t)},
+      {"configuration", {{"query_indices", {0, 1, 2, 3, 4, 5, 6, 7}}, {"top_k", top_values},
+          {"repeats", 5}, {"warmups", 1}, {"order_seed", 20261121}, {"arms", arms},
+          {"order_policy", "mt19937_raw_modulo_fisher_yates"}, {"quantile", "nearest_rank"}, {"combined_mask", kEfficiencyCombinedMask}}},
+      {"inputs", {{"codes", {{"path", options.codes}, {"bytes", codes.size()}}},
+          {"thresholds", {{"path", options.thresholds}, {"bytes", thresholds.size() * sizeof(float)}}},
+          {"queries", {{"path", options.queries}, {"bytes", queries.size() * sizeof(float)}}},
+          {"candidate_flat", {{"path", options.candidate_flat}, {"bytes", candidates.ids.size() * 100}}},
+          {"candidate_raw", {{"path", options.candidate_raw}, {"bytes", static_cast<std::size_t>(metadata_bytes)}}}}},
+      {"preflight", {{"status", "PASS"}, {"validated_groups", candidates.offsets.size() - 1},
+          {"validated_records", candidates.ids.size()}, {"canonical_payload_comparisons", candidates.ids.size()},
+          {"pair_score_comparisons", score_checks}, {"byte_score_comparisons", score_checks},
+          {"integer_score_comparisons", score_checks}, {"enclosure_checks", score_checks},
+          {"arm_cases", arm_cases}, {"all_refined_score_bits", "PASS"},
+          {"byte_reference_kind", "independent_exhaustive_byte_lut_unrolled4"}}},
+      {"candidate_counts", counts}, {"reference_cases", reference_cases}, {"raw_samples", raw}, {"summaries", summaries},
+      {"sample_count", raw.size()}, {"trial_count", trial_id}, {"warmup_executions", warmup_executions},
+      {"timing_scope", "untrusted list range/uniqueness validation and owned ID copy, canonical random gather, required block32 packing, query LUT construction, full scoring/selection and transient preparation/scratch destruction"},
+      {"memory_accounting", "simultaneously owned vector payload capacities for one call; per-call heap QueryTables bytes reported separately; excludes allocator metadata/stack/RSS; smaller construction validation scratch released before gather"},
+      {"excluded_costs", {"source file I/O", "all152-group framing and payload preflight", "post-sample correctness and JSON"}},
+      {"limitations", {"new rebound stream comparison, not historical FastScan replay", "eight exposed queries, no held-out applied quality",
+          "byte LUT uses its own FP32 order, not pair-bit parity", "sample p50/p95 do not establish serving tail stability"}}}, options.output);
+}
+
+Json efficiency_core_self_test() {
+  require_certificate_environment();
+  if (!AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2)
+    throw std::runtime_error("efficiency controls require compiled AVX2");
+  std::size_t fixtures = 0, cutoff_checks = 0, integer_checks = 0;
+  std::size_t invalid_controls = 0, mutations = 0, concurrent_controls = 0, environment_controls = 0;
+  const auto require = [](bool condition, const char* message) {
+    if (!condition) throw std::runtime_error(message);
+  };
+  const auto rejects = [](const std::function<void()>& action) {
+    try { action(); } catch (const std::runtime_error&) { return true; }
+    return false;
+  };
+  const auto negative = [&](const std::function<void()>& action) {
+    require(rejects(action), "efficiency invalid input was accepted");
+    ++invalid_controls;
+  };
+  std::vector<float> thresholds(kDimensions * 3), query(kDimensions);
+  for (std::size_t d = 0; d < kDimensions; ++d) {
+    thresholds[d * 3] = -0.5F; thresholds[d * 3 + 1] = 0.0F; thresholds[d * 3 + 2] = 0.5F;
+    query[d] = static_cast<float>(static_cast<int>(d % 37) - 18) / 8.0F;
+  }
+  const auto tables = std::make_unique<QueryTables[]>(3);
+  tables[0] = make_tables(thresholds.data(), query.data(), false);
+  std::mt19937 rng(20261121);
+  const auto check = [&](const QueryTables& values, std::size_t count, std::size_t top) {
+    std::vector<std::uint8_t> codes(count * kOrdinalBytes);
+    for (auto& value : codes) value = static_cast<std::uint8_t>(rng() & 255U);
+    std::vector<std::int32_t> input_ids(count);
+    for (std::size_t i = 0; i < count; ++i) input_ids[i] = static_cast<std::int32_t>(count - i);
+    const ValidatedIds trusted(std::move(input_ids));
+    const auto& ids = trusted.ids();
+    const auto layouts = pack_layouts(codes.data(), count);
+    const auto scalar = exhaustive_pair_top(codes, ids, values, nullptr, top);
+    EfficiencyWorkspace diagnostic;
+    dispatch_efficiency<true>(2, codes, trusted, layouts, values, top, diagnostic);
+    const auto v1 = certified_top(codes, ids, values, top);
+    require(diagnostic.result.selected == v1.selected &&
+                diagnostic.result.exact_evaluations == v1.exact_evaluations,
+            "diagnostic v1 clone changed selection or work");
+    require(diagnostic.result.scores == v1.scores, "diagnostic v1 clone changed refined scores");
+    std::vector<std::uint16_t> integers;
+    score_global_u16_avx2<true>(layouts, values, integers);
+    for (std::size_t i = 0; i < count; ++i) {
+      require(integers[i] == integer_pair_score(codes.data() + i * kOrdinalBytes, values),
+              "SIMD integer mismatch");
+      ++integer_checks;
+    }
+    EfficiencyWorkspace reused;
+    const auto arms = efficiency_arms();
+    for (std::size_t arm = 0; arm < arms.size(); ++arm) {
+      EfficiencyWorkspace local;
+      auto& workspace = efficiency_reuses(arm) ? reused : local;
+      dispatch_efficiency<false>(arm, codes, trusted, layouts, values, top, workspace);
+      require_same_top(workspace.result, scalar.scores, ids, top);
+      // Full SIMD controls own padded output; padding is not a document.
+      workspace.result.scores.resize(std::min(workspace.result.scores.size(), count));
+      require_refined_bits(workspace.result, scalar.scores);
+      require(workspace.physical_exact_evaluations >= workspace.result.exact_evaluations,
+              "physical SIMD work undercounted");
+      if (arm >= 2 && arm != 8 && arm != 9) {
+        const auto original = certified_top(codes, ids, values, top);
+        require(workspace.result.exact_evaluations == original.exact_evaluations,
+                "isolated fixed-tau arm changed logical refinement count");
+      }
+      if (efficiency_reuses(arm)) {
+        const auto integer_address = workspace.integers.data();
+        const auto score_address = workspace.result.scores.data();
+        dispatch_efficiency<false>(arm, codes, trusted, layouts, values, top, workspace);
+        require(workspace.integers.data() == integer_address && workspace.result.scores.data() == score_address,
+                "same-profile workspace did not reuse buffers");
+        require_same_top(workspace.result, scalar.scores, ids, top);
+      }
+      ++fixtures;
+    }
+  };
+  for (const auto count : {0U, 1U, 7U, 8U, 31U, 32U, 33U, 65U, 129U})
+    for (const auto top : {0U, 1U, 16U, count + 1U}) check(tables[0], count, top);
+  tables[1].global_scale = 1.0F;
+  tables[1].global_u8.fill(255);
+  tables[1].global_u8_packed.fill(255);
+  check(tables[1], 65, 7);  // 192*255=48960: neither SIMD nor scalar may wrap.
+  tables[1].global_u8.fill(0); tables[1].global_u8_packed.fill(0);
+  check(tables[1], 65, 7);  // All-score tie with reverse numeric IDs.
+  tables[1].pair.fill(std::numeric_limits<float>::denorm_min());
+  check(tables[1], 33, 7);
+  tables[1].pair.fill(0.0F);
+  for (std::size_t j = 0; j < 16; ++j) {
+    tables[1].pair[j] = 1.0F;
+    tables[1].pair[16 + j] = 3.0F * std::ldexp(1.0F, -24);
+    tables[1].pair[32 + j] = -1.0F;
+  }
+  check(tables[1], 33, 7);  // Sequential FP32 cancellation, not a reassociated sum.
+  tables[1] = {};
+  tables[1].pair[0] = 10.0F; tables[1].pair[1] = 0.0F;
+  tables[1].pair[2] = 5.0F; tables[1].pair[3] = 1000.0F;
+  tables[1].global_u8[0] = 0; tables[1].global_u8[1] = 1;
+  tables[1].global_u8[2] = 2; tables[1].global_u8[3] = 255;
+  std::vector<std::uint8_t> improving_codes(4 * kOrdinalBytes, 0);
+  for (std::size_t i = 0; i < 4; ++i) improving_codes[i * kOrdinalBytes] = static_cast<std::uint8_t>(i);
+  const ValidatedIds improving_ids({3, 2, 1, 0});
+  const auto improving_layout = pack_layouts(improving_codes.data(), 4);
+  EfficiencyWorkspace fixed, dynamic;
+  dispatch_efficiency<false>(2, improving_codes, improving_ids, improving_layout, tables[1], 1, fixed);
+  dispatch_efficiency<false>(8, improving_codes, improving_ids, improving_layout, tables[1], 1, dynamic);
+  require(fixed.result.exact_evaluations == 3 && dynamic.result.exact_evaluations == 2 &&
+              dynamic.heap_replacements == 1 && dynamic.final_tau == 0.0F,
+          "dynamic incumbent did not reject the golden excess refinement");
+  require_same_top(dynamic.result, {10.0F, 0.0F, 5.0F, 1000.0F}, improving_ids.ids(), 1);
+  ++fixtures;
+  tables[1] = {};
+  tables[1].global_u8[1] = 1; tables[1].global_u8[2] = 2;
+  improving_codes.resize(3 * kOrdinalBytes);
+  const ValidatedIds tie_ids({3, 2, 1});
+  const auto tie_layout = pack_layouts(improving_codes.data(), 3);
+  dispatch_efficiency<false>(8, improving_codes, tie_ids, tie_layout, tables[1], 1, dynamic);
+  require(dynamic.heap_replacements == 2 && dynamic.heap.front() == 2 &&
+              dynamic.result.selected == std::vector<std::size_t>{2},
+          "lower-ID exact tie did not displace the dynamic incumbent");
+  require_same_top(dynamic.result, {0.0F, 0.0F, 0.0F}, tie_ids.ids(), 1);
+  ++fixtures;
+
+  // Check every admissible Q against the boundary tau and its FP32 neighbours.
+  // The monotone-prefix proof then covers any other finite FP32 tau.
+  const auto cutoff_fixture = [&](const QueryTables& values) {
+    const auto envelope = make_score_envelope(values);
+    require(integer_cutoff(values, envelope, 0.0F) == integer_cutoff(values, envelope, -0.0F),
+            "signed-zero incumbent changed cutoff");
+    double previous = -std::numeric_limits<double>::infinity();
+    for (std::int32_t q = 0; q <= kMaximumIntegerScore; ++q) {
+      const double lower = score_bounds(static_cast<std::uint16_t>(q), values, envelope).first;
+      require(previous <= lower, "outward lower bound was not monotone");
+      previous = lower;
+      const float boundary = lower > std::numeric_limits<float>::max() ?
+          std::numeric_limits<float>::max() : lower < -std::numeric_limits<float>::max() ?
+          -std::numeric_limits<float>::max() : static_cast<float>(lower);
+      for (const auto tau : {std::nextafter(boundary, -std::numeric_limits<float>::infinity()),
+                             boundary, std::nextafter(boundary, std::numeric_limits<float>::infinity())}) {
+        if (!std::isfinite(tau)) continue;
+        const auto cutoff = integer_cutoff(values, envelope, tau);
+        require((q <= cutoff) == must_refine(lower, tau), "integer cutoff lost a boundary candidate");
+        if (cutoff >= 0)
+          require(must_refine(score_bounds(static_cast<std::uint16_t>(cutoff), values, envelope).first, tau),
+                  "integer cutoff included an invalid endpoint");
+        if (cutoff < kMaximumIntegerScore)
+          require(!must_refine(score_bounds(static_cast<std::uint16_t>(cutoff + 1), values, envelope).first, tau),
+                  "integer cutoff omitted a valid endpoint");
+        ++cutoff_checks;
+      }
+    }
+  };
+  cutoff_fixture(tables[0]);
+  tables[1] = {};
+  cutoff_fixture(tables[1]);
+  tables[1].pair.fill(std::numeric_limits<float>::denorm_min());
+  tables[1].global_scale = std::numeric_limits<float>::denorm_min();
+  cutoff_fixture(tables[1]);
+  tables[1].global_scale = std::numeric_limits<float>::max();
+  cutoff_fixture(tables[1]);
+  const auto envelope = make_score_envelope(tables[0]);
+  require(integer_cutoff(tables[0], envelope, -std::numeric_limits<float>::max()) == -1,
+          "empty cutoff prefix was not represented");
+  require(integer_cutoff(tables[0], envelope, std::numeric_limits<float>::max()) == kMaximumIntegerScore,
+          "full cutoff prefix was not represented");
+  ++fixtures;
+  for (const auto tau : {std::numeric_limits<float>::infinity(),
+                         -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()})
+    negative([&] { integer_cutoff(tables[0], envelope, tau); });
+  for (const auto scale : {0.0F, -1.0F, std::numeric_limits<float>::infinity(),
+                           std::numeric_limits<float>::quiet_NaN()}) {
+    tables[2] = tables[0]; tables[2].global_scale = scale;
+    negative([&] { integer_cutoff(tables[2], envelope, 1.0F); });
+  }
+  for (const auto bad : {-1.0, std::numeric_limits<double>::infinity(),
+                         std::numeric_limits<double>::quiet_NaN()}) {
+    auto malformed = envelope; malformed.accumulation_error = bad;
+    negative([&] { integer_cutoff(tables[0], malformed, 1.0F); });
+  }
+  for (const auto bad : {std::numeric_limits<double>::infinity(),
+                         std::numeric_limits<double>::quiet_NaN()}) {
+    auto malformed = envelope; malformed.residual_low = bad;
+    negative([&] { integer_cutoff(tables[0], malformed, 1.0F); });
+    malformed = envelope; malformed.residual_high = bad;
+    negative([&] { integer_cutoff(tables[0], malformed, 1.0F); });
+  }
+  negative([] { ValidatedIds invalid({1, 1}); });
+  negative([] { ValidatedIds invalid({-1}); });
+  const ValidatedIds one({1});
+  const std::vector<std::uint8_t> one_code(kOrdinalBytes, 0);
+  const auto one_layout = pack_layouts(one_code.data(), 1);
+  EfficiencyWorkspace scratch;
+  negative([&] { efficiency_certified<kIntegerCutoff, false>(one_code, {-1}, one, one_layout, tables[0], 1, scratch); });
+  negative([&] { efficiency_certified<kIntegerCutoff, false>(std::vector<std::uint8_t>(2 * kOrdinalBytes), {1, 1}, one, one_layout, tables[0], 1, scratch); });
+  negative([&] { efficiency_certified<kTrustedIds, false>({0}, one.ids(), one, one_layout, tables[0], 1, scratch); });
+  tables[2] = tables[0]; tables[2].pair.fill(std::numeric_limits<float>::max() / 128.0F);
+  negative([&] { efficiency_certified<kIntegerCutoff, false>(one_code, one.ids(), one, one_layout, tables[2], 1, scratch); });
+
+  auto corrupted = certified_top(one_code, one.ids(), tables[0], 1);
+  const auto reference = corrupted.scores;
+  corrupted.scores[0] = std::nextafter(corrupted.scores[0], std::numeric_limits<float>::infinity());
+  require(rejects([&] { require_same_top(corrupted, reference, one.ids(), 1); }), "score-bit mutation escaped");
+  ++mutations;
+  corrupted.selected.clear();
+  require(rejects([&] { require_same_top(corrupted, reference, one.ids(), 1); }), "ordered-ID mutation escaped");
+  ++mutations;
+  const auto q = integer_pair_score(one_code.data(), tables[0]);
+  const auto tau = score_pair(one_code.data(), tables[0]);
+  require(q <= integer_cutoff(tables[0], envelope, tau), "golden cutoff excluded exact incumbent");
+  const auto corrupt_cutoff = static_cast<std::int32_t>(q) - 1;
+  require(rejects([&] { if ((static_cast<std::int32_t>(q) <= corrupt_cutoff) !=
+      must_refine(score_bounds(q, tables[0], envelope).first, tau)) throw std::runtime_error("bad cutoff"); }),
+      "cutoff mutation escaped");
+  ++mutations;
+
+  const auto independent_reader = [&] {
+    EfficiencyWorkspace local;
+    for (std::size_t repeat = 0; repeat < 8; ++repeat) {
+      dispatch_efficiency<false>(6, one_code, one, one_layout, tables[0], 1, local);
+      require_same_top(local.result, reference, one.ids(), 1);
+    }
+    return selected_payload(local.result, one.ids());
+  };
+  auto first = std::async(std::launch::async, independent_reader);
+  auto second = std::async(std::launch::async, independent_reader);
+  require(first.get() == second.get(), "independent query workspaces interfered");
+  ++concurrent_controls;
+  const auto original_rounding = std::fegetround();
+  require(std::fesetround(FE_UPWARD) == 0, "cannot set cutoff rounding control");
+  const auto rejected_rounding = rejects([&] { integer_cutoff(tables[0], envelope, 1.0F); });
+  const auto restored_rounding = std::fesetround(original_rounding) == 0;
+  require(rejected_rounding && restored_rounding, "cutoff accepted non-RN environment");
+  ++environment_controls;
+#if defined(__SSE__) || defined(_M_X64) || defined(_M_IX86)
+  const auto csr = _mm_getcsr();
+  for (const auto mode : {0x8000U, 0x0040U}) {
+    _mm_setcsr(csr | mode);
+    const auto rejected = rejects([&] { integer_cutoff(tables[0], envelope, 1.0F); });
+    _mm_setcsr(csr);
+    require(rejected, "cutoff accepted FTZ/DAZ environment");
+    ++environment_controls;
+  }
+#endif
+  return {{"family", "r6_certified_adc_efficiency_controls"}, {"status", "PASS"},
+      {"correctness_fixtures", fixtures}, {"integer_score_comparisons", integer_checks},
+      {"cutoff_boundary_comparisons", cutoff_checks}, {"cutoff_admissible_q_count", kMaximumIntegerScore + 1},
+      {"signed_zero_controls", 4}, {"invalid_input_controls", invalid_controls}, {"mutation_controls", mutations},
+      {"concurrent_reader_controls", concurrent_controls}, {"environment_controls", environment_controls},
+      {"simd_integer_and_refinement_parity", "PASS_ON_FIXTURES"},
+      {"performance_status", "NOT_EXECUTED"}, {"quality_status", "NOT_EXECUTED"}};
+}
+
+std::pair<std::size_t, std::size_t> candidate_efficiency_self_test() {
+  std::size_t candidate_input_controls = 0, candidate_fixtures = 0;
+  const auto require = [](bool condition, const char* message) {
+    if (!condition) throw std::runtime_error(message);
+  };
+  const auto candidate_negative = [&](const std::function<void()>& action) {
+    try { action(); } catch (const std::runtime_error&) { ++candidate_input_controls; return; }
+    throw std::runtime_error("malformed candidate control was accepted");
+  };
+  std::vector<float> thresholds(kDimensions * 3), query(kDimensions);
+  for (std::size_t d = 0; d < kDimensions; ++d) {
+    thresholds[d * 3] = -0.5F; thresholds[d * 3 + 1] = 0.0F; thresholds[d * 3 + 2] = 0.5F;
+    query[d] = static_cast<float>(static_cast<int>(d % 37) - 18) / 8.0F;
+  }
+  std::mt19937 rng(20261121);
+  std::vector<std::uint8_t> canonical(129 * kOrdinalBytes);
+  for (auto& value : canonical) value = static_cast<std::uint8_t>(rng() & 255U);
+  const Json candidate_metadata = {{"query_count", 2}, {"record_bytes", 100}, {"rows", {
+      {{"query", 0}, {"candidate_count", 2}}, {{"query", 1}, {"candidate_count", 1}}}}};
+  std::vector<std::uint8_t> records;
+  for (const auto id : {3U, 1U, 0U}) {
+    for (unsigned shift = 0; shift < 32; shift += 8) records.push_back(static_cast<std::uint8_t>(id >> shift));
+    records.insert(records.end(), canonical.begin() + id * kOrdinalBytes,
+                     canonical.begin() + (id + 1) * kOrdinalBytes);
+  }
+  const auto framed = parse_rebound_candidates(records, candidate_metadata, canonical, 2);
+  require(framed.ids == std::vector<std::int32_t>({3, 1, 0}) &&
+              framed.offsets == std::vector<std::size_t>({0, 2, 3}), "candidate LE framing golden failed");
+  auto bad_records = records; bad_records.pop_back();
+  candidate_negative([&] { parse_rebound_candidates(bad_records, candidate_metadata, canonical, 2); });
+  bad_records = records; bad_records.push_back(0);
+  candidate_negative([&] { parse_rebound_candidates(bad_records, candidate_metadata, canonical, 2); });
+  bad_records = records; bad_records.insert(bad_records.end(), records.begin(), records.begin() + 100);
+  candidate_negative([&] { parse_rebound_candidates(bad_records, candidate_metadata, canonical, 2); });
+  bad_records = records; std::fill_n(bad_records.begin(), 4, 255);
+  candidate_negative([&] { parse_rebound_candidates(bad_records, candidate_metadata, canonical, 2); });
+  bad_records = records; bad_records[0] = 129;
+  candidate_negative([&] { parse_rebound_candidates(bad_records, candidate_metadata, canonical, 2); });
+  bad_records = records; std::copy_n(records.begin(), 100, bad_records.begin() + 100);
+  candidate_negative([&] { parse_rebound_candidates(bad_records, candidate_metadata, canonical, 2); });
+  bad_records = records; bad_records[4] ^= 1U;
+  candidate_negative([&] { parse_rebound_candidates(bad_records, candidate_metadata, canonical, 2); });
+  auto bad_metadata = candidate_metadata; bad_metadata["record_bytes"] = 148;
+  candidate_negative([&] { parse_rebound_candidates(records, bad_metadata, canonical, 2); });
+  bad_metadata = candidate_metadata; bad_metadata["query_count"] = 1;
+  candidate_negative([&] { parse_rebound_candidates(records, bad_metadata, canonical, 2); });
+  bad_metadata = candidate_metadata; bad_metadata["rows"][0]["query"] = 1;
+  candidate_negative([&] { parse_rebound_candidates(records, bad_metadata, canonical, 2); });
+  for (const auto count : {-1, 0, 4}) {
+    bad_metadata = candidate_metadata; bad_metadata["rows"][0]["candidate_count"] = count;
+    candidate_negative([&] { parse_rebound_candidates(records, bad_metadata, canonical, 2); });
+  }
+  bad_metadata = candidate_metadata; bad_metadata["rows"][0]["candidate_count"] = 2.0;
+  candidate_negative([&] { parse_rebound_candidates(records, bad_metadata, canonical, 2); });
+  for (const auto count : {7U, 8U, 31U, 33U, 65U}) {
+    std::vector<std::int32_t> ids(129);
+    std::iota(ids.begin(), ids.end(), 0);
+    for (std::size_t i = ids.size(); i > 1; --i) std::swap(ids[i - 1], ids[rng() % i]);
+    ids.resize(count);
+    std::vector<std::uint8_t> gathered;
+    gather_codes(canonical, ids.data(), count, gathered);
+    const auto pair_tables = make_candidate_query_tables(thresholds.data(), query.data(), false, true);
+    const auto byte_tables = make_candidate_query_tables(thresholds.data(), query.data(), true, false);
+    std::vector<float> pair_reference(count), byte_reference(count);
+    for (std::size_t i = 0; i < count; ++i) {
+      pair_reference[i] = score_pair(gathered.data() + i * kOrdinalBytes, *pair_tables);
+      byte_reference[i] = independent_candidate_byte_score(gathered.data() + i * kOrdinalBytes, *byte_tables);
+    }
+    for (const auto top : {1U, 7U, count + 1U})
+      for (std::size_t arm = 0; arm < 6; ++arm) {
+        const auto outcome = candidate_efficiency_query(arm, canonical, ids.data(), count,
+            thresholds.data(), query.data(), top);
+        const auto& reference_scores = arm == 5 ? byte_reference : pair_reference;
+        require_refined_bits(outcome.result, reference_scores);
+        require_same_top(outcome.result, reference_scores, ids, top);
+        require(outcome.preparation_capacity_bytes >= count * 100,
+                "candidate preparation memory was not charged");
+        ++candidate_fixtures;
+      }
+  }
+  for (const auto ids : {std::vector<std::int32_t>{3, 3}, std::vector<std::int32_t>{-1},
+                          std::vector<std::int32_t>{129}})
+    candidate_negative([&] { candidate_efficiency_query(4, canonical, ids.data(), ids.size(),
+        thresholds.data(), query.data(), 1); });
+  std::fill(canonical.begin(), canonical.end(), 0);
+  const std::vector<std::int32_t> candidate_tie_ids = {117, 2, 91, 0, 11, 88, 3, 29};
+  const auto pair_tables = make_candidate_query_tables(thresholds.data(), query.data(), false, true);
+  const auto byte_tables = make_candidate_query_tables(thresholds.data(), query.data(), true, false);
+  const auto pair_tie_score = score_pair(canonical.data(), *pair_tables);
+  const auto byte_tie_score = independent_candidate_byte_score(canonical.data(), *byte_tables);
+  for (std::size_t arm = 0; arm < 6; ++arm) {
+    const auto outcome = candidate_efficiency_query(arm, canonical, candidate_tie_ids.data(), candidate_tie_ids.size(),
+        thresholds.data(), query.data(), 3);
+    const std::vector<float> scores(candidate_tie_ids.size(), arm == 5 ? byte_tie_score : pair_tie_score);
+    require_same_top(outcome.result, scores, candidate_tie_ids, 3);
+    ++candidate_fixtures;
+  }
+  return {candidate_input_controls, candidate_fixtures};
+}
+
+void efficiency_self_test() {
+  auto result = efficiency_core_self_test();
+  const auto candidate_controls = candidate_efficiency_self_test();
+  result["candidate_input_controls"] = candidate_controls.first;
+  result["candidate_correctness_fixtures"] = candidate_controls.second;
+  std::cout << result.dump(2) << '\n';
+}
+
 void self_test() {
   constexpr std::size_t count = 47;
   std::mt19937 rng(20260921);
@@ -1270,6 +2531,18 @@ void self_test() {
 int main(int argc, char** argv) {
   try {
     const auto options = parse_options(argc, argv);
+    if (options.efficiency_self_test) {
+      efficiency_self_test();
+      return 0;
+    }
+    if (options.efficiency_benchmark || options.efficiency_diagnostic) {
+      efficiency_benchmark(options);
+      return 0;
+    }
+    if (options.efficiency_candidates) {
+      efficiency_candidate_benchmark(options);
+      return 0;
+    }
     if (options.certificate_self_test) {
       certificate_self_test();
       return 0;
