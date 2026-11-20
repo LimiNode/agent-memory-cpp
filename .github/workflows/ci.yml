@@ -6,6 +6,11 @@ on:
       - main
   pull_request:
   workflow_dispatch:
+    inputs:
+      r5_evidence:
+        description: "Collect frozen R5 integration evidence after the full suite"
+        type: boolean
+        default: false
   schedule:
     - cron: "17 3 * * 0"
 
@@ -641,8 +646,8 @@ jobs:
           cmake --build build-native-mih --config Release --target
           agent-memory-mih-native-hot-path
           agent-memory-mih-native-sparse-arbitrary-m
-          agent-memory-exact-selection-benchmark
           agent-memory-reranker-admission-scaling
+          agent-memory-exact-selection-benchmark
 
       - name: Test native MIH benchmark harness
         run: >
@@ -1425,7 +1430,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install tool dependencies
-        run: python -m pip install -r tools/requirements-tools.txt
+        run: |
+          python -m pip install -r tools/requirements-tools.txt
+          python -m pip install scipy==1.17.1 scikit-learn==1.9.0 faiss-cpu==1.15.0
+          python -m pip install torch==2.8.0+cpu --index-url https://download.pytorch.org/whl/cpu
 
       - name: Init research submodules
         run: git submodule update --init external/libmdbx external/mdbx-containers external/simdcomp
@@ -1443,10 +1451,25 @@ jobs:
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build full research CTest
-        run: cmake --build build-research-full --config Release
+        run: cmake --build build-research-full --config Release --parallel 2
+
+      - name: Record the full configured CTest plan
+        run: ctest --test-dir build-research-full --show-only=json-v1 > build-research-full/r5-configured-tests.json
 
       - name: Run full research CTest
-        run: ctest --test-dir build-research-full --build-config Release --output-on-failure
+        run: ctest --test-dir build-research-full --build-config Release --output-on-failure --output-junit r5-integration-junit.xml
+
+      - name: Preserve combined CTest logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r5-combined-ctest-logs
+          path: |
+            build-research-full/Testing/Temporary/LastTest.log
+            build-research-full/r5-integration-junit.xml
+            build-research-full/r5-configured-tests.json
+            build-research-full/CMakeCache.txt
+          if-no-files-found: error
 
   exact-lexical-topk-decision:
     if: needs.changes.outputs.research == 'true'
@@ -1693,8 +1716,8 @@ jobs:
       - mdbx
       - mdbx-benchmark
       - native-mih-benchmark
-      - production-reranker-admission
       - exact-vector-numerical-frontier
+      - production-reranker-admission
       - r4-native-benchmark
       - thq-faiss-additive-control
       - thq-packed-codec-contract
@@ -1723,8 +1746,8 @@ jobs:
           STORAGE_RESULT: ${{ needs.mdbx.result }}
           MDBX_BENCHMARK_RESULT: ${{ needs.mdbx-benchmark.result }}
           MIH_RESULT: ${{ needs.native-mih-benchmark.result }}
-          PRODUCTION_RERANKER_RESULT: ${{ needs.production-reranker-admission.result }}
           NUMERICAL_FRONTIER_RESULT: ${{ needs.exact-vector-numerical-frontier.result }}
+          PRODUCTION_RERANKER_RESULT: ${{ needs.production-reranker-admission.result }}
           R4_RESULT: ${{ needs.r4-native-benchmark.result }}
           FAISS_RESULT: ${{ needs.thq-faiss-additive-control.result }}
           THQ_RESULT: ${{ needs.thq-packed-codec-contract.result }}
@@ -1763,8 +1786,8 @@ jobs:
           check_required "$STORAGE_REQUIRED" "$STORAGE_RESULT" "MDBX storage"
           check_required "$RESEARCH_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
           check_required "$RESEARCH_REQUIRED" "$MIH_RESULT" "native MIH"
-          check_required "$RESEARCH_REQUIRED" "$PRODUCTION_RERANKER_RESULT" "production-shaped reranker admission"
           check_required "$RESEARCH_REQUIRED" "$NUMERICAL_FRONTIER_RESULT" "exact-vector numerical frontier"
+          check_required "$RESEARCH_REQUIRED" "$PRODUCTION_RERANKER_RESULT" "production-shaped reranker admission"
           check_required "$RESEARCH_REQUIRED" "$R4_RESULT" "R4 benchmark"
           check_required "$RESEARCH_REQUIRED" "$FAISS_RESULT" "Faiss control"
           check_required "$RESEARCH_REQUIRED" "$THQ_RESULT" "THQ packed codec"
@@ -1778,3 +1801,36 @@ jobs:
           check_required "$RESEARCH_REQUIRED" "$R5_EMEANS_RESULT" "R5 E-means CPU"
 
           exit "$failed"
+
+  r5-integration-evidence:
+    name: R5 combined integration evidence
+    if: always() && (startsWith(github.ref, 'refs/heads/preflight/r5-closure') || (github.event_name == 'workflow_dispatch' && inputs.r5_evidence))
+    needs: [ci-gate, research-full]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r tools/requirements-tools.txt
+      - uses: actions/download-artifact@v4
+        with:
+          path: .build/r5-integration-downloads
+      - name: Audit and bind the actual combined run
+        env:
+          R5_CI_GATE_RESULT: ${{ needs.ci-gate.result }}
+          R5_FULL_RESULT: ${{ needs.research-full.result }}
+        run: |
+          python tools/agent-memory-bench/collect-r5-integration-evidence.py --self-test
+          python tools/agent-memory-bench/collect-r5-integration-evidence.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r5-combined-integration-${{ github.sha }}
+          include-hidden-files: true
+          path: |
+            .build/r5-integration-evidence/
+            .build/r5-integration-downloads/
+          if-no-files-found: error
