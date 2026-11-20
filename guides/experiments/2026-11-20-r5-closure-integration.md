@@ -148,6 +148,14 @@ installs CPU-only PyTorch 2.8.0, matching existing research trainer requirements
 No test is skipped to mask an unavailable import. A new complete run is
 required; the preliminary 339/343 result is not closure acceptance evidence.
 
+A fresh `core.autocrlf=true` checkout also exposed two historical `.sha256`
+sidecars being converted to CRLF. #664 now pins LF for exactly those paths and
+runs disposition validation plus its 16 rejection controls on both Windows
+and Ubuntu. A fresh Windows-style checkout of content commit `58c18778` passes
+both checks. All six immutable historical Git blobs and the disposition
+manifest remain unchanged (manifest SHA-256
+`87deebcd629a470396b6b5522e0818bb7204eda876bcab42c4fba506d6479214`).
+
 ## R6 preparation only
 
 R6 experiments are NOT_EXECUTED. Start requires R5 closure, approved R5 tooling
