@@ -5,6 +5,7 @@
 #include <agent_memory/storage/CanonicalFlatStorage.hpp>
 #include <agent_memory/domain/Sha256.hpp>
 #include <mdbx_containers/KeyValueTable.hpp>
+#include <mdbx_containers/common/Config.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 #include <chrono>
@@ -13,6 +14,7 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <string_view>
 #include <thread>
 
 using namespace agent_memory;
@@ -29,11 +31,12 @@ template<class Function> void rejects(Function&& function, const char* message) 
 struct Fixture final {
     std::filesystem::path path;
     std::shared_ptr<MdbxStorageContext> context;
-    explicit Fixture(const char* name) {
+    std::int64_t page_size = 0;
+    explicit Fixture(const char* name, std::int64_t selected_page_size = 0) : page_size(selected_page_size) {
         const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
         path = std::filesystem::temp_directory_path() /
             (std::string{"agent_memory_flat_closure_"} + name + std::to_string(nonce) + ".mdbx");
-        context = MdbxStorageContext::open(path.string());
+        open();
     }
     ~Fixture() {
         context.reset();
@@ -47,7 +50,13 @@ struct Fixture final {
         result.table_prefix = "flat test";
         return result;
     }
-    void reopen() { context.reset(); context = MdbxStorageContext::open(path.string()); }
+    void open() {
+        if(page_size == 0) { context = MdbxStorageContext::open(path.string()); return; }
+        mdbxc::Config config; config.pathname = path.string();
+        config.max_dbs = kDefaultMdbxMaxDbs; config.page_size = page_size;
+        context = MdbxStorageContext::attach(mdbxc::Connection::create(config));
+    }
+    void reopen() { context.reset(); open(); }
 };
 CanonicalDocumentRevision make_revision(const char* id = "flat-doc") {
     CanonicalDocumentRevision result;
@@ -275,6 +284,81 @@ void concurrent_publication_and_abort() {
     expect(recovered.commit(replace(1, "Recovered")).status == CanonicalEditStatus::Ok, "abort prevented valid recovery");
 }
 
+void oversized_envelopes_do_not_write_or_publish() {
+    // Long legal dictionary keys require an explicit 4 KiB-page environment.
+    Fixture fixture("envelope_limit", 4096);
+    MdbxCanonicalStorageMetrics metrics;
+    auto options = fixture.options(); options.metrics = &metrics;
+    const DocumentId oversized_id{"oversized-create"};
+    const DocumentId existing_id{std::string(512U, 'd')};
+    const ContentBlockId existing_block{std::string(512U, 'b')};
+    const ContentBlockId inserted_block{"unpublished-insert"};
+    const auto expect_limit = [&](auto&& operation) {
+        metrics = {};
+        bool rejected = false;
+        try { operation(); }
+        catch(const std::length_error& error) {
+            rejected = std::string_view{error.what()} == "flat envelope exceeds payload limit";
+        }
+        expect(rejected, "oversized AMF2 envelope was not rejected by preflight");
+        expect(metrics.value_writes == 0U && metrics.block_versions_written == 0U,
+            "oversized structure reached canonical row writes before rejection");
+    };
+    {
+        MdbxCanonicalFlatStorage store(options);
+        CanonicalDocumentRevision oversized; oversized.document_id = oversized_id;
+        CanonicalFlatStructureRecord logical;
+        logical.document_id = oversized_id.value(); logical.body_revision = 1U;
+        // Each identity and the AMFS payload are legal, but AMF2 also stores
+        // the historical identity ledger and physical references.
+        for(std::size_t index = 0; index < 32768U; ++index) {
+            auto id = std::to_string(index); id.resize(1024U, 'x');
+            oversized.blocks.push_back({ContentBlockId{id}, 1U, ContentBlockKind::Paragraph, std::nullopt, "x"});
+            logical.blocks.push_back({std::move(id), 1U, 1U, std::nullopt});
+        }
+        expect(CanonicalFlatStorageCodec::encode_structure(logical).size() <
+            CanonicalFlatStorageLimits{}.max_payload_bytes, "oversized-create inner payload is not legal");
+        logical = {};
+        expect_limit([&] { static_cast<void>(store.create_document(std::move(oversized))); });
+        expect(!store.read_current(oversized_id), "oversized create published a head or mapping");
+
+        CanonicalDocumentRevision initial; initial.document_id = existing_id;
+        initial.blocks.push_back({existing_block, 1U, ContentBlockKind::Paragraph, std::nullopt, "original"});
+        expect(store.create_document(initial), "envelope edit fixture create failed");
+        Metadata metadata;
+        const auto string_limit = CanonicalFlatStorageLimits{}.max_string_bytes;
+        for(unsigned index = 0; index < 4U; ++index)
+            metadata.set(std::to_string(index), std::string(string_limit - (index == 3U ? 1600U : 0U), 'm'));
+        logical.document_id = existing_id.value(); logical.document_revision = 1U; logical.body_revision = 2U;
+        logical.blocks = {{existing_block.value(), 1U, 1U, std::nullopt}, {inserted_block.value(), 1U, 1U, std::nullopt}};
+        for(const auto& pair : metadata.values()) logical.metadata.push_back(pair);
+        expect(CanonicalFlatStorageCodec::encode_structure(logical).size() <
+            CanonicalFlatStorageLimits{}.max_payload_bytes, "oversized-edit inner payload is not legal");
+        logical = {};
+        CanonicalEditRequest edit{existing_id, 0U,
+            {InsertBlock{{inserted_block, 1U, ContentBlockKind::Paragraph, std::nullopt, "new"}, 1U},
+             UpdateDocumentMetadata{std::move(metadata)}}};
+        expect_limit([&] { static_cast<void>(store.commit(edit)); });
+        same(*store.read_current(existing_id), initial);
+        expect(!store.read_revision(existing_id, 1U), "oversized edit published immutable history");
+        MdbxStorageIdentityMappingOptions identity_options;
+        identity_options.context = fixture.context; identity_options.table_prefix = "flat test";
+        MdbxStorageIdentityMapping identity(identity_options);
+        expect(!identity.find_document(oversized_id) && !identity.find_block(existing_id, inserted_block),
+            "oversized create/edit retained numeric mappings");
+    }
+    options.context.reset(); fixture.reopen();
+    MdbxCanonicalFlatStorage recovered(fixture.options());
+    expect(!recovered.read_current(oversized_id) && !recovered.read_revision(existing_id, 1U) &&
+        recovered.read_current(existing_id)->revision == 0U &&
+        recovered.read_block(existing_id, existing_block, 0U)->text == "original",
+        "oversized rejection changed reopened head or immutable history");
+    expect(recovered.commit({existing_id, 0U, {ReplaceBlockText{existing_block, "recovered"}}}).status ==
+        CanonicalEditStatus::Ok, "oversized rejection prevented a subsequent valid edit");
+    expect(recovered.read_block(existing_id, existing_block, 0U)->text == "original",
+        "subsequent edit changed immutable history");
+}
+
 void key_schema_corruption_and_immutability() {
     const auto max = std::numeric_limits<std::uint64_t>::max();
     expect(canonical_flat_composite_key(1, 2).size() == 16U &&
@@ -376,6 +460,7 @@ int main() {
     try {
         multirevision_differential_and_navigation();
         concurrent_publication_and_abort();
+        oversized_envelopes_do_not_write_or_publish();
         key_schema_corruption_and_immutability();
     } catch(const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
     return 0;
