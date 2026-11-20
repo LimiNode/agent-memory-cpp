@@ -1,0 +1,277 @@
+{
+  "benchmark_name": "exact_selection_ranking_kernel",
+  "cases": [
+    {
+      "candidate_count": 128,
+      "top_k": 16,
+      "variants": {
+        "bounded_heap": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.0035,
+            0.0029,
+            0.0027,
+            0.0026,
+            0.0026,
+            0.0025,
+            0.0026,
+            0.0025
+          ],
+          "warmups": 2
+        },
+        "full_sort": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.0027,
+            0.0019,
+            0.0018,
+            0.0017,
+            0.0017,
+            0.0017,
+            0.0017,
+            0.0018
+          ],
+          "warmups": 2
+        },
+        "nth_element_then_sort": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.0012,
+            0.0009,
+            0.0009,
+            0.0007,
+            0.0007,
+            0.0009,
+            0.0007,
+            0.0007
+          ],
+          "warmups": 2
+        },
+        "partial_sort": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.0019,
+            0.0016,
+            0.0015,
+            0.0014,
+            0.0014,
+            0.0014,
+            0.0015,
+            0.0015
+          ],
+          "warmups": 2
+        }
+      }
+    },
+    {
+      "candidate_count": 1024,
+      "top_k": 64,
+      "variants": {
+        "bounded_heap": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.0174,
+            0.0157,
+            0.0149,
+            0.0145,
+            0.014,
+            0.0139,
+            0.0137,
+            0.0135
+          ],
+          "warmups": 2
+        },
+        "full_sort": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.0498,
+            0.0479,
+            0.047,
+            0.0462,
+            0.0443,
+            0.0441,
+            0.0437,
+            0.0427
+          ],
+          "warmups": 2
+        },
+        "nth_element_then_sort": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.0052,
+            0.0044,
+            0.0042,
+            0.0038,
+            0.0037,
+            0.0036,
+            0.0036,
+            0.0037
+          ],
+          "warmups": 2
+        },
+        "partial_sort": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.0135,
+            0.0127,
+            0.0125,
+            0.012,
+            0.0119,
+            0.0238,
+            0.0119,
+            0.0114
+          ],
+          "warmups": 2
+        }
+      }
+    },
+    {
+      "candidate_count": 8192,
+      "top_k": 128,
+      "variants": {
+        "bounded_heap": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.0599,
+            0.0583,
+            0.0573,
+            0.0569,
+            0.0566,
+            0.0567,
+            0.0562,
+            0.0562
+          ],
+          "warmups": 2
+        },
+        "full_sort": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.6337,
+            0.5798,
+            0.5894,
+            0.6042,
+            0.6016,
+            0.6025,
+            0.5879,
+            0.5808
+          ],
+          "warmups": 2
+        },
+        "nth_element_then_sort": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.0521,
+            0.0927,
+            0.0911,
+            0.0909,
+            0.0901,
+            0.0901,
+            0.0901,
+            0.099
+          ],
+          "warmups": 2
+        },
+        "partial_sort": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.1055,
+            0.0561,
+            0.0543,
+            0.0541,
+            0.0538,
+            0.0538,
+            0.0534,
+            0.0533
+          ],
+          "warmups": 2
+        }
+      }
+    },
+    {
+      "candidate_count": 65536,
+      "top_k": 256,
+      "variants": {
+        "bounded_heap": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.246,
+            0.2341,
+            0.2324,
+            0.2317,
+            0.2309,
+            0.23,
+            0.2308,
+            0.231
+          ],
+          "warmups": 2
+        },
+        "full_sort": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            6.1603,
+            6.1392,
+            6.1034,
+            6.125,
+            6.3802,
+            6.2207,
+            6.0618,
+            6.067
+          ],
+          "warmups": 2
+        },
+        "nth_element_then_sort": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.6063,
+            0.6135,
+            0.592,
+            0.6374,
+            0.6034,
+            0.5881,
+            0.5997,
+            0.5868
+          ],
+          "warmups": 2
+        },
+        "partial_sort": {
+          "exact_parity": true,
+          "sample_count": 8,
+          "samples_ms": [
+            0.5417,
+            0.5353,
+            0.543,
+            0.555,
+            0.56,
+            0.563,
+            0.5315,
+            0.5326
+          ],
+          "warmups": 2
+        }
+      }
+    }
+  ],
+  "corpus_seed": "0x5eed1234",
+  "correctness_oracle": "full_sort_with_score_desc_id_asc_tie_break",
+  "production_api_changed": false,
+  "schema_version": 1,
+  "scope": "ranking-selection kernel only; not ExactLexicalIndex end-to-end",
+  "source_commit": "ee5083fde20cf3d6f746940eae9ad3d9682bf383",
+  "status": "EXECUTED",
+  "timing_semantics": "one sample is one complete candidate-set selection; warmups excluded"
+}

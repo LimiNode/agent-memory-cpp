@@ -295,6 +295,11 @@ jobs:
             exit 1
           fi
 
+      - name: Validate R5 historical evidence dispositions
+        run: |
+          python tools/agent-memory-bench/validate-r5-evidence-dispositions.py
+          python tools/agent-memory-bench/validate-r5-evidence-dispositions.py --self-test
+
       - name: Validate source-bound release contract and receipt
         env:
           AGENT_MEMORY_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -628,6 +633,7 @@ jobs:
           -DAGENT_MEMORY_BUILD_TESTS=ON
           -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
           -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DAGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA=${{ github.event.pull_request.head.sha || github.sha }}
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build native MIH benchmark harness
@@ -635,9 +641,215 @@ jobs:
           cmake --build build-native-mih --config Release --target
           agent-memory-mih-native-hot-path
           agent-memory-mih-native-sparse-arbitrary-m
+          agent-memory-exact-selection-benchmark
+          agent-memory-reranker-admission-scaling
 
       - name: Test native MIH benchmark harness
-        run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_
+        run: >
+          ctest --test-dir build-native-mih --build-config Release
+          --output-on-failure -R "agent_memory_mih_native_|agent_memory_exact_selection_self_test"
+
+      - name: Self-test exact selection receipt validator
+        run: python tools/agent-memory-bench/validate-exact-selection-receipt.py --self-test
+
+      - name: Generate exact selection receipt
+        run: >
+          mkdir -p artifacts &&
+          ./build-native-mih/tools/agent-memory-bench/agent-memory-exact-selection-benchmark
+          artifacts/exact-selection-benchmark.json
+          --expected-pr-head "${{ github.event.pull_request.head.sha || github.sha }}" &&
+          sha256sum artifacts/exact-selection-benchmark.json
+          > artifacts/exact-selection-benchmark.json.sha256
+
+      - name: Validate exact selection receipt integrity and provenance
+        run: >
+          python tools/agent-memory-bench/validate-exact-selection-receipt.py
+          artifacts/exact-selection-benchmark.json
+          artifacts/exact-selection-benchmark.json.sha256
+          --expected-head "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Upload exact selection receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-selection-benchmark-receipt
+          path: |
+            artifacts/exact-selection-benchmark.json
+            artifacts/exact-selection-benchmark.json.sha256
+          if-no-files-found: error
+
+      - name: Test reranker admission scaling
+        run: ./build-native-mih/tools/agent-memory-bench/agent-memory-reranker-admission-scaling --self-test
+
+      - name: Run reranker admission scaling
+        run: ./build-native-mih/tools/agent-memory-bench/agent-memory-reranker-admission-scaling build-native-mih/reranker-admission-scaling.json
+
+      - name: Validate reranker admission receipt
+        run: |
+          python tools/agent-memory-bench/validate-reranker-admission-receipt.py --self-test
+          python tools/agent-memory-bench/validate-reranker-admission-receipt.py \
+            --receipt build-native-mih/reranker-admission-scaling.json \
+            --expected-head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --actual-checkout-sha "$(git rev-parse HEAD)" \
+            --write-sidecar build-native-mih/reranker-admission-scaling.sha256.json
+
+      - name: Upload reranker admission scaling receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: reranker-admission-scaling-receipt
+          path: |
+            build-native-mih/reranker-admission-scaling.json
+            build-native-mih/reranker-admission-scaling.sha256.json
+          if-no-files-found: error
+
+  exact-vector-numerical-frontier:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: Exact-vector numerical frontier
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure numerical frontier harness
+        run: >
+          cmake -S . -B build-exact-vector-numerical-frontier
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DAGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA=${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Build exact-vector numerical frontier target
+        run: >
+          cmake --build build-exact-vector-numerical-frontier --config Release
+          --target agent-memory-exact-vector-numerical-frontier
+
+      - name: Run exact-vector numerical frontier self-test
+        run: >
+          ctest --test-dir build-exact-vector-numerical-frontier
+          --build-config Release --output-on-failure
+          -R '^agent_memory_exact_vector_numerical_frontier_(self_test|invalid_cli)$'
+
+      - name: Verify CLI failure is non-zero
+        run: |
+          set +e
+          build-exact-vector-numerical-frontier/tools/agent-memory-bench/agent-memory-exact-vector-numerical-frontier --invalid-option
+          status=$?
+          set -e
+          test "$status" -ne 0
+
+      - name: Validate receipt validator self-test
+        run: python tools/agent-memory-bench/validate_exact_vector_numerical_frontier.py --self-test
+
+      - name: Run bounded numerical frontier benchmark
+        run: >
+          build-exact-vector-numerical-frontier/tools/agent-memory-bench/agent-memory-exact-vector-numerical-frontier
+          --documents 64 --queries 8 --dimension 128 --warmups 2 --repeats 4
+          --output build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json
+
+      - name: Validate numerical frontier receipt
+        run: >
+          python tools/agent-memory-bench/validate_exact_vector_numerical_frontier.py
+          build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json
+          --expected-source-commit "$(git rev-parse HEAD)"
+          --expected-checkout-sha "$(git rev-parse HEAD)"
+          --expected-pr-head-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Record raw receipt SHA-256
+        run: >
+          sha256sum build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json
+          | tee build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json.sha256
+
+      - name: Upload numerical frontier receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-vector-numerical-frontier-receipt
+          path: |
+            build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json
+            build-exact-vector-numerical-frontier/exact-vector-numerical-frontier.json.sha256
+          if-no-files-found: error
+
+  production-reranker-admission:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: Production-shaped reranker admission (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            compiler: GNU
+            system: Linux
+          - os: windows-latest
+            compiler: MSVC
+            system: Windows
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install research CTest configure prerequisites
+        run: python -m pip install -r tools/requirements-tools.txt
+
+      - name: Configure production-shaped reranker admission
+        run: >
+          cmake -S . -B build-production-reranker
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DAGENT_MEMORY_PRODUCTION_RERANKER_EXPECTED_PR_HEAD_SHA=${{ github.event.pull_request.head.sha || github.sha }}
+          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
+
+      - name: Build production-shaped reranker admission
+        run: >
+          cmake --build build-production-reranker --config Release --target
+          agent-memory-production-reranker-admission
+
+      - name: Run production-shaped reranker contract tests
+        run: ctest --test-dir build-production-reranker --build-config Release --output-on-failure --no-tests=error -R '^agent_memory_production_reranker_.*self_test$'
+
+      - name: Run production-shaped reranker qualification
+        run: >
+          python -c "from pathlib import Path; import subprocess;
+          files=[p for p in Path('build-production-reranker').rglob('*') if p.is_file() and p.name in ('agent-memory-production-reranker-admission','agent-memory-production-reranker-admission.exe')];
+          assert len(files)==1, files;
+          subprocess.run([str(files[0].resolve()),'build-production-reranker/production-reranker-admission.json'],check=True)"
+
+      - name: Validate production-shaped reranker receipt
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual_checkout_sha="$(git rev-parse HEAD)"
+          python tools/agent-memory-bench/validate-production-reranker-admission.py \
+            --receipt build-production-reranker/production-reranker-admission.json \
+            --sidecar build-production-reranker/production-reranker-admission.sha256.json \
+            --expected-head "$EXPECTED_HEAD" \
+            --expected-compiler "${{ matrix.compiler }}" \
+            --expected-system "${{ matrix.system }}" \
+            --actual-checkout-sha "$actual_checkout_sha" --write-sidecar
+
+      - name: Upload production-shaped reranker receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-reranker-admission-receipt-${{ matrix.os }}
+          path: |
+            build-production-reranker/production-reranker-admission.json
+            build-production-reranker/production-reranker-admission.sha256.json
+          if-no-files-found: error
 
   r4-native-benchmark:
     if: needs.changes.outputs.research == 'true'
@@ -832,6 +1044,7 @@ jobs:
       - name: Exercise Faiss additive fitters and replay contracts
         run: |
           python tools/agent-memory-bench/run-thq-additive-upper-bounds.py --self-test-faiss
+          python tools/agent-memory-bench/test_compare_ivf_training.py
           python tools/agent-memory-bench/run-thq-faiss-rq-replay.py --self-test
           python tools/agent-memory-bench/audit-thq-faiss-rq-replay.py --self-test
           python tools/agent-memory-bench/run-thq-faiss-lsq-replay.py --self-test
@@ -1235,6 +1448,91 @@ jobs:
       - name: Run full research CTest
         run: ctest --test-dir build-research-full --build-config Release --output-on-failure
 
+  exact-lexical-topk-decision:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: Exact lexical top-k decision (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install research test dependencies
+        run: python -m pip install -r tools/requirements-tools.txt
+
+      - name: Configure production-shaped lexical benchmark
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >
+          cmake -S . -B build-lexical-topk -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=ON -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF -DAGENT_MEMORY_ENABLE_MDBX=OFF
+          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
+          -DAGENT_MEMORY_LEXICAL_TOPK_EXPECTED_PR_HEAD_SHA="$EXPECTED_HEAD"
+
+      - name: Build and self-test
+        shell: bash
+        run: |
+          cmake --build build-lexical-topk --config Release --target agent-memory-exact-lexical-topk-decision --parallel 2
+          ctest --test-dir build-lexical-topk --build-config Release --output-on-failure --no-tests=error -R '^agent_memory_exact_lexical_topk_decision_.*self_test$'
+
+      - name: Run and validate source-bound receipt
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+          root = Path("build-lexical-topk")
+          names = {"agent-memory-exact-lexical-topk-decision", "agent-memory-exact-lexical-topk-decision.exe"}
+          binaries = [path for path in root.rglob("agent-memory-exact-lexical-topk-decision*") if path.is_file() and path.name in names]
+          if len(binaries) != 1:
+              raise SystemExit(f"expected one benchmark executable, found {binaries}")
+          receipt = root / "receipt.json"
+          subprocess.run([str(binaries[0].resolve()), "--output", str(receipt)], check=True)
+          expected_compiler = "MSVC" if os.name == "nt" else "GNU"
+          identity = json.loads(receipt.read_text(encoding="utf-8"))["build_identity"]
+          if identity["compiler_id"] != expected_compiler:
+              raise SystemExit(f"required actual compiler evidence is missing: {expected_compiler}")
+          expected_system = "Windows" if os.name == "nt" else "Linux"
+          if identity["system_name"] != expected_system:
+              raise SystemExit(f"required actual platform evidence is missing: {expected_system}")
+          digest = hashlib.sha256(receipt.read_bytes()).hexdigest()
+          receipt.with_suffix(".json.sha256").write_text(f"{digest}  receipt.json\n", encoding="utf-8")
+          PY
+          python tools/agent-memory-bench/validate-exact-lexical-topk-decision.py build-lexical-topk/receipt.json \
+            --expected-head "$EXPECTED_HEAD" --actual-checkout "$(git rev-parse HEAD)" \
+            --source-root . --sha256-sidecar build-lexical-topk/receipt.json.sha256
+
+      - name: Preserve receipt and SHA-256 sidecar
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-lexical-topk-decision-${{ matrix.os }}
+          path: |
+            build-lexical-topk/receipt.json
+            build-lexical-topk/receipt.json.sha256
+            build-lexical-topk/tools/agent-memory-bench/generated-lexical-topk/
+
   persistent-lexical-oracle:
     if: needs.changes.outputs.research == 'true'
     needs: changes
@@ -1287,6 +1585,102 @@ jobs:
           python tools/lexical-research/validate_lexical_retrieval_qualification.py
           --self-test
 
+  r5-exact-vector-index:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: R5 ExactVectorIndex (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      R5_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install research CTest configure prerequisites
+        run: python -m pip install -r tools/requirements-tools.txt
+      - name: Validate immutable historical evidence and rejection controls
+        run: |
+          python tools/agent-memory-bench/validate-r5-evidence-dispositions.py
+          python tools/agent-memory-bench/validate-r5-evidence-dispositions.py --self-test
+      - name: Configure Release, MDBX off
+        run: >
+          cmake -S . -B .build/r5-vector
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_ENABLE_MDBX=OFF
+          -DAGENT_MEMORY_ENABLE_JSON=ON
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+      - name: Build actual index experiment
+        run: cmake --build .build/r5-vector --config Release --target agent-memory-exact-vector-index-decision --parallel 2
+      - name: Independent Decimal oracle and mutation controls
+        run: ctest --test-dir .build/r5-vector -C Release -R "^agent_memory_exact_vector_index_decision$" --output-on-failure --no-tests=error
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r5-vector-${{ matrix.os }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .build/r5-vector/exact-vector-index-decision.*
+          include-hidden-files: true
+          if-no-files-found: error
+
+  r5-emeans-cpu:
+    if: needs.changes.outputs.research == 'true'
+    needs: changes
+    name: R5 E-means CPU synthetic smoke
+    runs-on: ubuntu-latest
+    env:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      VECLIB_MAXIMUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      R5_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Isolated pinned CPU environment
+        run: |
+          python -m venv .build/r5-emeans-env
+          .build/r5-emeans-env/bin/python -m pip install numpy==2.4.6 faiss-cpu==1.16.0
+          mkdir -p .build/r5-emeans
+      - name: Execute Lloyd and E-means, not a substituted baseline
+        run: >
+          .build/r5-emeans-env/bin/python tools/agent-memory-bench/run_emeans_vs_lloyd.py
+          --output .build/r5-emeans/emeans.raw.json
+          --receipt .build/r5-emeans/emeans.receipt.json
+          --sidecar .build/r5-emeans/emeans.raw.sha256
+          --threads 1 --expected-head "$R5_EXPECTED_HEAD"
+      - name: Validate equal-work, held-out and scan controls
+        run: >
+          .build/r5-emeans-env/bin/python tools/agent-memory-bench/validate_emeans_vs_lloyd.py
+          --raw .build/r5-emeans/emeans.raw.json
+          --receipt .build/r5-emeans/emeans.receipt.json
+          --sidecar .build/r5-emeans/emeans.raw.sha256
+          --expected-head "$R5_EXPECTED_HEAD" --self-test
+      - name: Upload exact-head synthetic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r5-emeans-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .build/r5-emeans/emeans.*
+          include-hidden-files: true
+          if-no-files-found: error
+
   ci-gate:
     name: CI gate
     if: always()
@@ -1299,14 +1693,19 @@ jobs:
       - mdbx
       - mdbx-benchmark
       - native-mih-benchmark
+      - production-reranker-admission
+      - exact-vector-numerical-frontier
       - r4-native-benchmark
       - thq-faiss-additive-control
       - thq-packed-codec-contract
       - ann-cascade
       - lexical-parity
       - persistent-lexical-oracle
+      - exact-lexical-topk-decision
       - bge-m3-sparse-pilot
       - research-full
+      - r5-exact-vector-index
+      - r5-emeans-cpu
     runs-on: ubuntu-latest
     steps:
       - name: Check required lanes
@@ -1324,14 +1723,19 @@ jobs:
           STORAGE_RESULT: ${{ needs.mdbx.result }}
           MDBX_BENCHMARK_RESULT: ${{ needs.mdbx-benchmark.result }}
           MIH_RESULT: ${{ needs.native-mih-benchmark.result }}
+          PRODUCTION_RERANKER_RESULT: ${{ needs.production-reranker-admission.result }}
+          NUMERICAL_FRONTIER_RESULT: ${{ needs.exact-vector-numerical-frontier.result }}
           R4_RESULT: ${{ needs.r4-native-benchmark.result }}
           FAISS_RESULT: ${{ needs.thq-faiss-additive-control.result }}
           THQ_RESULT: ${{ needs.thq-packed-codec-contract.result }}
           ANN_RESULT: ${{ needs.ann-cascade.result }}
           PARITY_RESULT: ${{ needs.lexical-parity.result }}
           ORACLE_RESULT: ${{ needs.persistent-lexical-oracle.result }}
+          LEXICAL_TOPK_RESULT: ${{ needs.exact-lexical-topk-decision.result }}
           BGE_RESULT: ${{ needs.bge-m3-sparse-pilot.result }}
           FULL_RESULT: ${{ needs.research-full.result }}
+          R5_VECTOR_RESULT: ${{ needs.r5-exact-vector-index.result }}
+          R5_EMEANS_RESULT: ${{ needs.r5-emeans-cpu.result }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1359,13 +1763,18 @@ jobs:
           check_required "$STORAGE_REQUIRED" "$STORAGE_RESULT" "MDBX storage"
           check_required "$RESEARCH_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
           check_required "$RESEARCH_REQUIRED" "$MIH_RESULT" "native MIH"
+          check_required "$RESEARCH_REQUIRED" "$PRODUCTION_RERANKER_RESULT" "production-shaped reranker admission"
+          check_required "$RESEARCH_REQUIRED" "$NUMERICAL_FRONTIER_RESULT" "exact-vector numerical frontier"
           check_required "$RESEARCH_REQUIRED" "$R4_RESULT" "R4 benchmark"
           check_required "$RESEARCH_REQUIRED" "$FAISS_RESULT" "Faiss control"
           check_required "$RESEARCH_REQUIRED" "$THQ_RESULT" "THQ packed codec"
           check_required "$RESEARCH_REQUIRED" "$ANN_RESULT" "ANN cascade"
           check_required "$RESEARCH_REQUIRED" "$PARITY_RESULT" "C++ lexical parity"
           check_required "$RESEARCH_REQUIRED" "$ORACLE_RESULT" "persistent lexical oracle"
+          check_required "$RESEARCH_REQUIRED" "$LEXICAL_TOPK_RESULT" "exact lexical top-k decision"
           check_required "$RESEARCH_REQUIRED" "$BGE_RESULT" "BGE-M3 sparse pilot self-test"
           check_required "$FULL_REQUIRED" "$FULL_RESULT" "full research CTest"
+          check_required "$RESEARCH_REQUIRED" "$R5_VECTOR_RESULT" "R5 ExactVectorIndex"
+          check_required "$RESEARCH_REQUIRED" "$R5_EMEANS_RESULT" "R5 E-means CPU"
 
           exit "$failed"
