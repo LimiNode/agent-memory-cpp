@@ -208,3 +208,8 @@ remain `KEEP CURRENT`.
 Receipt schema v2 adds these observations without rewriting historical v1
 receipt bytes or SHA-256. Existing dated local numbers above remain evidence
 for their original tested source, not results of this corrective.
+
+Configure also records whether the source worktree is clean. Development
+builds may still execute, but a dirty-source receipt is rejected as exact-source
+evidence. The source manifest includes the target's CMake definitions as well
+as the generator, profiler, runner, validator and production seams.
