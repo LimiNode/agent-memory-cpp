@@ -14,7 +14,7 @@ are unchanged. This batch has not been integrated into `main`.
 The initially reviewed base was
 `bfa01a22d4091bb5c5f7c17606199fda6342b790`. During qualification, other work
 advanced `main` to `2b65bdfef8b43978c56a2e75bbfd1d736a2fcb16` (#633).
-The combined local branch includes that revision without modifying the
+The combined local branch includes that selected main cutoff without modifying the
 second-agent research changes. Branches and PRs have been published for review,
 but no PR has been merged and no tag/release has been published by this
 storage-closure operation.
@@ -56,8 +56,10 @@ missing-document/status precedence matches the reference navigation.
 One text edit writes one new block version plus structure and head; the tested
 metadata-only edit writes no new block payload. Historical payloads are reused,
 not rewritten. These are physical adapter-call observations, **not** O(1)
-whole-operation complexity: structure decoding/validation remains O(V), and
-the shared editor still reads the current revision and performs linear searches.
+whole-operation complexity: reading the structure is linear in its encoded
+size; decoding/validation remains O((V+H) log(V+H)), with V active references
+and H historical IDs in the no-reuse ledger. The shared editor still reads
+the current revision and performs linear searches.
 No constant MDBX lookup cost, page I/O or production throughput is asserted.
 
 ## Compatibility: three different gates
@@ -116,8 +118,20 @@ nlohmann_json 3.11.3. Dependencies: libmdbx
 
 Builds/logs remain under `.build/sf-{roff,rj,rm,ron,don}`. These are local
 observations at the stated commit, not claims about every platform or a later
-integration commit. The current-main composition will receive a separately
-identified incremental qualification.
+integration commit.
+
+An incremental build at `d77080d138bdcdc6d1b01260ca5fe426ca01ac82` includes
+`main@2b65bdfe`, audited dependency runner and VS2022 image correction.
+The same five profiles passed 52/52, 57/57, 90/90, 96/96 and 90/90 respectively.
+For MDBX profiles, each build has its own `.build/sf-<profile>/profile-temp`
+selected through `TMP` and `TEMP`. A first concurrent shared-OS-temp attempt
+produced 89/90 Debug and 95/96 JSON-on Release: the incremental lexical fixture
+uses fixed database names in `temp_directory_path()`, shared across independent
+builds. Those failure logs remain at
+`.build/sf-{don,ron}-parallel-shared-temp-failure.log`, not erased as PASS.
+The isolated concurrent rerun passed all three MDBX profiles without source
+changes. This is an operational test-isolation constraint, not a production
+storage correction.
 
 ### Installed consumers
 
@@ -131,7 +145,7 @@ processes per profile. Corruption fixtures explicitly link installed
 
 Both numeric receipts have `source_dirty=false` and logical snapshot SHA-256
 `515a2865cf0fa5f353d3fced0f798e3fa1a179fa6411542528ec4c6ac37b1940`.
-Commands, receipt locations, installed archive hashes and export controls are
+Profile details, receipt locations, installed archive hashes and export controls are
 retained in `.build/sf-package/QUALIFICATION.md`.
 
 ### Sanitizers
@@ -164,7 +178,8 @@ navigation, point lookup, durable reopen and retrieval/hydration-visible text,
 plus corruption/no-reuse/budget checks. Four independent bounded processes
 exercise create, reopen, corrupt and reject-corrupt. Core defaults are unchanged.
 
-Limits are deliberate: the legacy importer still uses C1/string IDs, scope
+Limits are deliberate: the importer still uses legacy KnowledgeUnit/lexical
+storage; flat CanonicalContent remains a separate host-composed store. Scope
 filtering is a host-side metadata predicate rather than a new flat ScopeId API,
 and two-store publication is not atomic. This demonstrates a single-writer
 consumer consistency boundary, not complete production numeric migration or
@@ -206,12 +221,83 @@ VS2022. The corrected job pins `windows-2022`, preserving both configurations
 and the mandatory aggregate gate. Separately, full local MSVC Debug reproduced
 80/81: ExactLexical aborted
 with a CRT dialog. That F1 diagnosis is **not closed** by MinGW or sanitizer
-success. Final corrected MSVC and historical-dependency replay observations
-must be recorded before #673 becomes Ready.
+success. Full MSVC Release at `342fffbe9f4909602002dc286562c3b5be15e06c`
+passed 81/81 with real MDBX enabled. The separate F1 reproducer localizes the
+Debug abort to globally injected `bad_alloc` inside checked-STL `noexcept`
+string/proxy construction, including argument preparation before `upsert`.
+Copying the argument merely moves the same failure into another such
+constructor; neither trace establishes a production index corruption.
+The narrowly qualified fault-injection boundary and final Debug result must
+be recorded before #673 becomes Ready.
 
 ## Integration and remaining decisions
 
-The complete exact-HEAD/CI and dependency/readiness matrix is being finalized.
+### Exact-head review queue
+
+The following successful CI and packaging observations were checked against
+each stated HEAD. Run IDs refer to
+`https://github.com/LimiNode/agent-memory-cpp/actions/runs/<id>`.
+They establish those branch revisions, not an unspecified future merge result.
+
+| PR | Exact HEAD | CI / packaging | Review state |
+| --- | --- | --- | --- |
+| #654 | `bedcd178f816d6f3dfce1f18c1013e8f11b95145` | 44558715467 / 44558715437 SUCCESS | Ready |
+| #655 | `370abb8ae8d3e04cfb85dc1fff94a6245721eb1b` | 44560082657 / 44560083571 SUCCESS | Ready |
+| #656 | `2b4910cd3ac58cc63120d6467fffdce79bb8796d` | 44655618849 / 44655619769 SUCCESS | Ready |
+| #657 | `c53f0d28e5bd6c8663f8632b48b42d6b6e0a9f6d` | 44571251135 / 44571250911 SUCCESS | Ready |
+| #658 | `5c246a8599025a75ba11a1d0046f8714a37676fd` | 44572529953 / 44572530056 SUCCESS | Ready, coordinated with #661 |
+| #659 | `44ca4390271596f9036c9aea37b7b8039ba5f776` | 44649534137 / 44649534558 SUCCESS | Ready |
+| #660 | `9d1455c3f5ba04e6b14f1fcc6c61f47ba080fa5a` | 44660891401 / 44660891404 SUCCESS | Ready |
+| #661 | `f0fabfdf5e3574f511320ff16bcbc6b95996c97c` | 44647159652 / 44647159595 SUCCESS | Ready |
+| #662 | `4dc38f7f1244e05efa8e13f9b675337003e00025` | 44655597520 / 44655597350 SUCCESS | Ready |
+| #667 | `2c47031d8988049b16c5b0ed1149ba1a47fa519c` | 44644009637 / 44644009634 SUCCESS | Ready |
+| #669 | `cc265e5d639505f2df63d2f8ca8f4c399e941da6` | 44650874625 / 44650874742 SUCCESS | Ready |
+| #670 | `e6592367857cd940a23e599d704bfca3b39cc93c` | 44657262515 / 44657262423 SUCCESS | Ready |
+| #672 executable | `41d47b0e3b845d624424473d3352502f74410fba` | 44655775794 / 44655775458 SUCCESS | Ready; documentation follow-up below |
+| #672 latest | `eeb7d973636652962b0fad7452a2b6a5254a9d16` | New documentation-only checks pending | Ready for review, not yet a final merge candidate |
+| #673 latest | `342fffbe9f4909602002dc286562c3b5be15e06c` | 44663852089 / 44663852034 pending | Draft |
+| #663 latest | `a7a71807c00571034ccdd9587259e612171123c7` | 44663096130 pending / 44663096125 FAILURE | Draft |
+
+#663's newly normalized branch still has the older F2 revision: the observed
+packaging failure is the dependency guard rejecting its unaudited pin change.
+The reviewed #673 dependency audit must be synchronized after the live benchmark
+finishes; successful checks from the superseded `14ead8d6...` are not reused.
+
+### Dependency DAG and future integration order
+
+Minimal selected prerequisites, considering merged histories rather than only
+the displayed GitHub base branch:
+
+| Dependent PR | Prerequisites |
+| --- | --- |
+| #660 | #657 |
+| #661 | #658 |
+| #662 | #654, #661 |
+| #670 | #659, #660, #662, #667 |
+| #672 | #662 |
+| #673 | #659 |
+| #663 | #662, #667, #673 |
+
+#654–#659, #667 and #669 have no additional selected ancestry prerequisite.
+The corrected #662 retains the original #654 navigation commits
+`8bca990e`, `a606c920`, `bedcd178`; its sixteen non-merge patches contain no
+duplicate stable patch-id. The original duplicated navigation replay is gone.
+#670 contains earlier #660/#659 revisions, so those parents must be integrated
+at their corrected HEADs before treating the composed gate as qualified.
+
+One valid future order is:
+`#655, #656, #654, #657, #658, #659, #667, #660, #661, #662, #670, #672, #669,
+#673, #663`. This order does not waive #673/#663's open gates or the coordinated
+#658/#661 admission requirement.
+
+Normal merge preserves shared ancestry. After every parent integration,
+retarget the child, inspect its complete diff against the new `main`, obtain
+current required checks and recheck the expected HEAD. A squash strategy instead
+requires explicit normalization/rebase of descendants, especially cross-merge
+histories in #670/#663; do not blindly squash the entire old stack. No selected
+PR is closed as superseded: each still owns distinct reviewed work. The combined
+preflight branch is a test composition, not a replacement mega-PR.
+
 Completed independent PRs are Ready for Review, not held indefinitely for the
 whole roadmap. #663 remains Draft for missing full performance evidence; #673
 remains Draft until its actual Windows and dependency-replay failures close.
