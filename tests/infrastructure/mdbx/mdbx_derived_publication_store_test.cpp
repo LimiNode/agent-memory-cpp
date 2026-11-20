@@ -26,9 +26,18 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <process.h>
 #endif
 
 namespace {
+
+[[noreturn]] void exit_without_unwind(int code) {
+#ifdef _WIN32
+    ::_exit(code);
+#else
+    std::_Exit(code);
+#endif
+}
 
 void expect(bool condition, const char* message) {
     if(!condition) throw std::runtime_error(message);
@@ -906,13 +915,13 @@ int main() {
                 // test process instead of entering an unbounded join on a
                 // broken MDBX synchronization path.
                 std::cerr << "current-read writer wait timed out\n";
-                std::_Exit(124);
+                exit_without_unwind(124);
             }
         });
         const auto raced_current = reader.read_current(scope, "current-publication");
         if(writer_done_future.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
             std::cerr << "current-read writer completion timed out\n";
-            std::_Exit(125);
+            exit_without_unwind(125);
         }
         if(writer.joinable()) writer.join();
         if(writer_error) std::rethrow_exception(writer_error);
