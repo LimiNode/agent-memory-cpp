@@ -119,10 +119,20 @@ O-means, GPU training, representative frozen R4 data, portable native serving
 and production adoption remain untested. Disposition: `DEFER`.
 
 R5 closure records the representative comparison explicitly as
-`NOT_EXECUTED: REPRESENTATIVE_CORPUS_UNAVAILABLE`. The already-frozen tiny
-embedding fixtures are regression inputs, not representative disjoint
-train/base/query/heldout training sets. This bounded closure does not download
-a new corpus or add a dependency merely to produce a positive comparison.
+`NOT_EXECUTED: REPRESENTATIVE_CORPUS_UNAVAILABLE`. This does not mean that the
+repository has never used a representative corpus: the existing
+[DE-1M source recovery receipt](2026-09-24-canonical-de1m-source-recovery.json)
+records one million base vectors, 25,000 training vectors and 305 canonical
+queries at dimension 384, with frozen hashes. On 2026-11-20 both recorded
+payload locators were absent: the canonical
+`E:/_repoz/agent-memory-workspaces/canonical-de1m-source/payload` and the legacy
+`E:/_repoz/agent-memory-cpp/tmp/native-ann-confirmation-v1/de-1m/e5`. The older
+152-query Prototype-IVF manifest is historical calibration, not the fresh
+305-query source. Source receipts/hashes are available, but the checked
+payloads are not; no current disjointness or representative training claim is
+inferred from them. The 36-document/12-query MiniLM fixture is a regression
+input, not representative training. This bounded closure does not download a
+new corpus or add a dependency merely to produce a positive comparison.
 The executed v2 synthetic smoke remains `EXECUTED`, separately from that
 unexecuted representative evaluation.
 

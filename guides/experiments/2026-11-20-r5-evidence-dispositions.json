@@ -49,7 +49,14 @@
   "representative_emeans_comparison": {
     "execution_status": "NOT_EXECUTED",
     "reason": "REPRESENTATIVE_CORPUS_UNAVAILABLE",
-    "scope": "No suitable independently frozen representative train/base/query/heldout vector corpus was supplied for this bounded R5 closure. Existing tiny model fixtures are regression inputs, not representative training sets. No new corpus, model dependency, native serving or quality conclusion is created.",
+    "scope": "The checked-in recovery receipt records a real DE-1M corpus: 1000000 base, 25000 train, 305 canonical queries, dimension 384. Both recorded payload locators were absent on this host at inspection; frozen hashes alone cannot execute or establish fresh split leakage checks. The existing 36-document/12-query MiniLM fixture is a regression input, not representative training. This is an availability conclusion for these locators, not a claim that no representative corpus exists anywhere.",
+    "inspection_date": "2026-11-20",
+    "source_recovery_receipt": "guides/experiments/2026-09-24-canonical-de1m-source-recovery.json",
+    "source_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a",
+    "availability_checks": [
+      {"locator": "E:/_repoz/agent-memory-workspaces/canonical-de1m-source/payload", "exists_at_inspection": false},
+      {"locator": "E:/_repoz/agent-memory-cpp/tmp/native-ann-confirmation-v1/de-1m/e5", "exists_at_inspection": false}
+    ],
     "decision": "DEFER"
   }
 }
