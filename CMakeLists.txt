@@ -242,6 +242,10 @@ endif()
 
 if(AGENT_MEMORY_BUILD_BENCHMARKS)
     add_subdirectory(tools/agent-memory-bench)
+    add_test(
+        NAME agent_memory_exact_selection_self_test
+        COMMAND agent-memory-exact-selection-benchmark --self-test
+    )
     if(AGENT_MEMORY_ENABLE_MDBX)
         add_executable(agent_memory_segmented_lexical_benchmark
             tools/segmented-lexical-benchmark.cpp
