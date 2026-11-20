@@ -155,12 +155,13 @@ old successful Linux CI run remains evidence for its original source, not the
 latest HEAD. Neither CI success nor this guide promotes an inventory row to
 `PRIMARY`, changes a production default, or establishes representative quality.
 
-The registry validator checks ledger identity, owner, execution, digest and
+The initial R5.5 validator checked ledger identity, owner, execution, digest and
 scope fields without fetching or scientifically re-validating another PR's
-receipts. Their owning validators enforce the raw-result contracts. Its
-self-test retains the 14 previous rejection controls and adds six ledger
+receipts. It retained 14 earlier rejection controls and added six ledger
 counterexamples: `PRIMARY` promotion, missing receipt digest, malformed
-execution SHA, activation, non-project owner and CI/docs-only evidence.
+execution SHA, activation, non-project owner and CI/docs-only evidence. The
+closure below adds compact-byte/disposition guards; owning validators continue
+to enforce the full raw-result contracts.
 
 R5.2 measures only `retrieve()` in its primary timer: fixture-index search,
 deterministic reranker, per-query lookup-index construction, admission checks
@@ -170,3 +171,52 @@ break-even. The first observed mean sorted/hash crossovers were `500/50`,
 `500/100`, and `100/100` candidates at metadata widths 2, 8, and 32. These are
 machine-dependent observations, not stable thresholds or production choices.
 The generated arms remain research-only, with unchanged production source.
+
+## R5 closure: dispositions and portable validation
+
+There is still one algorithm inventory and execution ledger. The canonical
+[R5 historical disposition manifest](https://github.com/LimiNode/agent-memory-cpp/blob/76914c0c3422407325aaf097622fbd5478de2ab1/guides/experiments/2026-11-20-r5-evidence-dispositions.json)
+is owned by #664, not copied into a second registry. This registry pins that
+owner commit, repository path and byte digest. The owning validator preserves
+all six historical raw/sidecar/receipt files and checks their v2 replacements.
+E-means v1 is `INVALID_FOR_COMPARISON`; vector v1 is `SUPERSEDED`. Neither can
+be promoted to `PRIMARY` or used for a current research/production decision.
+Two small offline receipt tombstones in this checker reject both old paths
+and renamed old receipt bytes; the full reasons and artifact inventory remain
+in the manifest. Original `EXECUTED` fields are historical occurrence, not
+validity or a current source claim.
+
+The ledger now separates `production_default_decision=KEEP CURRENT` from the
+bounded research decision. A run also names its experiment so that another
+algorithm's receipt cannot be silently attributed to it. The seven external
+receipt/source/checkout identities already recorded above are explicitly
+pinned in the checker: replacing a source with another plausible full SHA or
+substituting an unknown receipt does not pass. New external bytes require an
+intentional binding update after owner validation, not an automatic checksum
+refresh. These pins do not fetch the raw artifact or constitute scientific
+replication.
+
+`EXTERNAL_POINTER_NOT_REPLAYED` means a pinned public blob/Actions pointer,
+not a locally replayed receipt. Historical host-specific pointers are marked
+`UNAVAILABLE_HISTORICAL_POINTER`; their old source identities and digests are
+preserved. `LOCAL_BYTES_VERIFIED` requires an existing repository-relative
+receipt, the actual byte digest, matching sidecar, matching experiment schema,
+execution status and actual source/checkout fields. In a combined checkout the
+checker additionally validates available pinned blob-receipt bytes and their
+sidecars. In standalone #640, absent #664/#666 files remain explicit external
+pointers and are not called locally verified.
+
+The default validator and self-test remain in the independent Documentation
+checks lane. The self-test now has 41 rejection controls, including revoked
+evidence promotion, missing manifest, valid-looking provenance substitutions,
+nonexistent locally verified evidence, external-as-local claims, cross-arm
+attribution, production-default activation and actual receipt/sidecar mismatch.
+The owner validators still check full raw/source/generated/fixture contracts.
+
+The representative E-means comparison is closed as
+`NOT_EXECUTED: REPRESENTATIVE_CORPUS_UNAVAILABLE`, separately from the executed
+v2 smoke. #664 checked both pre-existing DE-1M payload locators from the source
+recovery receipt; both were absent on the inspection host. This does not deny
+the existing 1M/305-query frozen corpus history or invent a real query-size
+distribution. Compensated cosine remains `KEEP CURRENT`; no production policy
+or dependency is activated by this closure.
