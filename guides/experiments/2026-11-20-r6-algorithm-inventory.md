@@ -158,3 +158,59 @@ Next: use the verified minimal inputs for only the smallest certificate
 counterexample/control in an isolated research worktree. Keep
 correctness, retrieval quality, component performance and operational readiness
 as separate results; stop or defer a hypothesis without inventing evidence.
+
+## Batch 2 prerequisite qualification, 2026-11-20
+
+This dated addition refines local availability only; the inventory above records
+its original inspection. The ADC implementation-efficiency corrective now takes
+priority over new routing experiments. The original #677 v1 result remains
+`KEEP_CURRENT`; a separate corrective tests whether its scalar implementation,
+per-document FP64 bounds and repeated ID validation explain the loss. It is not
+a new quality result or authorization to merge #676/#677.
+
+The bounded follow-up located and freshly verified two exact actual-R4 manifests:
+
+| Canonical-checkout-relative file | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `.artifacts/legacy-tmp/native-ann-confirmation-v1/de-1m/e5/manifest.json` | 2811 | `b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a` |
+| `.artifacts/legacy-tmp/native-ann-confirmation-v1/de-1m/comparison/input/manifest.json` | 1991 | `418e70a37d3f11f894377d11dfdc75f4cdfe47c16c8690b693e91b2984504c8f` |
+
+The previous local availability audit grouped these with unrecovered K8/layout
+members too broadly. The required normalized K8 prototypes and complete
+memberships remain `MISSING`, not recoverable from K1 means or candidate orders.
+K8 incumbent-bound research is therefore `NOT_EXECUTED`.
+
+The original IVF256 stream remains `AVAILABLE`, but original centroids and
+complete postings are `MISSING`. Its present route/calibration manifests do not
+match their historical parent bindings (`INVALID` for that claimed binding).
+No original bytes were repaired or silently replaced.
+
+An alternate bundle at `.artifacts/legacy-tmp/native-thq-ivf-bakeoff-v1/` has
+freshly verified centroid, posting-order and offset hashes:
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `e5-centroids.f32` | 6291456 | `50acca1c77fe9a5c4bd076323f419cf7343ffd8b50d7513436d2764c1622acff` |
+| `posting-order.u32` | 4000000 | `f4b8af41fd2a55fb1866e640fe65a620b42caaf2b4293c1f0d568d3b77363f27` |
+| `posting-offsets.u32` | 16388 | `ae3d71c10a100278d97f7e8c2369fae8bd3f4853ba4a5cef3ad9a723a73ad80e` |
+
+It contains 4096 finite near-unit centers, monotone offsets and a complete
+permutation of one million document IDs. It is `AVAILABLE` for historical
+mechanics only: its producer trains on the first 100000 base/evaluation documents,
+so it is `INVALID` for the requested disjoint-training quality protocol. It is
+not the historical IVF256 model or actual-R4 K8. No new IVF experiment ran.
+
+The original 25000 training and one-million evaluation document IDs are unique
+and disjoint, but their exposed queries do not become a fresh R6 holdout.
+Redistribution permission is `UNKNOWN` from the inspected manifests. No large
+download, model fitting, production edit or first-agent storage task occurred.
+Exact local paths, per-object formats, source/generator identities, qualification
+limits and resource estimates are retained under canonical
+`.artifacts/r6-batch2-input-qualification/`; availability is separate from quality
+and licensing qualification.
+
+After ADC corrective, prefer a separate research-only complete
+`MultiProbeHammingIndex::search()` deduplication experiment if K8/IVF prerequisites
+remain unmet. Compare the actual `seen(N)` control with query-local alternatives,
+preserve candidate/probe/filter/order contracts, and reuse existing MIH generation
+techniques as prior art. No production class change follows from this inventory.
