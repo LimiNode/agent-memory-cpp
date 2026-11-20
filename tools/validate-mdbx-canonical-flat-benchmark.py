@@ -123,46 +123,64 @@ def validate(raw_path: Path, receipt_path: Path, smoke: bool = False) -> None:
 def self_test() -> None:
     with tempfile.TemporaryDirectory() as directory:
         raw, receipt = Path(directory) / "raw.tsv", Path(directory) / "receipt.json"
-        scales, repeats = [8, 16], 2
-        lines = ["\t".join(["backend", "scale", "repeat", "workload"] + METRICS)]
-        aggregates = []
-        for backend, scale, workload in itertools.product(BACKENDS, scales, WORKLOADS):
-            metrics = dict.fromkeys(METRICS, 1)
-            metrics["block_versions_written"] = 3 if workload == "repeated_edits" else 1
-            for repeat in range(repeats):
-                lines.append("\t".join(map(str, [backend, scale, repeat, workload] + list(metrics.values()))))
-            aggregates.append(dict(backend=backend, scale=scale, workload=workload, p50=metrics, p95=metrics))
-        raw.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        good = dict(schema_version=2, family=FAMILY, execution_status="completed", decision="evidence_only",
-                    seed=20261119, warmup_pairs=1, repeats=repeats, scales=scales, backends=BACKENDS,
-                    workloads=WORKLOADS, metrics=METRICS, metric_provenance=PROVENANCE,
-                    quantile="linear_interpolation_n_minus_one", aggregates=aggregates,
-                    source_revision="1" * 40, source_dirty=False, build="Release",
-                    compiler="fixture-compiler", system="fixture-system", hardware_threads=1,
-                    fixture_shape="balanced_binary_preorder_v1",
-                    raw=dict(path=raw.as_posix(), sha256=hashlib.sha256(raw.read_bytes()).hexdigest(),
-                             rows=len(lines) - 1))
-        receipt.write_text(json.dumps(good), encoding="utf-8")
-        validate(raw, receipt, True)
-        for metric in ("elapsed_ms", "value_bytes_written", "dictionary_lookups", "decode_ns"):
-            forged = copy.deepcopy(good)
-            forged["aggregates"][0]["p95"][metric] = 99
+        def rejects(forged: dict, smoke: bool) -> None:
             receipt.write_text(json.dumps(forged), encoding="utf-8")
             try:
-                validate(raw, receipt, True)
+                validate(raw, receipt, smoke)
             except ValueError:
-                continue
-            raise AssertionError(f"accepted falsified aggregate {metric} with correctly hashed raw")
-        for malformed in (lines[:-1], lines + [lines[-1]], [line.replace("\t1\t", "\tnan\t", 1) for line in lines]):
-            raw.write_text("\n".join(malformed) + "\n", encoding="utf-8")
-            forged = copy.deepcopy(good)
-            forged["raw"]["sha256"] = hashlib.sha256(raw.read_bytes()).hexdigest()
-            receipt.write_text(json.dumps(forged), encoding="utf-8")
-            try:
-                validate(raw, receipt, True)
-            except ValueError:
-                continue
-            raise AssertionError("accepted malformed correctly hashed observations")
+                return
+            raise AssertionError("accepted falsified evidence with correctly hashed raw")
+
+        for smoke in (True, False):
+            scales, repeats = ([8, 16], 2) if smoke else ([64, 1024, 16384], 5)
+            lines = ["\t".join(["backend", "scale", "repeat", "workload"] + METRICS)]
+            aggregates = []
+            for backend, scale, workload in itertools.product(BACKENDS, scales, WORKLOADS):
+                metrics = dict.fromkeys(METRICS, 1)
+                metrics["block_versions_written"] = 3 if workload == "repeated_edits" else 1
+                for repeat in range(repeats):
+                    lines.append("\t".join(map(str, [backend, scale, repeat, workload] + list(metrics.values()))))
+                aggregates.append(dict(backend=backend, scale=scale, workload=workload, p50=metrics, p95=metrics))
+            raw.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            good = dict(schema_version=2, family=FAMILY, execution_status="completed", decision="evidence_only",
+                        seed=20261119, warmup_pairs=1, repeats=repeats, scales=scales, backends=BACKENDS,
+                        workloads=WORKLOADS, metrics=METRICS, metric_provenance=PROVENANCE,
+                        quantile="linear_interpolation_n_minus_one", aggregates=aggregates,
+                        source_revision="1" * 40, source_dirty=False, build="Release",
+                        compiler="fixture-compiler", system="fixture-system", hardware_threads=1,
+                        fixture_shape="balanced_binary_preorder_v1",
+                        raw=dict(path=raw.as_posix(), sha256=hashlib.sha256(raw.read_bytes()).hexdigest(),
+                                 rows=len(lines) - 1))
+            if not smoke:
+                good["launch_provenance"] = dict(
+                    source_commit="1" * 40, source_tree="2" * 40, executable_sha256="3" * 64,
+                    source_unchanged=True, executable_unchanged=True, source_tree_clean=True,
+                    timeout_seconds=1800, process_exit=0)
+            receipt.write_text(json.dumps(good), encoding="utf-8")
+            validate(raw, receipt, smoke)
+            for metric in ("elapsed_ms", "value_bytes_written", "dictionary_lookups", "decode_ns"):
+                forged = copy.deepcopy(good)
+                forged["aggregates"][0]["p95"][metric] = 99
+                rejects(forged, smoke)
+            if not smoke:
+                forged = copy.deepcopy(good); del forged["launch_provenance"]
+                rejects(forged, smoke)
+                forged = copy.deepcopy(good); forged["source_dirty"] = True
+                rejects(forged, smoke)
+                for field, value in (("source_commit", "4" * 40), ("source_tree", "invalid"),
+                                     ("executable_sha256", "invalid"), ("source_unchanged", False),
+                                     ("executable_unchanged", False), ("source_tree_clean", False),
+                                     ("timeout_seconds", 0), ("timeout_seconds", 3601),
+                                     ("timeout_seconds", True), ("process_exit", 1)):
+                    forged = copy.deepcopy(good)
+                    forged["launch_provenance"][field] = value
+                    rejects(forged, smoke)
+            for malformed in (lines[:-1], lines + [lines[-1]],
+                              [line.replace("\t1\t", "\tnan\t", 1) for line in lines]):
+                raw.write_text("\n".join(malformed) + "\n", encoding="utf-8")
+                forged = copy.deepcopy(good)
+                forged["raw"]["sha256"] = hashlib.sha256(raw.read_bytes()).hexdigest()
+                rejects(forged, smoke)
 
 
 if __name__ == "__main__":
