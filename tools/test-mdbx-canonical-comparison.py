@@ -135,6 +135,7 @@ class LaunchControls(unittest.TestCase):
                     raise subprocess.CalledProcessError(17, command)
                 self.assert_failed(failed)
                 self.assertEqual(len(self.commands), 1)
+                self.assertTrue(self.raw.exists(), "worker observations must survive a failed run")
                 self.raw.unlink(); self.receipt.unlink(); self.commands.clear()
 
     def test_validator_failure_removes_completed_proof(self) -> None:
