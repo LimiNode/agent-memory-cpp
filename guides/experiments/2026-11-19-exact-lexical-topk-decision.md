@@ -253,3 +253,44 @@ Decision remains `CONDITIONAL` for the selector experiments and `KEEP CURRENT`
 for production defaults. Without a representative query distribution and the
 unified product-boundary qualification, these synthetic profiles do not justify
 an implementation PR or dispatch threshold.
+
+### Executed closure pilot
+
+The clean local source/expected/compiled revision was
+`1c062ba7bd8ac3b4bf68af03e8f6689731e795cb`: GNU 15.2.0, Ninja, Release,
+C++17, Windows/AMD64, 64-bit pointers. It is not a Linux or MSVC result.
+Receipt SHA-256 is
+`85cfc08c07cbd561c9b6e4651d7e4b9a247a6549a89cb5963a9bec141f1384aa`.
+The local raw receipt/sidecar remain under the canonical checkout's
+`.build/r5-closure-lexical/receipt-1c062ba7.json[.sha256]`; this locator is not
+claimed as a publicly archived artifact. Public source-bound reruns, including
+their generated sources, are retained by each exact-head CI matrix arm.
+
+All 16 legacy cases plus the 12 profile cases passed source/generated-source,
+independent materialized-corpus digest, exact output parity, timer call-count,
+interval and receipt-sidecar checks. The three targeted CTests passed, including
+37 validator rejection controls and the three pinned-source rejection controls.
+The complete run retained 1,792 operation samples across its distinct scopes;
+these are repetitions of fixed fixtures, not 1,792 independent user requests.
+
+Uninstrumented complete-search p50, milliseconds, eight samples per arm:
+
+| Synthetic profile / N / K | Full sort | Partial sort | Nth + sort | Heap |
+| --- | ---: | ---: | ---: | ---: |
+| Short narrow / 1,024 / 16 | 1.2691 | 0.9846 | 1.0310 | 1.0079 |
+| Long wide / 1,024 / 16 | 8.7550 | 8.2462 | 7.9217 | 9.1907 |
+| Rare selective / 8,192 / 16 (9 candidates) | 3.7717 | 3.7058 | 3.8680 | 3.8156 |
+| Long repeated ties / 1,024 / 1,023 | 4.8015 | 5.2260 | 4.7882 | 5.2397 |
+
+For the separately instrumented full-sort arm, the rare/selective small-K case
+directly recorded p50 filtering 3.6456 ms and selection 0.0018 ms; the long/wide
+case recorded candidate construction 3.9249 ms and selection 0.1087 ms. These
+are timer-perturbed stage observations, not a decomposition of the table's
+uninstrumented medians. The latter also enables allocation counters, whereas
+the direct-stage scope records clock intervals without those counters. Separate
+phase medians must not be added or subtracted as if they were one sample.
+
+The observed regime changes support the existing conditional decision. A faster
+selector cannot remove scanning, filtering or metadata construction costs, and
+the same heap is not uniformly best even at small K. This shared-host synthetic
+pilot does not establish a production threshold or stable tail latency.
