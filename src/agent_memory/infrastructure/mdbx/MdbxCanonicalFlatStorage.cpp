@@ -93,8 +93,22 @@ class EnvelopeReader final {
     std::string_view bytes;
     std::size_t position = 0;
 };
-void seal(std::string& value, const CanonicalFlatStorageLimits& limits) {
-    if(value.size() > limits.max_payload_bytes - 32U) throw std::length_error("flat envelope exceeds payload limit");
+void add_envelope_size(std::size_t& size, std::size_t count, const CanonicalFlatStorageLimits& limits) {
+    if(size > limits.max_payload_bytes || count > limits.max_payload_bytes - size)
+        throw std::length_error("flat envelope exceeds payload limit");
+    size += count;
+}
+std::size_t envelope_size(const DocumentId& document, std::size_t inner_size,
+                          const CanonicalFlatStorageLimits& limits) {
+    // Magic, type, physical key, document length, inner length and SHA-256 trailer.
+    std::size_t size = 4U + 1U + 16U + 8U + 8U + 32U;
+    add_envelope_size(size, document.value().size(), limits);
+    add_envelope_size(size, inner_size, limits);
+    return size;
+}
+void seal(std::string& value, std::size_t expected_size) {
+    if(expected_size < 32U || value.size() != expected_size - 32U)
+        throw std::runtime_error("flat envelope size calculation mismatch");
     append_digest(value, sha256(value));
 }
 EnvelopeReader open_envelope(std::string_view payload, char type, std::string_view key,
@@ -110,8 +124,11 @@ EnvelopeReader open_envelope(std::string_view payload, char type, std::string_vi
         throw std::runtime_error("flat envelope physical/document binding mismatch");
     return reader;
 }
-std::string envelope_header(char type, std::string_view key, const DocumentId& document) {
-    std::string result = "AMF2";
+std::string envelope_header(char type, std::string_view key, const DocumentId& document,
+                            std::size_t expected_size) {
+    std::string result;
+    result.reserve(expected_size);
+    result.append("AMF2");
     result.push_back(type);
     result.append(key.data(), key.size());
     append_string(result, document.value());
@@ -370,6 +387,30 @@ class MdbxCanonicalFlatStorage::Impl final {
             next.logical.blocks.push_back({block.id.value(), block.revision, encode_kind(block.kind),
                 block.parent_id ? std::optional<std::string>{block.parent_id->value()} : std::nullopt});
             next.ledger.insert(block.id);
+            if(old_revision && (index >= old_revision->blocks.size() || !same_payload(block, old_revision->blocks[index])))
+                body_changed = true;
+        }
+        if(next.ledger.size() > max_records) throw std::length_error("flat historical ledger limit exceeded");
+        if(previous && body_changed) {
+            if(next.logical.body_revision == std::numeric_limits<std::uint64_t>::max())
+                throw std::overflow_error("flat body revision exhausted");
+            ++next.logical.body_revision;
+        }
+        const auto structure_start = Clock::now();
+        const auto encoded_structure = CanonicalFlatStorageCodec::encode_structure(next.logical, limits);
+        auto structure_size = envelope_size(revision.document_id, encoded_structure.size(), limits);
+        add_envelope_size(structure_size, 8U, limits);
+        // Repeated checked additions avoid overflow in count * physical-reference bytes.
+        for(std::size_t index = 0; index < revision.blocks.size(); ++index)
+            add_envelope_size(structure_size, 48U, limits);
+        add_envelope_size(structure_size, 8U, limits);
+        for(const auto& id : next.ledger) {
+            add_envelope_size(structure_size, 8U, limits);
+            add_envelope_size(structure_size, id.value().size(), limits);
+        }
+        if(metrics) metrics->encode_ns += elapsed_ns(structure_start);
+        // Admit the full structure before writing blocks or constructing its outer buffer.
+        for(const auto& block : revision.blocks) {
             const auto prior = old_indices.find(block.id);
             if(prior != old_indices.end() && block.revision == old_revision->blocks[prior->second].revision) {
                 const auto& old = old_revision->blocks[prior->second];
@@ -381,33 +422,27 @@ class MdbxCanonicalFlatStorage::Impl final {
                 });
                 const auto key = canonical_flat_composite_key(block_id.value(), block.revision);
                 const auto start = Clock::now();
-                auto payload = envelope_header('B', key, revision.document_id);
-                append_string(payload, CanonicalFlatStorageCodec::encode_block(to_flat(block), limits));
-                seal(payload, limits);
+                const auto encoded = CanonicalFlatStorageCodec::encode_block(to_flat(block), limits);
+                const auto size = envelope_size(revision.document_id, encoded.size(), limits);
+                auto payload = envelope_header('B', key, revision.document_id, size);
+                append_string(payload, encoded);
+                seal(payload, size);
                 next.physical.push_back({block_id.value(), block.text.size(), sha256(payload)});
                 if(metrics) metrics->encode_ns += elapsed_ns(start);
                 put_immutable(blocks, key, payload, txn, true);
             }
-            if(old_revision && (index >= old_revision->blocks.size() || !same_payload(block, old_revision->blocks[index])))
-                body_changed = true;
-        }
-        if(next.ledger.size() > max_records) throw std::length_error("flat historical ledger limit exceeded");
-        if(previous && body_changed) {
-            if(next.logical.body_revision == std::numeric_limits<std::uint64_t>::max())
-                throw std::overflow_error("flat body revision exhausted");
-            ++next.logical.body_revision;
         }
         const auto start = Clock::now();
         const auto key = canonical_flat_composite_key(storage_id.value(), revision.revision);
-        auto payload = envelope_header('S', key, revision.document_id);
-        append_string(payload, CanonicalFlatStorageCodec::encode_structure(next.logical, limits));
+        auto payload = envelope_header('S', key, revision.document_id, structure_size);
+        append_string(payload, encoded_structure);
         append_u64(payload, next.physical.size());
         for(const auto& ref : next.physical) {
             append_u64(payload, ref.storage_id); append_u64(payload, ref.text_bytes); append_digest(payload, ref.payload_digest);
         }
         append_u64(payload, next.ledger.size());
         for(const auto& id : next.ledger) append_string(payload, id.value());
-        seal(payload, limits);
+        seal(payload, structure_size);
         if(metrics) metrics->encode_ns += elapsed_ns(start);
         put_immutable(structures, key, payload, txn, false);
         if(before_head) before_head();
