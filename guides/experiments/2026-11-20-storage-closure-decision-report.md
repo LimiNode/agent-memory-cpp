@@ -1,7 +1,8 @@
 # Storage correctness closure and integration decision
 
-Date: 2026-11-20. Status: qualification in progress; no merge authorization.
-Scope: first-agent storage batch #654–#663, #667, #669, #670, #672 and #673.
+Date: 2026-11-20. Status: engineering qualification complete within the stated
+boundaries; no merge authorization.
+Scope: first-agent storage batch #654–#663, #667, #669, #670, #672, #673 and #675.
 This is an engineering evidence/decision record, not a release decision or a
 request to activate the experimental adapters.
 
@@ -13,11 +14,20 @@ are unchanged. This batch has not been integrated into `main`.
 
 The initially reviewed base was
 `bfa01a22d4091bb5c5f7c17606199fda6342b790`. During qualification, other work
-advanced `main` to `2b65bdfef8b43978c56a2e75bbfd1d736a2fcb16` (#633).
-The combined local branch includes that selected main cutoff without modifying the
+advanced `main` through #633 to selected cutoff
+`c1adfbf32dfde7f3339353568491469514fc1c4c` (#635).
+The combined local branch includes that cutoff without modifying the
 second-agent research changes. Branches and PRs have been published for review,
 but no PR has been merged and no tag/release has been published by this
 storage-closure operation.
+
+A later refresh observed `main@aab98c702e684c3fd6e12bf8acb0b6a72b472be0`
+(#638/#642). Relative to the selected cutoff, it changes research tools,
+receipts and build/CI registration, not `src/`, `external/` or `tests/`.
+It is not a documentation-only delta. The final composed preflight includes
+this main cutoff, #673 and the completed #663 without changing their research
+sources. Evidence below keeps each actual qualification source binding;
+integration into main remains a separate decision.
 
 `Ready for Review` below is a review state, not permission for an unchecked
 merge. Recheck the exact HEAD, base, protection, comments and required checks
@@ -133,9 +143,47 @@ The isolated concurrent rerun passed all three MDBX profiles without source
 changes. This is an operational test-isolation constraint, not a production
 storage correction.
 
+### Final published preflight
+
+Combined branch `preflight/storage-closure-final`, exact published source
+[`04e5868bd3cc5d20ee231c365d4d01fc74b63621`](https://github.com/LimiNode/agent-memory-cpp/tree/04e5868bd3cc5d20ee231c365d4d01fc74b63621),
+contains corrected parent HEADs, #673/#675, completed benchmark evidence and
+`main@aab98c70`. It is a reproducible test composition, not a replacement PR
+or an integration into main.
+
+All five MinGW profiles were freshly configured, built and tested at this
+clean exact source: **52/52, 57/57, 90/90, 96/96, 90/90 PASS**, in the same
+order as the matrix above. Logs are
+`.build/sf-<profile>/final-{configure,build,ctest}.log` for
+`roff,rj,rm,ron,don`. Each process uses its own
+`D:/agent-memory-storage-final-04e5868-tests/<profile>` TMP/TEMP directory.
+`git diff --check` passed and the composed worktree remained clean.
+
+The full tracked source tree is `85b114d305bdce1efde785d0c957c6d4ff549164`;
+external tree is `b816ddeccafa0375c15b977e71d4a36f6728f59f`. Both match the
+earlier `2b60d9c0` and native-qualified `dc085936` trees byte-for-byte. This
+source comparison does not relabel earlier installed/sanitizer/native runs as
+executions at a later SHA.
+
+The three final numeric receipts report `source_commit=04e5868...`,
+`source_dirty=false`, `PASS`, the shared logical snapshot
+`515a2865cf0fa5f353d3fced0f798e3fa1a179fa6411542528ec4c6ac37b1940`,
+fresh-process reopen and both migration-proof flags false:
+
+- `.build/sf-rm/tests/numeric-conformance-Release/run-gm0teku5/receipt.json`,
+  SHA-256 `48aba1de53788b7903e55e4e11aa97c2a8a608fe0e5cc513c83b822ca90434a9`.
+- `.build/sf-ron/tests/numeric-conformance-Release/run-a0faw004/receipt.json`,
+  SHA-256 `484904e8cefce3b0be5fae857597e0d7b2ac9e9a0b2a405dfcafe0870ed3f8d9`.
+- `.build/sf-don/tests/numeric-conformance-Debug/run-wx83z3zh/receipt.json`,
+  SHA-256 `d31acd485b35ad64be3709aa08f2c3fc54a29bdfac19808c36b99ff0b807f1d6`.
+
+These include nineteen numeric processes per profile; the corresponding
+flat-Markdown CTest separately executes its four fresh-process scenarios.
+
 ### Installed consumers
 
-The same exact source passed installed minimal/JSON/MDBX/hydration/RawMarkdown
+Exact source `2b60d9c04f9044851706220b3d9fbd9e5719053f` passed installed
+minimal/JSON/MDBX/hydration/RawMarkdown
 consumers, minimal relocation, exact 0.x version acceptance/rejection and
 positive/negative installed-header controls. All four exported target trees
 exclude source/build dependency paths. Numeric/flat consumers passed 2/2 CTest
@@ -203,7 +251,39 @@ p50/p95 from that run are published. Source
 failure, while the validator still rejects an incomplete matrix. Its four
 Release harness/replay/control CTests and ten Python orchestration tests pass;
 independent narrow source review found no new P0/P1/P2 in harness/reporting.
-Full performance qualification remains pending a bounded follow-up run.
+The bounded 3600-second follow-up completed at that same measured source:
+210 observations, all expected coordinates, five repeats, logical result parity
+and every aggregate replayed. Its compact TSV/receipt pair is retained in #663
+under the explicit 128 KiB policy in
+`guides/experiments/2026-11-20-canonical-storage-comparison.md`.
+Raw SHA-256:
+`8ff5103a866ff105f41d0c46aa192e3abbcfcd44439d22fcb3d96b69dbe464d1`;
+receipt SHA-256:
+`24c204346406f4f779b4eb1dc282b91b5dc97f87477643c858633032f4773c12`.
+The receipt remains bound to `a7a71807...`, not the later publication HEAD.
+Normal synchronization with #673 preserved the exact `src` and `external`
+trees used by the measurement.
+An independent Decimal-based quantile replay confirmed all 1176 declared
+p50/p95 values across 42 aggregates and all 210 logical parity observations.
+The retained Git blobs are byte-identical to the checked files. Final
+publication HEAD `275390866c0f90caa438d6bee748b352a7077512` passed all five
+local harness CTests and exact-head CI/packaging.
+
+| Blocks | C1 single-edit p50/p95 (ms) | Flat single-edit p50/p95 (ms) | C1 / flat written value bytes |
+| --- | --- | --- | --- |
+| 64 | 43.8110 / 53.2055 | 6.8181 / 39.3316 | 10079 / 6610 |
+| 1024 | 132.1323 / 195.1390 | 177.8489 / 214.5054 | 166464 / 101608 |
+| 16384 | 26045.6859 / 27870.2962 | 25817.5955 / 38361.6185 | 2800573 / 1687466 |
+
+Flat writes one new payload version per single edit, but reads V+4 canonical
+values (68/1028/16388). Bounded payload writes do not make the full edit
+bounded work. These are directional local results: native builds ran
+concurrently and a separate build exhausted E: free space. All benchmark
+operations completed and replay checks passed, but scheduling/storage-pressure
+effects were not isolated. The completed matrix closes the evidence-completeness
+gate, not a stable speedup or production tail-latency gate. No allocations,
+page writes, actual allocated disk blocks or realistic shared-hot workload were
+measured. A quiescent realistic comparison remains separate follow-up work.
 
 ## Windows MDBX qualification (#673)
 
@@ -227,8 +307,47 @@ Debug abort to globally injected `bad_alloc` inside checked-STL `noexcept`
 string/proxy construction, including argument preparation before `upsert`.
 Copying the argument merely moves the same failure into another such
 constructor; neither trace establishes a production index corruption.
-The narrowly qualified fault-injection boundary and final Debug result must
-be recorded before #673 becomes Ready.
+
+### Checked-STL allocation injection (#675)
+
+The independent corrective PR is based directly on `main@c1adfbf3` and changes
+only the test, a standalone reproducer and its experiment note. It skips the
+exhaustive global-`new` failure-budget matrix only when
+`_MSC_VER && _ITERATOR_DEBUG_LEVEL > 0`; the visible SKIP diagnostic identifies
+the unsupported boundary. Ordinary semantics, ownership and allocation-count
+checks remain enabled. Release and MinGW retain the complete original matrix.
+No core ABI, iterator setting, production allocator or CTest registration is
+changed.
+
+The bounded standalone reproducer exits 73 with the expected diagnosis in
+checked MSVC Debug and exits 0 in MSVC Release/MinGW. Focused ordinary CMake
+MSVC Release and Debug each passed 1/1; MinGW Debug executed the full matrix.
+Independent narrow source review accepted the mechanism, test guard and
+coverage disclosure, with no new P0/P1/P2. These observations do not qualify
+the skipped allocation-failure matrix on checked STL.
+
+The full combined source was frozen at
+`dc085936c56a7a031bacee25ffb3be1e9a7f9fa0` during native qualification.
+The first Debug build exhausted free space on E: after the Release suite;
+the curated resource-failure record is `.build/sf-msvc-DISK-FAILURE.md`,
+not a complete saved MSBuild log or a test PASS. A fresh Debug build
+uses `D:/agent-memory-storage-closure-dc085-msvc` and a separate temporary
+directory because that volume has sufficient free space. Only 122 regenerable
+Release object files were removed from the old build (57,356,204 bytes);
+source, libraries, executables and test logs were retained.
+
+At that frozen source, the combined native MSVC 19.44.35228/VS2022 x64
+MDBX ON/JSON OFF Release suite passed **90/90**. Its retained CTest log
+SHA-256 is `6a9b54706788484771a68888912a6346015e177ea9559ea9994433e050180f0d`.
+The fresh D: Debug configure, build and CTest all returned 0: **90/90 PASS**,
+49.29 seconds. No CTest registration was skipped. `LastTest.log:808` contains
+the explicit lexical allocation-matrix SKIP; ordinary ownership checks execute
+at line 809 (49 allocations at each tested corpus size).
+Debug CTest log SHA-256:
+`7c763e1b377297e756f1864898a1335028975420d82240baa73ae015d4f6e437`;
+Debug archive SHA-256:
+`6874642ffea9682341e397a62b8728df68ce0ae4d0dd07e405998832a23047d4`.
+These full combined results are distinct from #673's exact-head 81-test CI jobs.
 
 ## Integration and remaining decisions
 
@@ -253,15 +372,19 @@ They establish those branch revisions, not an unspecified future merge result.
 | #667 | `2c47031d8988049b16c5b0ed1149ba1a47fa519c` | 44644009637 / 44644009634 SUCCESS | Ready |
 | #669 | `cc265e5d639505f2df63d2f8ca8f4c399e941da6` | 44650874625 / 44650874742 SUCCESS | Ready |
 | #670 | `e6592367857cd940a23e599d704bfca3b39cc93c` | 44657262515 / 44657262423 SUCCESS | Ready |
-| #672 executable | `41d47b0e3b845d624424473d3352502f74410fba` | 44655775794 / 44655775458 SUCCESS | Ready; documentation follow-up below |
-| #672 latest | `eeb7d973636652962b0fad7452a2b6a5254a9d16` | New documentation-only checks pending | Ready for review, not yet a final merge candidate |
-| #673 latest | `342fffbe9f4909602002dc286562c3b5be15e06c` | 44663852089 / 44663852034 pending | Draft |
-| #663 latest | `a7a71807c00571034ccdd9587259e612171123c7` | 44663096130 pending / 44663096125 FAILURE | Draft |
+| #672 | `eeb7d973636652962b0fad7452a2b6a5254a9d16` | 44664212591 / 44664212488 SUCCESS | Ready |
+| #673 | `09ae91e8cbd0ce76e3c64dc6f35c456a1ee29c97` | 44665606318 / 44665606089 SUCCESS | Ready |
+| #663 | `275390866c0f90caa438d6bee748b352a7077512` | 44668187280 / 44668187270 SUCCESS | Ready; directional evidence only |
+| #675 | `26aaaf205921e9bf377421ffd4935881837cc1a2` | 44665471903 / 44665471971 SUCCESS | Ready; checked-STL coverage limit above |
 
-#663's newly normalized branch still has the older F2 revision: the observed
-packaging failure is the dependency guard rejecting its unaudited pin change.
-The reviewed #673 dependency audit must be synchronized after the live benchmark
-finishes; successful checks from the superseded `14ead8d6...` are not reused.
+#663's measured `a7a71807...` CI and packaging both failed: the older F2 revision
+lacked the reviewed dependency audit. The published branch now normally includes
+#673's audit, VS2022 runner and #675, plus immutable measured evidence and a
+dedicated full-evidence replay CTest (5/5 local harness tests PASS). Its new
+exact-head checks are required; neither failed a7 checks nor successful checks
+from superseded `14ead8d6...` are reused. The earlier #673 CI at `342fffbe...`
+was cancelled once its known unsupported Debug fault-injection test started;
+only its packaging run 44663852034 was successful.
 
 ### Dependency DAG and future integration order
 
@@ -275,10 +398,10 @@ the displayed GitHub base branch:
 | #662 | #654, #661 |
 | #670 | #659, #660, #662, #667 |
 | #672 | #662 |
-| #673 | #659 |
+| #673 | #659, #675 |
 | #663 | #662, #667, #673 |
 
-#654–#659, #667 and #669 have no additional selected ancestry prerequisite.
+#654–#659, #667, #669 and #675 have no additional selected ancestry prerequisite.
 The corrected #662 retains the original #654 navigation commits
 `8bca990e`, `a606c920`, `bedcd178`; its sixteen non-merge patches contain no
 duplicate stable patch-id. The original duplicated navigation replay is gone.
@@ -287,7 +410,7 @@ at their corrected HEADs before treating the composed gate as qualified.
 
 One valid future order is:
 `#655, #656, #654, #657, #658, #659, #667, #660, #661, #662, #670, #672, #669,
-#673, #663`. This order does not waive #673/#663's open gates or the coordinated
+#675, #673, #663`. This order does not waive #673/#663's open gates or the coordinated
 #658/#661 admission requirement.
 
 Normal merge preserves shared ancestry. After every parent integration,
@@ -299,8 +422,14 @@ PR is closed as superseded: each still owns distinct reviewed work. The combined
 preflight branch is a test composition, not a replacement mega-PR.
 
 Completed independent PRs are Ready for Review, not held indefinitely for the
-whole roadmap. #663 remains Draft for missing full performance evidence; #673
-remains Draft until its actual Windows and dependency-replay failures close.
+whole roadmap. #673's exact-head native MSVC Debug and Release jobs each passed
+81/81; its dependency replay and packaging also passed. #663's full retained
+matrix, independent aggregate replay and current CI/packaging also passed;
+it is Ready for Review as experimental measurement infrastructure. Production
+performance is a different, unqualified decision boundary. This docs-only
+report's own current HEAD and checks are recorded in
+[PR #674](https://github.com/LimiNode/agent-memory-cpp/pull/674), separately from
+the runtime qualification sources above.
 
 Distinguish the following states throughout this batch:
 
@@ -312,9 +441,12 @@ Distinguish the following states throughout this batch:
 - **INTEGRATED:** composed locally in `preflight/storage-closure-final`;
   **NOT INTEGRATED into main** by this operation.
 - **PRODUCTION ACTIVE:** false for the numeric flat/typed adapters.
-- **BLOCKED/PENDING:** full-size performance gate and final MSVC qualification.
+- **PENDING:** independent GitHub review, report-PR checks and any separately
+  authorized integration/revalidation. No new P0/P1/P2 was found by the scoped
+  source/evidence reviews; this does not grant merge authority.
 - **NOT EXECUTED:** actual numeric migration, production activation, release/tag,
-  TSan and production retrieval/provenance integration.
+  TSan, quiescent representative performance qualification and production
+  retrieval/provenance integration.
 
 Any future merge set requires explicit authorization, revalidation against the
 then-current `main`, exact expected HEADs and successful required checks.
