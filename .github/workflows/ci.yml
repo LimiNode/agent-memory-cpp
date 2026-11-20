@@ -457,7 +457,8 @@ jobs:
     if: needs.changes.outputs.storage == 'true'
     needs: changes
     name: MDBX MSVC (${{ matrix.configuration }})
-    runs-on: windows-latest
+    # Keep the runner image aligned with the explicit VS 2022 generator below.
+    runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
