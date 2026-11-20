@@ -23,6 +23,7 @@ exact published assembly SHA:
 
 ```sh
 python -m pip install -r tools/requirements-tools.txt
+python -m pip install scipy==1.17.1 scikit-learn==1.9.0 faiss-cpu==1.15.0
 python tools/agent-memory-bench/collect-r5-integration-evidence.py --self-test
 python tools/agent-memory-bench/collect-r5-integration-evidence.py --audit-assembly
 gh workflow run ci.yml --repo LimiNode/agent-memory-cpp --ref preflight/r5-closure-integration
@@ -106,6 +107,15 @@ assembled evidence branch as a shortcut around review of the nine PRs.
 
 Final results, exact run links and updated dispositions are appended after
 the corrective commits and actual combined CI have completed.
+
+The preliminary Windows/GNU combined suite completed 339/342 tests. Two
+stage-local THQ self-tests required SciPy/scikit-learn and Faiss imports absent
+from the initially selected Python interpreter. The full research CI lane
+now installs these pinned, research-only dependencies explicitly. The third
+failure exposed the existing native MIH reader's v1 construction guard against
+the frozen v2 conformance fixture; it requires a separate semantic correction,
+not a skipped test or a changed golden digest. This preliminary run is not
+closure acceptance evidence.
 
 ## R6 preparation only
 
