@@ -776,6 +776,35 @@ Hard links: конкретные edge_kinds (allowed_edge_kinds filter). Soft li
 
 `GraphRetriever` через `IUnitRetriever` контракт (`knowledge-base-roadmap.md` §7.2). Bounded BFS expansion с `GraphExpansionOptions`. Determinism: ordering `(edge_weight desc, edge_kind, from_id, to_id)`.
 
+### 10.6. Bounded graph route families
+
+The graph work is one family of retrieval routes over the existing
+Relation-owned model. It is not a second memory database, authority layer or
+execution engine.
+
+| Route family | Seed and work | Required result handling |
+|---|---|---|
+| **Local graph retrieval** | Start from eligible entities, facts or units and perform bounded BFS/edge expansion. | Apply scope, access, lifecycle and frontier checks before expansion; hydrate selected canonical sources before treating a result as evidence. |
+| **Global/community retrieval** | Search `CommunitySummaryJob` or other versioned summary projections for corpus-level questions. | A summary is a routing projection. Global answers still require source-opening and provenance checks against the supporting units. |
+| **Graph-guided hybrid retrieval** | Lexical or dense retrieval supplies seeds; graph expansion broadens or connects candidates; ordinary fusion and hydration finish the route. | Attribute gains to the seed route, expansion and reranking separately; graph edges never raise authority or evidence status. |
+
+All three routes use the existing `IUnitRetriever`, `RetrievalPlan`, bounded
+frontiers and source-hydration contracts. Missing, stale or denied graph data
+must produce the existing unavailable/partial/fallback outcome rather than an
+implicit allow. A flat lexical/dense route remains an independent comparison
+and recovery path.
+
+#### Personalized PageRank as a research challenger
+
+HippoRAG-style Personalized PageRank is a research-only challenger to bounded
+BFS and graph-guided hybrid retrieval. A future experiment must declare seed
+entities, edge kinds, damping/iteration limits, visited-node and edge caps,
+decoded-byte and latency budgets, deterministic tie handling and the exact
+source-hydration procedure. It must preserve relation identity, source
+revision and evidence ancestry. A PPR score or visited graph is a retrieval
+projection, never an independent fact or authority decision. No PPR production
+claim follows from the existence of this roadmap section.
+
 ## §11. Agentic vs Deterministic RAG
 
 Когда LLM в retrieval pipeline — оркестратор (autonomous) vs калькулятор (deterministic).
