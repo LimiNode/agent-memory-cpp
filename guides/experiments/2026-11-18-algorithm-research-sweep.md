@@ -301,7 +301,27 @@ A0--A6 controls before selecting at most one combined candidate. The owner is
 the [dated FastScan corrective contract](2026-09-21-thq-fastscan-v3.md#2026-11-20-r6-implementation-efficiency-corrective-contract).
 It distinguishes scalar implementation overhead from certificate selectivity;
 no family-wide rejection or new production decision follows from v1.
-Correctness is verified locally on GNU/MSVC; full corrective timings remain
-pending. The separate corrected-source confirmation retains 720 new samples,
-unchanged refinement counts and six `KEEP_CURRENT` decisions. Neither run
+Correctness and the bounded full corrective timings are now verified locally
+on GNU/MSVC at `04b466d41193df3925bc21068d6432c2f5342840`: 2,640 dense and
+480 new rebound candidate-local samples per compiler, with one fixed mask31
+and a zero-template scaffold control. See the owner's executed tables and
+immutable binary/source/input/manifest bindings. The original nine-arm
+isolated matrix remains separately bound to `155cf08f`, not this confirmation.
+
+`IMPLEMENTATION_DEFECT_CONFIRMED`: combined median latency is 2.78--5.86x
+lower than scalar A0 in the twelve dense compiler/profile comparisons.
+Nevertheless all six dense and both candidate-local decisions remain
+`KEEP_CURRENT` on both compilers. GNU 1M/K16 gains 10.1% at p50 but loses
+28.0% at descriptive p95 and lacks MSVC confirmation. Exact SIMD parity is
+achieved without the required qualified full-path gain. Near-exhaustive
+profiles retain an explicit bound-selectivity limitation, not a family-wide
+rejection. Query vector payload improves (1M: 26 MB A0, 12 MB pair, about 6 MB
+combined); peak live allocations and RSS are not measured. The byte-LUT
+candidate-local engineering control is faster but is not pair-bit-exact and
+does not establish applied quality. No second rescue combination or production
+adoption is authorized. The next independent fallback is a source-bound full
+MultiProbe search/deduplication study, not another arithmetic-kernel sweep.
+
+The separate corrected-source confirmation retains 720 new samples,
+unchanged refinement counts and six `KEEP_CURRENT` decisions. None of these runs
 establishes fresh applied quality or public full-source replay.

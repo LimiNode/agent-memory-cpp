@@ -396,7 +396,8 @@ The original raw report and execution manifest remain byte-for-byte intact.
 
 ## 2026-11-20 R6 implementation-efficiency corrective contract
 
-Status: planned, research-only; no production selection or merge authorization.
+Status: preregistered contract, now executed below; research-only, with no
+production selection or merge authorization.
 This continuation preserves PR #677, its source-bound v1 timings and raw files.
 It is stacked on corrected source `34a24d2c29d9c701d5b289ecf42e1aac60e75434`;
 historical measured source remains `a587fa326d25b40a92dacf09ea93c772b9fcaa9c`.
@@ -445,7 +446,8 @@ An independent auditor must reject score/order, sample, provenance or decision
 corruption. CI runs correctness controls, not the private full-data benchmark.
 Final outcomes distinguish IMPLEMENTATION_DEFECT_CONFIRMED,
 SIMD_PARITY_ACHIEVED_BUT_NO_GAIN, ALGORITHMIC_BOUND_LIMITATION, CONDITIONAL_WIN,
-RESEARCH_QUALIFIED and NOT_EXECUTED; no outcome is measured yet.
+RESEARCH_QUALIFIED and NOT_EXECUTED. These were not measured at preregistration;
+the executed disposition is recorded below.
 
 ### Corrected-source independent confirmatory execution
 
@@ -570,3 +572,194 @@ compiler metadata and auditor dependency. Original integrity checks passed
 32 rejection controls; the later stricter auditor also binds per-row physical
 work and vector capacity to their reference cases. No isolated arm passes the
 complete baseline gate; that is not the yet-unmeasured combined decision.
+
+### Executed combined confirmation: implementation overhead confirmed, keep current
+
+Measured source is `04b466d41193df3925bc21068d6432c2f5342840`, not the later
+documentation HEAD. C++ SHA-256:
+`49e0f2dc9fe4dff174b803a5c8963844fef95f55b8c043eafb5acfb30ad0f682`.
+The historical scoring/certificate/benchmark region, from `make_tables` up to
+the corrective arms, matches corrected #677 exactly: 53,573 normalized
+characters. Historical #677 receipts have not been replaced.
+
+GNU 15.2 and MSVC 19.44 Release runs used the same fixed mask31, exposed eight
+queries, five repeats and one warmup. Each dense package contains 2,640 raw
+rows, 240 matched trials, 528 warmup executions and 432 separate intrusive
+diagnostic rows. All 8,557,056 pair-score, integer-score and enclosure checks
+passed per package; 528 arm/reference cases passed. Correctness controls per
+compiler pass 443 dense and 96 candidate fixtures, 17 malformed-candidate,
+1,420 integer-score, 538,572 cutoff comparisons covering every Q=0..48960,
+20 invalid-input, three corruption, three FP-environment, four signed-zero
+and one independent-reader controls. Focused CTest passes 4/4 per compiler.
+Dense validator-only self-test passes 75 rejection controls across both schema
+matrices; auditing each actual confirmation package passes 39 mutations.
+
+Full uninstrumented dense times follow. AVX2 is the faster exhaustive pair
+control in every profile. Each p50/p95 aggregates 40 samples, not 40 independent
+queries. Quantiles are descriptive, without stable-tail or significance claims.
+
+| Compiler | N / K | Pair-AVX2 p50 / p95 ms | A0 / zero-template p50 ms | Combined p50 / p95 ms | Combined / AVX2 p50 / p95 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| GNU | 4096 / 16 | .2711 / .3030 | 1.9139 / 1.9027 | .5889 / .6403 | 2.172 / 2.113 |
+| GNU | 4096 / 128 | .2748 / .2933 | 1.9958 / 1.9750 | .7176 / .7942 | 2.611 / 2.708 |
+| GNU | 65536 / 16 | 4.2225 / 4.5821 | 24.9554 / 24.4036 | 5.2132 / 6.2873 | 1.235 / 1.372 |
+| GNU | 65536 / 128 | 4.1830 / 4.5157 | 26.6252 / 26.4948 | 5.4411 / 6.4124 | 1.301 / 1.420 |
+| GNU | 1M / 16 | 68.0171 / 70.5531 | 255.4329 / 252.2836 | 61.1646 / 90.3058 | .899 / 1.280 |
+| GNU | 1M / 128 | 67.2718 / 69.7217 | 383.1919 / 359.2316 | 76.6243 / 87.7638 | 1.139 / 1.259 |
+| MSVC | 4096 / 16 | .3694 / .4147 | 2.3515 / 2.4234 | .6898 / .7871 | 1.867 / 1.898 |
+| MSVC | 4096 / 128 | .3764 / .4103 | 2.4164 / 2.4600 | .8108 / .8488 | 2.154 / 2.069 |
+| MSVC | 65536 / 16 | 4.9463 / 5.3615 | 31.3746 / 32.2642 | 5.4651 / 6.4785 | 1.105 / 1.208 |
+| MSVC | 65536 / 128 | 4.9470 / 5.3561 | 33.2932 / 34.1267 | 5.6835 / 6.7631 | 1.149 / 1.263 |
+| MSVC | 1M / 16 | 75.8418 / 80.9580 | 352.2131 / 350.8917 | 80.0153 / 96.4939 | 1.055 / 1.192 |
+| MSVC | 1M / 128 | 76.3758 / 80.8437 | 463.9078 / 460.8900 | 80.3241 / 95.6652 | 1.052 / 1.183 |
+
+The combination reduces A0 median time by a factor of 2.78--5.86 across the
+twelve comparisons. Thus `IMPLEMENTATION_DEFECT_CONFIRMED` is supported for
+the scalar implementation overhead. But no profile meets the declared complete
+gate. GNU 1M/K16 just meets the 10% median threshold, then fails descriptive
+p95 (+28.0%) and MSVC confirmation. Every dense profile remains `KEEP_CURRENT`.
+The qualified-gain disposition is `SIMD_PARITY_ACHIEVED_BUT_NO_GAIN`: exact
+SIMD parity is achieved, but not the required cross-compiler/full-path gain;
+this label does not deny the isolated GNU median improvement. No second
+combination or rescue sweep was selected.
+
+### What costs changed, and what the certificate still requires
+
+The ten stages below are means across eight queries at 1M, shown K16 / K128
+in ms. Complete per-profile/per-query stages are retained in each diagnostic
+package. These are separate intrusive invocations, not decompositions of the
+uninstrumented medians above. In particular, diagnostic `A0_original` and
+`A0_template_control` both use the instrumented **zero-mask template scaffold**;
+neither is direct instrumentation of the unchanged historical function. Its
+actual uninstrumented A0 cost is retained separately above. Do not add stage
+speedups, subtract these means from full-query medians, or infer causal isolated
+contributions from the original nine-arm matrix without its scaffold control.
+
+| Diagnostic stage | GNU zero mask | GNU combined | MSVC zero mask | MSVC combined |
+| --- | ---: | ---: | ---: | ---: |
+| ID validation/copy/sort | 15.032 / 14.791 | <.001 / <.001 | 15.724 / 16.006 | <.001 / <.001 |
+| Query LUT | .105 / .101 | .103 / .101 | .126 / .129 | .155 / .130 |
+| Error envelope | .229 / .200 | .227 / .218 | .260 / .263 | .281 / .270 |
+| Integer scan | 132.636 / 133.007 | 15.101 / 14.775 | 213.909 / 213.992 | 13.007 / 12.777 |
+| Initial selection | 13.829 / 13.964 | 1.886 / 2.002 | 20.099 / 20.123 | 2.320 / 2.375 |
+| Exact incumbents | .008 / .049 | .008 / .049 | .009 / .057 | .008 / .050 |
+| Bound checks | 89.482 / 89.772 | 3.665 / 3.768 | 72.407 / 71.010 | 7.027 / 6.207 |
+| Exact refinement | 107.709 / 183.587 | 49.006 / 52.880 | 99.717 / 165.990 | 48.527 / 54.977 |
+| Final selection | 10.795 / 14.410 | 2.325 / 2.546 | 16.666 / 20.072 | 2.757 / 2.831 |
+| Buffer allocation | 1.740 / 2.039 | .458 / .426 | 1.808 / 1.907 | .361 / .362 |
+
+Logical exact work and physical FP32 score evaluations are distinct. SIMD
+computes lanes that do not require logical refinement; seeded scores may be
+recomputed in their block. Fractions below are means over the eight queries
+and match on both compilers. The final-tau column is an untimed *work-only*
+counterfactual using the exact final incumbent with the same certificate,
+not an executed faster algorithm or latency bound.
+
+| N / K | Fixed logical exact % | Combined physical exact % | Dynamic logical exact % | Ideal final-tau screened % | Integer top-K overlap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 4096 / 16 | 83.328 | 87.253 | 82.782 | 82.355 | .8594 |
+| 4096 / 128 | 99.857 | 103.064 | 99.741 | 99.667 | .8691 |
+| 65536 / 16 | 67.004 | 75.991 | 64.657 | 63.791 | .8203 |
+| 65536 / 128 | 87.117 | 94.158 | 84.494 | 83.337 | .8506 |
+| 1M / 16 | 39.007 | 49.825 | 36.485 | 34.848 | .8125 |
+| 1M / 128 | 67.576 | 77.268 | 60.740 | 59.635 | .8223 |
+
+At 1M the fixed-minus-dynamic differences are 25,223.75 / 68,366 mean
+evaluations, not the complete potential saving from an oracle-final tau.
+The corresponding fixed-minus-ideal differences are 41,596 / 79,415.5.
+Each query's envelope width is effectively constant at the displayed precision
+over documents in this global quantization model; outward floating-point
+rounding can still change the last bits. Across the eight queries, mean p50
+and p95 widths are both .2355883472. Individual widths and maxima remain in
+`selectivity`.
+Cheaper screening alone cannot make these bounds discard all but K scores:
+even the final-tau work counterfactual retains 34.85% / 59.63% at 1M and
+99.67% at 4096/K128. The latter is an `ALGORITHMIC_BOUND_LIMITATION` in this
+profile, not a rejection of all certificate methods. No theoretical latency
+speedup is asserted from logical counts: physical lanes, selection, validation
+and preparation remain real work. The >=90% near-exhaustive stop applies.
+
+### Dense preparation and memory
+
+At 1M, A0 has 26,000,000 vector-capacity bytes, exhaustive pair 12,000,000,
+and combined 6,000,256 / 6,002,048 at K16/K128. This is query vector payload,
+not allocation traffic, peak live allocations, stack use or process RSS.
+The same prebuilt profile retains 96,000,000 bytes each for prefix codes,
+plane-major and block32 layouts, plus 4,000,000 ID bytes (292 MB total),
+in addition to the shared source corpus. Plane-major is retained by the common
+harness; these are actual retained capacities, not a minimal serving layout.
+At 1M, prefix-copy / trusted-ID-build / layout-build costs are
+29.909 / 15.018 / 206.999 ms on GNU and 32.979 / 17.800 / 217.499 ms on MSVC.
+They are outside every dense search timer, not free in an end-to-end build.
+One cold combined query0 takes 89.537 / 77.617 ms on GNU and
+96.992 / 83.308 ms on MSVC for K16/K128. These single query0 observations are
+not estimates of cold overhead relative to an eight-query steady distribution.
+Peak RSS and peak live allocation counts remain `NOT_MEASURED`.
+
+### Executed new rebound candidate-local comparison
+
+Both compilers complete 480 rows, 80 matched trials, 96 warmup executions,
+16 query/K references and 96 arm/reference cases. Before timing they verify all
+152 groups / 762,082 records against canonical codes, then all 40,085 exposed
+candidate pair scores, integer scores, byte-reference scores and enclosures.
+Every timed query revalidates untrusted IDs, gathers from the global 1M corpus,
+packs block32 where required and constructs/frees its owned table. Workspace
+is not reused. Native malformed-input controls and the independent auditor's
+42 rejection controls pass on both actual packages, including coordinated
+scratch underreporting and omitted packing. This is **not** historical R4 replay.
+
+| Compiler / K | Pair-AVX2 p50 / p95 ms | A0 / zero-template p50 ms | Combined p50 / p95 ms | Byte LUT p50 / p95 ms |
+| --- | ---: | ---: | ---: | ---: |
+| GNU / 16 | 1.7509 / 1.8515 | 3.2326 / 3.1435 | 2.1058 / 2.2296 | 1.2947 / 1.4052 |
+| GNU / 128 | 1.7357 / 2.7460 | 3.3453 / 3.4009 | 2.2338 / 3.4185 | 1.2865 / 1.8070 |
+| MSVC / 16 | 1.8267 / 1.9392 | 3.7497 / 3.8442 | 2.2226 / 2.3947 | 1.3744 / 1.4753 |
+| MSVC / 128 | 1.6756 / 1.9173 | 3.8443 / 3.8094 | 2.1758 / 2.4096 | 1.2346 / 1.3848 |
+
+Combined loses to the faster pair control by 20.3--29.9% at p50 and
+20.4--25.7% at p95; both K decisions are `KEEP_CURRENT` on both compilers.
+Mean logical exact fractions are 81.267% / 95.156%, and physical evaluations
+4,681.125 / 5,077.75 against 5,010.625 mean candidates. K128 is near-exhaustive.
+The exhaustive block32 control scores 5,024 physical lanes, not 5,010.625.
+Maximum combined owned payload is 1,150,984 / 1,152,776 bytes versus 1,180,868
+for pair-AVX2: this includes preparation vectors, score/selector vectors and
+one 135,984-byte table, not allocator overhead or transient peak live storage.
+The tested byte engineering control uses at most 698,560 owned-payload bytes
+and is faster here, but has a different FP32 summation contract and its own
+independent exhaustive coordinate oracle. It is **not** pair-bit-exact or an
+applied-quality winner. Its tested factory still constructs an unused pair
+LUT; these numbers do not describe an optimal byte-only preparation path.
+
+### Immutable execution receipts and closure
+
+All packages below are under canonical `.artifacts/r6-adc-efficiency/`.
+Each retains measured executable, source, producer, auditors/dependencies,
+compiler metadata, correctness JSON and raw results. Dense also retains the
+separate diagnostic run. Manifest hashes bind those files, not just a build
+path that can later be overwritten.
+
+| Package | Manifest SHA-256 | Raw SHA-256 |
+| --- | --- | --- |
+| `combined-04b466d4-gnu-v1` | `593be46c68ab3da396a7d2c01cdf3338af31f63c226b676b0964530776b7b3aa` | `989d0303379687fc4649cdb09e52fabbbc4177ecea8fd8c8afbb09601e55a863` |
+| `combined-04b466d4-msvc-v1` | `03b0cd48cfc6856270468195b811e2e41fc9ea1831db467bef2b3ec94e4447fb` | `e9fad3c45ec89e454874df38f25d8c5b55b28e47bd3dc12f578979ab3223e72b` |
+| `candidates-04b466d4-gnu-v1` | `d460c58d2ba610e82fe0eedb37f50fb3789e4fb29dfe8c587a0803fbb8d94007` | `058871a39325378566d58462639f64197ea8bd1e129009c23764079a5c142f4c` |
+| `candidates-04b466d4-msvc-v1` | `4a2b047944fda9c977da5e4062691ede9baf73b7e13e934927273f356fbe1294` | `a0343bb2eac8b87336e5dd10032f80dfa801b82ca6208fe9673baa8a86ab18f1` |
+
+Retained GNU executable SHA-256:
+`8475d1db4b6d2c0ffda6d5336d4746d272f099b65c1e6533e6db97f759c60983`;
+MSVC: `21caf1ccd9a2e01092c82697bcc45d8da31956f5111d116d3300d0e93a09c60a`.
+Each compiler's same binary executes dense and candidate modes.
+Audit with `audit-adc-efficiency.py` or `audit-adc-candidates.py
+--directory <package> --verify-inputs --repository <canonical-checkout>
+--expected-source 04b466d41193df3925bc21068d6432c2f5342840
+--mutation-self-test`; these actual commands return zero on all four packages.
+
+Measured-source CI [44779565582](https://github.com/LimiNode/agent-memory-cpp/actions/runs/44779565582)
+and packaging [44779565581](https://github.com/LimiNode/agent-memory-cpp/actions/runs/44779565581)
+pass. They execute correctness controls, not private full-data timings.
+Evidence remains local, `PUBLIC_FULL_REPLAY_NOT_ESTABLISHED`, applied quality
+`NOT_EXECUTED`; neither eight exposed queries nor repeated samples establish a
+new quality/Pareto curve. Close this bounded implementation-efficiency pass
+with no adoption and no additional rescue combination. The next independent
+research is complete-search MultiProbe deduplication after its own preregistered
+contract and controls; K8/IVF stay `NOT_EXECUTED` for qualified missing/invalid
+prerequisites. No R6 merge, production change or first-agent storage work follows.
