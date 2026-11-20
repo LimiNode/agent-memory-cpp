@@ -410,8 +410,10 @@ The previous six KEEP_CURRENT decisions reject v1 only, not certified pruning.
 Before timing, validate isolated changes A1 SIMD integer scan, A2 monotone integer
 cutoff, A3 construction-validated trusted IDs, A4 caller-local reusable workspace,
 A5 block32 exact refinement and A6 dynamic tau. A0 calls unchanged v1.
-Each arm changes only its named mechanism relative to A0. At most one combined
-arm may follow, selected from isolated evidence, not an all-combinations sweep.
+Within the common template scaffold, each isolated arm toggles only its named
+mechanism; A0 itself calls the historical function. Scaffold timing parity is
+not assumed. At most one combined arm may follow, selected from isolated
+evidence, not an all-combinations sweep.
 Untrusted candidate IDs retain validation; no shared mutable query workspace.
 For cutoff use binary search on the *same outward lower-bound function* over
 Q=0..48960. Its constituent correctly rounded operations are monotone for positive
@@ -472,3 +474,99 @@ The measured binary is retained as `measured.exe`, unlike the historical v1
 binary. Replay with `audit-adc-efficiency.py --directory <package>
 --legacy-confirm --verify-inputs --mutation-self-test`. Applied quality remains
 `NOT_EXECUTED`; public full source-data replay remains `NOT_ESTABLISHED`.
+
+### Combined and candidate-local confirmation boundary
+
+The isolated GNU/MSVC packages on `155cf08f` are immutable observations, not
+the final combined result. A0 calls the historical function while A1--A6 use
+a common template scaffold. Add an uninstrumented `A0_template_control`
+with mask zero before attributing differences to individual mechanisms; parity
+of results alone does not establish parity of scaffold cost. Replay the fixed
+dense matrix with this control and exactly one evidence-selected combination.
+Do not choose another combination after observing its measured outcome.
+
+The available rebound stream permits a **new** candidate-local comparison,
+not a replay of the missing historical FastScan stream. Frozen inputs are
+`candidate-canonical-flat.bin` (76,208,200 bytes, SHA-256
+`b77d29f0435faf581576581ca7ccb812700ea87fe831610cae595fbdadb46096`)
+and `candidate-canonical.raw.json` (37,898 bytes, SHA-256
+`4e98f84c39a617c36dd5e749a2165d5a1e187ee2a2039d96d748cdce32a0ada7`),
+under `.artifacts/legacy/canonical-thq4-rebound-candidate-v1/` in the
+canonical checkout. Records are little-endian int32 ID followed by 96 ordinal
+code bytes. Counts in the 152 ordered raw rows define group boundaries;
+group i maps to query row i in the existing bound 152x384 FP32 query matrix.
+Before timing, verify all groups for unique/in-range IDs and every payload
+against the global canonical code table. Never use adjacent rebound payloads
+as a free substitute for random gather.
+
+Measure the exposed first eight groups only, K=16/128, one warmup and five
+repeats, with the same seed/order/quantile policy as dense. Every arm validates
+the untrusted query list, gathers codes from the global 1M table and packs any
+required local layout **inside** the full-query stopwatch. A trusted-ID arm
+may use an owned validated list only after charging its construction to this
+query. Record validation/gather/packing and query workspace capacities. Use
+scalar pair, pair-AVX2, original A0, zero-template control, the one selected
+combined arm, and `byte_lut_unrolled4`. Compare bitwise ordered IDs/scores of
+pair-contract arms with the independent scalar reference; byte LUT has a
+different FP32 summation order and is checked against its own exhaustive
+reference, never certified as pair-bit-exact. Record its quality status as
+NOT_EXECUTED. Candidate-local decisions remain separate from six dense profiles.
+Malformed offsets/counts/IDs/payloads and score/order/accounting corruption must
+fail closed. No new query tuning, training, production change or merge follows.
+The new candidate-local path must own one heap `QueryTables` object per call
+in every arm: MSVC materialized multiple large stack temporaries in the first,
+unmeasured conditional-return implementation. Charge allocation, construction
+and destruction inside the full-query timer. Report its 135,984-byte object
+payload separately from vector capacities, and include it in the owned-payload
+budget comparison. No table cache, increased stack reserve or historical scorer
+change is authorized by this correction.
+
+The one combination is now fixed as A1+A2+A3+A4+A5, mask 31, for both compilers.
+Selection uses the isolated `155cf08f` packages: A1/A2/A5 have lower p50 than A0
+in all twelve compiler/profile comparisons. A3 is retained for its established
+construction-time trust boundary and removal of the 4 MB ID scratch at 1M,
+not as a universal latency improvement (MSVC 1M/K128 p50 regressed 5.2%).
+A4 removes the full-N index arrays and meets the vector-payload budget;
+its isolated 1M payload is 10,000,256/10,002,048 bytes at K16/128 versus
+26,000,000 for A0. A3+A4 together should be checked, not assumed, at
+6,000,256/6,002,048 bytes versus the exhaustive control's 12,000,000.
+A6 is excluded: every MSVC profile has higher p50 than A0, and its reduced
+logical work does not establish a full-path gain. This is not a conclusion
+about every dynamic-bound policy. Do not add the intrusive stage reductions
+or multiply isolated speedups to predict the combination.
+
+### Isolated implementation evidence (before combined confirmation)
+
+Both isolated packages were executed on `155cf08f22186e44d52adcbf800b9bd3861d7a1f`
+(C++ SHA-256 `102925a22ba637f1550738c9a115c569144e683ba0965317a4dacd7278adef31`).
+Per compiler: 2,160 uninstrumented rows, 240 matched trials, 432 warmup
+executions and 336 separate diagnostic rows. All 8,557,056 source score,
+integer and enclosure comparisons passed. Native controls passed 363 fixtures,
+1,420 integer comparisons, 538,572 cutoff comparisons over all 48,961 Q values,
+20 invalid-input, three corruption, three FP-environment, four signed-zero
+and one independent-reader controls. Focused CTest passed 2/2 per compiler.
+These counts describe this source, not a later extension.
+
+Observed p50 ratios to original A0 follow (GNU / MSVC). These are implementation
+comparisons; the common-scaffold control was not present on this source.
+
+| N / K | A1 | A2 | A3 | A4 | A5 | A6 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4096 / 16 | .754 / .644 | .921 / .901 | .970 / .953 | .969 / .944 | .689 / .788 | .990 / 1.009 |
+| 4096 / 128 | .757 / .657 | .932 / .913 | .976 / .964 | .999 / .980 | .693 / .765 | .994 / 1.016 |
+| 65536 / 16 | .667 / .600 | .866 / .906 | .960 / .997 | .933 / .955 | .690 / .803 | .962 / 1.028 |
+| 65536 / 128 | .714 / .621 | .902 / .906 | .966 / .987 | .957 / .961 | .657 / .765 | .996 / 1.004 |
+| 1M / 16 | .519 / .444 | .798 / .933 | .942 / .988 | .965 / .955 | .948 / .955 | 1.031 / 1.055 |
+| 1M / 128 | .622 / .568 | .850 / .906 | .874 / 1.052 | .938 / .914 | .705 / .834 | .961 / 1.009 |
+
+Canonical package locators are
+`.artifacts/r6-adc-efficiency/isolated-155cf08f-gnu-v1/` and
+`.artifacts/r6-adc-efficiency/isolated-155cf08f-msvc-v1/`.
+Manifest SHA-256, respectively:
+`572b8f3f8f9a3bab385250b0dc774c41ff72faf20edc8ebafb7f07472577048a`,
+`6e50d027685124975c7ca6cef3b3fa3171f07cbc84f8f6bc4a59281c34fe4c20`.
+Each retains actual measured executable, source, producer, raw, diagnostics,
+compiler metadata and auditor dependency. Original integrity checks passed
+32 rejection controls; the later stricter auditor also binds per-row physical
+work and vector capacity to their reference cases. No isolated arm passes the
+complete baseline gate; that is not the yet-unmeasured combined decision.
