@@ -103,6 +103,10 @@ EXPECTED_SYNC_SYSTEM_DBIS = {
 }
 
 EXPECTED_PHYSICAL_KEYS = {
+    "identity_records_v1": ["RecordKind", "DocumentId", "OptionalContentBlockId"],
+    "identity_documents_v1": ["DocumentStorageId"],
+    "identity_blocks_v1": ["BlockStorageId"],
+    "identity_meta_v1": ["SchemaKey", "SequenceKey"],
     "ku_typed_v1": ["KnowledgeUnitId"],
     "ku_typed_v1_used": ["KnowledgeUnitId"],
     "ku_typed_v1_meta": ["SchemaKey", "SequenceKey"],
@@ -746,6 +750,11 @@ def run_self_test(manifest_path: Path) -> int:
         return 1
 
     cases = []
+
+    invalid = copy.deepcopy(base)
+    identity = next(row for row in invalid["profile_deltas"] if row["name"] == "storage_identity_mapping_pilot")
+    identity["dbi_entries"][1]["physical_key"] = ["BlockStorageId"]
+    cases.append(("identity numeric domain drift", invalid, "identity_documents_v1: physical_key must be"))
 
     for field, wrong, expected in (
         ("schema_version", "canonical_flat_storage.v1", "numeric schema_version mismatch"),
