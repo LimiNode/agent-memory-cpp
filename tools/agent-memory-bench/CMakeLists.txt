@@ -55,6 +55,58 @@ add_executable(agent-memory-autoencoder-eval
     autoencoder_evaluation.cpp
 )
 
+add_executable(agent-memory-reranker-admission-scaling
+    reranker_admission_scaling.cpp
+)
+
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+    RESULT_VARIABLE agent_memory_reranker_admission_git_result
+    OUTPUT_VARIABLE agent_memory_reranker_admission_source_commit
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(LENGTH "${agent_memory_reranker_admission_source_commit}" agent_memory_reranker_admission_source_length)
+if(NOT agent_memory_reranker_admission_git_result EQUAL 0
+   OR NOT agent_memory_reranker_admission_source_length EQUAL 40
+   OR NOT "${agent_memory_reranker_admission_source_commit}" MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR "Reranker admission scaling requires a pinned source Git SHA")
+endif()
+set(AGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA "unconfigured"
+    CACHE STRING "Expected pull-request HEAD for the reranker receipt")
+set(agent_memory_reranker_admission_manifest_text "")
+foreach(agent_memory_reranker_admission_source IN ITEMS
+    "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/reranker_admission_scaling.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/retrieval/HybridRetrievalEngine.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/retrieval/HybridRetrievalEngine.hpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical/IReranker.hpp"
+)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${agent_memory_reranker_admission_source}")
+    file(SHA256 "${agent_memory_reranker_admission_source}" agent_memory_reranker_admission_file_sha256)
+    file(RELATIVE_PATH agent_memory_reranker_admission_source_relative
+        "${PROJECT_SOURCE_DIR}" "${agent_memory_reranker_admission_source}")
+    string(APPEND agent_memory_reranker_admission_manifest_text
+        "${agent_memory_reranker_admission_source_relative}:${agent_memory_reranker_admission_file_sha256}\n")
+endforeach()
+string(SHA256 agent_memory_reranker_admission_source_manifest_sha256
+    "${agent_memory_reranker_admission_manifest_text}")
+string(SHA256 agent_memory_reranker_admission_fixture_sha256
+    "candidate_counts=10,50,100,500,1000;metadata_widths=2,8,32;repeats=12;warmups=2;orders=all-six-permutations")
+target_compile_definitions(agent-memory-reranker-admission-scaling
+    PRIVATE
+        AGENT_MEMORY_RERANKER_ADMISSION_SOURCE_COMMIT="${agent_memory_reranker_admission_source_commit}"
+        AGENT_MEMORY_RERANKER_ADMISSION_PRODUCTION_CONTRACT_COMMIT="c93a7b867cd802e279a4118b07cc177f10322cf3"
+        AGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA="${AGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA}"
+        AGENT_MEMORY_RERANKER_ADMISSION_SOURCE_MANIFEST_SHA256="${agent_memory_reranker_admission_source_manifest_sha256}"
+        AGENT_MEMORY_RERANKER_ADMISSION_FIXTURE_SHA256="${agent_memory_reranker_admission_fixture_sha256}"
+)
+
+target_link_libraries(agent-memory-reranker-admission-scaling
+    PRIVATE
+        agent_memory::agent_memory
+        agent_memory::json
+)
+
 function(agent_memory_set_evaluator_source_manifest target)
     set(manifest_text "")
     foreach(source_file IN LISTS ARGN)
