@@ -196,6 +196,19 @@ void write_file(const std::filesystem::path& path, const std::string& bytes) {
     if(!stream) throw std::runtime_error("cannot write benchmark output");
 }
 
+std::string raw_observations(const std::vector<Sample>& samples) {
+    std::ostringstream raw;
+    raw << "backend\tscale\trepeat\tworkload";
+    for(const auto& metric : kMetrics) raw << '\t' << metric;
+    raw << '\n' << std::setprecision(17);
+    for(const auto& sample : samples) {
+        raw << sample.backend << '\t' << sample.scale << '\t' << sample.repeat << '\t' << sample.workload;
+        for(const auto value : values(sample)) raw << '\t' << value;
+        raw << '\n';
+    }
+    return raw.str();
+}
+
 void run(const std::filesystem::path& raw_path, const std::filesystem::path& receipt_path,
          const std::vector<std::size_t>& scales, std::size_t repeats) {
     if(repeats < 2 || repeats > 100 || scales.empty())
@@ -219,20 +232,17 @@ void run(const std::filesystem::path& raw_path, const std::filesystem::path& rec
                     sample.repeat = repeat - 1;
                     all.push_back(std::move(sample));
                 }
+                // Retain completed observations if a later corpus hits the external timeout.
+                // Only the complete matrix below can produce a completed receipt.
+                if(repeat != 0) write_file(raw_path, raw_observations(all));
             }
         }
     }
-    std::ostringstream raw;
-    raw << "backend\tscale\trepeat\tworkload";
-    for(const auto& metric : kMetrics) raw << '\t' << metric;
-    raw << '\n' << std::setprecision(17);
+    const auto raw = raw_observations(all);
     using Group = std::tuple<std::string, std::size_t, std::string>;
     std::map<Group, std::vector<std::vector<double>>> groups;
     for(const auto& sample : all) {
         const auto row = values(sample);
-        raw << sample.backend << '\t' << sample.scale << '\t' << sample.repeat << '\t' << sample.workload;
-        for(const auto value : row) raw << '\t' << value;
-        raw << '\n';
         groups[{sample.backend, sample.scale, sample.workload}].push_back(row);
     }
     Json aggregates = Json::array();
@@ -251,7 +261,7 @@ void run(const std::filesystem::path& raw_path, const std::filesystem::path& rec
         {"decision", "evidence_only"}, {"seed", kSeed}, {"repeats", repeats}, {"scales", scales},
         {"fixture_shape", "balanced_binary_preorder_v1"},
         {"backends", {"c1", "flat"}}, {"workloads", kWorkloads}, {"warmup_pairs", 1},
-        {"raw", {{"path", raw_path.generic_string()}, {"sha256", digest_hex(raw.str())}, {"rows", all.size()}}},
+        {"raw", {{"path", raw_path.generic_string()}, {"sha256", digest_hex(raw)}, {"rows", all.size()}}},
         {"metrics", kMetrics}, {"quantile", "linear_interpolation_n_minus_one"},
         {"source_revision", AGENT_MEMORY_CANONICAL_BENCH_REVISION},
         {"source_dirty", AGENT_MEMORY_CANONICAL_BENCH_DIRTY != 0},
@@ -267,7 +277,7 @@ void run(const std::filesystem::path& raw_path, const std::filesystem::path& rec
         {"limitations", {"synthetic_warm_workload", "not_a_production_activation_gate",
             "process_cpu_includes_other_threads", "reopen_is_not_cold_os_cache",
             "structure_reads_remain_linear_in_block_count"}}, {"aggregates", aggregates}};
-    write_file(raw_path, raw.str());
+    write_file(raw_path, raw);
     write_file(receipt_path, receipt.dump(2) + "\n");
     // This fresh directory is owned exclusively by the current invocation.
     std::filesystem::remove_all(root);
