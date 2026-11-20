@@ -128,6 +128,20 @@ separate processes. The packaging workflow invokes it explicitly with
 `post_migration_upgrade_proof=false`. It is retained for reproducibility, but
 does not qualify a numeric MDBX layout.
 
+Dependency audit `mdbxc-db-load-private-template-2026-11-20` admits only the
+external-tree transition
+`b949d6822582edc1f445837442b91aabf5093ac6` ->
+`b816ddeccafa0375c15b977e71d4a36f6728f59f`. The sole changed entry is
+`mdbx-containers` from `4ab32b5eab3cdfce95d1a6c0f05f566019793ec4` to
+`c2a2326273a3d85f29283e2cd34942c7b8d72cbd`: a private `db_load` template
+deduction correction and its bulk-retrieval runtime test. Libmdbx remains
+`fc8b8e4697e0ef8b2cd5aee1f2d9fb0974fc665f`; every other external tree entry
+must match byte-for-byte. Unknown, reversed or additional dependency changes
+fail closed. Receipts record both external trees and `dependency_audit_id`,
+remain `HISTORICAL_ONLY`, and carry `migration_proof=false` as well as
+`post_migration_upgrade_proof=false`. This audit neither implements nor
+qualifies a physical-layout migration and grants no production activation.
+
 The numeric physical-layout gate is **NOT_EXECUTED**. Selecting
 `--post-numeric-upgrade` currently writes a `NOT_EXECUTED` receipt and exits with
 code 3; it never runs the historical consumer as numeric proof. A CLI flag,
