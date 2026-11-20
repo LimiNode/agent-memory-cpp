@@ -410,8 +410,8 @@ at their corrected HEADs before treating the composed gate as qualified.
 
 One valid future order is:
 `#655, #656, #654, #657, #658, #659, #667, #660, #661, #662, #670, #672, #669,
-#675, #673, #663`. This order does not waive #673/#663's open gates or the coordinated
-#658/#661 admission requirement.
+#675, #673, #663`. This order does not waive current branch/dependency checks or
+the coordinated #658/#661 admission requirement.
 
 Normal merge preserves shared ancestry. After every parent integration,
 retarget the child, inspect its complete diff against the new `main`, obtain
@@ -441,9 +441,10 @@ Distinguish the following states throughout this batch:
 - **INTEGRATED:** composed locally in `preflight/storage-closure-final`;
   **NOT INTEGRATED into main** by this operation.
 - **PRODUCTION ACTIVE:** false for the numeric flat/typed adapters.
-- **PENDING:** independent GitHub review, report-PR checks and any separately
-  authorized integration/revalidation. No new P0/P1/P2 was found by the scoped
-  source/evidence reviews; this does not grant merge authority.
+- **PENDING:** independent GitHub review and any separately authorized
+  integration/revalidation. Current report-PR checks are recorded in #674.
+  No new P0/P1/P2 was found by the scoped source/evidence reviews; this does not
+  grant merge authority.
 - **NOT EXECUTED:** actual numeric migration, production activation, release/tag,
   TSan, quiescent representative performance qualification and production
   retrieval/provenance integration.
@@ -451,3 +452,64 @@ Distinguish the following states throughout this batch:
 Any future merge set requires explicit authorization, revalidation against the
 then-current `main`, exact expected HEADs and successful required checks.
 Keep dependent branches until their children have been safely retargeted.
+
+## Resume after local disk cleanup
+
+The resumed work first reconciled the published branches and retained evidence,
+rather than repeating the obsolete pre-cleanup pending list. The audited
+dependency transition and the complete 16,384-block comparison above were
+already closed. The measured pair remains immutable; no additional timing run
+or production performance claim was made during this refresh.
+
+The newly selected main cutoff is
+`9005a010b1044e1c93ef3690d41fd56a2c7bbb2e` (#640/#671). Its changes since
+`aab98c70` include research tools/evidence, CMake/CI registration and the
+power-of-two cosine regression in `tests/index/exact_vector_index_test.cpp`.
+They are not a documentation-only delta. Existing preflight branch
+`preflight/storage-closure-final` normally merges that cutoff at
+`d910d9c8ed10f8941cbfb54b7997ecfd9723b49c`; the composed worktree is clean.
+Its `src` tree remains `85b114d305bdce1efde785d0c957c6d4ff549164` and its
+`external` tree remains `b816ddeccafa0375c15b977e71d4a36f6728f59f`.
+
+The existing `.build/sf-rm` directory is reused for a bounded MinGW Release,
+MDBX ON/JSON OFF, research-tests-OFF refresh. The other four profiles and native
+MSVC/sanitizer/installed-consumer results retain their earlier exact-source
+bindings; they are not relabelled as executions at this new preflight SHA.
+Configure/build returned 0 and the complete Release CTest profile passed
+**90/90**, zero skipped tests, in 26.95 seconds. Its isolated TMP/TEMP root is
+`.tmp/storage-closure-resume-9005/rm`. Logs are
+`.build/sf-rm/resume-9005-{build,ctest}.log`; SHA-256 respectively:
+`2e9baf30c885c9a7fcc36d505513a7042bdff0aa92e93441fd9322cd2871c1ae` and
+`b7243d2461c3d82c4c91df8d9666c38b410edc240cccdde9006ab48b56832766`.
+
+The new nineteen-process numeric conformance receipt is
+`.build/sf-rm/tests/numeric-conformance-Release/run-x30_r320/receipt.json`,
+SHA-256 `b4c09ffc442b614a3502275aa42e8b6ee0659a040e8c7388c5be0e44f59ad7c3`.
+It reports the exact new source commit, `source_dirty=false`, `PASS`, the same
+logical snapshot `515a2865cf0fa5f353d3fced0f798e3fa1a179fa6411542528ec4c6ac37b1940`,
+fresh-process reopen and both migration-proof flags false. The flat Markdown
+consumer's separate four-process conformance test also passes in this profile.
+
+Additional executed controls at the new clean preflight source:
+
+- retained full benchmark replay and validator self-test: PASS;
+- benchmark launch-control tests: 10/10 PASS;
+- exact-generation dependency/evidence controls: 4/4 PASS, including
+  reverse/unknown/additional dependency rejection and no promotion of
+  unexecuted numeric migration evidence;
+- retained raw, benchmark receipt and historical upgrade receipt SHA-256 values
+  exactly match those recorded above.
+
+The report branch normally includes the same main cutoff and remains a
+single added report file relative to it. No normative guide or runtime source
+is changed by this report refresh. The seventeen selected PRs remained open
+and Ready for Review with successful published-head checks at the resumed
+inspection; this is not an assertion of up-to-date merge eligibility.
+
+Effective main ruleset `24881787` requires a PR, resolved review threads and
+`CI gate` with strict up-to-date checking. The absence of a legacy branch
+protection record does not remove these rules. A Ready PR may therefore be
+BEHIND despite its published-head SUCCESS. The dependency order above still
+applies: refresh the selected parents/children and checks against then-current
+main before any separately authorized integration. No merge/tag/release,
+numeric migration or production activation was performed by this refresh.
