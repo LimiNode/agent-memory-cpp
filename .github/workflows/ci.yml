@@ -1624,6 +1624,10 @@ jobs:
           python-version: "3.12"
       - name: Install research CTest configure prerequisites
         run: python -m pip install -r tools/requirements-tools.txt
+      - name: Validate immutable historical evidence and rejection controls
+        run: |
+          python tools/agent-memory-bench/validate-r5-evidence-dispositions.py
+          python tools/agent-memory-bench/validate-r5-evidence-dispositions.py --self-test
       - name: Configure Release, MDBX off
         run: >
           cmake -S . -B .build/r5-vector
