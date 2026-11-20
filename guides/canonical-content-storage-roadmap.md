@@ -987,7 +987,8 @@ the document or block revisions to manufacture a revision-zero baseline.
 Navigation pins one exact revision in one read transaction. Outline and children
 read the structure but no block payloads. Subtree and point lookup read only
 selected payloads after checking text/block budgets and all bindings. Reading
-and validating the structure remains O(V log V), including the no-reuse ledger;
+and validating the structure remains O((V+H) log(V+H)), where V is the active
+block count and H is the historical no-reuse identity count;
 point/subtree operations are not O(1) as whole operations. Unchanged block
 versions are reused without payload writes; a metadata-only edit publishes only
 the new structure and head. Commit still loads the current revision for the

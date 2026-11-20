@@ -188,6 +188,13 @@ void multirevision_differential_and_navigation() {
             expect(a.status == b.status && a.entries.size() == b.entries.size() && a.truncated == b.truncated,
                 "children parity failed");
         }
+        expect(flat.read_children(DocumentId{"absent"}, 0, std::nullopt, 0).status ==
+            reference.read_children(DocumentId{"absent"}, 0, std::nullopt, 0).status,
+            "missing document and invalid children budget precedence changed");
+        request.max_blocks = 0;
+        expect(flat.read_subtree(DocumentId{"absent"}, 0, request).status ==
+            reference.read_subtree(DocumentId{"absent"}, 0, request).status,
+            "missing document and invalid subtree budget precedence changed");
         expect(flat.create_document(make_revision("other/scope")), "mixed identity create failed");
         expect(flat.read_block(DocumentId{"other/scope"}, ContentBlockId{"p"})->text == "Payload", "scope isolated read failed");
         expect(!flat.read_block(DocumentId{"missing/scope"}, ContentBlockId{"p"}), "wrong document returned payload");
@@ -204,6 +211,11 @@ void multirevision_differential_and_navigation() {
         expect(reopened.read_block(DocumentId{"flat-doc"}, ContentBlockId{"p"}, 0)->revision == 1U &&
             reopened.read_block(DocumentId{"flat-doc"}, ContentBlockId{"p"}, 7)->revision == 4U,
             "block/document revisions conflated");
+        const CanonicalEditRequest reuse{DocumentId{"flat-doc"}, 7,
+            {InsertBlock{{ContentBlockId{"new"}, 1, ContentBlockKind::Paragraph, std::nullopt, "Reuse"}, 1}}};
+        expect(reopened.commit(reuse).status == CanonicalEditStatus::InvalidEdit &&
+            reopened.read_current(DocumentId{"flat-doc"})->revision == 7U,
+            "reopen lost historical no-reuse ledger");
     }
 }
 
@@ -245,6 +257,9 @@ void concurrent_publication_and_abort() {
     {
         MdbxCanonicalFlatStorage failing(options);
         rejects([&] { static_cast<void>(failing.commit(replace(1, "Aborted"))); }, "injected edit abort ignored");
+        const CanonicalEditRequest insert{DocumentId{"flat-doc"}, 1,
+            {InsertBlock{{ContentBlockId{"aborted-block"}, 1, ContentBlockKind::Paragraph, std::nullopt, "Aborted"}, 1}}};
+        rejects([&] { static_cast<void>(failing.commit(insert)); }, "injected insert abort ignored");
         rejects([&] { static_cast<void>(failing.create_document(make_revision("aborted-create"))); }, "injected create abort ignored");
     }
     options.context.reset(); fixture.reopen();
@@ -252,6 +267,11 @@ void concurrent_publication_and_abort() {
     expect(recovered.read_current(DocumentId{"flat-doc"})->revision == 1U &&
         !recovered.read_revision(DocumentId{"flat-doc"}, 2) && !recovered.read_current(DocumentId{"aborted-create"}),
         "aborted transaction left published rows or mapping");
+    MdbxStorageIdentityMappingOptions identity_options;
+    identity_options.context = fixture.context; identity_options.table_prefix = "flat test";
+    MdbxStorageIdentityMapping identity(identity_options);
+    expect(!identity.find_block(DocumentId{"flat-doc"}, ContentBlockId{"aborted-block"}),
+        "aborted insertion left its numeric mapping");
     expect(recovered.commit(replace(1, "Recovered")).status == CanonicalEditStatus::Ok, "abort prevented valid recovery");
 }
 

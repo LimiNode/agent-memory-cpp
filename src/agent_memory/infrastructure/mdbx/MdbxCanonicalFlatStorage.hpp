@@ -68,7 +68,8 @@ class MdbxCanonicalFlatStorage final : public ICanonicalContentStore,
     [[nodiscard]] CanonicalEditResult commit(
         const CanonicalEditRequest&) override;
 
-    /// Reads the O(V) structure row and validates its tree/ledger in O(V log V),
+    /// Reads O(V+H) structure/ledger entries and validates them in O((V+H) log(V+H)),
+    /// where V is the active block count and H is the historical identity count,
     /// without reading block payload values. Corruption throws; absence/budget returns no value.
     [[nodiscard]] std::optional<CanonicalOutline> read_outline(
         const DocumentId&, std::uint64_t, std::size_t max_entries = 4096) const;

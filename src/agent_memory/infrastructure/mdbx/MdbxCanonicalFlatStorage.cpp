@@ -153,6 +153,10 @@ CanonicalFlatBlockRecord to_flat(const ContentBlock& block) {
     result.text = block.text;
     return result;
 }
+bool same_payload(const ContentBlock& left, const ContentBlock& right) {
+    return left.id == right.id && left.kind == right.kind &&
+        left.parent_id == right.parent_id && left.text == right.text;
+}
 
 // Validate preorder iteratively, without inventing block text to call a renderer.
 void build_outline(Structure& structure) {
@@ -193,6 +197,7 @@ void check_db_flags(const std::string& name, unsigned expected, const mdbxc::Tra
         throw std::runtime_error("incompatible flat DBI comparator flags");
 }
 std::shared_ptr<MdbxStorageContext> validate_context(const MdbxCanonicalFlatStorageOptions& options) {
+    if(options.max_records == 0U) throw std::invalid_argument("max_records must be positive");
     auto context = options.context ? options.context : MdbxStorageContext::open(
         options.path, options.relative_to_exe, options.max_dbs);
     auto txn = context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
@@ -230,7 +235,6 @@ class MdbxCanonicalFlatStorage::Impl final {
           heads(context->connection(), table_name(options.table_prefix, "canonical_flat_heads_v2")),
           structures(context->connection(), table_name(options.table_prefix, "canonical_flat_structures_v2")),
           blocks(context->connection(), table_name(options.table_prefix, "canonical_flat_blocks_v2")) {
-        if(max_records == 0U) throw std::invalid_argument("max_records must be positive");
         limits.max_blocks = std::min(limits.max_blocks, max_records);
         auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
         const auto version = find(marker, std::string{kSchemaKey}, txn);
@@ -363,13 +367,13 @@ class MdbxCanonicalFlatStorage::Impl final {
         bool body_changed = !old_revision || old_revision->blocks.size() != revision.blocks.size();
         for(std::size_t index = 0; index < revision.blocks.size(); ++index) {
             const auto& block = revision.blocks[index];
-            const auto flat = to_flat(block);
-            next.logical.blocks.push_back({flat.id, flat.revision, flat.kind, flat.parent_id});
+            next.logical.blocks.push_back({block.id.value(), block.revision, encode_kind(block.kind),
+                block.parent_id ? std::optional<std::string>{block.parent_id->value()} : std::nullopt});
             next.ledger.insert(block.id);
             const auto prior = old_indices.find(block.id);
             if(prior != old_indices.end() && block.revision == old_revision->blocks[prior->second].revision) {
                 const auto& old = old_revision->blocks[prior->second];
-                if(flat != to_flat(old)) throw std::runtime_error("unchanged flat revision changed payload");
+                if(!same_payload(block, old)) throw std::runtime_error("unchanged flat revision changed payload");
                 next.physical.push_back(previous->physical[prior->second]);
             } else {
                 const auto block_id = dictionary([&] {
@@ -378,13 +382,13 @@ class MdbxCanonicalFlatStorage::Impl final {
                 const auto key = canonical_flat_composite_key(block_id.value(), block.revision);
                 const auto start = Clock::now();
                 auto payload = envelope_header('B', key, revision.document_id);
-                append_string(payload, CanonicalFlatStorageCodec::encode_block(flat, limits));
+                append_string(payload, CanonicalFlatStorageCodec::encode_block(to_flat(block), limits));
                 seal(payload, limits);
                 next.physical.push_back({block_id.value(), block.text.size(), sha256(payload)});
                 if(metrics) metrics->encode_ns += elapsed_ns(start);
                 put_immutable(blocks, key, payload, txn, true);
             }
-            if(old_revision && (index >= old_revision->blocks.size() || flat != to_flat(old_revision->blocks[index])))
+            if(old_revision && (index >= old_revision->blocks.size() || !same_payload(block, old_revision->blocks[index])))
                 body_changed = true;
         }
         if(next.ledger.size() > max_records) throw std::length_error("flat historical ledger limit exceeded");
@@ -536,12 +540,12 @@ CanonicalChildrenResult MdbxCanonicalFlatStorage::read_children(
     const DocumentId& id, std::uint64_t revision, std::optional<ContentBlockId> parent, std::size_t max_children) const {
     CanonicalChildrenResult result;
     result.document_id = id; result.document_revision = revision; result.parent_id = parent;
-    if(max_children == 0U) { result.message = "max_children must be non-zero"; return result; }
     try {
         auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
         const auto storage_id = m_impl->document_id(id, txn);
         const auto structure = storage_id ? m_impl->load_structure(id, *storage_id, revision, txn) : std::nullopt;
         if(!structure) { result.status = CanonicalNavigationStatus::NotFound; return result; }
+        if(max_children == 0U) { result.message = "max_children must be non-zero"; return result; }
         if(parent && std::none_of(structure->outline.entries.begin(), structure->outline.entries.end(),
             [&](const CanonicalOutlineEntry& entry) { return entry.locator.block_id == *parent; })) {
             result.status = CanonicalNavigationStatus::NotFound; return result;
@@ -565,12 +569,12 @@ CanonicalSubtreeResult MdbxCanonicalFlatStorage::read_subtree(
     const DocumentId& id, std::uint64_t revision, const CanonicalSubtreeRequest& request) const {
     CanonicalSubtreeResult result;
     result.document_id = id; result.document_revision = revision;
-    if(request.max_blocks == 0U) { result.message = "max_blocks must be non-zero"; return result; }
     try {
         auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
         const auto storage_id = m_impl->document_id(id, txn);
         const auto structure = storage_id ? m_impl->load_structure(id, *storage_id, revision, txn) : std::nullopt;
         if(!structure) { result.status = CanonicalNavigationStatus::NotFound; return result; }
+        if(request.max_blocks == 0U) { result.message = "max_blocks must be non-zero"; return result; }
         const auto& entries = structure->outline.entries;
         std::size_t start = 0U;
         if(request.root_id) {
