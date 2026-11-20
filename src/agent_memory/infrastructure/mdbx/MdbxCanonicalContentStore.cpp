@@ -380,6 +380,10 @@ DecodedRevision decode_revision(
     const auto n = r.size();
     if (n > max_blocks)
         throw std::runtime_error("canonical revision block count exceeds navigation bound");
+    // Even empty IDs need a length marker, a framed revision, kind and parent
+    // marker (2 + 3 + 2 + 2 bytes). Do not reserve from an impossible count.
+    if (n > (payload.size() - r.position()) / 9U)
+        throw std::runtime_error("canonical revision block count exceeds remaining payload");
     revision.blocks.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
         ContentBlock b;
@@ -663,8 +667,13 @@ DecodedBody decode_body(std::string_view payload) {
     if (result.encoding_generation != RAW_ENCODING_GENERATION || result.codec != RAW_CODEC)
         throw std::runtime_error("invalid canonical physical encoding descriptor");
     const auto n = r.size();
-    if (n > kMaxNavigationBlocks)
-        throw std::runtime_error("canonical body block count exceeds navigation bound");
+    // Each block needs at least four two-byte fields. The digest and framed
+    // checksum need at least 33 + 3 more bytes. This is a byte-feasibility
+    // check, not the navigation-only ceiling on otherwise valid C1 bodies.
+    const auto remaining = payload.size() - r.position();
+    constexpr std::size_t minimum_trailer = 36U;
+    if (remaining < minimum_trailer || n > (remaining - minimum_trailer) / 8U)
+        throw std::runtime_error("canonical body block count exceeds remaining payload");
     result.blocks.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
         ContentBlock block;
