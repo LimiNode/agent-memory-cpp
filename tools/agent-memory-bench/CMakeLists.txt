@@ -18,8 +18,127 @@ target_link_libraries(agent-memory-exact-vector-index-decision
         agent_memory::json
 )
 
+add_executable(agent-memory-exact-vector-numerical-frontier
+    exact_vector_numerical_frontier.cpp
+)
+
+target_link_libraries(agent-memory-exact-vector-numerical-frontier
+    PRIVATE
+        agent_memory::json
+)
+
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+    RESULT_VARIABLE agent_memory_numerical_frontier_git_result
+    OUTPUT_VARIABLE agent_memory_numerical_frontier_source_commit
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(LENGTH "${agent_memory_numerical_frontier_source_commit}" agent_memory_numerical_frontier_source_commit_length)
+if(NOT agent_memory_numerical_frontier_git_result EQUAL 0 OR
+   NOT agent_memory_numerical_frontier_source_commit_length EQUAL 40 OR
+   NOT "${agent_memory_numerical_frontier_source_commit}" MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR
+        "Exact-vector numerical frontier requires a 40-character lowercase source Git SHA")
+endif()
+set(AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA
+    "${agent_memory_numerical_frontier_source_commit}"
+    CACHE STRING
+    "Expected pull-request head SHA recorded by the numerical frontier receipt")
+string(LENGTH "${AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA}" agent_memory_numerical_frontier_expected_head_length)
+if(NOT agent_memory_numerical_frontier_expected_head_length EQUAL 40 OR
+   NOT "${AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA}" MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR
+        "AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA must be a 40-character lowercase Git SHA")
+endif()
+target_compile_definitions(agent-memory-exact-vector-numerical-frontier
+    PRIVATE
+        AGENT_MEMORY_NUMERICAL_FRONTIER_SOURCE_COMMIT="${agent_memory_numerical_frontier_source_commit}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_CHECKOUT_SHA="${agent_memory_numerical_frontier_source_commit}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA="${AGENT_MEMORY_NUMERICAL_FRONTIER_EXPECTED_PR_HEAD_SHA}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_BUILD_CONFIGURATION="${CMAKE_BUILD_TYPE}"
+        AGENT_MEMORY_NUMERICAL_FRONTIER_SYSTEM_PROCESSOR="${CMAKE_SYSTEM_PROCESSOR}"
+)
+
 add_executable(agent-memory-autoencoder-eval
     autoencoder_evaluation.cpp
+)
+
+add_executable(agent-memory-exact-selection-benchmark
+    exact_selection_benchmark.cpp
+)
+
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+    RESULT_VARIABLE agent_memory_exact_selection_git_result
+    OUTPUT_VARIABLE agent_memory_exact_selection_source_commit
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(LENGTH "${agent_memory_exact_selection_source_commit}" agent_memory_exact_selection_source_length)
+if(NOT agent_memory_exact_selection_git_result EQUAL 0
+   OR NOT agent_memory_exact_selection_source_length EQUAL 40
+   OR NOT "${agent_memory_exact_selection_source_commit}" MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR "Exact selection benchmark requires a pinned source Git SHA")
+endif()
+target_compile_definitions(agent-memory-exact-selection-benchmark
+    PRIVATE
+        AGENT_MEMORY_EXACT_SELECTION_SOURCE_COMMIT="${agent_memory_exact_selection_source_commit}"
+)
+target_link_libraries(agent-memory-exact-selection-benchmark
+    PRIVATE
+        agent_memory::json
+)
+add_executable(agent-memory-reranker-admission-scaling
+    reranker_admission_scaling.cpp
+)
+
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+    RESULT_VARIABLE agent_memory_reranker_admission_git_result
+    OUTPUT_VARIABLE agent_memory_reranker_admission_source_commit
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(LENGTH "${agent_memory_reranker_admission_source_commit}" agent_memory_reranker_admission_source_length)
+if(NOT agent_memory_reranker_admission_git_result EQUAL 0
+   OR NOT agent_memory_reranker_admission_source_length EQUAL 40
+   OR NOT "${agent_memory_reranker_admission_source_commit}" MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR "Reranker admission scaling requires a pinned source Git SHA")
+endif()
+set(AGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA "unconfigured"
+    CACHE STRING "Expected pull-request HEAD for the reranker receipt")
+set(agent_memory_reranker_admission_manifest_text "")
+foreach(agent_memory_reranker_admission_source IN ITEMS
+    "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/reranker_admission_scaling.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/retrieval/HybridRetrievalEngine.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/retrieval/HybridRetrievalEngine.hpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/lexical/IReranker.hpp"
+)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${agent_memory_reranker_admission_source}")
+    file(SHA256 "${agent_memory_reranker_admission_source}" agent_memory_reranker_admission_file_sha256)
+    file(RELATIVE_PATH agent_memory_reranker_admission_source_relative
+        "${PROJECT_SOURCE_DIR}" "${agent_memory_reranker_admission_source}")
+    string(APPEND agent_memory_reranker_admission_manifest_text
+        "${agent_memory_reranker_admission_source_relative}:${agent_memory_reranker_admission_file_sha256}\n")
+endforeach()
+string(SHA256 agent_memory_reranker_admission_source_manifest_sha256
+    "${agent_memory_reranker_admission_manifest_text}")
+string(SHA256 agent_memory_reranker_admission_fixture_sha256
+    "candidate_counts=10,50,100,500,1000;metadata_widths=2,8,32;repeats=12;warmups=2;orders=all-six-permutations")
+target_compile_definitions(agent-memory-reranker-admission-scaling
+    PRIVATE
+        AGENT_MEMORY_RERANKER_ADMISSION_SOURCE_COMMIT="${agent_memory_reranker_admission_source_commit}"
+        AGENT_MEMORY_RERANKER_ADMISSION_PRODUCTION_CONTRACT_COMMIT="c93a7b867cd802e279a4118b07cc177f10322cf3"
+        AGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA="${AGENT_MEMORY_RERANKER_ADMISSION_EXPECTED_PR_HEAD_SHA}"
+        AGENT_MEMORY_RERANKER_ADMISSION_SOURCE_MANIFEST_SHA256="${agent_memory_reranker_admission_source_manifest_sha256}"
+        AGENT_MEMORY_RERANKER_ADMISSION_FIXTURE_SHA256="${agent_memory_reranker_admission_fixture_sha256}"
+)
+
+target_link_libraries(agent-memory-reranker-admission-scaling
+    PRIVATE
+        agent_memory::agent_memory
+        agent_memory::json
 )
 
 function(agent_memory_set_evaluator_source_manifest target)
@@ -109,6 +228,7 @@ target_compile_definitions(agent-memory-exact-vector-index-decision PRIVATE
     AGENT_MEMORY_R5_RUNNER_SHA256="${r5_runner_sha}"
     AGENT_MEMORY_R5_INDEX_SHA256="${r5_index_sha}"
 )
+agent_memory_set_evaluator_build_environment(agent-memory-exact-selection-benchmark)
 
 agent_memory_set_evaluator_source_manifest(agent-memory-autoencoder-eval
     "${CMAKE_CURRENT_SOURCE_DIR}/autoencoder_evaluation.cpp"
