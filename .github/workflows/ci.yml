@@ -1270,8 +1270,12 @@ jobs:
           receipt = root / "receipt.json"
           subprocess.run([str(binaries[0].resolve()), "--output", str(receipt)], check=True)
           expected_compiler = "MSVC" if os.name == "nt" else "GNU"
-          if json.loads(receipt.read_text(encoding="utf-8"))["build_identity"]["compiler_id"] != expected_compiler:
+          identity = json.loads(receipt.read_text(encoding="utf-8"))["build_identity"]
+          if identity["compiler_id"] != expected_compiler:
               raise SystemExit(f"required actual compiler evidence is missing: {expected_compiler}")
+          expected_system = "Windows" if os.name == "nt" else "Linux"
+          if identity["system_name"] != expected_system:
+              raise SystemExit(f"required actual platform evidence is missing: {expected_system}")
           digest = hashlib.sha256(receipt.read_bytes()).hexdigest()
           receipt.with_suffix(".json.sha256").write_text(f"{digest}  receipt.json\n", encoding="utf-8")
           PY

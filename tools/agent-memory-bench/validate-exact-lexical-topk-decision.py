@@ -295,6 +295,13 @@ def validate(receipt: Any, *, expected_head: str | None = None, actual_checkout:
     build = receipt.get("build_identity")
     if not isinstance(build, dict) or not all(isinstance(build.get(key), str) and build[key] for key in ("compiler_id", "compiler_version", "generator", "configuration")):
         raise ValueError("build_identity is incomplete")
+    if receipt["schema_version"] == 2:
+        if any(build.get(key) in ("unconfigured", "unknown", "") for key in ("compiler_id", "compiler_version", "generator")) or build.get("configuration") != "Release":
+            raise ValueError("v2 requires an actual Release compiler/generator identity")
+        if not all(isinstance(build.get(key), str) and build[key] and build[key] not in ("unconfigured", "unknown") for key in ("system_name", "system_processor")):
+            raise ValueError("v2 requires explicit system and processor identities")
+        if type(build.get("cxx_standard")) is not int or build["cxx_standard"] != 201703 or type(build.get("pointer_bits")) is not int or build["pointer_bits"] not in (32, 64):
+            raise ValueError("v2 requires actual C++17 and pointer-width evidence")
     for field in ("configured_environment_sha256", "base_cxx_flags_sha256", "active_configuration_flags_sha256"):
         _sha(build.get(field), field, SHA256)
     if receipt.get("oracle") != "score_desc_id_asc":
@@ -539,9 +546,11 @@ def self_test() -> None:
     }
     profiled["source_manifest_sha256"] = source_manifest_sha256(root)
     profiled["generated_source_manifest_sha256"] = generated_manifest_sha256(root)
+    profiled["build_identity"].update({"system_name": "Linux", "system_processor": "x86_64", "cxx_standard": 201703, "pointer_bits": 64})
     validate(profiled, source_root=root, **binding)
     profile_mutations = ("missing stage", "wrong calls", "overlap", "nonfinite stage", "wrong kind", "wrong recipe",
-                         "wrong scope", "missing arm", "profile parity", "security promotion", "boundary failure", "unstable distribution", "corpus drift", "boolean calls")
+                         "wrong scope", "missing arm", "profile parity", "security promotion", "boundary failure", "unstable distribution", "corpus drift", "boolean calls",
+                         "missing platform", "wrong standard", "wrong pointer width", "debug timing", "unconfigured compiler")
     for mutation in profile_mutations:
         candidate = copy.deepcopy(profiled)
         profile = candidate["stage_profiles"]
@@ -561,6 +570,11 @@ def self_test() -> None:
         elif mutation == "unstable distribution": profile["workload_distribution"] = "production"
         elif mutation == "corpus drift": profile["profiles"][0]["materialized_corpus_sha256"] = "0" * 64
         elif mutation == "boolean calls": arm["stage_calls"]["full_search"][0] = True
+        elif mutation == "missing platform": del candidate["build_identity"]["system_name"]
+        elif mutation == "wrong standard": candidate["build_identity"]["cxx_standard"] = 202002
+        elif mutation == "wrong pointer width": candidate["build_identity"]["pointer_bits"] = True
+        elif mutation == "debug timing": candidate["build_identity"]["configuration"] = "Debug"
+        elif mutation == "unconfigured compiler": candidate["build_identity"]["compiler_id"] = "unconfigured"
         try:
             validate(candidate, source_root=root, **binding)
         except ValueError:
