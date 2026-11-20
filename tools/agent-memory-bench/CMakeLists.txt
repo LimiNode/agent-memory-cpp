@@ -1135,6 +1135,8 @@ agent_memory_set_evaluator_source_manifest(agent-memory-exact-lexical-topk-decis
 target_compile_definitions(agent-memory-exact-lexical-topk-decision PRIVATE
     AGENT_MEMORY_LEXICAL_TOPK_SOURCE_COMMIT="${agent_memory_lexical_topk_source_commit}"
     AGENT_MEMORY_LEXICAL_TOPK_GENERATED_SOURCE_SHA256="${agent_memory_lexical_topk_generated_sha256}"
+    AGENT_MEMORY_LEXICAL_TOPK_SYSTEM_NAME="${CMAKE_SYSTEM_NAME}"
+    AGENT_MEMORY_LEXICAL_TOPK_SYSTEM_PROCESSOR="${CMAKE_SYSTEM_PROCESSOR}"
     AGENT_MEMORY_LEXICAL_TOPK_EXPECTED_PR_HEAD_SHA="${AGENT_MEMORY_LEXICAL_TOPK_EXPECTED_PR_HEAD_SHA}")
 agent_memory_set_evaluator_build_environment(agent-memory-exact-lexical-topk-decision)
 target_link_libraries(agent-memory-exact-lexical-topk-decision

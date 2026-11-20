@@ -914,6 +914,14 @@ namespace {
                 {"compiler_version", AGENT_MEMORY_EVALUATOR_COMPILER_VERSION},
                 {"generator", AGENT_MEMORY_EVALUATOR_GENERATOR},
                 {"configuration", AGENT_MEMORY_EVALUATOR_BUILD_CONFIGURATION},
+                {"system_name", AGENT_MEMORY_LEXICAL_TOPK_SYSTEM_NAME},
+                {"system_processor", AGENT_MEMORY_LEXICAL_TOPK_SYSTEM_PROCESSOR},
+#if defined(_MSVC_LANG)
+                {"cxx_standard", _MSVC_LANG},
+#else
+                {"cxx_standard", __cplusplus},
+#endif
+                {"pointer_bits", sizeof(void*) * 8U},
                 {"base_cxx_flags_sha256", AGENT_MEMORY_EVALUATOR_BASE_CXX_FLAGS_SHA256},
                 {"active_configuration_flags_sha256", AGENT_MEMORY_EVALUATOR_ACTIVE_CONFIGURATION_FLAGS_SHA256},
                 {"configured_environment_sha256", AGENT_MEMORY_EVALUATOR_CONFIGURED_ENVIRONMENT_SHA256}
