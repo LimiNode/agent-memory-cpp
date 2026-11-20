@@ -374,6 +374,33 @@ int main() {
         return fail("permuted cosine cancellation must preserve signs and ranking");
     }
 
+    // The R5 Decimal oracle exposes the same loss with exact powers of two:
+    // 2^120 + 1 - 2^120 must outrank zero, including top-1 and auto dispatch.
+    const auto large_cancellation_value = std::ldexp(1.0F, 60);
+    const auto expected_power_of_two_cosine = std::ldexp(1.0F, -121);
+    for(const bool enable_simd : {false, true}) {
+        agent_memory::ExactVectorIndex power_of_two_index(
+            agent_memory::ExactVectorIndexOptions{3, agent_memory::SimilarityMetric::Cosine, enable_simd}
+        );
+        power_of_two_index.upsert(make_record(
+            "chunk:a-zero", {large_cancellation_value, 0.0F, -large_cancellation_value}, "cancellation"
+        ));
+        power_of_two_index.upsert(make_record(
+            "chunk:z-positive", {large_cancellation_value, 1.0F, -large_cancellation_value}, "cancellation"
+        ));
+        for(const std::size_t top_k : {std::size_t{1}, std::size_t{2}}) {
+            const auto results = power_of_two_index.search(agent_memory::VectorSearchQuery{
+                agent_memory::Embedding{{large_cancellation_value, 1.0F, large_cancellation_value}},
+                top_k,
+                {}
+            });
+            if(results.size() != top_k || results.front().chunk_id.value() != "chunk:z-positive"
+               || results.front().score != expected_power_of_two_cosine) {
+                return fail("power-of-two cosine cancellation must preserve the positive top-k result");
+            }
+        }
+    }
+
     agent_memory::ExactVectorIndex scalar_index(agent_memory::ExactVectorIndexOptions{
         13,
         agent_memory::SimilarityMetric::Cosine,
