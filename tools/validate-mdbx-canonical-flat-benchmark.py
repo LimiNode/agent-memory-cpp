@@ -49,6 +49,7 @@ def validate(raw_path: Path, receipt_path: Path, smoke: bool = False) -> None:
     require(receipt.get("execution_status") == "completed" and receipt.get("decision") == "evidence_only",
             "wrong execution status")
     require(receipt.get("seed") == 20261119 and receipt.get("warmup_pairs") == 1, "missing setup")
+    require(receipt.get("fixture_shape") == "balanced_binary_preorder_v1", "wrong fixture shape")
     repeats, scales = receipt.get("repeats"), receipt.get("scales")
     require(type(repeats) is int and (repeats == 2 if smoke else 5 <= repeats <= 100), "invalid repeats")
     require(scales == ([8, 16] if smoke else [64, 1024, 16384]), "incomplete corpus matrix")
@@ -127,6 +128,7 @@ def self_test() -> None:
                     quantile="linear_interpolation_n_minus_one", aggregates=aggregates,
                     source_revision="1" * 40, source_dirty=False, build="Release",
                     compiler="fixture-compiler", system="fixture-system", hardware_threads=1,
+                    fixture_shape="balanced_binary_preorder_v1",
                     raw=dict(path=raw.as_posix(), sha256=hashlib.sha256(raw.read_bytes()).hexdigest(),
                              rows=len(lines) - 1))
         receipt.write_text(json.dumps(good), encoding="utf-8")

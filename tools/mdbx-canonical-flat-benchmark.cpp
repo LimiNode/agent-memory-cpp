@@ -59,14 +59,25 @@ CanonicalDocumentRevision make_revision(std::size_t scale) {
     revision.document_id = DocumentId{"comparison-" + std::to_string(scale)};
     revision.metadata.set("scope", "benchmark-alpha");
     revision.metadata.set("seed", std::to_string(kSeed));
-    revision.blocks.push_back({ContentBlockId{"root"}, 1, ContentBlockKind::Heading,
-                              std::nullopt, "Canonical comparison"});
-    for(std::size_t index = 1; index < scale; ++index) {
-        revision.blocks.push_back({ContentBlockId{"b-" + std::to_string(index)}, 1,
-            ContentBlockKind::Paragraph, ContentBlockId{"root"},
+    revision.metadata.set("fixture_shape", "balanced_binary_preorder_v1");
+    const auto append = [&](const auto& self, std::size_t count,
+                            std::optional<ContentBlockId> parent) -> void {
+        if(count == 0) return;
+        const auto index = revision.blocks.size();
+        const ContentBlockId id{"b-" + std::to_string(index)};
+        const bool branch = count > 1;
+        const auto text = branch ? "Section " + std::to_string(index) :
             "seed=" + std::to_string(kSeed) + ";block=" + std::to_string(index) + ";" +
-            std::string(192, static_cast<char>('a' + index % 26))});
-    }
+            std::string(192, static_cast<char>('a' + index % 26));
+        revision.blocks.push_back({id, 1, branch ? ContentBlockKind::Heading :
+            ContentBlockKind::Paragraph, std::move(parent), text});
+        if(branch) {
+            const auto left = count / 2;
+            self(self, left, id);
+            self(self, count - 1 - left, id);
+        }
+    };
+    append(append, scale, std::nullopt);
     return revision;
 }
 
@@ -76,6 +87,7 @@ std::vector<Sample> run_backend(const std::string& backend, std::size_t scale,
     const auto path = root / (backend + "-" + std::to_string(scale) + "-" +
                               std::to_string(repeat) + ".mdbx");
     if(std::filesystem::exists(path)) throw std::runtime_error("fixture path already exists");
+    std::cerr << "start " << backend << " scale=" << scale << " repeat=" << repeat << '\n';
     MdbxCanonicalStorageMetrics counters;
     Options options;
     options.path = path.string();
@@ -84,7 +96,10 @@ std::vector<Sample> run_backend(const std::string& backend, std::size_t scale,
     auto store = std::make_unique<Store>(options);
     const auto initial = make_revision(scale);
     if(!store->create_document(initial)) throw std::runtime_error("fixture create failed");
-    const auto selected = ContentBlockId{"b-" + std::to_string(scale / 2)};
+    auto selected_index = scale / 2;
+    while(initial.blocks[selected_index].kind != ContentBlockKind::Paragraph)
+        selected_index = (selected_index + 1) % scale;
+    const auto selected = initial.blocks[selected_index].id;
     std::uint64_t head = 0;
     std::vector<Sample> samples;
     InMemoryCanonicalContentStore reference;
@@ -101,7 +116,7 @@ std::vector<Sample> run_backend(const std::string& backend, std::size_t scale,
         const auto begin = Clock::now();
         if(workload == "point_block") {
             const auto block = store->read_block(initial.document_id, selected, 0);
-            if(!block || block->text != initial.blocks[scale / 2].text)
+            if(!block || block->text != initial.blocks[selected_index].text)
                 throw std::runtime_error("point read parity failed");
             sample.result_blocks = 1;
             sample.result_text_bytes = block->text.size();
@@ -113,7 +128,7 @@ std::vector<Sample> run_backend(const std::string& backend, std::size_t scale,
         } else if(workload == "bounded_subtree") {
             const auto result = store->read_subtree(initial.document_id, 0, {selected, 1, 4096, true});
             if(!result.succeeded() || result.blocks.size() != 1 ||
-               result.blocks.front().text != initial.blocks[scale / 2].text)
+               result.blocks.front().text != initial.blocks[selected_index].text)
                 throw std::runtime_error("subtree parity failed");
             sample.result_blocks = result.blocks.size();
             sample.result_text_bytes = result.blocks.front().text.size();
@@ -127,7 +142,7 @@ std::vector<Sample> run_backend(const std::string& backend, std::size_t scale,
                     throw std::runtime_error("repeated edit parity failed");
                 ++head;
                 sample.result_blocks = result.revision->blocks.size();
-                sample.result_text_bytes += result.revision->blocks[scale / 2].text.size();
+                sample.result_text_bytes += result.revision->blocks[selected_index].text.size();
             }
             if(backend == "flat" && counters.block_versions_written != count)
                 throw std::runtime_error("small edit rewrote unchanged block versions");
@@ -143,7 +158,7 @@ std::vector<Sample> run_backend(const std::string& backend, std::size_t scale,
             const auto current = store->read_current(initial.document_id);
             const auto historical = store->read_revision(initial.document_id, 0);
             if(!current || current->revision != head || !historical ||
-               historical->blocks[scale / 2].text != initial.blocks[scale / 2].text)
+               historical->blocks[selected_index].text != initial.blocks[selected_index].text)
                 throw std::runtime_error("reopen history parity failed");
             sample.result_blocks = current->blocks.size();
         }
@@ -234,6 +249,7 @@ void run(const std::filesystem::path& raw_path, const std::filesystem::path& rec
     }
     Json receipt{{"schema_version", 2}, {"family", kFamily}, {"execution_status", "completed"},
         {"decision", "evidence_only"}, {"seed", kSeed}, {"repeats", repeats}, {"scales", scales},
+        {"fixture_shape", "balanced_binary_preorder_v1"},
         {"backends", {"c1", "flat"}}, {"workloads", kWorkloads}, {"warmup_pairs", 1},
         {"raw", {{"path", raw_path.generic_string()}, {"sha256", digest_hex(raw.str())}, {"rows", all.size()}}},
         {"metrics", kMetrics}, {"quantile", "linear_interpolation_n_minus_one"},
