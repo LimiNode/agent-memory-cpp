@@ -50,11 +50,23 @@ if(NOT agent_memory_production_reranker_git_result EQUAL 0
    OR NOT "${agent_memory_production_reranker_source_commit}" MATCHES "^[0-9a-f]+$")
     message(FATAL_ERROR "Production-shaped reranker admission requires a pinned source Git SHA")
 endif()
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" status --porcelain
+    RESULT_VARIABLE agent_memory_production_reranker_status_result
+    OUTPUT_VARIABLE agent_memory_production_reranker_status
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+set(agent_memory_production_reranker_source_clean 0)
+if(agent_memory_production_reranker_status_result EQUAL 0
+   AND "${agent_memory_production_reranker_status}" STREQUAL "")
+    set(agent_memory_production_reranker_source_clean 1)
+endif()
 set(AGENT_MEMORY_PRODUCTION_RERANKER_EXPECTED_PR_HEAD_SHA "unconfigured"
     CACHE STRING "Expected pull-request HEAD for the production-shaped reranker receipt")
 set(agent_memory_production_reranker_manifest_text "")
 foreach(agent_memory_production_reranker_source IN ITEMS
     "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/production_reranker_admission.cpp"
+    "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/CMakeLists.txt"
     "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/RerankerResearchProfile.hpp"
     "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/generate-production-reranker-variants.py"
     "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/validate-production-reranker-admission.py"
@@ -78,6 +90,7 @@ string(SHA256 agent_memory_production_reranker_fixture_sha256
 target_compile_definitions(agent-memory-production-reranker-admission
     PRIVATE
         AGENT_MEMORY_PRODUCTION_RERANKER_SOURCE_COMMIT="${agent_memory_production_reranker_source_commit}"
+        AGENT_MEMORY_PRODUCTION_RERANKER_SOURCE_WORKTREE_CLEAN=${agent_memory_production_reranker_source_clean}
         AGENT_MEMORY_PRODUCTION_RERANKER_EXPECTED_PR_HEAD_SHA="${AGENT_MEMORY_PRODUCTION_RERANKER_EXPECTED_PR_HEAD_SHA}"
         AGENT_MEMORY_PRODUCTION_RERANKER_SOURCE_MANIFEST_SHA256="${agent_memory_production_reranker_source_manifest_sha256}"
         AGENT_MEMORY_PRODUCTION_RERANKER_FIXTURE_SHA256="${agent_memory_production_reranker_fixture_sha256}"

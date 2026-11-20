@@ -37,6 +37,7 @@ EXPECTED_CONTROLS = {
 }
 SOURCE_PATHS = [
     "tools/agent-memory-bench/production_reranker_admission.cpp",
+    "tools/agent-memory-bench/CMakeLists.txt",
     "tools/agent-memory-bench/RerankerResearchProfile.hpp",
     "tools/agent-memory-bench/generate-production-reranker-variants.py",
     "tools/agent-memory-bench/validate-production-reranker-admission.py",
@@ -168,6 +169,8 @@ def validate_receipt(
         errors.append("schema_version must be 2; historical v1 receipts are not rewritten")
     if receipt.get("benchmark_name") != "production_reranker_admission":
         errors.append("benchmark_name is not production_reranker_admission")
+    if receipt.get("source_worktree_clean") is not True:
+        errors.append("dirty source worktree cannot be presented as exact-source execution evidence")
     if not _is_sha(receipt.get("source_commit"), 40):
         errors.append("source_commit must be a lowercase 40-character SHA")
     elif receipt["source_commit"] != actual_checkout_sha:
@@ -277,6 +280,9 @@ def validate_receipt(
             ))
             if not _finite_samples(variant.get("timing")):
                 errors.append(f"{variant_prefix}.timing has invalid raw samples")
+            elif not math.isclose(case.get("mean_ms_by_variant", {}).get(name, -1),
+                                  variant["timing"]["mean_ms"], rel_tol=1e-9):
+                errors.append(f"{variant_prefix}.mean_ms_by_variant must match raw samples")
             if not _finite_samples(variant.get("setup_and_retrieve_timing")):
                 errors.append(f"{variant_prefix}.setup_and_retrieve_timing has invalid samples")
             elif _finite_samples(variant.get("timing")) and any(
@@ -338,8 +344,6 @@ def validate_receipt(
                 if case.get("metadata_width") != width:
                     continue
                 means = {arm["algorithm"]: sum(arm["timing"]["samples_ms"]) / 12 for arm in case["variants"]}
-                if any(not math.isclose(case.get("mean_ms_by_variant", {}).get(name, -1), mean, rel_tol=1e-9) for name, mean in means.items()):
-                    errors.append("mean_ms_by_variant must match raw samples")
                 for field, variant in (("sorted_first_tested_count", "sorted_identity_index"), ("hash_first_tested_count", "hash_identity_index")):
                     if crossing[field] is None and means[variant] <= means["linear_scan"]:
                         crossing[field] = case["candidate_count"]
@@ -397,6 +401,7 @@ def self_test() -> None:
         "schema_version": 2,
         "benchmark_name": "production_reranker_admission",
         "source_commit": expected,
+        "source_worktree_clean": True,
         "expected_pr_head_sha": expected,
         "source_manifest_sha256": "b" * 64,
         "fixture_sha256": "c" * 64,
@@ -545,6 +550,12 @@ def self_test() -> None:
     closure_controls.append(invalid)
     invalid = copy.deepcopy(valid)
     del invalid["generated_source_sha256"]["ProfiledHashResearchHybridRetrievalEngine.cpp"]
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["source_worktree_clean"] = False
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["sorted_input_cases"][0]["mean_ms_by_variant"]["linear_scan"] = 0.01
     closure_controls.append(invalid)
     for invalid in closure_controls:
         assert validate_receipt(invalid, expected_head=expected, actual_checkout_sha=expected)

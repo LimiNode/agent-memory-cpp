@@ -932,6 +932,7 @@ int main(int argc, char** argv) {
             {"benchmark_name", "production_reranker_admission"},
             {"scope", "production-shaped matched research harness; no production rewrite or retrieval-default change"},
             {"source_commit", AGENT_MEMORY_PRODUCTION_RERANKER_SOURCE_COMMIT},
+            {"source_worktree_clean", AGENT_MEMORY_PRODUCTION_RERANKER_SOURCE_WORKTREE_CLEAN == 1},
             {"expected_pr_head_sha", AGENT_MEMORY_PRODUCTION_RERANKER_EXPECTED_PR_HEAD_SHA},
             {"source_manifest_sha256", AGENT_MEMORY_PRODUCTION_RERANKER_SOURCE_MANIFEST_SHA256},
             {"fixture_sha256", AGENT_MEMORY_PRODUCTION_RERANKER_FIXTURE_SHA256},
