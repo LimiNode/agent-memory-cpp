@@ -28,9 +28,18 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <process.h>
 #endif
 
 namespace {
+
+[[noreturn]] void exit_without_unwind(int code) {
+#ifdef _WIN32
+    ::_exit(code);
+#else
+    std::_Exit(code);
+#endif
+}
 
 using namespace agent_memory;
 
@@ -320,7 +329,7 @@ int main() {
         });
         if(writer_done_future.wait_for(std::chrono::seconds(3)) != std::future_status::ready) {
             std::cerr << "co-ownership writer timed out\n";
-            std::_Exit(124);
+            exit_without_unwind(124);
         }
         writer.join();
         if(writer_error) std::rethrow_exception(writer_error);

@@ -13,7 +13,7 @@ They remain in one repository, but they do not need the same trigger or runtime 
 | --- | --- | --- |
 | Documentation | Markdown, guides and documentation changes | whitespace, relative Markdown links, and DBI manifest validation when its inputs changed |
 | Core | C++, public headers, tests, examples, CMake and shared build files | CMake build and CTest on Ubuntu, Windows and macOS |
-| Storage | MDBX and storage implementation changes | MDBX C1 wiring and semantic tests on Ubuntu |
+| Storage | MDBX and storage implementation changes | MDBX C1 wiring and semantic tests on Ubuntu, plus native MSVC Release/Debug build and CTest |
 | Research | research tools, benchmark inputs, codec/ANN/MIH/NeuRoute changes | the relevant benchmark and self-test harnesses |
 | Full research | manual dispatch and the weekly scheduled run | all research lanes plus the full research CTest registration |
 
@@ -67,7 +67,13 @@ Pull requests use the path classifier. Pushes are limited to main to avoid runni
 
 The full-research job is intentionally not part of an ordinary documentation or C++ pull request. It remains available for release preparation, research milestones and periodic drift detection.
 
-The storage lane currently runs the MDBX C1 smoke on Ubuntu. A Windows MDBX smoke was evaluated while preparing this split and exposed a macro collision between the pinned `mdbx-containers` headers and the Windows SDK (`small` from `rpcndr.h`). It is deferred to a dedicated portability fix; CI does not mark a known-failing probe as required. The regular Windows core lane remains enabled for the portable, MDBX-off configuration.
+The storage lane runs MDBX C1 validation on Ubuntu and a required native MSVC
+matrix in Release and Debug. The MSVC job uses `windows-2022` with the explicit
+`Visual Studio 17 2022` generator; keep this image/generator pair aligned rather
+than relying on `windows-latest`, which may provide a newer Visual Studio image
+without a VS 2022 instance. Both configurations remain required by the aggregate
+CI gate whenever Storage is selected. The regular Windows core lane remains
+enabled for the portable, MDBX-off configuration.
 
 ## Required status policy
 

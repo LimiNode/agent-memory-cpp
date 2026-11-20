@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""Build two exact revisions and qualify a real installed OLD -> NEW MDBX upgrade.
+"""Build two exact revisions and qualify an installed OLD -> NEW MDBX replay.
 
-No existing database/output is removed. Use a fresh artifact directory each run.
-Build roots should be under the canonical checkout's .build/, not a worktree.
+The retained pre-numeric replay is historical evidence only and must be selected
+explicitly with ``--allow-pre-numeric-baseline``. ``--post-numeric-upgrade``
+currently exits unsuccessfully with a NOT_EXECUTED receipt: the historical
+consumer does not exercise the numeric storage adapters. A CLI flag or a DBI
+manifest is not runtime migration evidence. No existing database/output is
+removed. Use a fresh artifact
+directory each run. Build roots should be under the canonical checkout's
+``.build/``, not a worktree.
 """
 from __future__ import annotations
 
@@ -16,6 +22,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 OLD_COMMIT = "52004324bc0d2b07c3657245195db349dd391774"
+AUDITED_OLD_EXTERNAL_TREE = "b949d6822582edc1f445837442b91aabf5093ac6"
+AUDITED_NEW_EXTERNAL_TREE = "b816ddeccafa0375c15b977e71d4a36f6728f59f"
+AUDITED_OLD_CONTAINERS = "4ab32b5eab3cdfce95d1a6c0f05f566019793ec4"
+AUDITED_NEW_CONTAINERS = "c2a2326273a3d85f29283e2cd34942c7b8d72cbd"
+DEPENDENCY_AUDIT_ID = "mdbxc-db-load-private-template-2026-11-20"
 
 
 def git(source: Path, *args: str) -> str:
@@ -26,23 +37,94 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def audit_dependency_transition(
+    old_tree: str, new_tree: str, old_entries: str, new_entries: str
+) -> str:
+    """Admit identical dependencies or one exact, directional loader audit."""
+    if old_tree == new_tree and old_entries == new_entries:
+        return "identical-external-trees"
+    if (old_tree, new_tree) == (
+        AUDITED_OLD_EXTERNAL_TREE, AUDITED_NEW_EXTERNAL_TREE
+    ):
+        old_entry = f"160000 commit {AUDITED_OLD_CONTAINERS}\tmdbx-containers\0"
+        new_entry = f"160000 commit {AUDITED_NEW_CONTAINERS}\tmdbx-containers\0"
+        # Preserve every other serialized entry, including its mode and path.
+        # The exact tree pair also rejects additions shared by both inputs.
+        if old_entries.count(old_entry) == 1 and new_entries == old_entries.replace(
+            old_entry, new_entry, 1
+        ):
+            return DEPENDENCY_AUDIT_ID
+    raise RuntimeError(
+        "dependency pins differ; no explicit audit admits this exact external-tree transition"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--old-source", required=True, type=Path)
     parser.add_argument("--new-source", required=True, type=Path)
     parser.add_argument("--new-commit", required=True)
+    parser.add_argument(
+        "--old-commit", default=OLD_COMMIT,
+        help="Exact OLD revision expected by the selected evidence mode"
+    )
     parser.add_argument("--build-root", required=True, type=Path)
     parser.add_argument("--artifacts", required=True, type=Path)
     parser.add_argument("--mingw", action="store_true", help="Use installed GCC/Ninja on Windows")
+    parser.add_argument(
+        "--allow-pre-numeric-baseline", action="store_true",
+        help="Run the retained pre-numeric historical replay; never claim migration proof"
+    )
+    parser.add_argument(
+        "--post-numeric-upgrade", action="store_true",
+        help="Report NOT_EXECUTED until a real numeric OLD/NEW consumer is implemented"
+    )
     args = parser.parse_args()
+    if args.allow_pre_numeric_baseline == args.post_numeric_upgrade:
+        raise RuntimeError(
+            "select exactly one evidence mode: --allow-pre-numeric-baseline or "
+            "--post-numeric-upgrade"
+        )
+    if args.post_numeric_upgrade:
+        # Neither requested revisions, manifest text nor supplied files prove
+        # that numeric DBIs were exercised by the historical consumer below.
+        receipt = {
+            "schema": "agent_memory.exact_generation_upgrade.v1",
+            "created_utc": datetime.now(timezone.utc).isoformat(),
+            "old_commit": args.old_commit, "new_commit": args.new_commit,
+            "evidence_class": "NOT_EXECUTED",
+            "migration_proof": False,
+            "post_migration_upgrade_proof": False,
+            "fresh_process_reopen": False,
+            "logical_row_validation": [],
+            "processes": [], "commands": [],
+            "result": "NOT_EXECUTED",
+            "reason": "No numeric OLD/NEW migration consumer has executed",
+        }
+        artifacts = args.artifacts.resolve()
+        artifacts.mkdir(parents=True, exist_ok=True)
+        with (artifacts / "receipt.json").open("x", encoding="utf-8") as output:
+            json.dump(receipt, output, indent=2)
+            output.write("\n")
+        print("NOT_EXECUTED receipt:", artifacts / "receipt.json", flush=True)
+        raise SystemExit(3)
+    if args.allow_pre_numeric_baseline and args.old_commit != OLD_COMMIT:
+        raise RuntimeError(
+            "historical replay must use the pinned pre-numeric OLD revision"
+        )
     old, new = args.old_source.resolve(), args.new_source.resolve()
-    for source, expected in ((old, OLD_COMMIT), (new, args.new_commit)):
+    for source, expected in ((old, args.old_commit), (new, args.new_commit)):
         if git(source, "rev-parse", "HEAD") != expected:
             raise RuntimeError(f"revision mismatch: {source}")
         if git(source, "status", "--porcelain", "--untracked-files=normal"):
             raise RuntimeError(f"source must be clean for exact-revision proof: {source}")
-    if git(old, "ls-tree", "HEAD", "external") != git(new, "ls-tree", "HEAD", "external"):
-        raise RuntimeError("dependency pins differ; this receipt requires an explicit dependency migration audit")
+    old_external_tree = git(old, "rev-parse", "HEAD:external")
+    new_external_tree = git(new, "rev-parse", "HEAD:external")
+    dependency_audit_id = audit_dependency_transition(
+        old_external_tree, new_external_tree,
+        git(old, "ls-tree", "-z", "HEAD:external"),
+        git(new, "ls-tree", "-z", "HEAD:external"),
+    )
     root, artifacts = args.build_root.resolve(), args.artifacts.resolve()
     artifacts.mkdir(parents=True, exist_ok=True)
     db, cas, snapshot = artifacts / "knowledge.mdbx", artifacts / "cas", artifacts / "canonical.snapshot"
@@ -57,10 +139,13 @@ def main() -> None:
     receipt = {
         "schema": "agent_memory.exact_generation_upgrade.v1",
         "created_utc": datetime.now(timezone.utc).isoformat(),
-        "old_commit": OLD_COMMIT, "new_commit": args.new_commit,
+        "old_commit": args.old_commit, "new_commit": args.new_commit,
         "old_src_tree": git(old, "rev-parse", "HEAD:src"),
         "new_src_tree": git(new, "rev-parse", "HEAD:src"),
-        "dependencies_tree": git(new, "rev-parse", "HEAD:external"),
+        "dependencies_tree": new_external_tree,
+        "old_external_tree": old_external_tree,
+        "new_external_tree": new_external_tree,
+        "dependency_audit_id": dependency_audit_id,
         "platform": platform.platform(),
         "cmake": subprocess.check_output(["cmake", "--version"], text=True).splitlines()[0],
         "options": {"cxx_standard": 17, "mdbx": True, "json": False, "config": "Release", "extra_flags": flags},
@@ -68,6 +153,11 @@ def main() -> None:
         "derived_format": "exact_generation schema=1, completion=1, fp32-le-v1",
         "recipe": "SHA256(exact canonical primary_text UTF-8), first two unsigned bytes -> FP32",
         "purpose": "deterministic identity/lifecycle fixture, NOT semantic embeddings or ANN performance",
+        "evidence_class": "HISTORICAL_ONLY",
+        "migration_proof": False,
+        "post_migration_upgrade_proof": False,
+        "fresh_process_reopen": False,
+        "logical_row_validation": [],
         "processes": [], "commands": [],
     }
     with (artifacts / "upgrade.log").open("w", encoding="utf-8") as log:
@@ -131,13 +221,14 @@ def main() -> None:
                                        ("new", "crash", 23), ("new", "verify", 0), ("old", "verify", 0)):
             output = run([executables[label], mode, db, cas, snapshot], expected, capture=True)
             receipt["processes"].append({"library": label, "mode": mode, "exit": expected, "output": output})
-        for source, expected in ((old, OLD_COMMIT), (new, args.new_commit)):
+        for source, expected in ((old, args.old_commit), (new, args.new_commit)):
             if git(source, "rev-parse", "HEAD") != expected or git(source, "status", "--porcelain"):
                 raise RuntimeError(f"source changed during upgrade proof: {source}")
         receipt["canonical_snapshot_sha256"] = sha(snapshot)
         receipt["canonical_snapshot"] = snapshot.read_text()
         receipt["fixture_source_sha256"] = sha(new / "tests/installed-exact-generation/consumer.cpp")
         receipt["fixture_helper_sha256"] = sha(new / "tests/infrastructure/mdbx/exact_generation_fixture.hpp")
+        receipt["fresh_process_reopen"] = True
         receipt["result"] = "PASS"
         (artifacts / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
         print("PASS receipt:", artifacts / "receipt.json", flush=True)
