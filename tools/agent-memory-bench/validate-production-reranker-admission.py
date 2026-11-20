@@ -26,6 +26,8 @@ EXPECTED_CONTROLS = {
     "mismatched_section",
     "protected_metadata_mutation",
     "duplicate_id",
+    "all_repeated_ids",
+    "late_duplicate_id",
     "non_finite_score",
     "positive_infinity",
     "negative_infinity",
@@ -35,6 +37,7 @@ EXPECTED_CONTROLS = {
 }
 SOURCE_PATHS = [
     "tools/agent-memory-bench/production_reranker_admission.cpp",
+    "tools/agent-memory-bench/RerankerResearchProfile.hpp",
     "tools/agent-memory-bench/generate-production-reranker-variants.py",
     "tools/agent-memory-bench/validate-production-reranker-admission.py",
     "src/agent_memory/retrieval/HybridRetrievalEngine.cpp",
@@ -45,8 +48,20 @@ SOURCE_PATHS = [
 FIXTURE_DESCRIPTION = (
     "candidate_counts=10,50,100,500,1000,2000;metadata_widths=2,8,32;"
     "warmups=2;repeats=12;orders=all-six-permutations;"
-    "variants=linear_scan,sorted_identity_index,hash_identity_index"
+    "variants=linear_scan,sorted_identity_index,hash_identity_index;"
+    "profile_warmups=1;profile_repeats=3;sorted_input_width=8;"
+    "negative_counts=10,100,2000;negative_widths=2,32;"
+    "negative_mutations=all_repeated_ids,late_duplicate_id"
 )
+PROFILE_STAGES = (
+    "index_search", "trusted_pool_copy", "reranker", "admission_total",
+    "lookup_construction", "validation_and_lookup", "trusted_result_copy",
+    "response_materialization",
+)
+GENERATED_NAMES = {
+    f"{label}ResearchHybridRetrievalEngine.cpp"
+    for label in ("Linear", "Sorted", "Hash", "ProfiledLinear", "ProfiledSorted", "ProfiledHash")
+}
 
 
 def source_manifest_digest(root: Path) -> str:
@@ -64,15 +79,16 @@ def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _finite_samples(timing: Any) -> bool:
+def _finite_samples(timing: Any, count: int = 12, allow_zero: bool = False) -> bool:
     if not isinstance(timing, dict):
         return False
     samples = timing.get("samples_ms")
     if not isinstance(samples, list) or not samples:
         return False
-    if timing.get("sample_count") != len(samples) or len(samples) != 12:
+    if timing.get("sample_count") != len(samples) or len(samples) != count:
         return False
-    if not all(type(value) in (int, float) and math.isfinite(value) and value > 0 for value in samples):
+    if not all(type(value) in (int, float) and math.isfinite(value)
+               and (value >= 0 if allow_zero else value > 0) for value in samples):
         return False
     ordered = sorted(samples)
     summaries = {
@@ -89,6 +105,58 @@ def _finite_samples(timing: Any) -> bool:
     )
 
 
+def validate_profile(
+    profile: Any, candidate_count: int, variant: str, *, validated: int | None = None,
+    copied: int | None = None,
+) -> list[str]:
+    if not isinstance(profile, dict):
+        return ["stage_profile must be a separate instrumented observation"]
+    errors = []
+    if (profile.get("execution_status") != "EXECUTED" or profile.get("warmups") != 1
+            or profile.get("repeats") != 3
+            or profile.get("instrumentation_overhead_included") is not True
+            or profile.get("primary_performance_evidence") is not False
+            or "separate instrumented retrieve" not in str(profile.get("timing_scope", ""))):
+        errors.append("stage_profile must separate direct instrumented timing from primary evidence")
+    if not _finite_samples(profile.get("full_retrieve_timing"), 3):
+        errors.append("stage_profile full retrieve samples are invalid")
+    for key in ("allocation_counts", "allocated_bytes"):
+        values = profile.get(key)
+        if not isinstance(values, list) or len(values) != 3 or not all(type(v) is int and v >= 0 for v in values):
+            errors.append(f"stage_profile {key} is incomplete")
+    stages = profile.get("stages")
+    if not isinstance(stages, dict) or set(stages) != set(PROFILE_STAGES):
+        return errors + ["stage_profile stages are incomplete"]
+    expected_calls = {name: 1 for name in PROFILE_STAGES}
+    expected_calls["lookup_construction"] = int(variant != "linear_scan")
+    expected_calls["validation_and_lookup"] = candidate_count if validated is None else validated
+    expected_calls["trusted_result_copy"] = candidate_count if copied is None else copied
+    for name in PROFILE_STAGES:
+        stage = stages[name]
+        if not isinstance(stage, dict) or not _finite_samples(stage.get("timing"), 3, allow_zero=True):
+            errors.append(f"stage_profile {name} has invalid direct samples")
+            continue
+        if stage.get("calls") != [expected_calls[name]] * 3:
+            errors.append(f"stage_profile {name} call count contradicts exercised path")
+        if expected_calls[name] == 0 and any(stage["timing"]["samples_ms"]):
+            errors.append(f"stage_profile {name} reports time for an unexecuted stage")
+    if errors:
+        return errors
+    for sample in range(3):
+        measured = {name: stages[name]["timing"]["samples_ms"][sample] for name in PROFILE_STAGES}
+        nested = sum(measured[name] for name in (
+            "lookup_construction", "validation_and_lookup", "trusted_result_copy"
+        ))
+        exclusive = sum(measured[name] for name in (
+            "index_search", "trusted_pool_copy", "reranker", "admission_total", "response_materialization"
+        ))
+        if nested > measured["admission_total"] + 1e-9:
+            errors.append("stage_profile nested admission phases exceed their direct parent timer")
+        if exclusive > profile["full_retrieve_timing"]["samples_ms"][sample] + 1e-9:
+            errors.append("stage_profile direct phases exceed full instrumented retrieve")
+    return errors
+
+
 def validate_receipt(
     receipt: Any, *, expected_head: str, actual_checkout_sha: str,
     expected_compiler: str | None = None, expected_system: str | None = None,
@@ -96,8 +164,8 @@ def validate_receipt(
     errors: list[str] = []
     if not isinstance(receipt, dict):
         return ["receipt must be a JSON object"]
-    if receipt.get("schema_version") != 1:
-        errors.append("schema_version must be 1")
+    if receipt.get("schema_version") != 2:
+        errors.append("schema_version must be 2; historical v1 receipts are not rewritten")
     if receipt.get("benchmark_name") != "production_reranker_admission":
         errors.append("benchmark_name is not production_reranker_admission")
     if not _is_sha(receipt.get("source_commit"), 40):
@@ -111,6 +179,10 @@ def validate_receipt(
     for field in ("source_manifest_sha256", "fixture_sha256"):
         if not _is_sha(receipt.get(field), 64):
             errors.append(f"{field} must be a lowercase 64-character SHA-256")
+    generated = receipt.get("generated_source_sha256")
+    if (not isinstance(generated, dict) or set(generated) != GENERATED_NAMES
+            or not all(_is_sha(value, 64) for value in generated.values())):
+        errors.append("generated_source_sha256 must bind all six instrumented/uninstrumented class copies")
     environment = receipt.get("build_environment")
     if not isinstance(environment, dict):
         errors.append("build_environment must be an object")
@@ -147,20 +219,47 @@ def validate_receipt(
         errors.append("variants must contain linear, sorted, and hash controls exactly")
     if set(receipt.get("fail_closed_controls", [])) != EXPECTED_CONTROLS:
         errors.append("fail_closed_controls do not cover the required negative matrix")
+    distribution = receipt.get("candidate_count_distribution")
+    if not isinstance(distribution, dict) or (
+        distribution.get("execution_status") != "NOT_EXECUTED"
+        or distribution.get("reason") != "REPRESENTATIVE_REQUEST_DISTRIBUTION_UNAVAILABLE"
+        or not distribution.get("source")
+        or distribution.get("synthetic_case_counts_are_request_frequencies") is not False
+    ):
+        errors.append("real request distribution is unavailable, not a synthetic frequency distribution")
+    memory = receipt.get("memory_scope")
+    if not isinstance(memory, dict) or (
+        memory.get("peak_retained_workspace") != "NOT_MEASURED"
+        or memory.get("process_peak_rss") != "NOT_MEASURED"
+        or not memory.get("peak_retained_reason") or not memory.get("allocation_series")
+    ):
+        errors.append("allocated totals cannot be promoted to peak retained workspace or RSS")
+    if receipt.get("production_default_decision") != "KEEP CURRENT":
+        errors.append("research receipt must not activate production admission")
+    if not str(receipt.get("conditional_dispatch_decision", "")).startswith("DEFER:"):
+        errors.append("conditional dispatch remains deferred without request-frequency evidence")
 
     cases = receipt.get("cases")
     if not isinstance(cases, list) or len(cases) != len(EXPECTED_COUNTS) * 3:
         errors.append("cases must contain one entry for every frozen candidate count")
         return errors
-    for index, case in enumerate(cases):
+    sorted_cases = receipt.get("sorted_input_cases")
+    if not isinstance(sorted_cases, list) or len(sorted_cases) != len(EXPECTED_COUNTS):
+        errors.append("sorted_input_cases must cover all candidate counts separately")
+        sorted_cases = []
+    for index, case in enumerate(cases + sorted_cases):
         prefix = f"cases[{index}]"
         if not isinstance(case, dict):
             errors.append(f"{prefix} must be an object")
             continue
         if case.get("candidate_count") != EXPECTED_COUNTS[index % len(EXPECTED_COUNTS)]:
             errors.append(f"{prefix}.candidate_count is out of order")
-        if case.get("metadata_width") != [2, 8, 32][index // len(EXPECTED_COUNTS)]:
+        expected_width = [2, 8, 32][index // len(EXPECTED_COUNTS)] if index < len(cases) else 8
+        if case.get("metadata_width") != expected_width:
             errors.append(f"{prefix}.metadata_width is not frozen")
+        expected_order = "fixture_numeric_order" if index < len(cases) else "identity_sorted"
+        if case.get("trusted_input_order") != expected_order or case.get("reranker_output_order") != "reverse_trusted_input":
+            errors.append(f"{prefix}.trusted/reranked input ordering is mislabeled")
         if "HybridRetrievalEngine::retrieve()" not in str(case.get("timing_scope", "")):
             errors.append(f"{prefix}.timing_scope is not end-to-end")
         variants = case.get("variants")
@@ -173,6 +272,9 @@ def validate_receipt(
         for variant in variants:
             name = variant.get("algorithm", "unknown")
             variant_prefix = f"{prefix}.{name}"
+            errors.extend(f"{variant_prefix}.{error}" for error in validate_profile(
+                variant.get("stage_profile"), case.get("candidate_count", 0), name
+            ))
             if not _finite_samples(variant.get("timing")):
                 errors.append(f"{variant_prefix}.timing has invalid raw samples")
             if not _finite_samples(variant.get("setup_and_retrieve_timing")):
@@ -197,6 +299,32 @@ def validate_receipt(
             ):
                 if variant.get(field) is not True:
                     errors.append(f"{variant_prefix}.{field} must be true")
+    negatives = receipt.get("negative_workloads")
+    expected_negative = set(itertools.product(
+        (10, 100, 2000), (2, 32), ("all_repeated_ids", "late_duplicate_id"), EXPECTED_VARIANTS
+    ))
+    observed_negative = set()
+    if not isinstance(negatives, list):
+        errors.append("negative_workloads must contain measured early and late duplicate rejection")
+        negatives = []
+    for item in negatives:
+        if not isinstance(item, dict):
+            errors.append("negative_workload must be an object")
+            continue
+        key = (item.get("candidate_count"), item.get("metadata_width"), item.get("mutation"), item.get("algorithm"))
+        if key not in expected_negative or key in observed_negative:
+            errors.append("negative workload is duplicated or outside the frozen matrix")
+            continue
+        observed_negative.add(key)
+        count, _, mutation, variant = key
+        validated = 2 if mutation == "all_repeated_ids" else count
+        if (item.get("rejected") is not True or item.get("validated_candidates") != validated
+                or item.get("trusted_copies_before_rejection") != validated - 1):
+            errors.append("negative workload rejection depth is mislabeled")
+        errors.extend(validate_profile(item.get("stage_profile"), count, variant,
+                                       validated=validated, copied=validated - 1))
+    if observed_negative != expected_negative:
+        errors.append("negative workload matrix is incomplete")
     break_even = receipt.get("break_even")
     if not isinstance(break_even, dict) or "definition" not in break_even or "scope" not in break_even:
         errors.append("break_even must state its definition and bounded scope")
@@ -242,13 +370,37 @@ def validate_sidecar(
 
 def self_test() -> None:
     expected = "a" * 40
+
+    def fake_timing(value: float, repeats: int = 3) -> dict[str, Any]:
+        return {"samples_ms": [value] * repeats, "sample_count": repeats,
+                "mean_ms": value, "p50_ms": value, "p95_ms": value,
+                "min_ms": value, "max_ms": value}
+
+    def fake_profile(count: int, name: str, validated: int | None = None) -> dict[str, Any]:
+        exercised = count if validated is None else validated
+        copied = count if validated is None else validated - 1
+        stages = {}
+        for stage in PROFILE_STAGES:
+            calls = (exercised if stage == "validation_and_lookup" else copied if stage == "trusted_result_copy"
+                     else int(name != "linear_scan") if stage == "lookup_construction" else 1)
+            value = 4.0 if stage == "admission_total" else 0.0 if calls == 0 else 1.0
+            stages[stage] = {"timing": fake_timing(value), "calls": [calls] * 3}
+        return {
+            "execution_status": "EXECUTED", "warmups": 1, "repeats": 3,
+            "timing_scope": "separate instrumented retrieve, direct stage observations",
+            "instrumentation_overhead_included": True, "primary_performance_evidence": False,
+            "full_retrieve_timing": fake_timing(10.0), "stages": stages,
+            "allocation_counts": [1] * 3, "allocated_bytes": [1] * 3,
+        }
+
     valid = {
-        "schema_version": 1,
+        "schema_version": 2,
         "benchmark_name": "production_reranker_admission",
         "source_commit": expected,
         "expected_pr_head_sha": expected,
         "source_manifest_sha256": "b" * 64,
         "fixture_sha256": "c" * 64,
+        "generated_source_sha256": {name: "d" * 64 for name in GENERATED_NAMES},
         "build_environment": {
             "compiler_id": "MSVC", "compiler_version": "19.44.35228.0",
             "cxx_standard": 17, "build_configuration": "Release",
@@ -260,6 +412,15 @@ def self_test() -> None:
         "repeats": 12,
         "variants": sorted(EXPECTED_VARIANTS),
         "fail_closed_controls": sorted(EXPECTED_CONTROLS),
+        "candidate_count_distribution": {
+            "execution_status": "NOT_EXECUTED", "reason": "REPRESENTATIVE_REQUEST_DISTRIBUTION_UNAVAILABLE",
+            "source": "fixed synthetic fixtures, not real query frequency",
+            "synthetic_case_counts_are_request_frequencies": False,
+        },
+        "memory_scope": {"peak_retained_workspace": "NOT_MEASURED", "process_peak_rss": "NOT_MEASURED",
+                         "peak_retained_reason": "no live allocation tracking", "allocation_series": "ordinary new/new[]"},
+        "production_default_decision": "KEEP CURRENT",
+        "conditional_dispatch_decision": "DEFER: no frequency evidence",
         "break_even": {"definition": "bounded", "scope": "fixture", "by_metadata_width": [
             {"metadata_width": width, "sorted_first_tested_count": 10, "hash_first_tested_count": 10}
             for width in (2, 8, 32)
@@ -270,6 +431,8 @@ def self_test() -> None:
         valid["cases"].append({
             "candidate_count": count,
             "metadata_width": width,
+            "trusted_input_order": "fixture_numeric_order",
+            "reranker_output_order": "reverse_trusted_input",
             "timing_scope": "HybridRetrievalEngine::retrieve() end-to-end",
             "execution_orders": list(itertools.permutations(range(3))) * 2,
             "mean_ms_by_variant": {name: 1.0 for name in EXPECTED_VARIANTS},
@@ -286,9 +449,23 @@ def self_test() -> None:
                     "correctness_parity": True,
                     "materialization_checked": True,
                     "fail_closed_controls_checked": True,
+                    "stage_profile": fake_profile(count, name),
                 }
                 for name in sorted(EXPECTED_VARIANTS)
             ],
+        })
+    valid["sorted_input_cases"] = copy.deepcopy(valid["cases"][6:12])
+    for case in valid["sorted_input_cases"]:
+        case["trusted_input_order"] = "identity_sorted"
+    valid["negative_workloads"] = []
+    for count, width, mutation, name in itertools.product(
+        (10, 100, 2000), (2, 32), ("all_repeated_ids", "late_duplicate_id"), sorted(EXPECTED_VARIANTS)
+    ):
+        exercised = 2 if mutation == "all_repeated_ids" else count
+        valid["negative_workloads"].append({
+            "candidate_count": count, "metadata_width": width, "mutation": mutation, "algorithm": name,
+            "rejected": True, "validated_candidates": exercised, "trusted_copies_before_rejection": exercised - 1,
+            "stage_profile": fake_profile(count, name, exercised),
         })
     assert not validate_receipt(valid, expected_head=expected, actual_checkout_sha=expected)
     for field, value in (
@@ -329,6 +506,48 @@ def self_test() -> None:
     assert any("nested timing scopes contradict" in error for error in validate_receipt(
         invalid, expected_head=expected, actual_checkout_sha=expected
     ))
+    closure_controls = []
+    invalid = copy.deepcopy(valid)
+    del invalid["cases"][0]["variants"][0]["stage_profile"]
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["cases"][0]["variants"][0]["stage_profile"]["primary_performance_evidence"] = True
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["cases"][0]["variants"][0]["stage_profile"]["stages"]["trusted_result_copy"]["calls"] = [0] * 3
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["cases"][0]["variants"][0]["stage_profile"]["stages"]["admission_total"]["timing"] = fake_timing(0.1)
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["cases"][0]["variants"][0]["stage_profile"]["full_retrieve_timing"] = fake_timing(0.1)
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["negative_workloads"][0]["validated_candidates"] = 10
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["negative_workloads"].pop()
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["sorted_input_cases"][0]["trusted_input_order"] = "fixture_numeric_order"
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["candidate_count_distribution"]["synthetic_case_counts_are_request_frequencies"] = True
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["memory_scope"]["peak_retained_workspace"] = "allocated_bytes"
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["production_default_decision"] = "ADOPT"
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    invalid["conditional_dispatch_decision"] = "threshold=500"
+    closure_controls.append(invalid)
+    invalid = copy.deepcopy(valid)
+    del invalid["generated_source_sha256"]["ProfiledHashResearchHybridRetrievalEngine.cpp"]
+    closure_controls.append(invalid)
+    for invalid in closure_controls:
+        assert validate_receipt(invalid, expected_head=expected, actual_checkout_sha=expected)
     receipt_bytes = json.dumps(valid, sort_keys=True).encode("utf-8")
     sidecar = {
         "receipt_sha256": hashlib.sha256(receipt_bytes).hexdigest(),
@@ -348,7 +567,7 @@ def self_test() -> None:
         expected_head=expected,
         actual_checkout_sha=expected,
     )
-    print("production-shaped reranker receipt validator self-test: PASS")
+    print(f"production-shaped reranker receipt validator self-test: PASS; closure_controls={len(closure_controls)}")
 
 
 def main() -> int:

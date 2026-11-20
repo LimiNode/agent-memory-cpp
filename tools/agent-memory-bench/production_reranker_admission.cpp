@@ -4,6 +4,10 @@
 #include "LinearResearchHybridRetrievalEngine.hpp"
 #include "SortedResearchHybridRetrievalEngine.hpp"
 #include "HashResearchHybridRetrievalEngine.hpp"
+#include "ProfiledLinearResearchHybridRetrievalEngine.hpp"
+#include "ProfiledSortedResearchHybridRetrievalEngine.hpp"
+#include "ProfiledHashResearchHybridRetrievalEngine.hpp"
+#include "RerankerResearchProfile.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -50,6 +54,7 @@ namespace {
 
     constexpr std::size_t kWarmups = 2;
     constexpr std::size_t kRepeats = 12;
+    constexpr std::size_t kProfileRepeats = 3;
     constexpr std::array<std::size_t, 6> kCandidateCounts{{10U, 50U, 100U, 500U, 1000U, 2000U}};
     constexpr std::array<std::array<unsigned, 3>, 6> kOrders{{
         {{0U, 1U, 2U}}, {{0U, 2U, 1U}}, {{1U, 0U, 2U}},
@@ -226,6 +231,8 @@ namespace {
         MismatchedSection,
         ProtectedMetadata,
         DuplicateId,
+        AllRepeatedIds,
+        LateDuplicateId,
         NonFinite,
         PositiveInfinity,
         NegativeInfinity,
@@ -265,6 +272,7 @@ namespace {
         return result;
     }
 
+    template <bool Profiled>
     [[nodiscard]] std::vector<agent_memory::LexicalSearchResult> admit_sorted(
         const std::vector<agent_memory::LexicalSearchResult>& admitted,
         const std::vector<agent_memory::LexicalSearchResult>& reranked
@@ -272,12 +280,18 @@ namespace {
         if(reranked.size() > admitted.size()) {
             return {};
         }
-        const auto index = make_sorted_index(admitted);
+        const auto index = [&admitted] {
+            agent_memory_research::AdmissionStageTimer<Profiled> timer(
+                agent_memory_research::AdmissionStage::LookupConstruction);
+            return make_sorted_index(admitted);
+        }();
         std::unordered_set<Identity, IdentityHash> seen;
         seen.reserve(reranked.size());
         std::vector<agent_memory::LexicalSearchResult> result;
         result.reserve(reranked.size());
         for(const auto& candidate : reranked) {
+            agent_memory_research::AdmissionStageTimer<Profiled> validation_timer(
+                agent_memory_research::AdmissionStage::ValidationAndLookup);
             if(!finite_score(candidate.score)) {
                 return {};
             }
@@ -291,6 +305,9 @@ namespace {
                || !protected_equal(admitted[matching->second], candidate)) {
                 return {};
             }
+            validation_timer.finish();
+            agent_memory_research::AdmissionStageTimer<Profiled> copy_timer(
+                agent_memory_research::AdmissionStage::TrustedResultCopy);
             auto trusted = admitted[matching->second];
             trusted.score = candidate.score;
             result.push_back(std::move(trusted));
@@ -298,6 +315,7 @@ namespace {
         return result;
     }
 
+    template <bool Profiled>
     [[nodiscard]] std::vector<agent_memory::LexicalSearchResult> admit_hash(
         const std::vector<agent_memory::LexicalSearchResult>& admitted,
         const std::vector<agent_memory::LexicalSearchResult>& reranked
@@ -305,12 +323,18 @@ namespace {
         if(reranked.size() > admitted.size()) {
             return {};
         }
-        const auto index = make_hash_index(admitted);
+        const auto index = [&admitted] {
+            agent_memory_research::AdmissionStageTimer<Profiled> timer(
+                agent_memory_research::AdmissionStage::LookupConstruction);
+            return make_hash_index(admitted);
+        }();
         std::unordered_set<Identity, IdentityHash> seen;
         seen.reserve(reranked.size());
         std::vector<agent_memory::LexicalSearchResult> result;
         result.reserve(reranked.size());
         for(const auto& candidate : reranked) {
+            agent_memory_research::AdmissionStageTimer<Profiled> validation_timer(
+                agent_memory_research::AdmissionStage::ValidationAndLookup);
             if(!finite_score(candidate.score)) {
                 return {};
             }
@@ -320,6 +344,9 @@ namespace {
                || !protected_equal(admitted[matching->second], candidate)) {
                 return {};
             }
+            validation_timer.finish();
+            agent_memory_research::AdmissionStageTimer<Profiled> copy_timer(
+                agent_memory_research::AdmissionStage::TrustedResultCopy);
             auto trusted = admitted[matching->second];
             trusted.score = candidate.score;
             result.push_back(std::move(trusted));
@@ -368,6 +395,14 @@ namespace {
                         candidates[1] = candidates[0];
                     }
                     break;
+                case Mutation::AllRepeatedIds:
+                    std::fill(candidates.begin() + 1, candidates.end(), candidates.front());
+                    break;
+                case Mutation::LateDuplicateId:
+                    if(candidates.size() > 1U) {
+                        candidates.back() = candidates.front();
+                    }
+                    break;
                 case Mutation::NonFinite:
                     candidates.front().score = std::numeric_limits<float>::quiet_NaN();
                     break;
@@ -400,6 +435,7 @@ namespace {
         double retrieve_ms = 0.0;
         std::size_t retrieve_allocations = 0;
         std::size_t retrieve_bytes = 0;
+        agent_memory_research::AdmissionProfile profile;
     };
 
     [[nodiscard]] agent_memory::LexicalSearchResult make_hit(
@@ -454,6 +490,7 @@ namespace {
     ) {
         FixtureIndex index(admitted);
         g_indexed_admission_calls = 0;
+        agent_memory_research::admission_profile = {};
         auto reranker = std::make_unique<MatchedAdmissionReranker>(mutation);
         Engine engine(index);
         engine.set_reranker(std::move(reranker));
@@ -486,21 +523,32 @@ namespace {
         g_allocation_count += setup_allocations;
         g_allocated_bytes += setup_bytes;
         return RunResult{std::move(response), index.last_query, index.search_calls,
-                         g_indexed_admission_calls, elapsed, retrieve_allocations, retrieve_bytes};
+                         g_indexed_admission_calls, elapsed, retrieve_allocations, retrieve_bytes,
+                         agent_memory_research::admission_profile};
     }
 
     [[nodiscard]] RunResult run_variant(
         const Variant variant,
         const Mutation mutation,
         const std::vector<agent_memory::LexicalSearchResult>& admitted,
-        const std::size_t limit
+        const std::size_t limit,
+        const bool profiled = false
     ) {
         switch(variant) {
             case Variant::Linear:
+                if(profiled) {
+                    return run_engine<agent_memory::ProfiledLinearResearchHybridRetrievalEngine>(mutation, admitted, limit);
+                }
                 return run_engine<agent_memory::LinearResearchHybridRetrievalEngine>(mutation, admitted, limit);
             case Variant::Sorted:
+                if(profiled) {
+                    return run_engine<agent_memory::ProfiledSortedResearchHybridRetrievalEngine>(mutation, admitted, limit);
+                }
                 return run_engine<agent_memory::SortedResearchHybridRetrievalEngine>(mutation, admitted, limit);
             case Variant::Hash:
+                if(profiled) {
+                    return run_engine<agent_memory::ProfiledHashResearchHybridRetrievalEngine>(mutation, admitted, limit);
+                }
                 return run_engine<agent_memory::HashResearchHybridRetrievalEngine>(mutation, admitted, limit);
         }
         throw std::runtime_error("unknown admission variant");
@@ -537,11 +585,74 @@ namespace {
         };
     }
 
-    [[nodiscard]] Json run_case(const std::size_t candidate_count, const std::size_t metadata_width) {
+    [[nodiscard]] Json profile_runs(
+        const Variant variant,
+        const Mutation mutation,
+        const std::vector<agent_memory::LexicalSearchResult>& admitted,
+        const std::size_t candidate_count,
+        const std::vector<agent_memory::LexicalSearchResult>& expected
+    ) {
+        constexpr auto stage_count = static_cast<std::size_t>(agent_memory_research::AdmissionStage::Count);
+        constexpr std::array<const char*, stage_count> names{{
+            "index_search", "trusted_pool_copy", "reranker", "admission_total",
+            "lookup_construction", "validation_and_lookup", "trusted_result_copy",
+            "response_materialization"
+        }};
+        std::array<std::vector<double>, stage_count> samples;
+        std::array<std::vector<std::size_t>, stage_count> calls;
+        std::vector<double> full_samples;
+        std::vector<std::size_t> allocations;
+        std::vector<std::size_t> allocated_bytes;
+        for(std::size_t repeat = 0; repeat < kProfileRepeats + 1U; ++repeat) {
+            const auto result = run_variant(variant, mutation, admitted, candidate_count, true);
+            if((mutation == Mutation::None && !response_matches(result.response, expected))
+               || (mutation != Mutation::None && !result.response.empty())
+               || result.indexed_admission_calls != (variant == Variant::Linear ? 0U : 1U)) {
+                throw std::runtime_error("instrumented retrieval changed parity or fail-closed behavior");
+            }
+            if(repeat == 0U) {
+                continue;
+            }
+            full_samples.push_back(result.retrieve_ms);
+            allocations.push_back(result.retrieve_allocations);
+            allocated_bytes.push_back(result.retrieve_bytes);
+            for(std::size_t stage = 0; stage < stage_count; ++stage) {
+                samples[stage].push_back(result.profile.milliseconds[stage]);
+                calls[stage].push_back(result.profile.calls[stage]);
+            }
+        }
+        Json stages = Json::object();
+        for(std::size_t stage = 0; stage < stage_count; ++stage) {
+            stages[names[stage]] = Json{{"timing", summarize(samples[stage])}, {"calls", calls[stage]}};
+        }
+        return Json{
+            {"execution_status", "EXECUTED"},
+            {"timing_scope", "separate instrumented retrieve; direct stage timers, not subtraction; admission_total contains lookup/validation/trusted-result-copy"},
+            {"instrumentation_overhead_included", true},
+            {"primary_performance_evidence", false},
+            {"warmups", 1},
+            {"repeats", kProfileRepeats},
+            {"full_retrieve_timing", summarize(full_samples)},
+            {"allocation_counts", allocations},
+            {"allocated_bytes", allocated_bytes},
+            {"stages", stages}
+        };
+    }
+
+    [[nodiscard]] Json run_case(
+        const std::size_t candidate_count,
+        const std::size_t metadata_width,
+        const bool identity_sorted = false
+    ) {
         std::vector<agent_memory::LexicalSearchResult> admitted;
         admitted.reserve(candidate_count + 1U);
         for(std::size_t index = 0; index < candidate_count; ++index) {
             admitted.push_back(make_hit(index, metadata_width));
+        }
+        if(identity_sorted) {
+            std::sort(admitted.begin(), admitted.end(), [](const auto& left, const auto& right) {
+                return identity_of(left) < identity_of(right);
+            });
         }
         auto expected = admitted;
         std::reverse(expected.begin(), expected.end());
@@ -620,10 +731,14 @@ namespace {
                 {"materialization_checked", true},
                 {"fail_closed_controls_checked", true}
             });
+            variants.back()["stage_profile"] = profile_runs(
+                static_cast<Variant>(variant), Mutation::None, admitted, candidate_count, expected);
         }
         return Json{
             {"candidate_count", candidate_count},
             {"metadata_width", metadata_width},
+            {"trusted_input_order", identity_sorted ? "identity_sorted" : "fixture_numeric_order"},
+            {"reranker_output_order", "reverse_trusted_input"},
             {"execution_orders", execution_orders},
             {"timing_scope", "HybridRetrievalEngine::retrieve() only: fixture/engine constructed before timer; includes index search, reranker, per-query admission-index construction, validation and response materialization"},
             {"variants", std::move(variants)},
@@ -633,6 +748,44 @@ namespace {
                 {variant_name(Variant::Hash), means[2]}
             }}
         };
+    }
+
+    [[nodiscard]] Json negative_workloads() {
+        Json result = Json::array();
+        for(const auto count : {10U, 100U, 2000U}) {
+            for(const auto width : {2U, 32U}) {
+                std::vector<agent_memory::LexicalSearchResult> admitted;
+                for(std::size_t index = 0; index < count; ++index) {
+                    admitted.push_back(make_hit(index, width));
+                }
+                for(const auto mutation : {Mutation::AllRepeatedIds, Mutation::LateDuplicateId}) {
+                    for(unsigned variant = 0; variant < 3U; ++variant) {
+                        auto profile = profile_runs(static_cast<Variant>(variant), mutation, admitted, count, {});
+                        const auto validated = mutation == Mutation::AllRepeatedIds ? 2U : count;
+                        const auto copied = validated - 1U;
+                        for(const auto value : profile["stages"]["validation_and_lookup"]["calls"]) {
+                            if(value.get<std::size_t>() != validated) {
+                                throw std::runtime_error("negative workload did not reach claimed validation depth");
+                            }
+                        }
+                        for(const auto value : profile["stages"]["trusted_result_copy"]["calls"]) {
+                            if(value.get<std::size_t>() != copied) {
+                                throw std::runtime_error("negative workload changed trusted-copy count");
+                            }
+                        }
+                        result.push_back(Json{
+                            {"candidate_count", count}, {"metadata_width", width},
+                            {"algorithm", variant_name(static_cast<Variant>(variant))},
+                            {"mutation", mutation == Mutation::AllRepeatedIds ? "all_repeated_ids" : "late_duplicate_id"},
+                            {"rejected", true}, {"validated_candidates", validated},
+                            {"trusted_copies_before_rejection", copied},
+                            {"stage_profile", std::move(profile)}
+                        });
+                    }
+                }
+            }
+        }
+        return result;
     }
 
     [[nodiscard]] bool self_test() {
@@ -669,17 +822,26 @@ namespace {
                     Mutation::ForeignChunk, Mutation::ForeignResource,
                     Mutation::MismatchedSection, Mutation::ProtectedMetadata,
                     Mutation::DuplicateId, Mutation::NonFinite,
+                    Mutation::AllRepeatedIds, Mutation::LateDuplicateId,
                     Mutation::PositiveInfinity, Mutation::NegativeInfinity,
                     Mutation::UntrustedTier, Mutation::UntrustedEnrichment,
                     Mutation::Oversized
                 }) {
-                const auto invalid = run_variant(
-                    static_cast<Variant>(variant), mutation, admitted, 4U
-                );
-                if(!invalid.response.empty()
-                   || invalid.indexed_admission_calls != (variant == 0U ? 0U : 1U)) {
-                    return false;
+                for(const bool instrumented : {false, true}) {
+                    const auto invalid = run_variant(
+                        static_cast<Variant>(variant), mutation, admitted, 4U, instrumented
+                    );
+                    if(!invalid.response.empty()
+                       || invalid.indexed_admission_calls != (variant == 0U ? 0U : 1U)) {
+                        return false;
+                    }
                 }
+            }
+            const auto profiled = run_variant(static_cast<Variant>(variant), Mutation::None, admitted, 4U, true);
+            if(!response_matches(profiled.response, expected)
+               || profiled.profile.calls[static_cast<std::size_t>(agent_memory_research::AdmissionStage::ValidationAndLookup)] != 4U
+               || profiled.profile.calls[static_cast<std::size_t>(agent_memory_research::AdmissionStage::TrustedResultCopy)] != 4U) {
+                return false;
             }
         }
         return true;
@@ -694,7 +856,7 @@ namespace agent_memory_research {
         const std::vector<agent_memory::LexicalSearchResult>& reranked
     ) {
         ++g_indexed_admission_calls;
-        return ::admit_sorted(admitted, reranked);
+        return ::admit_sorted<false>(admitted, reranked);
     }
 
     std::vector<agent_memory::LexicalSearchResult> admit_hash(
@@ -702,7 +864,23 @@ namespace agent_memory_research {
         const std::vector<agent_memory::LexicalSearchResult>& reranked
     ) {
         ++g_indexed_admission_calls;
-        return ::admit_hash(admitted, reranked);
+        return ::admit_hash<false>(admitted, reranked);
+    }
+
+    std::vector<agent_memory::LexicalSearchResult> admit_sorted_profiled(
+        const std::vector<agent_memory::LexicalSearchResult>& admitted,
+        const std::vector<agent_memory::LexicalSearchResult>& reranked
+    ) {
+        ++g_indexed_admission_calls;
+        return ::admit_sorted<true>(admitted, reranked);
+    }
+
+    std::vector<agent_memory::LexicalSearchResult> admit_hash_profiled(
+        const std::vector<agent_memory::LexicalSearchResult>& admitted,
+        const std::vector<agent_memory::LexicalSearchResult>& reranked
+    ) {
+        ++g_indexed_admission_calls;
+        return ::admit_hash<true>(admitted, reranked);
     }
 
 } // namespace agent_memory_research
@@ -722,6 +900,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("fail-closed or materialization controls failed");
         }
         Json cases = Json::array();
+        Json sorted_input_cases = Json::array();
         Json break_even = Json::array();
         for(const auto width : {2U, 8U, 32U}) {
             std::optional<std::size_t> sorted_first;
@@ -745,8 +924,11 @@ int main(int argc, char** argv) {
                 {"hash_first_tested_count", hash_first ? Json(*hash_first) : Json(nullptr)}
             });
         }
+        for(const auto count : kCandidateCounts) {
+            sorted_input_cases.push_back(run_case(count, 8U, true));
+        }
         Json report{
-            {"schema_version", 1},
+            {"schema_version", 2},
             {"benchmark_name", "production_reranker_admission"},
             {"scope", "production-shaped matched research harness; no production rewrite or retrieval-default change"},
             {"source_commit", AGENT_MEMORY_PRODUCTION_RERANKER_SOURCE_COMMIT},
@@ -756,7 +938,10 @@ int main(int argc, char** argv) {
             {"generated_source_sha256", Json{
                 {"LinearResearchHybridRetrievalEngine.cpp", AGENT_MEMORY_PRODUCTION_RERANKER_Linear_SHA256},
                 {"SortedResearchHybridRetrievalEngine.cpp", AGENT_MEMORY_PRODUCTION_RERANKER_Sorted_SHA256},
-                {"HashResearchHybridRetrievalEngine.cpp", AGENT_MEMORY_PRODUCTION_RERANKER_Hash_SHA256}
+                {"HashResearchHybridRetrievalEngine.cpp", AGENT_MEMORY_PRODUCTION_RERANKER_Hash_SHA256},
+                {"ProfiledLinearResearchHybridRetrievalEngine.cpp", AGENT_MEMORY_PRODUCTION_RERANKER_ProfiledLinear_SHA256},
+                {"ProfiledSortedResearchHybridRetrievalEngine.cpp", AGENT_MEMORY_PRODUCTION_RERANKER_ProfiledSorted_SHA256},
+                {"ProfiledHashResearchHybridRetrievalEngine.cpp", AGENT_MEMORY_PRODUCTION_RERANKER_ProfiledHash_SHA256}
             }},
             {"build_environment", Json{
                 {"compiler_id", AGENT_MEMORY_EVALUATOR_COMPILER_ID},
@@ -780,9 +965,25 @@ int main(int argc, char** argv) {
                 "foreign_chunk", "foreign_resource", "mismatched_section",
                 "protected_metadata_mutation", "duplicate_id", "non_finite_score",
                 "positive_infinity", "negative_infinity", "untrusted_tier",
-                "untrusted_enrichment", "oversized_output"
+                "untrusted_enrichment", "oversized_output", "all_repeated_ids", "late_duplicate_id"
             })},
             {"cases", cases},
+            {"sorted_input_cases", sorted_input_cases},
+            {"negative_workloads", negative_workloads()},
+            {"candidate_count_distribution", Json{
+                {"execution_status", "NOT_EXECUTED"},
+                {"reason", "REPRESENTATIVE_REQUEST_DISTRIBUTION_UNAVAILABLE"},
+                {"source", "fixed synthetic fixtures only; no production request log or representative request-frequency sample is supplied"},
+                {"synthetic_case_counts_are_request_frequencies", false}
+            }},
+            {"memory_scope", Json{
+                {"allocation_series", "ordinary new/new[] requests within retrieve; excludes direct C and over-aligned APIs"},
+                {"peak_retained_workspace", "NOT_MEASURED"},
+                {"peak_retained_reason", "allocation counters do not track live allocation sizes on deallocation; allocated_bytes is not retained or peak memory"},
+                {"process_peak_rss", "NOT_MEASURED"}
+            }},
+            {"production_default_decision", "KEEP CURRENT"},
+            {"conditional_dispatch_decision", "DEFER: representative candidate-count frequencies unavailable; no threshold selected from synthetic host"},
             {"break_even", Json{
                 {"definition", "first tested candidate count where sorted/hash mean_ms <= linear mean_ms"},
                 {"scope", "this machine and fixed metadata width only; first observed crossover is not a stable production threshold"},

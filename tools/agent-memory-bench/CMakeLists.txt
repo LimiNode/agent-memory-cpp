@@ -25,10 +25,13 @@ add_executable(agent-memory-production-reranker-admission
     "${agent_memory_production_reranker_generated}/LinearResearchHybridRetrievalEngine.cpp"
     "${agent_memory_production_reranker_generated}/SortedResearchHybridRetrievalEngine.cpp"
     "${agent_memory_production_reranker_generated}/HashResearchHybridRetrievalEngine.cpp"
+    "${agent_memory_production_reranker_generated}/ProfiledLinearResearchHybridRetrievalEngine.cpp"
+    "${agent_memory_production_reranker_generated}/ProfiledSortedResearchHybridRetrievalEngine.cpp"
+    "${agent_memory_production_reranker_generated}/ProfiledHashResearchHybridRetrievalEngine.cpp"
 )
 target_include_directories(agent-memory-production-reranker-admission PRIVATE
-    "${agent_memory_production_reranker_generated}")
-foreach(variant IN ITEMS Linear Sorted Hash)
+    "${agent_memory_production_reranker_generated}" "${CMAKE_CURRENT_SOURCE_DIR}")
+foreach(variant IN ITEMS Linear Sorted Hash ProfiledLinear ProfiledSorted ProfiledHash)
     file(SHA256 "${agent_memory_production_reranker_generated}/${variant}ResearchHybridRetrievalEngine.cpp"
         agent_memory_production_reranker_${variant}_sha256)
     target_compile_definitions(agent-memory-production-reranker-admission PRIVATE
@@ -52,6 +55,7 @@ set(AGENT_MEMORY_PRODUCTION_RERANKER_EXPECTED_PR_HEAD_SHA "unconfigured"
 set(agent_memory_production_reranker_manifest_text "")
 foreach(agent_memory_production_reranker_source IN ITEMS
     "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/production_reranker_admission.cpp"
+    "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/RerankerResearchProfile.hpp"
     "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/generate-production-reranker-variants.py"
     "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/validate-production-reranker-admission.py"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/retrieval/HybridRetrievalEngine.cpp"
@@ -70,7 +74,7 @@ endforeach()
 string(SHA256 agent_memory_production_reranker_source_manifest_sha256
     "${agent_memory_production_reranker_manifest_text}")
 string(SHA256 agent_memory_production_reranker_fixture_sha256
-    "candidate_counts=10,50,100,500,1000,2000;metadata_widths=2,8,32;warmups=2;repeats=12;orders=all-six-permutations;variants=linear_scan,sorted_identity_index,hash_identity_index")
+    "candidate_counts=10,50,100,500,1000,2000;metadata_widths=2,8,32;warmups=2;repeats=12;orders=all-six-permutations;variants=linear_scan,sorted_identity_index,hash_identity_index;profile_warmups=1;profile_repeats=3;sorted_input_width=8;negative_counts=10,100,2000;negative_widths=2,32;negative_mutations=all_repeated_ids,late_duplicate_id")
 target_compile_definitions(agent-memory-production-reranker-admission
     PRIVATE
         AGENT_MEMORY_PRODUCTION_RERANKER_SOURCE_COMMIT="${agent_memory_production_reranker_source_commit}"
