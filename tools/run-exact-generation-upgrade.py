@@ -2,10 +2,11 @@
 """Build two exact revisions and qualify an installed OLD -> NEW MDBX replay.
 
 The retained pre-numeric replay is historical evidence only and must be selected
-explicitly with ``--allow-pre-numeric-baseline``.  A post-numeric proof requires
-``--post-numeric-upgrade`` and an explicit numeric OLD revision; it records a
-fresh-process reopen and logical-row validation fields in the machine-readable
-receipt.  No existing database/output is removed. Use a fresh artifact
+explicitly with ``--allow-pre-numeric-baseline``. ``--post-numeric-upgrade``
+currently exits unsuccessfully with a NOT_EXECUTED receipt: the historical
+consumer does not exercise the numeric storage adapters. A CLI flag or a DBI
+manifest is not runtime migration evidence. No existing database/output is
+removed. Use a fresh artifact
 directory each run. Build roots should be under the canonical checkout's
 ``.build/``, not a worktree.
 """
@@ -49,7 +50,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--post-numeric-upgrade", action="store_true",
-        help="Run the mandatory post-numeric OLD/NEW gate with a real numeric OLD revision"
+        help="Report NOT_EXECUTED until a real numeric OLD/NEW consumer is implemented"
     )
     args = parser.parse_args()
     if args.allow_pre_numeric_baseline == args.post_numeric_upgrade:
@@ -57,23 +58,33 @@ def main() -> None:
             "select exactly one evidence mode: --allow-pre-numeric-baseline or "
             "--post-numeric-upgrade"
         )
-    if args.post_numeric_upgrade and args.old_commit == OLD_COMMIT:
-        raise RuntimeError(
-            "post-numeric upgrade requires an explicit numeric OLD revision; "
-            "the retained historical baseline is not a migration proof"
-        )
+    if args.post_numeric_upgrade:
+        # Neither requested revisions, manifest text nor supplied files prove
+        # that numeric DBIs were exercised by the historical consumer below.
+        receipt = {
+            "schema": "agent_memory.exact_generation_upgrade.v1",
+            "created_utc": datetime.now(timezone.utc).isoformat(),
+            "old_commit": args.old_commit, "new_commit": args.new_commit,
+            "evidence_class": "NOT_EXECUTED",
+            "post_migration_upgrade_proof": False,
+            "fresh_process_reopen": False,
+            "logical_row_validation": [],
+            "processes": [], "commands": [],
+            "result": "NOT_EXECUTED",
+            "reason": "No numeric OLD/NEW migration consumer has executed",
+        }
+        artifacts = args.artifacts.resolve()
+        artifacts.mkdir(parents=True, exist_ok=True)
+        with (artifacts / "receipt.json").open("x", encoding="utf-8") as output:
+            json.dump(receipt, output, indent=2)
+            output.write("\n")
+        print("NOT_EXECUTED receipt:", artifacts / "receipt.json", flush=True)
+        raise SystemExit(3)
     if args.allow_pre_numeric_baseline and args.old_commit != OLD_COMMIT:
         raise RuntimeError(
             "historical replay must use the pinned pre-numeric OLD revision"
         )
     old, new = args.old_source.resolve(), args.new_source.resolve()
-    if args.post_numeric_upgrade:
-        for source in (old, new):
-            manifest = source / "guides" / "dbi-manifest.yaml"
-            if not manifest.is_file() or "knowledge_units_numeric_v1" not in manifest.read_text(encoding="utf-8"):
-                raise RuntimeError(
-                    f"post-numeric gate requires numeric DBI manifest entries: {source}"
-                )
     for source, expected in ((old, args.old_commit), (new, args.new_commit)):
         if git(source, "rev-parse", "HEAD") != expected:
             raise RuntimeError(f"revision mismatch: {source}")
@@ -106,10 +117,10 @@ def main() -> None:
         "derived_format": "exact_generation schema=1, completion=1, fp32-le-v1",
         "recipe": "SHA256(exact canonical primary_text UTF-8), first two unsigned bytes -> FP32",
         "purpose": "deterministic identity/lifecycle fixture, NOT semantic embeddings or ANN performance",
-        "evidence_class": "POST_NUMERIC_UPGRADE" if args.post_numeric_upgrade else "HISTORICAL_ONLY",
-        "post_migration_upgrade_proof": bool(args.post_numeric_upgrade),
-        "fresh_process_reopen": True,
-        "logical_row_validation": ["counts", "revisions", "scopes", "digests", "no_reuse", "derived_index_consistency"],
+        "evidence_class": "HISTORICAL_ONLY",
+        "post_migration_upgrade_proof": False,
+        "fresh_process_reopen": False,
+        "logical_row_validation": [],
         "processes": [], "commands": [],
     }
     with (artifacts / "upgrade.log").open("w", encoding="utf-8") as log:
@@ -180,6 +191,7 @@ def main() -> None:
         receipt["canonical_snapshot"] = snapshot.read_text()
         receipt["fixture_source_sha256"] = sha(new / "tests/installed-exact-generation/consumer.cpp")
         receipt["fixture_helper_sha256"] = sha(new / "tests/infrastructure/mdbx/exact_generation_fixture.hpp")
+        receipt["fresh_process_reopen"] = True
         receipt["result"] = "PASS"
         (artifacts / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
         print("PASS receipt:", artifacts / "receipt.json", flush=True)

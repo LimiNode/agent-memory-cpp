@@ -9,7 +9,7 @@ on:
 
 jobs:
   exact-generation-upgrade:
-    name: OLD to NEW exact generation upgrade
+    name: Historical OLD to NEW exact generation replay
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Reject unexecuted numeric upgrade evidence
+        run: python tools/test-exact-generation-upgrade.py
       - name: Prepare exact OLD source and flat dependencies
         run: |
           git submodule update --init external/libmdbx external/mdbx-containers

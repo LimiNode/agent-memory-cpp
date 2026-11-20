@@ -128,10 +128,12 @@ separate processes. The packaging workflow invokes it explicitly with
 `post_migration_upgrade_proof=false`. It is retained for reproducibility, but
 does not qualify a numeric MDBX layout.
 
-Before any numeric physical layout is activated, run the same tool with
-`--post-numeric-upgrade`, an explicit numeric OLD revision, and a fresh-process
-OLD/NEW pair. Both revisions must advertise `knowledge_units_numeric_v1` in
-`guides/dbi-manifest.yaml`. The post-numeric receipt must record logical
+The numeric physical-layout gate is **NOT_EXECUTED**. Selecting
+`--post-numeric-upgrade` currently writes a `NOT_EXECUTED` receipt and exits with
+code 3; it never runs the historical consumer as numeric proof. A CLI flag,
+manifest text, or a supplied evidence file cannot establish execution.
+Before numeric activation, implement a real fresh-process numeric OLD/NEW
+consumer. Its post-numeric receipt must record logical
 decoded-row equality (counts, revisions, scopes, digests, no-reuse and derived
 index consistency), exact source/dependency/schema hashes, and the separate
 reopen/crash process observations. A successful historical replay must never be
