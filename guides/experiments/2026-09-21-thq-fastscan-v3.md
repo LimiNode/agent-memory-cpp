@@ -117,3 +117,101 @@ Artifacts:
 Next: run the already prepared Faiss ResidualQuantizer 32/48-byte capacity
 gate, then compare the resulting finalist against faithful RSLM and INT8 in a
 native end-to-end cascade.
+
+## 2026-11-20: R6 certified-refinement feasibility contract
+
+Base: `main@9005a010b1044e1c93ef3690d41fd56a2c7bbb2e` after R5 closure.
+Status before implementation: `NOT_EXECUTED`; correctness is the first gate.
+This is a certificate/refinement extension of the existing FastScan research
+harness, not a new algorithm family or a production/cascade qualification.
+
+### Frozen reference and inputs
+
+The reference is the existing scalar `score_pair`: start at FP32 positive
+zero; for byte positions 0 through 95, add the low-nibble pair-table entry
+and then the high-nibble entry, storing each of the 192 additions in FP32.
+Rank by `(reference score ascending, document ID ascending)`. Correctness
+requires identical ordered IDs and selected reference-score bits, not a
+tolerance, set overlap, byte-LUT equivalence or exact raw-float retrieval.
+
+The pilot accepts immutable 96-byte codes and distinct nonnegative int32 IDs.
+Malformed shape, duplicate/negative IDs, nonfinite tables, nonpositive or
+nonfinite scale, and tables whose absolute-sum/error bound permits FP32
+overflow are rejected. `K>N` clamps to N; K=0 and an empty corpus return an
+empty result after validation. Byte/tile tails do not introduce candidates.
+This standalone component does not establish authorization, freshness,
+snapshot consistency, storage I/O or concurrent-update semantics.
+
+### Certificate and floating-point boundary
+
+For the actual stored FP32 pair entries P[p,j], uint8 entries q[p,j] and
+positive FP32 global scale alpha, bound each residual
+`P[p,j] - q[p,j]/alpha` outwards in FP64. Sum per-pair minima/maxima with
+outward rounding. For exact integer Q (at most 192*255=48960), enclose the
+reference score by `Q/alpha + R_min - E` and `Q/alpha + R_max + E`, where
+`E = gamma_192*A + 192*2^-150/(1-192*2^-24)`,
+`gamma_192 = 192*2^-24/(1-192*2^-24)` and
+`A = sum_p max_j abs(P[p,j])`. Every elementary bound operation rounds
+outwards; the underflow term is calculated in FP64, never FP32.
+
+Certification requires IEEE binary32/binary64, round-to-nearest,
+gradual underflow, no excess precision or reassociation, and finite reference
+intermediates. The target uses strict floating-point compilation; runtime
+probes reject non-RN and FTZ/DAZ behavior. Unsupported environments are
+explicit errors, not silently certified results. Nonfinite/overflowing LUT
+construction is rejected before integer rounding/quantization.
+
+Seed K distinct exact incumbents from the integer top-K and obtain a real
+cutoff tau. Refine every other candidate with `lower <= tau`; prune only
+`lower > tau`, retaining equality ties. The first pilot deliberately retains
+the initial cutoff instead of adding another heap or adaptive policy.
+
+### Falsifiers and stop rule declared before measurements
+
+Correctness controls cover ties with reversed IDs, half-step/clipped
+quantization residuals, signed cancellation, tiny/subnormal and large finite
+values, NaN/Inf/overflow, invalid scale/IDs/shape, K=0/K>N/empty inputs and
+non-block-aligned tails. Any escaped reference score or ordered-ID/score-bit
+mismatch rejects this exact arm. Deliberately corrupt result/bound controls
+must be rejected. Existing pair-AVX2 is separately checked for bitwise
+eligibility; byte/unrolled equivalence is not assumed.
+
+No performance measurements precede independent design/correctness review.
+If that gate passes and source inputs become available, compare against the
+fastest existing arm that proves the same frozen contract. Predeclared
+continuation threshold: at least 10% lower matched full component-path median
+with no p95 regression, after charging LUT/envelope setup, scan, selection,
+gather/packing, refinement and memory. Near-exhaustive refinement or failure
+of that threshold means `KEEP CURRENT`; unavailable payloads mean `DEFER`.
+Historical exposed queries cannot establish new held-out retrieval quality.
+No variant sweep is authorized to rescue this particular certificate.
+
+Builds belong under canonical `.build/r6-certified-adc`; retained output
+under canonical `.artifacts/r6-certified-adc` with source/input/command
+manifest. No production API/default/schema or dependency changes are part of
+this pilot.
+
+### Local prototype correctness gate
+
+The uncommitted prototype on the stated base passed the focused Release build
+with GNU C++ 15.2, C++17, AVX2 and
+`-fno-fast-math -ffp-contract=off -frounding-math`. This is a working-tree
+correctness result, not a replay of the unchanged base commit or a frozen
+performance receipt. `--certificate-self-test` passed 30 correctness fixtures,
+24 invalid-input controls, four deliberate bound/result corruption controls
+and three environment controls (non-RN, FTZ and DAZ). A literal three-document
+case requires both displacement of the integer seed by exact refinement and
+pruning of a distant candidate; the controls are not only exhaustive fallbacks.
+The existing `--self-test` and the new focused CTest also passed (1/1).
+
+Pair AVX2 preserved all score bits and ordered IDs on these fixtures; its
+eligibility on the measured payload remains to be checked. The selector reports
+exact-evaluation count and a conservative sum of vector payload capacities,
+including sorted-ID validation and both selectors. This is not process RSS or
+an allocator/stack measurement. Its scalar integer scan and duplicate-ID
+validation remain charged costs; no optimization sweep is implied.
+
+Performance and applied retrieval quality remain `NOT_EXECUTED`. Freeze an
+exact prototype source revision and obtain independent correctness review
+before the first benchmark. No API, production setting or persisted format is
+changed.

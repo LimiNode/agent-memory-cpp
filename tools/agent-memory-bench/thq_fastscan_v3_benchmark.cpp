@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cfenv>
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -18,6 +20,10 @@
 #include <vector>
 
 #include <nlohmann/json.hpp>
+
+#if defined(__SSE__) || defined(_M_X64) || defined(_M_IX86)
+#include <xmmintrin.h>
+#endif
 
 #if AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2
 #include <immintrin.h>
@@ -51,6 +57,7 @@ struct Options {
   std::size_t warmups = 1;
   std::string mode = "both";
   bool self_test = false;
+  bool certificate_self_test = false;
 };
 
 struct QueryTables {
@@ -110,6 +117,10 @@ Options parse_options(int argc, char** argv) {
       options.self_test = true;
       continue;
     }
+    if (key == "--certificate-self-test") {
+      options.certificate_self_test = true;
+      continue;
+    }
     if (i + 1 >= argc) throw std::runtime_error("missing value for " + key);
     const std::string value = argv[++i];
     if (key == "--codes") options.codes = value;
@@ -127,7 +138,7 @@ Options parse_options(int argc, char** argv) {
     else if (key == "--mode") options.mode = value;
     else throw std::runtime_error("unknown option " + key);
   }
-  if (options.self_test) return options;
+  if (options.self_test || options.certificate_self_test) return options;
   if (options.codes.empty() || options.thresholds.empty() || options.queries.empty())
     throw std::runtime_error("--codes, --thresholds and --queries are required");
   if (options.query_limit == 0 || options.repeats == 0)
@@ -150,11 +161,21 @@ std::uint8_t level_at(const std::uint8_t* code, std::size_t coordinate) {
   return static_cast<std::uint8_t>((code[coordinate / 4] >> ((coordinate & 3U) * 2U)) & 3U);
 }
 
+std::uint8_t quantize_u8(float value) {
+  if (!std::isfinite(value)) throw std::runtime_error("nonfinite quantization input");
+  return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0F, 255.0F)));
+}
+
 QueryTables make_tables(const float* thresholds, const float* query) {
   QueryTables tables;
   auto started = Clock::now();
   for (std::size_t d = 0; d < kDimensions; ++d) {
     const float q = query[d];
+    if (!std::isfinite(q) || !std::isfinite(thresholds[d * 3]) ||
+        !std::isfinite(thresholds[d * 3 + 1]) || !std::isfinite(thresholds[d * 3 + 2]) ||
+        thresholds[d * 3] > thresholds[d * 3 + 1] ||
+        thresholds[d * 3 + 1] > thresholds[d * 3 + 2])
+      throw std::runtime_error("invalid query or thresholds");
     const float low[4] = {-std::numeric_limits<float>::infinity(), thresholds[d * 3],
                           thresholds[d * 3 + 1], thresholds[d * 3 + 2]};
     const float high[4] = {thresholds[d * 3], thresholds[d * 3 + 1],
@@ -163,6 +184,8 @@ QueryTables make_tables(const float* thresholds, const float* query) {
       const float delta = q < low[level] ? low[level] - q
                            : q > high[level] ? q - high[level] : 0.0F;
       tables.coordinate[d * 4 + level] = delta * delta;
+      if (!std::isfinite(tables.coordinate[d * 4 + level]))
+        throw std::runtime_error("coordinate LUT overflow");
     }
   }
   tables.coordinate_setup_ms =
@@ -175,6 +198,7 @@ QueryTables make_tables(const float* thresholds, const float* query) {
       for (std::size_t lane = 0; lane < 4; ++lane)
         score += tables.coordinate[(byte * 4 + lane) * 4 + ((packed >> (lane * 2)) & 3U)];
       tables.byte[byte * 256 + packed] = score;
+      if (!std::isfinite(score)) throw std::runtime_error("byte LUT overflow");
     }
   }
   tables.byte_setup_ms =
@@ -188,6 +212,7 @@ QueryTables make_tables(const float* thresholds, const float* query) {
       const float value = tables.coordinate[d * 4 + (index & 3U)] +
                           tables.coordinate[(d + 1) * 4 + ((index >> 2U) & 3U)];
       tables.pair[pair * 16 + index] = value;
+      if (!std::isfinite(value)) throw std::runtime_error("pair LUT overflow");
       maxima[pair] = std::max(maxima[pair], value);
     }
   }
@@ -199,8 +224,8 @@ QueryTables make_tables(const float* thresholds, const float* query) {
     tables.local_scale[pair] = std::max(maxima[pair] / 255.0F,
                                         std::numeric_limits<float>::min());
     for (std::size_t index = 0; index < 16; ++index) {
-      const auto quantized = static_cast<std::uint8_t>(std::clamp(
-          std::lround(tables.pair[pair * 16 + index] / tables.local_scale[pair]), 0L, 255L));
+      const auto quantized = quantize_u8(
+          tables.pair[pair * 16 + index] / tables.local_scale[pair]);
       tables.local_u8[pair * 16 + index] = quantized;
       tables.local_u8_packed[pair * 32 + index] = quantized;
       tables.local_u8_packed[pair * 32 + 16 + index] = quantized;
@@ -216,12 +241,14 @@ QueryTables make_tables(const float* thresholds, const float* query) {
   const double factor = std::min(largest > 0.0F ? 255.0 / largest : 1.0,
                                  safe_sum > 0.0 ? 65535.0 / safe_sum : 1.0);
   tables.global_scale = static_cast<float>(factor);
+  if (!(tables.global_scale > 0.0F) || !std::isfinite(tables.global_scale))
+    throw std::runtime_error("invalid global quantization scale");
   std::uint32_t max_sum = 0;
   for (std::size_t pair = 0; pair < kPairs; ++pair) {
     std::uint8_t pair_max = 0;
     for (std::size_t index = 0; index < 16; ++index) {
-      const auto quantized = static_cast<std::uint8_t>(std::clamp(
-          std::lround(tables.pair[pair * 16 + index] * tables.global_scale), 0L, 255L));
+      const auto quantized = quantize_u8(
+          tables.pair[pair * 16 + index] * tables.global_scale);
       tables.global_u8[pair * 16 + index] = quantized;
       tables.global_u8_packed[pair * 32 + index] = quantized;
       tables.global_u8_packed[pair * 32 + 16 + index] = quantized;
@@ -436,6 +463,159 @@ std::vector<std::size_t> top_indices(const Score& scores, const std::int32_t* id
   return order;
 }
 
+std::uint32_t float_bits(float value) {
+  std::uint32_t bits;
+  std::memcpy(&bits, &value, sizeof(bits));
+  return bits;
+}
+
+void require_certificate_environment() {
+#if defined(__FAST_MATH__) || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__ > 0) || defined(_M_FP_FAST)
+  throw std::runtime_error("certificate rejects fast-math compilation");
+#endif
+  if (!std::numeric_limits<float>::is_iec559 ||
+      !std::numeric_limits<double>::is_iec559 || sizeof(float) != 4 || sizeof(double) != 8 ||
+      std::numeric_limits<float>::digits != 24 || std::numeric_limits<double>::digits != 53 ||
+      FLT_EVAL_METHOD != 0 || std::fegetround() != FE_TONEAREST)
+    throw std::runtime_error("certificate requires binary32/binary64 RN without excess precision");
+  volatile float tiny = std::numeric_limits<float>::denorm_min();
+  volatile float normal = std::numeric_limits<float>::min();
+  volatile float one = 1.0F, two = 2.0F, half = 0.5F;
+  volatile double tiny64 = std::numeric_limits<double>::denorm_min();
+  volatile double normal64 = std::numeric_limits<double>::min();
+  volatile double one64 = 1.0, two64 = 2.0, half64 = 0.5;
+  if (float_bits(tiny * one) != 1U || float_bits(tiny * two) != 2U ||
+      float_bits(normal * half) != 0x00400000U || tiny64 * one64 != tiny64 ||
+      tiny64 * two64 != std::ldexp(1.0, -1073) ||
+      normal64 * half64 != std::ldexp(1.0, -1023))
+    throw std::runtime_error("certificate rejects FTZ/DAZ or missing gradual underflow");
+}
+
+double round_down(double value) {
+  return std::nextafter(value, -std::numeric_limits<double>::infinity());
+}
+
+double round_up(double value) {
+  return std::nextafter(value, std::numeric_limits<double>::infinity());
+}
+
+struct ScoreEnvelope {
+  double residual_low = 0.0;
+  double residual_high = 0.0;
+  double accumulation_error = 0.0;
+};
+
+ScoreEnvelope make_score_envelope(const QueryTables& tables) {
+  require_certificate_environment();
+  if (!(tables.global_scale > 0.0F) || !std::isfinite(tables.global_scale))
+    throw std::runtime_error("certificate requires a finite positive scale");
+  ScoreEnvelope result;
+  double absolute_sum = 0.0;
+  for (std::size_t pair = 0; pair < kPairs; ++pair) {
+    double low = std::numeric_limits<double>::infinity();
+    double high = -std::numeric_limits<double>::infinity();
+    double largest = 0.0;
+    for (std::size_t index = 0; index < 16; ++index) {
+      const auto position = pair * 16 + index;
+      const double value = tables.pair[position];
+      if (!std::isfinite(value)) throw std::runtime_error("nonfinite pair table");
+      const double quotient = static_cast<double>(tables.global_u8[position]) /
+                              static_cast<double>(tables.global_scale);
+      low = std::min(low, round_down(value - round_up(quotient)));
+      high = std::max(high, round_up(value - round_down(quotient)));
+      largest = std::max(largest, std::abs(value));
+    }
+    result.residual_low = round_down(result.residual_low + low);
+    result.residual_high = round_up(result.residual_high + high);
+    absolute_sum = round_up(absolute_sum + largest);
+  }
+  const double nu = round_up(static_cast<double>(kPairs) * std::ldexp(1.0, -24));
+  const double denominator = round_down(1.0 - nu);
+  const double gamma = round_up(nu / denominator);
+  const double underflow = round_up(
+      round_up(static_cast<double>(kPairs) * std::ldexp(1.0, -150)) / denominator);
+  result.accumulation_error = round_up(round_up(gamma * absolute_sum) + underflow);
+  if (round_up(absolute_sum + result.accumulation_error) >
+      static_cast<double>(std::numeric_limits<float>::max()))
+    throw std::runtime_error("certificate cannot exclude FP32 prefix overflow");
+  return result;
+}
+
+std::pair<double, double> score_bounds(std::uint16_t integer_score,
+                                      const QueryTables& tables,
+                                      const ScoreEnvelope& envelope) {
+  const double quotient = static_cast<double>(integer_score) /
+                          static_cast<double>(tables.global_scale);
+  return {round_down(round_down(round_down(quotient) + envelope.residual_low) -
+                     envelope.accumulation_error),
+          round_up(round_up(round_up(quotient) + envelope.residual_high) +
+                   envelope.accumulation_error)};
+}
+
+std::uint16_t integer_pair_score(const std::uint8_t* code, const QueryTables& tables) {
+  std::uint16_t sum = 0;
+  for (std::size_t byte = 0; byte < kOrdinalBytes; ++byte) {
+    sum += tables.global_u8[(byte * 2) * 16 + (code[byte] & 0x0FU)];
+    sum += tables.global_u8[(byte * 2 + 1) * 16 + (code[byte] >> 4U)];
+  }
+  return sum;  // At most 192*255 = 48960, independent of global_max_sum metadata.
+}
+
+struct RefinedTop {
+  std::vector<std::size_t> selected;
+  std::vector<float> scores;
+  std::size_t exact_evaluations = 0;
+  // Conservative sum of vector payload capacities across lifetimes, not RSS.
+  std::size_t vector_capacity_bytes = 0;
+};
+
+bool must_refine(double lower, float tau) {
+  return lower <= static_cast<double>(tau);
+}
+
+RefinedTop certified_top(const std::vector<std::uint8_t>& codes,
+                         const std::vector<std::int32_t>& ids,
+                         const QueryTables& tables, std::size_t top) {
+  if (codes.size() % kOrdinalBytes != 0 || codes.size() / kOrdinalBytes != ids.size())
+    throw std::runtime_error("certificate code/ID shape mismatch");
+  auto sorted_ids = ids;
+  std::sort(sorted_ids.begin(), sorted_ids.end());
+  if ((!sorted_ids.empty() && sorted_ids.front() < 0) ||
+      std::adjacent_find(sorted_ids.begin(), sorted_ids.end()) != sorted_ids.end())
+    throw std::runtime_error("certificate requires distinct nonnegative IDs");
+  const auto envelope = make_score_envelope(tables);
+  RefinedTop result;
+  result.vector_capacity_bytes = sorted_ids.capacity() * sizeof(std::int32_t);
+  top = std::min(top, ids.size());
+  if (top == 0) return result;
+  std::vector<std::uint16_t> integer_scores(ids.size());
+  for (std::size_t i = 0; i < ids.size(); ++i)
+    integer_scores[i] = integer_pair_score(codes.data() + i * kOrdinalBytes, tables);
+  const auto seeds = top_indices(integer_scores, ids.data(), ids.size(), top);
+  result.scores.assign(ids.size(), std::numeric_limits<float>::infinity());
+  float tau = -std::numeric_limits<float>::infinity();
+  for (const auto i : seeds) {
+    result.scores[i] = score_pair(codes.data() + i * kOrdinalBytes, tables);
+    if (!std::isfinite(result.scores[i])) throw std::runtime_error("nonfinite exact incumbent");
+    tau = std::max(tau, result.scores[i]);
+    ++result.exact_evaluations;
+  }
+  for (std::size_t i = 0; i < ids.size(); ++i) {
+    if (std::isfinite(result.scores[i])) continue;
+    // Keep equality: a lower-ID tie may displace an incumbent.
+    if (must_refine(score_bounds(integer_scores[i], tables, envelope).first, tau)) {
+      result.scores[i] = score_pair(codes.data() + i * kOrdinalBytes, tables);
+      if (!std::isfinite(result.scores[i])) throw std::runtime_error("nonfinite exact refinement");
+      ++result.exact_evaluations;
+    }
+  }
+  result.selected = top_indices(result.scores, ids.data(), ids.size(), top);
+  result.vector_capacity_bytes += integer_scores.capacity() * sizeof(std::uint16_t) +
+      seeds.capacity() * sizeof(std::size_t) + result.scores.capacity() * sizeof(float) +
+      result.selected.capacity() * sizeof(std::size_t);
+  return result;
+}
+
 double overlap(const std::vector<std::size_t>& lhs,
                const std::vector<std::size_t>& rhs) {
   std::size_t matched = 0;
@@ -539,6 +719,208 @@ std::vector<std::int32_t> fp32_rerank(const std::vector<float>& documents,
   return result;
 }
 
+void require_encloses(const std::pair<double, double>& bounds, float reference) {
+  if (!std::isfinite(reference) || !(bounds.first <= reference && reference <= bounds.second))
+    throw std::runtime_error("certificate escaped reference score");
+}
+
+void require_same_top(const RefinedTop& actual, const std::vector<float>& reference,
+                      const std::vector<std::int32_t>& ids, std::size_t top) {
+  const auto expected = top_indices(reference, ids.data(), ids.size(), top);
+  if (actual.selected != expected) throw std::runtime_error("certified ordered-ID mismatch");
+  for (const auto i : expected) {
+    if (float_bits(actual.scores.at(i)) != float_bits(reference[i]))
+      throw std::runtime_error("certified selected score-bit mismatch");
+  }
+}
+
+void certificate_self_test() {
+  require_certificate_environment();
+  std::size_t fixtures = 0, rejected_inputs = 0, mutations = 0, environment_controls = 0;
+  const auto rejects = [](const std::function<void()>& action) {
+    try { action(); } catch (const std::runtime_error&) { return true; }
+    return false;
+  };
+  const auto require = [](bool condition, const std::string& message) {
+    if (!condition) throw std::runtime_error(message);
+  };
+  const auto negative = [&](const std::function<void()>& action) {
+    require(rejects(action), "negative input control was accepted");
+    ++rejected_inputs;
+  };
+  const auto check = [&](const QueryTables& tables, std::size_t count, std::size_t top) {
+    std::mt19937 rng(20261120);
+    std::vector<std::uint8_t> codes(count * kOrdinalBytes);
+    for (auto& value : codes) value = static_cast<std::uint8_t>(rng() & 255U);
+    std::vector<std::int32_t> ids(count);
+    for (std::size_t i = 0; i < count; ++i) ids[i] = static_cast<std::int32_t>(count - i);
+    const auto envelope = make_score_envelope(tables);
+    std::vector<float> reference(count);
+    for (std::size_t i = 0; i < count; ++i) {
+      const auto* code = codes.data() + i * kOrdinalBytes;
+      reference[i] = score_pair(code, tables);
+      require_encloses(score_bounds(integer_pair_score(code, tables), tables, envelope), reference[i]);
+    }
+    const auto actual = certified_top(codes, ids, tables, top);
+    require_same_top(actual, reference, ids, top);
+    require(actual.exact_evaluations >= std::min(top, count) && actual.exact_evaluations <= count,
+            "invalid exact-evaluation count");
+#if AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2
+    std::vector<float> simd;
+    score_pair_fp32_avx2_block32(pack_layouts(codes.data(), count), tables, simd);
+    for (std::size_t i = 0; i < count; ++i)
+      require(float_bits(simd[i]) == float_bits(reference[i]), "pair-AVX2 score-bit mismatch");
+    require(top_indices(simd, ids.data(), count, top) ==
+                top_indices(reference, ids.data(), count, top), "pair-AVX2 ordered-ID mismatch");
+#endif
+    ++fixtures;
+  };
+  std::vector<float> thresholds(kDimensions * 3), query(kDimensions);
+  for (std::size_t d = 0; d < kDimensions; ++d) {
+    thresholds[d * 3] = -0.5F;
+    thresholds[d * 3 + 1] = 0.0F;
+    thresholds[d * 3 + 2] = 0.5F;
+    query[d] = static_cast<float>(static_cast<int>(d % 33) - 16) / 8.0F;
+  }
+  const auto ordinary = make_tables(thresholds.data(), query.data());
+  for (const auto count : {0U, 1U, 31U, 32U, 33U, 47U, 65U})
+    for (const auto top : {0U, 7U, count + 3U}) check(ordinary, count, top);
+
+  QueryTables special;
+  const std::array<std::uint8_t, kOrdinalBytes> zero_code{};
+  const auto golden = [&](float middle, std::uint32_t expected) {
+    special.pair.fill(0.0F);
+    for (std::size_t j = 0; j < 16; ++j) {
+      special.pair[j] = 1.0F;
+      special.pair[16 + j] = middle;
+      special.pair[32 + j] = -1.0F;
+    }
+    require(float_bits(score_pair(zero_code.data(), special)) == expected,
+            "literal sequential-FP32 golden mismatch");
+    check(special, 47, 7);
+  };
+  golden(std::ldexp(1.0F, -24), 0x00000000U);
+  golden(3.0F * std::ldexp(1.0F, -24), 0x34800000U);
+  special.pair.fill(std::numeric_limits<float>::denorm_min());
+  require(float_bits(score_pair(zero_code.data(), special)) == 0x000000c0U,
+          "literal subnormal accumulation golden mismatch");
+  check(special, 33, 7);
+  special.pair.fill(0.0F);
+  check(special, 65, 7);  // All ties; reverse IDs must win, not scan order.
+  for (std::size_t j = 0; j < 16; ++j)
+    special.pair[j] = 1.0F + static_cast<float>(j) * std::ldexp(1.0F, -23);
+  check(special, 47, 7);
+  for (std::size_t p = 0; p < kPairs; ++p)
+    for (std::size_t j = 0; j < 16; ++j) {
+      const float value = static_cast<float>(static_cast<int>(j) - 4) * 32.0F + 0.5F;
+      special.pair[p * 16 + j] = value;
+      special.global_u8[p * 16 + j] = quantize_u8(value);
+    }
+  special.global_scale = 1.0F;
+  check(special, 65, 7);  // Includes half steps and both clipping boundaries.
+  special.pair.fill(std::numeric_limits<float>::max() / 1024.0F);
+  check(special, 31, 7);
+
+  QueryTables displaced_seed;
+  displaced_seed.pair[0] = 1.0F;
+  displaced_seed.pair[2] = 1000.0F;
+  displaced_seed.global_u8[1] = 1;
+  displaced_seed.global_u8[2] = 255;
+  std::vector<std::uint8_t> three_codes(3 * kOrdinalBytes, 0);
+  three_codes[kOrdinalBytes] = 1;
+  three_codes[2 * kOrdinalBytes] = 2;
+  const auto displaced = certified_top(three_codes, {3, 2, 1}, displaced_seed, 1);
+  require_same_top(displaced, {1.0F, 0.0F, 1000.0F}, {3, 2, 1}, 1);
+  require(displaced.exact_evaluations == 2 && displaced.selected == std::vector<std::size_t>{1},
+          "nonseed refinement must displace seed while far candidate is pruned");
+  ++fixtures;
+  require(must_refine(1.0, 1.0F) && !must_refine(round_up(1.0), 1.0F),
+          "strict cutoff boundary control failed");
+  ++fixtures;
+  const std::vector<std::uint8_t> one_code(kOrdinalBytes);
+  for (const float scale : {0.0F, -1.0F, std::numeric_limits<float>::infinity(),
+                            std::numeric_limits<float>::quiet_NaN()}) {
+    auto invalid = ordinary;
+    invalid.global_scale = scale;
+    negative([&] { certified_top(one_code, {1}, invalid, 0); });
+  }
+  for (const float value : {std::numeric_limits<float>::infinity(),
+                            -std::numeric_limits<float>::infinity(),
+                            std::numeric_limits<float>::quiet_NaN()}) {
+    auto invalid = ordinary;
+    invalid.pair[0] = value;
+    negative([&] { certified_top(one_code, {1}, invalid, 0); });
+    auto bad_query = query;
+    std::fill(bad_query.begin(), bad_query.end(), value);
+    negative([&] { make_tables(thresholds.data(), bad_query.data()); });
+    auto bad_thresholds = thresholds;
+    bad_thresholds[0] = value;
+    negative([&] { make_tables(bad_thresholds.data(), query.data()); });
+    negative([&] { quantize_u8(value); });
+  }
+  auto invalid = ordinary;
+  invalid.pair.fill(std::numeric_limits<float>::max() / 128.0F);
+  negative([&] { certified_top(one_code, {1}, invalid, 0); });
+  negative([&] { certified_top({0}, {}, ordinary, 0); });
+  negative([&] { certified_top(one_code, {}, ordinary, 0); });
+  negative([&] { certified_top(one_code, {-1}, ordinary, 0); });
+  negative([&] { certified_top(std::vector<std::uint8_t>(2 * kOrdinalBytes), {1, 1}, ordinary, 0); });
+  auto bad_thresholds = thresholds;
+  bad_thresholds[0] = 1.0F;
+  negative([&] { make_tables(bad_thresholds.data(), query.data()); });
+  for (const float value : {1.0e19F, std::numeric_limits<float>::max()}) {
+    auto bad_query = query;
+    std::fill(bad_query.begin(), bad_query.end(), value);
+    negative([&] { make_tables(thresholds.data(), bad_query.data()); });
+  }
+  const auto reference_score = score_pair(one_code.data(), ordinary);
+  auto corrupt_bounds = score_bounds(integer_pair_score(one_code.data(), ordinary), ordinary,
+                                     make_score_envelope(ordinary));
+  corrupt_bounds.first = round_up(static_cast<double>(reference_score));
+  require(rejects([&] { require_encloses(corrupt_bounds, reference_score); }),
+          "corrupt lower-bound mutation escaped");
+  ++mutations;
+  corrupt_bounds = {-std::numeric_limits<double>::infinity(),
+                    round_down(static_cast<double>(reference_score))};
+  require(rejects([&] { require_encloses(corrupt_bounds, reference_score); }),
+          "corrupt upper-bound mutation escaped");
+  ++mutations;
+  auto corrupt_result = certified_top(one_code, {1}, ordinary, 1);
+  corrupt_result.scores[0] = std::nextafter(reference_score,
+                                          std::numeric_limits<float>::infinity());
+  require(rejects([&] { require_same_top(corrupt_result, {reference_score}, {1}, 1); }),
+          "corrupt score-bit mutation escaped");
+  ++mutations;
+  corrupt_result.selected.clear();
+  require(rejects([&] { require_same_top(corrupt_result, {reference_score}, {1}, 1); }),
+          "corrupt ordered-result mutation escaped");
+  ++mutations;
+  const int original_rounding = std::fegetround();
+  require(std::fesetround(FE_UPWARD) == 0, "cannot exercise non-RN control");
+  const bool rounding_rejected = rejects(require_certificate_environment);
+  const bool rounding_restored = std::fesetround(original_rounding) == 0;
+  require(rounding_restored && rounding_rejected, "non-RN environment control failed");
+  ++environment_controls;
+#if defined(__SSE__) || defined(_M_X64) || defined(_M_IX86)
+  const unsigned original_csr = _mm_getcsr();
+  for (const unsigned mode : {0x8000U, 0x0040U}) {
+    _mm_setcsr(original_csr | mode);
+    const bool rejected = rejects(require_certificate_environment);
+    _mm_setcsr(original_csr);
+    require(rejected, "FTZ/DAZ environment control failed");
+    ++environment_controls;
+  }
+#endif
+  require_certificate_environment();
+  std::cout << Json{{"status", "PASS"}, {"correctness_fixtures", fixtures},
+                    {"invalid_input_controls", rejected_inputs}, {"mutation_controls", mutations},
+                    {"environment_controls", environment_controls},
+                    {"pair_avx2_bitwise_eligibility", AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2 ?
+                         "PASS_ON_FIXTURES" : "NOT_COMPILED"},
+                    {"performance_status", "NOT_EXECUTED"}, {"quality_status", "NOT_EXECUTED"}}
+                   .dump(2) << '\n';
+}
+
 void self_test() {
   constexpr std::size_t count = 47;
   std::mt19937 rng(20260921);
@@ -588,6 +970,10 @@ void self_test() {
 int main(int argc, char** argv) {
   try {
     const auto options = parse_options(argc, argv);
+    if (options.certificate_self_test) {
+      certificate_self_test();
+      return 0;
+    }
     if (options.self_test) {
       self_test();
       return 0;

@@ -918,6 +918,7 @@ jobs:
           ./build-r4/tools/agent-memory-bench/agent-memory-native-plsq-benchmark --self-test
           ./build-r4/tools/agent-memory-bench/agent-memory-native-rslm1-benchmark --self-test
           ./build-r4/tools/agent-memory-bench/agent-memory-thq-fastscan-v3-benchmark --self-test
+          ./build-r4/tools/agent-memory-bench/agent-memory-thq-fastscan-v3-benchmark --certificate-self-test > build-r4/certified-adc-self-test.json
 
       - name: Run R4 native self-test (Windows)
         if: runner.os == 'Windows'
@@ -930,6 +931,14 @@ jobs:
           .\build-r4\tools\agent-memory-bench\Release\agent-memory-native-plsq-benchmark.exe --self-test
           .\build-r4\tools\agent-memory-bench\Release\agent-memory-native-rslm1-benchmark.exe --self-test
           .\build-r4\tools\agent-memory-bench\Release\agent-memory-thq-fastscan-v3-benchmark.exe --self-test
+          .\build-r4\tools\agent-memory-bench\Release\agent-memory-thq-fastscan-v3-benchmark.exe --certificate-self-test > build-r4/certified-adc-self-test.json
+
+      - name: Preserve certified ADC correctness receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: certified-adc-correctness-${{ matrix.os }}
+          path: build-r4/certified-adc-self-test.json
+          if-no-files-found: error
 
       - name: Exercise R4 dense closure contracts
         run: >
