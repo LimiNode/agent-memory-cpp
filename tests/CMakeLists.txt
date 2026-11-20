@@ -1140,11 +1140,16 @@ if(AGENT_MEMORY_ENABLE_MDBX)
                 agent_memory::json
                 mdbx_containers::mdbx_containers
         )
+        set(_agent_memory_lexical_qualification_workload)
+        if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
+            list(APPEND _agent_memory_lexical_qualification_workload
+                ${CMAKE_BINARY_DIR}/lexical-product-path-smoke-workload.json)
+        endif()
         add_test(
             NAME agent_memory_mdbx_lexical_product_path_qualification_test
             COMMAND agent_memory_mdbx_lexical_product_path_qualification_test
                     ${CMAKE_CURRENT_BINARY_DIR}/lexical-product-path-qualification.json
-                    ${CMAKE_BINARY_DIR}/lexical-product-path-smoke-workload.json
+                    ${_agent_memory_lexical_qualification_workload}
         )
     endif()
     if(AGENT_MEMORY_BUILD_RESEARCH_TESTS AND AGENT_MEMORY_ENABLE_JSON)
