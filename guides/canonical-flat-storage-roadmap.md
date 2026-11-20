@@ -26,6 +26,9 @@ An `AMF2` envelope binds its type, physical key, document identity and inner
 `AMFS`/`AMFB` v1 payload with SHA-256. Each structure also binds block storage
 IDs, text sizes, block payload digests and the historical no-reuse ledger.
 Existing immutable rows permit identical-only idempotence.
+The complete envelope size, including the ledger and SHA-256 trailer, is
+checked with overflow-safe arithmetic before reserving its output buffer.
+An oversized structure is rejected before canonical block-row writes.
 
 Mappings, selected new block versions, structure and head are published in one
 write transaction. Expected-revision admission uses that same transaction.
