@@ -172,6 +172,13 @@ class LaunchControls(unittest.TestCase):
         self.assertFalse(self.commands)
         self.assertFalse(self.raw.exists() or self.receipt.exists())
 
+    def test_recorded_repeat_count_is_bounded(self) -> None:
+        for count in (4, 101):
+            with self.subTest(count=count), self.assertRaises(SystemExit) as rejected:
+                self.invoke(extra=["--repeats", str(count)])
+            self.assertEqual(rejected.exception.code, 2)
+        self.assertFalse(self.commands)
+
 
 if __name__ == "__main__":
     unittest.main()

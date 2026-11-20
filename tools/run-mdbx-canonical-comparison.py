@@ -16,6 +16,7 @@ def main() -> int:
     parser.add_argument("--raw", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=1800)
+    parser.add_argument("--repeats", type=int, default=9)
     args = parser.parse_args()
     source = Path(__file__).resolve().parents[1]
     executable = args.executable.resolve()
@@ -23,6 +24,8 @@ def main() -> int:
     receipt_path = args.receipt if args.receipt.is_absolute() else source / args.receipt
     if not 1 <= args.timeout <= 3600:
         parser.error("timeout must be 1..3600 seconds")
+    if not 5 <= args.repeats <= 100:
+        parser.error("full comparison requires 5..100 recorded repeats")
     if raw.exists() or receipt_path.exists() or raw.resolve() == receipt_path.resolve():
         parser.error("raw and receipt must be distinct fresh artifact paths")
 
@@ -45,7 +48,8 @@ def main() -> int:
         if not clean():
             raise RuntimeError("full comparison requires committed, clean source")
         executable_hash = hashlib.sha256(executable.read_bytes()).hexdigest()
-        subprocess.run([str(executable), "--raw", args.raw.as_posix(), "--receipt", args.receipt.as_posix()],
+        subprocess.run([str(executable), "--raw", args.raw.as_posix(), "--receipt", args.receipt.as_posix(),
+                        "--repeats", str(args.repeats)],
                        cwd=source, timeout=args.timeout, check=True)
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
         if not isinstance(receipt, dict):
