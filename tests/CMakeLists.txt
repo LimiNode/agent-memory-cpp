@@ -912,6 +912,20 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             --artifacts ${CMAKE_CURRENT_BINARY_DIR}/numeric-conformance-$<CONFIG>
     )
     set_tests_properties(agent_memory_numeric_storage_conformance PROPERTIES TIMEOUT 180)
+    add_executable(agent_memory_flat_markdown_consumer
+        infrastructure/mdbx/flat_markdown_consumer.cpp
+    )
+    target_link_libraries(agent_memory_flat_markdown_consumer
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(NAME agent_memory_flat_markdown_consumer
+        COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/tools/run-flat-markdown-consumer.py
+            --executable $<TARGET_FILE:agent_memory_flat_markdown_consumer>
+            --fixture ${PROJECT_SOURCE_DIR}/tests/fixtures/canonical-flat-consumer.md
+            --artifacts ${CMAKE_CURRENT_BINARY_DIR}/flat-markdown-consumer-$<CONFIG>
+    )
+    set_tests_properties(agent_memory_flat_markdown_consumer PROPERTIES TIMEOUT 120)
 
     add_executable(agent_memory_mdbx_workspace_routing_test
         infrastructure/mdbx/mdbx_workspace_routing_test.cpp
