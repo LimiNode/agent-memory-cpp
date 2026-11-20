@@ -365,3 +365,31 @@ data is `NOT_ESTABLISHED`. Applied retrieval quality, a fresh sealed Pareto
 curve, random-ID serving, final reranking, storage/authorization/freshness and
 production readiness remain `NOT_EXECUTED`. Exactness is relative only to the
 declared FP32 pair-ADC reference.
+
+### Windows self-test stack correction
+
+The Windows R4 CI lane on PR head `aedb1a77` built successfully but failed at
+the new certificate self-test before producing its JSON. Local reproduction
+of that source with MSVC 19.44.35228 returned native status `0xC00000FD`
+(`STATUS_STACK_OVERFLOW`), not a numerical certificate rejection. The existing
+self-test still passed. PE inspection showed the unchanged default 1 MiB stack
+reserve. MSVC prologues reserved 279,776 bytes in `main` and 817,968 bytes in
+`certificate_self_test`: those two frames alone exceeded the reserve, before
+the 136,976-byte `make_tables` frame could run.
+
+The correction moves the six large test-only table fixtures into one owned
+heap array and reuses its invalid-input scratch entry. It does not enlarge
+the linker stack, change scoring/bounds/selection/benchmark functions or relax
+any control. The resulting local MSVC self-test frame is 274,160 bytes, with
+the same 1 MiB PE reserve. Release MSVC and GNU 15.2 both pass the unchanged
+32 fixtures, 24 invalid inputs, four mutation controls, three environment
+controls, existing self-test and focused CTest (1/1 per compiler).
+
+No performance replay accompanies this test-storage correction. The executed
+mechanics result and artifact bindings above remain bound to their original
+source `a587fa326d25b40a92dacf09ea93c772b9fcaa9c`, not the corrected test source.
+The canonical build executable was regenerated during this correction; the
+original measured executable bytes were not separately retained. Its recorded
+hash was independently verified before that rebuild and is historical, not
+the identity of the executable currently at the manifest's build path.
+The original raw report and execution manifest remain byte-for-byte intact.

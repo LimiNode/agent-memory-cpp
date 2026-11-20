@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <stdexcept>
@@ -1065,9 +1066,17 @@ void certificate_self_test() {
     thresholds[d * 3 + 2] = 0.5F;
     query[d] = static_cast<float>(static_cast<int>(d % 33) - 16) / 8.0F;
   }
-  const auto ordinary = make_tables(thresholds.data(), query.data());
-  const auto certificate_tables = make_tables(thresholds.data(), query.data(), false);
-  const auto reference_tables = make_tables(thresholds.data(), query.data(), false, false);
+  // Keep large test fixtures off the default 1 MiB Windows thread stack.
+  const auto table_fixtures = std::make_unique<QueryTables[]>(6);
+  auto& ordinary = table_fixtures[0];
+  auto& certificate_tables = table_fixtures[1];
+  auto& reference_tables = table_fixtures[2];
+  auto& special = table_fixtures[3];
+  auto& displaced_seed = table_fixtures[4];
+  auto& invalid = table_fixtures[5];
+  ordinary = make_tables(thresholds.data(), query.data());
+  certificate_tables = make_tables(thresholds.data(), query.data(), false);
+  reference_tables = make_tables(thresholds.data(), query.data(), false, false);
   for (std::size_t i = 0; i < ordinary.pair.size(); ++i)
     require(float_bits(ordinary.pair[i]) == float_bits(certificate_tables.pair[i]) &&
                 float_bits(ordinary.pair[i]) == float_bits(reference_tables.pair[i]),
@@ -1079,7 +1088,6 @@ void certificate_self_test() {
   for (const auto count : {0U, 1U, 31U, 32U, 33U, 47U, 65U})
     for (const auto top : {0U, 7U, count + 3U}) check(ordinary, count, top);
 
-  QueryTables special;
   const std::array<std::uint8_t, kOrdinalBytes> zero_code{};
   const auto golden = [&](float middle, std::uint32_t expected) {
     special.pair.fill(0.0F);
@@ -1114,7 +1122,6 @@ void certificate_self_test() {
   special.pair.fill(std::numeric_limits<float>::max() / 1024.0F);
   check(special, 31, 7);
 
-  QueryTables displaced_seed;
   displaced_seed.pair[0] = 1.0F;
   displaced_seed.pair[2] = 1000.0F;
   displaced_seed.global_u8[1] = 1;
@@ -1133,14 +1140,14 @@ void certificate_self_test() {
   const std::vector<std::uint8_t> one_code(kOrdinalBytes);
   for (const float scale : {0.0F, -1.0F, std::numeric_limits<float>::infinity(),
                             std::numeric_limits<float>::quiet_NaN()}) {
-    auto invalid = ordinary;
+    invalid = ordinary;
     invalid.global_scale = scale;
     negative([&] { certified_top(one_code, {1}, invalid, 0); });
   }
   for (const float value : {std::numeric_limits<float>::infinity(),
                             -std::numeric_limits<float>::infinity(),
                             std::numeric_limits<float>::quiet_NaN()}) {
-    auto invalid = ordinary;
+    invalid = ordinary;
     invalid.pair[0] = value;
     negative([&] { certified_top(one_code, {1}, invalid, 0); });
     auto bad_query = query;
@@ -1151,7 +1158,7 @@ void certificate_self_test() {
     negative([&] { make_tables(bad_thresholds.data(), query.data()); });
     negative([&] { quantize_u8(value); });
   }
-  auto invalid = ordinary;
+  invalid = ordinary;
   invalid.pair.fill(std::numeric_limits<float>::max() / 128.0F);
   negative([&] { certified_top(one_code, {1}, invalid, 0); });
   negative([&] { certified_top({0}, {}, ordinary, 0); });
