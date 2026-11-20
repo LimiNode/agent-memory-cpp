@@ -285,3 +285,83 @@ Aggregate integer exact-evaluation counts before division; the boundary gate
 uses integer `10*exact_sum >= 9*N*sample_count`, not a sum of rounded fractions.
 If no profile qualifies, close this scalar-screen/fixed-tau implementation
 only; the result does not reject every possible certified ADC design.
+
+### Executed bounded mechanics result: keep the existing pair AVX2 arm
+
+The single preregistered run executed on source
+`a587fa326d25b40a92dacf09ea93c772b9fcaa9c`, tree
+`a255dad210d486157fb4f1d3a4b6532958e499ec`, on 2026-11-20 UTC. Later
+documentation commits are not silently substituted for this tested source.
+The executable source SHA-256 is
+`8e487b8a8f769c4d0299ad294891b0fb615620eb4b4c25c0a2cd2d5117dfb1ca`;
+executable SHA-256 is
+`095d82ba0cbd56381e383c38c1a004ae89b1e1482810370e6b323e900274c26d`.
+Build: MinGW GNU 15.2.0, Release/C++17, AVX2, strict flags above;
+Windows 10.0.26100, Intel Xeon E5-2696 v3 at 2.30 GHz;
+nlohmann_json 3.11.3. This is one local host, not a cross-platform timing result.
+
+Global admission passed all 8,557,056 scalar/AVX2 score-bit and envelope checks,
+all 48 certified cases and every actually refined score. All 720 timed rows
+also passed ordered-ID/selected-score-bit checks. Correctness controls on this
+source passed 32 fixtures, 24 invalid inputs, four corruption controls and
+three FP-environment controls; old self-test and focused CTest passed (1/1).
+The independent raw validator passed all rows and 17 deliberate corruptions.
+
+The table reports descriptive sample distributions in milliseconds. Each row
+has 40 samples from eight exposed queries, not 40 independent queries. The
+fastest same-contract baseline was pair AVX2 in every fixed profile.
+
+| N | K | Pair AVX2 p50 / p95 | Certified p50 / p95 | Certified / baseline p50 | Mean exact-refinement fraction | Decision |
+| ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 4,096 | 16 | 0.2425 / 0.2803 | 1.7779 / 2.0540 | 7.33 | 83.33% | `KEEP_CURRENT` |
+| 4,096 | 128 | 0.2506 / 0.3124 | 1.8059 / 2.0673 | 7.21 | 99.86% | `KEEP_CURRENT` |
+| 65,536 | 16 | 3.7993 / 4.1789 | 21.4116 / 24.8312 | 5.64 | 67.00% | `KEEP_CURRENT` |
+| 65,536 | 128 | 3.7997 / 4.1774 | 23.0391 / 26.7015 | 6.06 | 87.12% | `KEEP_CURRENT` |
+| 1,000,000 | 16 | 61.7785 / 65.4689 | 241.4050 / 346.0244 | 3.91 | 39.01% | `KEEP_CURRENT` |
+| 1,000,000 | 128 | 62.2859 / 66.3608 | 331.5996 / 400.8537 | 5.32 | 67.58% | `KEEP_CURRENT` |
+
+On the 1M profile the two exhaustive arms retain 12,000,000 bytes of temporary
+vector payload versus 26,000,000 for certification. The table object occupies
+135,984 bytes in every arm; only required LUT contents are computed. The
+existing layout helper materializes both 96 MB layout vectors; its 1M build
+cost was 189.7501 ms, separately reported and excluded from per-query time.
+Common resident inputs/reference vectors and each prefix/ID copy are also
+reported. Certification reads document-major codes rather than these SIMD
+layouts, but the experiment keeps both resident. These numbers are not peak
+RSS, allocation counts, an optimized per-arm storage footprint, serialized
+index size or update cost; those properties remain `NOT_MEASURED`.
+
+The certificate can reduce exact pair evaluations, but this scalar integer
+screen, fixed initial cutoff, bounds and two selectors did not pay for their
+full cost. The result rejects continuation of this implementation under the
+frozen gate, not all certified screening or packed-LUT ADC. No rescue sweep,
+production proposal or default change follows. K8 bounds and sparse IVF
+replication remain `DEFER` pending their complete pinned inputs and evaluation
+prerequisites; existing WAND/MIH/fusion gates remain unchanged.
+
+Retained package, relative to the canonical checkout:
+`.artifacts/r6-certified-adc/local-mechanics-v1/`. It contains `raw.json`,
+`manifest.json`, correctness JSON/JUnit and `validation.json`. Bindings:
+
+- raw SHA-256: `56719a53443acd82d1f2bc77d0d6a2a49fc1b2a5e0e17b31440c10a4c2c4ec4f`;
+- execution manifest SHA-256: `8e803d80ca4dc9b231464f48d7c7ce6af5fc761affbfcbe50d4b9b883c40f778`;
+- validation output SHA-256: `08a767ebedda2941975ff46605daeb8476167d169583c76d14830e98e4af6ad8`.
+
+The manifest binds the exact canonical input paths/sizes/hashes listed in the
+[R6 inventory PR](https://github.com/LimiNode/agent-memory-cpp/pull/676),
+compiler/link commands, source blob, executable, invocation and timestamps.
+Run `python tools/agent-memory-bench/audit-certified-adc.py --raw <raw.json>
+--manifest <manifest.json> --mutation-self-test` to replay result integrity;
+`--self-test` runs validator-only synthetic controls without historical data.
+To recompute the native experiment, use the frozen source and
+`agent-memory-thq-fastscan-v3-benchmark --certificate-benchmark --codes <codes>
+--thresholds <thresholds> --queries <queries> --output <new-raw.json>`; input
+hashes must match the inventory before execution. Do not overwrite the retained
+package or call a different source an exact replay.
+
+The raw package remains local evidence, not a published permanent archive or
+`PRIMARY` registry result. Public computational replay of the full source
+data is `NOT_ESTABLISHED`. Applied retrieval quality, a fresh sealed Pareto
+curve, random-ID serving, final reranking, storage/authorization/freshness and
+production readiness remain `NOT_EXECUTED`. Exactness is relative only to the
+declared FP32 pair-ADC reference.

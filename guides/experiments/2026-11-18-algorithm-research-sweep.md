@@ -270,3 +270,26 @@ Both studies leave peak retained workspace/process RSS `NOT_MEASURED` and make
 no stable-tail claim. These updates close bounded measurement gaps; they do not
 qualify production activation or replace the independent combined integration
 gate owned by the closure assembly.
+
+## R6 bounded certified-ADC follow-up (2026-11-20)
+
+R5 integration is closed on actual `main@9005a010b1044e1c93ef3690d41fd56a2c7bbb2e`;
+the [inventory PR #676](https://github.com/LimiNode/agent-memory-cpp/pull/676)
+records the current source map without replacing this registry's historical
+identities. The [FastScan experiment](2026-09-21-thq-fastscan-v3.md#executed-bounded-mechanics-result-keep-the-existing-pair-avx2-arm)
+adds a research-only certificate/refinement pilot on frozen source
+`a587fa326d25b40a92dacf09ea93c772b9fcaa9c`.
+
+It passes bitwise pair-ADC correctness but loses the full persistent-dense
+component comparison against existing pair AVX2 in all six fixed N/K profiles:
+720 samples, eight exposed queries, 3.91–7.33 times the baseline median.
+Disposition: `KEEP_CURRENT` for this scalar-screen/fixed-tau implementation.
+This is not a family-wide rejection, raw-float quality result, fresh held-out
+evaluation or authorization to optimize production. K8 screening and sparse
+replication remain `DEFER` for missing prerequisites, not disproved methods.
+
+Raw/manifest digests and exact local commands are owned by the experiment note.
+The evidence remains local, with public full-source replay `NOT_ESTABLISHED`;
+no machine-readable row is promoted to `PRIMARY`. No historical receipt,
+invalidation identity, registry binding or production-default decision is
+rewritten. Both new R6 PRs remain independent Draft changes on the R5 baseline.
