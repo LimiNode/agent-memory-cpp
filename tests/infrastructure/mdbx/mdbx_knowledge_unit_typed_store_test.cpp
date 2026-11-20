@@ -95,10 +95,105 @@ KnowledgeUnitEnvelope envelope(
     return result;
 }
 
+void reject_malformed_kind_key() {
+    const auto path = test_path("malformed_kind_");
+    {
+        auto context = MdbxStorageContext::open(path.string());
+        MdbxKnowledgeUnitTypedStoreOptions options;
+        options.context = context;
+        options.table_prefix = "malformed";
+        MdbxKnowledgeUnitTypedStore store(options);
+        const auto unit = store.create_or_get_unit(request("scope", "valid body", 40));
+        mdbxc::KeyValueTable<std::string, std::uint64_t> kinds(
+            context->connection(), "malformed_ku_typed_v1_kind");
+        auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        std::string extra_key;
+        kinds.for_each_range(std::string{}, std::string(1, static_cast<char>(0xff)),
+            [&](const std::string& key, std::uint64_t) { extra_key = key; return false; }, txn);
+        expect(extra_key.size() >= 8, "by-kind control is missing its uint64 suffix");
+        extra_key.insert(extra_key.size() - 8, 1, '\0');
+        kinds.insert_or_assign(extra_key, unit.id.value(), txn);
+        txn.commit();
+        expect(store.find(unit.id).has_value(), "malformed control damaged the valid primary/index row");
+        bool rejected = false;
+        std::optional<std::vector<KnowledgeUnitId>> returned;
+        try {
+            returned = store.scan_by_scope_and_kind(unit.scope_id, unit.kind);
+        } catch(const std::runtime_error& error) {
+            rejected = std::string{error.what()} == "Malformed typed knowledge-unit by-kind index";
+        }
+        if(!rejected && returned) {
+            throw std::runtime_error("malformed prefix+9 index key exposed " +
+                                     std::to_string(returned->size()) + " rows");
+        }
+        expect(rejected && !returned, "malformed by-kind index returned a partial result");
+    }
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    std::filesystem::remove(path.string() + "-lck", error);
+}
+
+void reject_foreign_content_aliases() {
+    for(unsigned scenario = 0; scenario < 3; ++scenario) {
+        const auto path = test_path("foreign_alias_");
+        auto wanted = request("scope-a", "requested body", 41);
+        auto foreign = scenario == 0 ? request("scope-b", "requested body", 41)
+            : scenario == 1 ? wanted : request("scope-a", "different body", 42);
+        if(scenario == 1) foreign.kind = KnowledgeUnitKind::Fact;
+        {
+            auto context = MdbxStorageContext::open(path.string());
+            MdbxKnowledgeUnitTypedStoreOptions options;
+            options.context = context;
+            options.table_prefix = "alias";
+            MdbxKnowledgeUnitTypedStore store(options);
+            const auto original = store.create_or_get_unit(wanted);
+            const auto target = store.create_or_get_unit(foreign);
+            expect(original.id != target.id, "alias control did not create two distinct units");
+            mdbxc::KeyValueTable<std::string, std::uint64_t> keys(
+                context->connection(), "alias_ku_typed_v1_content");
+            mdbxc::KeyValueTable<std::string, std::string> metadata(
+                context->connection(), "alias_ku_typed_v1_meta");
+            auto txn = context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            const auto next_before = metadata.find("@next_id", txn);
+            std::string alias_key;
+            keys.for_each_range(std::string{}, std::string(1, static_cast<char>(0xff)),
+                [&](const std::string& key, std::uint64_t id) {
+                    if(id == original.id.value()) alias_key = key;
+                    return true;
+                }, txn);
+            expect(!alias_key.empty(), "requested content-key control is missing");
+            keys.insert_or_assign(alias_key, target.id.value(), txn);
+            txn.commit();
+            // Keep the target's own key and both primary/ledger/kind rows valid.
+            // Checking only the target's self-consistency cannot reject this alias.
+            expect(store.find(target.id).has_value(), "foreign target is not independently valid");
+            bool rejected = false;
+            std::optional<KnowledgeUnitEnvelope> returned;
+            try {
+                returned = store.create_or_get_unit(wanted);
+            } catch(const std::runtime_error& error) {
+                rejected = std::string{error.what()} == "Typed content index identity mismatch";
+            }
+            expect(rejected && !returned,
+                   "create-or-get exposed a foreign scope/kind/hash content-key alias");
+            auto observation = context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+            expect(keys.find(alias_key, observation) == std::optional<std::uint64_t>{target.id.value()} &&
+                   metadata.find("@next_id", observation) == next_before,
+                   "rejected alias lookup changed its index or allocation high-water");
+            observation.commit();
+        }
+        std::error_code error;
+        std::filesystem::remove(path, error);
+        std::filesystem::remove(path.string() + "-lck", error);
+    }
+}
+
 } // namespace
 
 int main() {
     try {
+        reject_malformed_kind_key();
+        reject_foreign_content_aliases();
         const auto path = test_path("store_");
         std::error_code error;
         std::filesystem::remove(path, error);
