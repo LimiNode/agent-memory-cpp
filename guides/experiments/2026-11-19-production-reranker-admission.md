@@ -20,8 +20,9 @@ The three arms are `linear_scan`, `sorted_identity_index`, and
 5. run the unchanged production response materialization.
 
 `generate-production-reranker-variants.py` first checks the LF-normalized
-SHA-256 of both production source and header. It creates three renamed class
-copies under the build directory. The linear procedure is byte-identical after
+SHA-256 of both production source and header. It creates three uninstrumented
+renamed class copies and three separately instrumented copies under the build
+directory. The uninstrumented linear procedure is byte-identical after
 undoing the class rename; the other two replace only `admit_reranked_hits()`.
 All generated copies are compiled into one executable so the arm order can be
 balanced within each repeat. The self-test also compares the generated linear
@@ -154,3 +155,56 @@ The allocation series counts ordinary C++ `new`/`new[]` requests inside the
 primary scope. It is not peak memory or RSS and does not cover direct C or
 over-aligned allocation APIs. No stable p99 or independent-request inference
 is made from twelve repeated synthetic samples.
+
+## R5 Closure — direct stages and adversarial request shapes (2026-11-20)
+
+The original eighteen-case matrix and twelve uninstrumented repeats remain the
+primary matched timing scope. Six extra positive cases use identity-sorted
+trusted input at metadata width eight, across the same six candidate counts.
+This does not mean the reranker returns sorted output: it reverses the trusted
+input in both matrices. All inputs remain explicitly `SYNTHETIC`.
+
+Three additional class copies measure the same retrieval with direct stage
+timers: index search, trusted-pool record copy, reranker, whole admission,
+lookup construction, validation/identity lookup, trusted-result record copy,
+and response materialization. The two record-copy stages include metadata but
+are not isolated metadata-container microbenchmarks. The admission timer
+contains the construction/validation/trusted-copy timers; these are not added
+again when comparing with the full instrumented retrieval timer. Query
+preparation, control flow, temporary destruction and timer overhead are not
+claimed to be an exhaustive stage partition.
+
+Each instrumented case has one warmup and three retained samples. Per-record
+clocks deliberately add overhead; this is diagnostic evidence only and is
+never used to select a crossover. A validator checks direct timer nesting,
+stage call counts, all six generated-source hashes and the separation from
+the uninstrumented primary series. Removing only the declared observation
+insertions restores the source-bound copies exactly; production files and
+public interfaces remain unchanged. All six renamed classes link alongside
+the actual production class in one executable.
+
+The negative matrix now has thirteen controls per arm in both instrumented
+and uninstrumented retrieval. It includes all-repeated output identities and
+a late duplicate, in addition to the original controls. Thirty-six separately
+profiled negative workloads cover 10/100/2000 candidates, widths 2/32, three
+arms and both duplicate shapes. All-repeated output rejects at candidate two;
+it is not presented as worst-N admission work. Late-duplicate output contains
+N-1 valid records followed by a duplicate and must perform N validations and
+N-1 trusted copies before returning an empty response.
+
+No real or representative request-frequency log was supplied. Graph discovery
+and the checked benchmark/docs sources provide fixture counts, not production
+frequencies. The receipt records
+`NOT_EXECUTED: REPRESENTATIVE_REQUEST_DISTRIBUTION_UNAVAILABLE`; chosen counts
+10/50/100/500/1000/2000 must not be interpreted as a workload distribution.
+
+The allocation counter still observes ordinary `new`/`new[]` requests only.
+It has no size accounting at deallocation, so peak live/retained workspace and
+process peak RSS remain `NOT_MEASURED`, explicitly distinct from allocated
+totals. Adding a dispatcher is `DEFER`: synthetic crossover alone does not
+justify additional production policy, branches or state. Production defaults
+remain `KEEP CURRENT`.
+
+Receipt schema v2 adds these observations without rewriting historical v1
+receipt bytes or SHA-256. Existing dated local numbers above remain evidence
+for their original tested source, not results of this corrective.
