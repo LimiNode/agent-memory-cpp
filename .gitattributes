@@ -12,3 +12,7 @@ tools/agent-memory-bench/precomputed_fixture_contract.py text eol=lf
 tools/agent-memory-bench/precomputed_fixture_large_contract.py text eol=lf
 tools/agent-memory-bench/requirements-minilm-fixture.txt text eol=lf
 tools/agent-memory-bench/verify-precomputed-fixture-content-contract.py text eol=lf
+
+# Preserve the checked hashes of this immutable measured evidence pair.
+/.artifacts/canonical-comparison-v2/balanced-5-60min.tsv -text whitespace=trailing-space,space-before-tab,cr-at-eol
+/.artifacts/canonical-comparison-v2/balanced-5-60min.receipt.json -text whitespace=trailing-space,space-before-tab,cr-at-eol
