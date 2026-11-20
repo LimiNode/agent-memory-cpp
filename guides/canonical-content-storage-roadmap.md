@@ -1000,6 +1000,12 @@ Identity dictionary calls/time are recorded separately; internal identity DBI
 operations and MDBX page/disk I/O are not included. These are instrumentation
 boundaries, not estimates of page I/O or production performance claims.
 
+The executable [opt-in Markdown consumer fixture](flat-markdown-consumer.md)
+checks a narrow Markdown grammar through edit, navigation, fresh-process reopen
+and actual raw-product retrieval. Its host-side exact-source consistency check
+does not make publication across those stores atomic and does not activate a
+production retrieval path.
+
 A text canonical-content profile is not complete until it demonstrates the
 storage behaviors and semantic conformance cases below.
 
