@@ -66,6 +66,17 @@ def validate(raw_path: Path, receipt_path: Path, smoke: bool = False) -> None:
                 for field in ("build", "compiler", "system")), "missing build provenance")
     require(type(receipt.get("hardware_threads")) is int and receipt["hardware_threads"] >= 0,
             "missing hardware provenance")
+    if not smoke:
+        launch = receipt.get("launch_provenance", {})
+        require(launch.get("source_commit") == receipt["source_revision"] and
+                all(launch.get(field) is True for field in
+                    ("source_unchanged", "executable_unchanged", "source_tree_clean")) and
+                type(launch.get("process_exit")) is int and launch["process_exit"] == 0 and
+                type(launch.get("timeout_seconds")) is int and 1 <= launch["timeout_seconds"] <= 3600 and
+                all(isinstance(launch.get(field), str) and re.fullmatch(pattern, launch[field])
+                    for field, pattern in (("source_tree", r"[0-9a-f]{40}"),
+                                           ("executable_sha256", r"[0-9a-f]{64}"))),
+                "missing checked launch provenance")
     payload = raw_path.read_bytes()
     require(receipt.get("raw", {}).get("path") == raw_path.as_posix(), "raw path mismatch")
     require(receipt["raw"].get("sha256") == hashlib.sha256(payload).hexdigest(), "raw hash mismatch")
