@@ -121,6 +121,12 @@ add_library(agent_memory::agent_memory ALIAS agent_memory)
 
 target_compile_features(agent_memory PUBLIC cxx_std_17)
 
+if(MSVC)
+    # Public headers and MDBX overloads use __cplusplus to select C++17 APIs.
+    target_compile_options(agent_memory PUBLIC /Zc:__cplusplus)
+    target_compile_definitions(agent_memory PUBLIC NOMINMAX)
+endif()
+
 target_include_directories(agent_memory
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>

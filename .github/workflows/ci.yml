@@ -453,6 +453,36 @@ jobs:
             build-mdbx/lexical-product-path-smoke-workload.json
           if-no-files-found: error
 
+  mdbx-msvc:
+    if: needs.changes.outputs.storage == 'true'
+    needs: changes
+    name: MDBX MSVC (${{ matrix.configuration }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Release, Debug]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Init flat MDBX submodules
+        run: git submodule update --init external/libmdbx external/mdbx-containers
+      - name: Configure native MSVC MDBX build
+        run: >
+          cmake -S . -B build-mdbx-msvc -G "Visual Studio 17 2022" -A x64
+          -DAGENT_MEMORY_ENABLE_MDBX=ON
+          -DAGENT_MEMORY_MDBX_DEPS_MODE=BUNDLED
+          -DAGENT_MEMORY_ENABLE_JSON=OFF
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=OFF
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+      - name: Build
+        run: cmake --build build-mdbx-msvc --config ${{ matrix.configuration }} --parallel 2
+      - name: Test
+        run: >
+          ctest --test-dir build-mdbx-msvc --build-config ${{ matrix.configuration }}
+          --output-on-failure
+
   mdbx-benchmark:
     if: needs.changes.outputs.research == 'true'
     needs: changes
@@ -1270,6 +1300,7 @@ jobs:
       - json-off-header-self-sufficiency
       - zstd
       - mdbx
+      - mdbx-msvc
       - mdbx-benchmark
       - native-mih-benchmark
       - r4-native-benchmark
@@ -1295,6 +1326,7 @@ jobs:
           JSON_OFF_RESULT: ${{ needs.json-off-header-self-sufficiency.result }}
           ZSTD_RESULT: ${{ needs.zstd.result }}
           STORAGE_RESULT: ${{ needs.mdbx.result }}
+          MSVC_STORAGE_RESULT: ${{ needs.mdbx-msvc.result }}
           MDBX_BENCHMARK_RESULT: ${{ needs.mdbx-benchmark.result }}
           MIH_RESULT: ${{ needs.native-mih-benchmark.result }}
           R4_RESULT: ${{ needs.r4-native-benchmark.result }}
@@ -1330,6 +1362,7 @@ jobs:
           check_required "$CORE_REQUIRED" "$JSON_OFF_RESULT" "JSON-OFF header self-sufficiency"
           check_required "$STORAGE_REQUIRED" "$ZSTD_RESULT" "Framed Zstd"
           check_required "$STORAGE_REQUIRED" "$STORAGE_RESULT" "MDBX storage"
+          check_required "$STORAGE_REQUIRED" "$MSVC_STORAGE_RESULT" "MDBX MSVC storage"
           check_required "$RESEARCH_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
           check_required "$RESEARCH_REQUIRED" "$MIH_RESULT" "native MIH"
           check_required "$RESEARCH_REQUIRED" "$R4_RESULT" "R4 benchmark"
