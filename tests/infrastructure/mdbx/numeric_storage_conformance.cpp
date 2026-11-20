@@ -14,6 +14,10 @@
 #include <type_traits>
 #include <vector>
 
+#if defined(_WIN32)
+#include <process.h>
+#endif
+
 namespace {
 using namespace agent_memory;
 using Table = mdbxc::KeyValueTable<std::string, std::string>;
@@ -368,7 +372,14 @@ int main(int argc, char** argv) {
             require(rejected, "OLD physical schema was not explicitly rejected");
         } else if(mode == "interrupt") {
             auto options = flat_options(context);
-            options.before_head_publication = [] { std::_Exit(24); };
+            options.before_head_publication = [] {
+#if defined(_WIN32)
+                // The native abrupt exit is available even with legacy MSVCRT toolchains.
+                ::_exit(24);
+#else
+                std::_Exit(24);
+#endif
+            };
             MdbxCanonicalFlatStorage flat(options);
             static_cast<void>(flat.commit({DocumentId{kDocument}, 3,
                 {ReplaceBlockText{ContentBlockId{"body"}, "Uncommitted"}}}));
