@@ -2450,6 +2450,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(
+            NAME agent_memory_mdbx_canonical_flat_benchmark_launch_controls
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/test-mdbx-canonical-comparison.py
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        set_tests_properties(agent_memory_mdbx_canonical_flat_benchmark_launch_controls
+            PROPERTIES TIMEOUT 30)
+        add_test(
             NAME agent_memory_segmented_lexical_benchmark_contract
             COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate-segmented-lexical-benchmark.py

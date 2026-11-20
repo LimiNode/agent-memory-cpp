@@ -48,6 +48,8 @@ def main() -> int:
         subprocess.run([str(executable), "--raw", args.raw.as_posix(), "--receipt", args.receipt.as_posix()],
                        cwd=source, timeout=args.timeout, check=True)
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        if not isinstance(receipt, dict):
+            raise ValueError("benchmark receipt must be a JSON object")
         if not clean() or git("rev-parse", "HEAD") != head:
             raise RuntimeError("source changed during comparison")
         if hashlib.sha256(executable.read_bytes()).hexdigest() != executable_hash:
