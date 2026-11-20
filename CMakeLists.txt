@@ -255,6 +255,27 @@ if(AGENT_MEMORY_BUILD_BENCHMARKS)
         target_compile_features(agent_memory_mdbx_canonical_flat_benchmark
             PRIVATE cxx_std_17
         )
+        find_package(Git QUIET)
+        set(_canonical_bench_revision "unknown")
+        set(_canonical_bench_dirty 1)
+        if(Git_FOUND)
+            execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse HEAD
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                OUTPUT_VARIABLE _canonical_bench_revision OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET)
+            execute_process(COMMAND ${GIT_EXECUTABLE} diff --quiet HEAD
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                RESULT_VARIABLE _canonical_bench_diff_result ERROR_QUIET)
+            if(_canonical_bench_diff_result STREQUAL "0")
+                set(_canonical_bench_dirty 0)
+            endif()
+        endif()
+        target_compile_definitions(agent_memory_mdbx_canonical_flat_benchmark PRIVATE
+            AGENT_MEMORY_CANONICAL_BENCH_REVISION="${_canonical_bench_revision}"
+            AGENT_MEMORY_CANONICAL_BENCH_DIRTY=${_canonical_bench_dirty}
+            AGENT_MEMORY_CANONICAL_BENCH_COMPILER="${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}"
+            AGENT_MEMORY_CANONICAL_BENCH_SYSTEM="${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}"
+            AGENT_MEMORY_CANONICAL_BENCH_BUILD="$<CONFIG>")
         add_executable(agent_memory_lexical_retrieval_qualification_r2
             tools/lexical-retrieval-qualification-r2.cpp
         )
@@ -2399,8 +2420,19 @@ if(AGENT_MEMORY_BUILD_TESTS)
         add_test(
             NAME agent_memory_mdbx_canonical_flat_benchmark_self_test
             COMMAND $<TARGET_FILE:agent_memory_mdbx_canonical_flat_benchmark> --self-test
-            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                    --raw ${CMAKE_CURRENT_BINARY_DIR}/canonical-comparison-smoke.tsv
+                    --receipt ${CMAKE_CURRENT_BINARY_DIR}/canonical-comparison-smoke.json
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         )
+        add_test(NAME agent_memory_mdbx_canonical_flat_benchmark_receipt_replay
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate-mdbx-canonical-flat-benchmark.py
+                --allow-smoke --raw ${CMAKE_CURRENT_BINARY_DIR}/canonical-comparison-smoke.tsv
+                --receipt ${CMAKE_CURRENT_BINARY_DIR}/canonical-comparison-smoke.json)
+        set_tests_properties(agent_memory_mdbx_canonical_flat_benchmark_receipt_replay
+            PROPERTIES DEPENDS agent_memory_mdbx_canonical_flat_benchmark_self_test)
+        set_tests_properties(agent_memory_mdbx_canonical_flat_benchmark_self_test
+            agent_memory_mdbx_canonical_flat_benchmark_receipt_replay PROPERTIES TIMEOUT 60)
         add_test(
             NAME agent_memory_mdbx_canonical_flat_benchmark_validator_self_test
             COMMAND ${Python3_EXECUTABLE}

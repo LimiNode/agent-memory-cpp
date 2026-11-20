@@ -1,247 +1,167 @@
 #!/usr/bin/env python3
-"""Fail-closed validator for the numeric flat canonical benchmark receipt."""
-
+"""Replay measured C1/flat aggregates; codec estimates are not physical I/O."""
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import hashlib
+import io
+import itertools
 import json
 import math
+import re
 import tempfile
 from pathlib import Path
-from typing import Any
 
-
-FAMILY = "mdbx_canonical_flat_benchmark_v1"
-SCALES = [64, 256, 1024]
-REPEATS = 5
-WORKLOADS = ["point_block", "bounded_subtree", "single_block_edit", "full_materialization"]
-PHYSICAL_READ_MODEL = {
-    "point_block": "structure_plus_one_block",
-    "bounded_subtree": "full_revision_read_then_reference_navigation",
-    "single_block_edit": "full_revision_rewrite",
-    "full_materialization": "full_revision_read",
+FAMILY = "mdbx_canonical_comparison_v2"
+BACKENDS = ["c1", "flat"]
+WORKLOADS = ["point_block", "outline", "bounded_subtree", "single_block_edit",
+             "repeated_edits", "full_materialization", "reopen"]
+METRICS = ["elapsed_ms", "cpu_ms", "environment_bytes", "result_blocks", "result_text_bytes",
+           "value_reads", "value_writes", "value_bytes_read", "value_bytes_written",
+           "block_versions_written", "dictionary_lookups", "encode_ns", "decode_ns", "dictionary_ns"]
+PROVENANCE = {
+    "value_counters": "adapter_table_operations_not_page_io",
+    "dictionary": "mapping_calls_and_time_separate_from_canonical_values",
+    "elapsed_ms": "steady_clock_wall_time", "cpu_ms": "process_clock",
+    "environment_bytes": "allocated_file_size_not_live_payload_bytes",
+    "codec_payload_estimates": None, "page_io": None, "allocations": None,
 }
-HEADER = [
-    "scale",
-    "repeat",
-    "workload",
-    "elapsed_ms",
-    "source_blocks",
-    "result_blocks",
-    "physical_bytes",
-    "result_text_bytes",
-]
 
 
-def fail(message: str) -> None:
-    raise ValueError(message)
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
 
 
-def finite_number(value: Any, field: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        fail(f"{field} is not numeric")
-    if not math.isfinite(float(value)):
-        fail(f"{field} is not finite")
-    return float(value)
+def quantile(values: list[float], q: float) -> float:
+    ordered = sorted(values)
+    position = q * (len(ordered) - 1)
+    lower = int(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
 
 
-def non_negative_int(value: Any, field: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        fail(f"{field} is not a non-negative integer")
-    return value
-
-
-def read_raw(path: Path) -> list[dict[str, Any]]:
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError as error:
-        fail(f"cannot read raw observations: {error}")
-    if len(lines) < 2 or not lines[0].startswith("# family="):
-        fail("raw observations are missing the provenance header")
-    rows = list(csv.DictReader(lines[1:], delimiter="\t"))
-    if rows and list(rows[0]) != HEADER:
-        fail("raw observation header is invalid")
-    if not rows:
-        fail("raw observations are empty")
-    parsed: list[dict[str, Any]] = []
-    seen: set[tuple[int, int, str]] = set()
-    for row in rows:
-        try:
-            scale = int(row["scale"])
-            repeat = int(row["repeat"])
-        except (KeyError, ValueError):
-            fail("raw scale/repeat is invalid")
-        workload = row.get("workload", "")
-        if scale not in SCALES or repeat < 0 or repeat >= REPEATS or workload not in WORKLOADS:
-            fail("raw matrix coordinates are invalid")
-        key = (scale, repeat, workload)
-        if key in seen:
-            fail("raw matrix contains a duplicate case")
+def validate(raw_path: Path, receipt_path: Path, smoke: bool = False) -> None:
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    require(receipt.get("schema_version") == 2 and receipt.get("family") == FAMILY, "wrong schema")
+    require(receipt.get("execution_status") == "completed" and receipt.get("decision") == "evidence_only",
+            "wrong execution status")
+    require(receipt.get("seed") == 20261119 and receipt.get("warmup_pairs") == 1, "missing setup")
+    repeats, scales = receipt.get("repeats"), receipt.get("scales")
+    require(type(repeats) is int and (repeats == 2 if smoke else 5 <= repeats <= 100), "invalid repeats")
+    require(scales == ([8, 16] if smoke else [64, 1024, 16384]), "incomplete corpus matrix")
+    require(receipt.get("backends") == BACKENDS and receipt.get("workloads") == WORKLOADS,
+            "incomplete backend/workload matrix")
+    require(receipt.get("metrics") == METRICS and receipt.get("metric_provenance") == PROVENANCE,
+            "invalid metric provenance")
+    require(receipt.get("quantile") == "linear_interpolation_n_minus_one", "invalid quantile")
+    require(isinstance(receipt.get("source_revision"), str) and
+            re.fullmatch(r"[0-9a-f]{40}", receipt["source_revision"]), "missing exact source revision")
+    require(type(receipt.get("source_dirty")) is bool and
+            (smoke or receipt["source_dirty"] is False), "uncommitted benchmark source")
+    require(all(isinstance(receipt.get(field), str) and receipt[field]
+                for field in ("build", "compiler", "system")), "missing build provenance")
+    require(type(receipt.get("hardware_threads")) is int and receipt["hardware_threads"] >= 0,
+            "missing hardware provenance")
+    payload = raw_path.read_bytes()
+    require(receipt.get("raw", {}).get("path") == raw_path.as_posix(), "raw path mismatch")
+    require(receipt["raw"].get("sha256") == hashlib.sha256(payload).hexdigest(), "raw hash mismatch")
+    reader = csv.DictReader(io.StringIO(payload.decode("utf-8")), delimiter="\t")
+    require(reader.fieldnames == ["backend", "scale", "repeat", "workload"] + METRICS, "invalid raw header")
+    expected = set(itertools.product(BACKENDS, scales, range(repeats), WORKLOADS))
+    rows: dict[tuple, dict] = {}
+    for row in reader:
+        key = row["backend"], int(row["scale"]), int(row["repeat"]), row["workload"]
+        require(key in expected and key not in rows, "invalid or duplicate raw coordinates")
+        values = {name: float(row[name]) for name in METRICS}
+        require(all(math.isfinite(value) and value >= 0 for value in values.values()), "invalid metric")
+        require(values["elapsed_ms"] > 0 and values["environment_bytes"] > 0, "missing observation")
+        require(all(values[name].is_integer() for name in METRICS[2:]), "fractional physical counter")
+        if key[0] == "flat" and key[3] in ("single_block_edit", "repeated_edits"):
+            require(values["block_versions_written"] == (1 if key[3] == "single_block_edit" else 3),
+                    "unchanged blocks were rewritten")
+        rows[key] = values
+    require(set(rows) == expected and receipt["raw"].get("rows") == len(rows), "incomplete raw matrix")
+    aggregates = receipt.get("aggregates")
+    require(isinstance(aggregates, list), "missing aggregates")
+    seen: set[tuple] = set()
+    for item in aggregates:
+        key = item.get("backend"), item.get("scale"), item.get("workload")
+        require(key not in seen and key in set(itertools.product(BACKENDS, scales, WORKLOADS)),
+                "invalid aggregate coordinates")
         seen.add(key)
-        parsed.append(
-            {
-                "scale": scale,
-                "repeat": repeat,
-                "workload": workload,
-                "elapsed_ms": float(row["elapsed_ms"]),
-                "source_blocks": int(row["source_blocks"]),
-                "result_blocks": int(row["result_blocks"]),
-                "physical_bytes": int(row["physical_bytes"]),
-                "result_text_bytes": int(row["result_text_bytes"]),
-            }
-        )
-    expected = {(scale, repeat, workload) for scale in SCALES for repeat in range(REPEATS) for workload in WORKLOADS}
-    if seen != expected:
-        fail("raw matrix does not contain exactly the required cases")
-    for row in parsed:
-        finite_number(row["elapsed_ms"], "raw elapsed_ms")
-        if row["elapsed_ms"] <= 0.0:
-            fail("raw elapsed_ms must be positive")
-        for field in ("source_blocks", "result_blocks", "physical_bytes", "result_text_bytes"):
-            non_negative_int(row[field], f"raw {field}")
-    return parsed
-
-
-def median(values: list[float]) -> float:
-    values = sorted(values)
-    middle = len(values) // 2
-    if len(values) % 2:
-        return values[middle]
-    return (values[middle - 1] + values[middle]) / 2.0
-
-
-def validate(raw_path: Path, receipt_path: Path) -> None:
-    rows = read_raw(raw_path)
-    try:
-        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        fail(f"cannot read receipt: {error}")
-    if receipt.get("schema_version") != 1 or receipt.get("family") != FAMILY:
-        fail("receipt schema or family is invalid")
-    if receipt.get("execution_status") != "completed" or receipt.get("decision") != "evidence_only":
-        fail("receipt execution status is invalid")
-    if receipt.get("seed") != 20261119 or receipt.get("repeats") != REPEATS:
-        fail("receipt matrix provenance is invalid")
-    if receipt.get("scales") != SCALES or receipt.get("workloads") != WORKLOADS:
-        fail("receipt matrix declaration is invalid")
-    if receipt.get("metric_provenance") != {
-        "elapsed_ms": "steady_clock_wall_time",
-        "physical_bytes": "codec_payload_size_estimate",
-        "cpu_time_ms": None,
-        "allocations": None,
-    }:
-        fail("receipt metric provenance is invalid")
-    if receipt.get("physical_read_model") != PHYSICAL_READ_MODEL:
-        fail("receipt physical read model is invalid")
-    raw = receipt.get("raw")
-    if not isinstance(raw, dict) or raw.get("path") != raw_path.as_posix():
-        fail("receipt raw path is invalid")
-    digest = hashlib.sha256(raw_path.read_bytes()).hexdigest()
-    if raw.get("sha256") != digest or raw.get("rows") != len(rows):
-        fail("receipt raw binding is invalid")
-    declared = receipt.get("p50")
-    if not isinstance(declared, list) or len(declared) != len(SCALES) * len(WORKLOADS):
-        fail("receipt p50 matrix is incomplete")
-    by_key = {(row["scale"], row["workload"]): row for row in rows}
-    seen: set[tuple[int, str]] = set()
-    for item in declared:
-        if not isinstance(item, dict):
-            fail("receipt p50 entry is invalid")
-        key = (item.get("scale"), item.get("workload"))
-        if key in seen or key not in by_key:
-            fail("receipt p50 coordinates are invalid")
-        seen.add(key)
-        samples = [row for row in rows if (row["scale"], row["workload"]) == key]
-        expected_time = median([row["elapsed_ms"] for row in samples])
-        actual_time = finite_number(item.get("elapsed_ms"), "receipt elapsed_ms")
-        if not math.isclose(actual_time, expected_time, rel_tol=1e-7, abs_tol=1e-6):
-            fail("receipt elapsed_ms does not match raw observations")
-        for field in ("source_blocks", "result_blocks", "physical_bytes", "result_text_bytes"):
-            value = non_negative_int(item.get(field), f"receipt {field}")
-            if value != samples[0][field] or any(row[field] != value for row in samples):
-                fail(f"receipt {field} does not match raw observations")
-    if seen != set(by_key):
-        fail("receipt p50 matrix has missing cases")
+        for label, q in (("p50", 0.5), ("p95", 0.95)):
+            require(set(item.get(label, {})) == set(METRICS), "incomplete aggregate metrics")
+            for metric in METRICS:
+                observed = [rows[(key[0], key[1], repeat, key[2])][metric] for repeat in range(repeats)]
+                declared = item[label][metric]
+                require(type(declared) in (int, float) and math.isfinite(declared)
+                        and math.isclose(declared, quantile(observed, q), rel_tol=1e-12, abs_tol=1e-9),
+                        f"falsified {label}.{metric}")
+    require(seen == set(itertools.product(BACKENDS, scales, WORKLOADS)), "incomplete aggregates")
+    # Same logical workload; size differences must not hide different output semantics.
+    for scale, repeat, workload in itertools.product(scales, range(repeats), WORKLOADS):
+        for metric in ("result_blocks", "result_text_bytes"):
+            require(rows[("c1", scale, repeat, workload)][metric] ==
+                    rows[("flat", scale, repeat, workload)][metric], "logical result mismatch")
 
 
 def self_test() -> None:
     with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        raw = root / "raw.tsv"
-        receipt = root / "receipt.json"
-        rows: list[str] = ["# family=mdbx_canonical_flat_benchmark_v1\tseed=20261119\trepeats=5", "\t".join(HEADER)]
-        for scale in SCALES:
-            for repeat in range(REPEATS):
-                for workload in WORKLOADS:
-                    rows.append(f"{scale}\t{repeat}\t{workload}\t1.000000\t{scale}\t1\t2\t3")
-        raw.write_text("\n".join(rows) + "\n", encoding="utf-8")
-        # Build the valid receipt through the same rules used by the external gate.
-        digest = hashlib.sha256(raw.read_bytes()).hexdigest()
-        p50 = [
-            {
-                "scale": scale,
-                "workload": workload,
-                "elapsed_ms": 1.0,
-                "source_blocks": scale,
-                "result_blocks": 1,
-                "physical_bytes": 2,
-                "result_text_bytes": 3,
-            }
-            for scale in SCALES
-            for workload in WORKLOADS
-        ]
-        receipt.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "family": FAMILY,
-                    "execution_status": "completed",
-                    "decision": "evidence_only",
-                    "seed": 20261119,
-                    "repeats": REPEATS,
-                    "scales": SCALES,
-                    "workloads": WORKLOADS,
-                    "metric_provenance": {
-                        "elapsed_ms": "steady_clock_wall_time",
-                        "physical_bytes": "codec_payload_size_estimate",
-                        "cpu_time_ms": None,
-                        "allocations": None,
-                    },
-                    "physical_read_model": PHYSICAL_READ_MODEL,
-                    "raw": {"path": raw.as_posix(), "sha256": digest, "rows": len(rows) - 2},
-                    "p50": p50,
-                }
-            ),
-            encoding="utf-8",
-        )
-        validate(raw, receipt)
-        forged = json.loads(receipt.read_text(encoding="utf-8"))
-        forged["p50"][0]["elapsed_ms"] = 3.0
-        receipt.write_text(json.dumps(forged), encoding="utf-8")
-        try:
-            validate(raw, receipt)
-        except ValueError:
-            pass
-        else:
-            fail("self-test accepted a forged aggregate")
+        raw, receipt = Path(directory) / "raw.tsv", Path(directory) / "receipt.json"
+        scales, repeats = [8, 16], 2
+        lines = ["\t".join(["backend", "scale", "repeat", "workload"] + METRICS)]
+        aggregates = []
+        for backend, scale, workload in itertools.product(BACKENDS, scales, WORKLOADS):
+            metrics = dict.fromkeys(METRICS, 1)
+            metrics["block_versions_written"] = 3 if workload == "repeated_edits" else 1
+            for repeat in range(repeats):
+                lines.append("\t".join(map(str, [backend, scale, repeat, workload] + list(metrics.values()))))
+            aggregates.append(dict(backend=backend, scale=scale, workload=workload, p50=metrics, p95=metrics))
+        raw.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        good = dict(schema_version=2, family=FAMILY, execution_status="completed", decision="evidence_only",
+                    seed=20261119, warmup_pairs=1, repeats=repeats, scales=scales, backends=BACKENDS,
+                    workloads=WORKLOADS, metrics=METRICS, metric_provenance=PROVENANCE,
+                    quantile="linear_interpolation_n_minus_one", aggregates=aggregates,
+                    source_revision="1" * 40, source_dirty=False, build="Release",
+                    compiler="fixture-compiler", system="fixture-system", hardware_threads=1,
+                    raw=dict(path=raw.as_posix(), sha256=hashlib.sha256(raw.read_bytes()).hexdigest(),
+                             rows=len(lines) - 1))
+        receipt.write_text(json.dumps(good), encoding="utf-8")
+        validate(raw, receipt, True)
+        for metric in ("elapsed_ms", "value_bytes_written", "dictionary_lookups", "decode_ns"):
+            forged = copy.deepcopy(good)
+            forged["aggregates"][0]["p95"][metric] = 99
+            receipt.write_text(json.dumps(forged), encoding="utf-8")
+            try:
+                validate(raw, receipt, True)
+            except ValueError:
+                continue
+            raise AssertionError(f"accepted falsified aggregate {metric} with correctly hashed raw")
+        for malformed in (lines[:-1], lines + [lines[-1]], [line.replace("\t1\t", "\tnan\t", 1) for line in lines]):
+            raw.write_text("\n".join(malformed) + "\n", encoding="utf-8")
+            forged = copy.deepcopy(good)
+            forged["raw"]["sha256"] = hashlib.sha256(raw.read_bytes()).hexdigest()
+            receipt.write_text(json.dumps(forged), encoding="utf-8")
+            try:
+                validate(raw, receipt, True)
+            except ValueError:
+                continue
+            raise AssertionError("accepted malformed correctly hashed observations")
 
 
-def main() -> int:
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--raw", type=Path)
     parser.add_argument("--receipt", type=Path)
+    parser.add_argument("--allow-smoke", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
         self_test()
     elif args.raw and args.receipt:
-        validate(args.raw, args.receipt)
+        validate(args.raw, args.receipt, args.allow_smoke)
     else:
-        parser.error("--raw and --receipt are required unless --self-test is used")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+        parser.error("provide --raw and --receipt or --self-test")
