@@ -22,6 +22,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 OLD_COMMIT = "52004324bc0d2b07c3657245195db349dd391774"
+AUDITED_OLD_EXTERNAL_TREE = "b949d6822582edc1f445837442b91aabf5093ac6"
+AUDITED_NEW_EXTERNAL_TREE = "b816ddeccafa0375c15b977e71d4a36f6728f59f"
+AUDITED_OLD_CONTAINERS = "4ab32b5eab3cdfce95d1a6c0f05f566019793ec4"
+AUDITED_NEW_CONTAINERS = "c2a2326273a3d85f29283e2cd34942c7b8d72cbd"
+DEPENDENCY_AUDIT_ID = "mdbxc-db-load-private-template-2026-11-20"
 
 
 def git(source: Path, *args: str) -> str:
@@ -30,6 +35,28 @@ def git(source: Path, *args: str) -> str:
 
 def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def audit_dependency_transition(
+    old_tree: str, new_tree: str, old_entries: str, new_entries: str
+) -> str:
+    """Admit identical dependencies or one exact, directional loader audit."""
+    if old_tree == new_tree and old_entries == new_entries:
+        return "identical-external-trees"
+    if (old_tree, new_tree) == (
+        AUDITED_OLD_EXTERNAL_TREE, AUDITED_NEW_EXTERNAL_TREE
+    ):
+        old_entry = f"160000 commit {AUDITED_OLD_CONTAINERS}\tmdbx-containers\0"
+        new_entry = f"160000 commit {AUDITED_NEW_CONTAINERS}\tmdbx-containers\0"
+        # Preserve every other serialized entry, including its mode and path.
+        # The exact tree pair also rejects additions shared by both inputs.
+        if old_entries.count(old_entry) == 1 and new_entries == old_entries.replace(
+            old_entry, new_entry, 1
+        ):
+            return DEPENDENCY_AUDIT_ID
+    raise RuntimeError(
+        "dependency pins differ; no explicit audit admits this exact external-tree transition"
+    )
 
 
 def main() -> None:
@@ -66,6 +93,7 @@ def main() -> None:
             "created_utc": datetime.now(timezone.utc).isoformat(),
             "old_commit": args.old_commit, "new_commit": args.new_commit,
             "evidence_class": "NOT_EXECUTED",
+            "migration_proof": False,
             "post_migration_upgrade_proof": False,
             "fresh_process_reopen": False,
             "logical_row_validation": [],
@@ -90,8 +118,13 @@ def main() -> None:
             raise RuntimeError(f"revision mismatch: {source}")
         if git(source, "status", "--porcelain", "--untracked-files=normal"):
             raise RuntimeError(f"source must be clean for exact-revision proof: {source}")
-    if git(old, "ls-tree", "HEAD", "external") != git(new, "ls-tree", "HEAD", "external"):
-        raise RuntimeError("dependency pins differ; this receipt requires an explicit dependency migration audit")
+    old_external_tree = git(old, "rev-parse", "HEAD:external")
+    new_external_tree = git(new, "rev-parse", "HEAD:external")
+    dependency_audit_id = audit_dependency_transition(
+        old_external_tree, new_external_tree,
+        git(old, "ls-tree", "-z", "HEAD:external"),
+        git(new, "ls-tree", "-z", "HEAD:external"),
+    )
     root, artifacts = args.build_root.resolve(), args.artifacts.resolve()
     artifacts.mkdir(parents=True, exist_ok=True)
     db, cas, snapshot = artifacts / "knowledge.mdbx", artifacts / "cas", artifacts / "canonical.snapshot"
@@ -109,7 +142,10 @@ def main() -> None:
         "old_commit": args.old_commit, "new_commit": args.new_commit,
         "old_src_tree": git(old, "rev-parse", "HEAD:src"),
         "new_src_tree": git(new, "rev-parse", "HEAD:src"),
-        "dependencies_tree": git(new, "rev-parse", "HEAD:external"),
+        "dependencies_tree": new_external_tree,
+        "old_external_tree": old_external_tree,
+        "new_external_tree": new_external_tree,
+        "dependency_audit_id": dependency_audit_id,
         "platform": platform.platform(),
         "cmake": subprocess.check_output(["cmake", "--version"], text=True).splitlines()[0],
         "options": {"cxx_standard": 17, "mdbx": True, "json": False, "config": "Release", "extra_flags": flags},
@@ -118,6 +154,7 @@ def main() -> None:
         "recipe": "SHA256(exact canonical primary_text UTF-8), first two unsigned bytes -> FP32",
         "purpose": "deterministic identity/lifecycle fixture, NOT semantic embeddings or ANN performance",
         "evidence_class": "HISTORICAL_ONLY",
+        "migration_proof": False,
         "post_migration_upgrade_proof": False,
         "fresh_process_reopen": False,
         "logical_row_validation": [],
