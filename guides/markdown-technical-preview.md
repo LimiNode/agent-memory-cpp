@@ -1,5 +1,12 @@
 # Raw Markdown Technical Preview candidate
 
+> **Numeric-identity migration notice (2026-11-19).** This candidate predates
+> the numeric MDBX identity pilot. It remains a description of the bounded
+> Markdown semantics, not a current physical-storage, reopen, upgrade, or
+> release qualification. Rebuild the installed consumer evidence after the
+> numeric-key decision; do not infer compatibility from the frozen commit.
+> See [`mdbx-numeric-identity-evidence-register.md`](mdbx-numeric-identity-evidence-register.md).
+
 This is historical frozen release-candidate documentation, not a published
 release. It
 describes only the experimental Raw Markdown source-backed path founded by
