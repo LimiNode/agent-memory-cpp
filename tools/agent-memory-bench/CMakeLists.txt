@@ -945,6 +945,12 @@ target_compile_definitions(agent-memory-thq-fastscan-kernel-benchmark PRIVATE
 add_executable(agent-memory-thq-fastscan-v3-benchmark
     thq_fastscan_v3_benchmark.cpp)
 target_compile_features(agent-memory-thq-fastscan-v3-benchmark PRIVATE cxx_std_17)
+if(MSVC)
+    target_compile_options(agent-memory-thq-fastscan-v3-benchmark PRIVATE /fp:strict)
+else()
+    target_compile_options(agent-memory-thq-fastscan-v3-benchmark PRIVATE
+        -fno-fast-math -ffp-contract=off -frounding-math)
+endif()
 if(AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2)
     if(MSVC)
         target_compile_options(agent-memory-thq-fastscan-v3-benchmark PRIVATE /arch:AVX2)
