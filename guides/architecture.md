@@ -315,6 +315,14 @@ canonical physical MDBX manifest and DBI budget live in
 §5.5/§5.5.1. See also the short cross-reference in "Knowledge Base Direction
 (cross-reference)" below.
 
+The prototype/representative routing research uses the fixed names PRR
+(`Prototype–Representative Routing`) for the family and PR-IVF
+(`Prototype–Representative Inverted File`) for one possible IVF member. The
+lineage, compatibility rules, and boundary between historical NeuRoute R0–R4
+receipts and a future product backend are recorded in
+[`guides/prototype-representative-routing-lineage.md`](prototype-representative-routing-lineage.md).
+No PRR/PR-IVF production selector is part of the current `IVectorIndex` API.
+
 ## Planned Embedding Direction
 
 Embedding contracts live under `src/agent_memory/embedding/` and stay
