@@ -141,7 +141,7 @@ int main() try {
             const auto regular = ids(binding_context, d.scope_id);
             MdbxRawMarkdownProductIngestion ingestion(ingestion_options(binding_context, binding_cas));
             const auto imported = ingestion.import(ObservedResource{d.scope_id, ResourceId{"resource:oversized"},
-                "https://example.test/" + std::string(65536, 'x'), "# Oversized\n\nSource binding.\n",
+                "https://example.test/" + std::string(65536, 'x') + ".md", "# Oversized\n\nSource binding.\n",
                 SourceTextOrigin::OriginalText, std::nullopt, 1}, 1);
             expect(imported.status == RawMarkdownProductImportStatus::Published,
                    "canonical ingestion rejected valid long URI");
