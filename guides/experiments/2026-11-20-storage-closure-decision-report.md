@@ -540,6 +540,7 @@ main SHA observed immediately after that operation.
 | #654 | `856d6039290f548592e2973d42345a9eb33f0e1a` | `cf054590b6a24a616bc23b03aa534fd6befbcefb` | 44794871155 / 44794871164 SUCCESS | 44796589327 / 44796589264 SUCCESS |
 | #657 | `281d73c505864e28697f30e7e01e9b2e922813f7` | `76af612918d84051a0bcd30283f4eb8382d902c9` | 44796648919 attempt 2 / 44796648892 SUCCESS | 44859486239 / 44859486250 SUCCESS |
 | #658 | `c2a6f14e520cb08e5f63e692fafac2adaa94fbe1` | `aa71b2b29fc0d68f959304cb26a323c4df53ffc6` | 44861143324 / 44861143210 SUCCESS | 44861882073 / 44861882126 SUCCESS |
+| #659 | `91254e0f9fff1abee295da2f70c5af5edc9401bb` | `a7db7d94086aa979212671049e6b2a44dff7b0d0` | 44862754338 / 44862754286 SUCCESS | 44863527891 / 44863527811 SUCCESS |
 
 The newly imposed per-step post-merge wait applies from #657 onward; the
 earlier #655/#656 documentation sequence is reported as actually observed,
@@ -574,8 +575,9 @@ owned by GitHub Actions app 15368. No empty commit or manufactured status was
 used. The cause of the server-side inconsistency remains unknown; successful
 recovery does not establish its root cause.
 
-GitHub protected-rule suites 5264438407 (#654), 5271919573 (#657) and 5272215667
-(#658) record result pass, not bypass. For #657/#658 the active required-status
+GitHub protected-rule suites 5264438407 (#654), 5271919573 (#657), 5272215667
+(#658) and 5272415504 (#659) record result pass, not bypass. For #657/#658/#659
+the active required-status
 and pull-request rules from ruleset 24881787 individually passed. The ruleset
 remained enabled; no privileged bypass or review-thread bypass was requested.
 Before/after diagnostic JSON, merge ledger and raw protected-rule evaluations
@@ -624,6 +626,21 @@ qualification is preserved. Receipts SHA-256:
 (package controls). An initial local runner argument-shape failure is retained
 as FAIL and is not library qualification evidence.
 
+The installed profiles above use MinGW. An additional native MSVC 2022 x64
+C++17 installed-consumer run at the same composed source passed all 22
+configure/install/build/execute steps, including catalog, hydration and Raw
+Markdown executables in both Release and Debug (six executions, not six CTest
+cases). Core and MDBX archives were installed to disjoint configuration
+prefixes and matched their qualified source-built archive hashes. Consumer
+project include/link settings reference installed prefixes, not core build or
+source headers. The repository's Unix-oriented test provider hardcodes
+libmdbx.a; this native check therefore used an explicitly retained local native
+SDK fixture packaging the matching mdbx.lib plus pinned headers and standard
+dependency target, without changing the repository provider or dependency.
+It does not qualify the unchanged Unix fixture as a native MSVC provider.
+Receipt SHA-256:
+`16ddeed3415a7f3a334fb09698c988c2206cb4aab37fe0599fd7e3f0fac21e0f`.
+
 Direct current-source DBI manifest/self-tests, publication audit, dependency /
 upgrade evidence controls (4/4), benchmark validator/self-tests, benchmark launch
 controls (10/10) and full retained benchmark replay pass. These direct checks
@@ -631,14 +648,29 @@ are necessary because the matrix disables research/benchmark CTest registration.
 Validator receipt SHA-256:
 `b3a4f31a78b43f0e91882670c88ebe234ba01ce4425c6177d55560bc6bc1db8d`.
 The measured TSV/receipt and their original measured-source hashes were not
-modified. New targeted Linux ASan/UBSan execution is pending; older sanitizer
-results above retain their original source binding.
+modified. Older sanitizer results above retain their original source binding.
+
+Fresh WSL GCC 15.2 C++17 Debug ASan/UBSan execution at this exact composed
+source, with leak detection and explicit MDBX_UNALIGNED_OK=0, first returned
+7/8 PASS: numeric flat storage exceeded its unchanged 60-second CTest limit
+(60.06 seconds). That run remains FAIL. A same-binary serial rerun changing
+only TMPDIR from DrvFs to an isolated native Linux temporary directory passed
+8/8 with zero failures/disabled; flat storage took 59.14 seconds and the
+1,048,577-block C1 decoder regression took 49.72 seconds. No timeout property,
+test selection, source, or sanitizer suppression changed. This demonstrates
+completion in that setup, not general timing robustness or an established
+root cause for the first timeout. The small margin remains a qualification
+limitation. Receipt SHA-256:
+`412dcfa0f85d06f295f63d793d701115ecc41a7ab8ebd58ac424fc3196cd03e8`.
+Both original and repeat logs/XML are retained under the integration evidence
+directory. TSan remains unexecuted.
 
 ### Remaining queue and decision boundaries
 
 #658 is MERGED but its no-reuse contract is not considered complete without
-#661. Pending guarded order is #659, #667, #660, #661, #662, #670, #672, #669,
-#675, #673, #663. #658 post-merge confirmation is complete. The earlier dependency DAG
+#661. Pending guarded order is #667, #660, #661, #662, #670, #672, #669,
+#675, #673, #663. Post-merge confirmation is complete through #659. The earlier
+dependency DAG
 still applies; source branches are retained for safe child retargeting.
 
 Final-main qualification and this report's separate final merge-review remain
