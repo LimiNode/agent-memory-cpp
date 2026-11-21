@@ -1328,10 +1328,50 @@ schema_info|schema|KeyValueTable|always|kv_supported|logical_adapter_required|Sc
 Concrete profile deltas have the same checked projection. Capacity-only
 reserves are intentionally absent because they declare no physical DBI:
 
+The opt-in typed numeric KnowledgeUnit profile opens five DBIs, separate from
+the three-DBI opaque key pilot. The canonical flat v2 profile opens four DBIs
+plus the existing four identity mapping DBIs under the same sanitized
+`table_prefix` and shared context. All these names below are suffixes of
+`<sanitized table_prefix>_`; the default prefix is `agent_memory`.
+For example, `ku_typed_v1` opens as `agent_memory_ku_typed_v1`.
+The validator checks the exact schema markers, native integer versus bytewise
+flags, key encodings, and same-prefix identity dependency against YAML.
+
+`canonical_flat_structures_v2` and `canonical_flat_blocks_v2` have 16-byte
+BE64x2 keys and flags 0, not `MDBX_INTEGERKEY`. Their key-bound SHA-256 v2
+envelopes retain the portable AMFS/AMFB v1 payload codecs. The persisted marker
+is `canonical_flat_storage.v2.be64x2.envelope_sha256`; old flat v1 DBIs are
+rejected and require an explicit rebuild, not an implicit open-time conversion.
+
+The shared-context qualification budget is 5 + 4 + 4 = **13** named DBIs.
+Adding these adapters to `expanded_peak_reference` needs 76 + 13 = **89**
+slots, leaving only seven at the unchanged default 96. That combination is
+not admitted with the required 16 free slots. Its YAML budget explicitly
+requires a caller-configured `max_dbs=105`; it does not change the library
+default or activate the adapters. The validator rejects insufficient capacity,
+sanitized-prefix collisions, and mismatched flat/dictionary prefixes, while
+allowing separate typed-store namespaces.
+
 ```text
 dbi-profile-delta-review-projection-v1
 # name|owner|table_type|opens|wire_sync_support|replication_semantics|physical_key|migration_peak
 agent_memory_exact_index_generations|embeddings|KeyValueTable|ExactIndexGenerationStore|kv_supported|derived_rebuildable|IndexName,GenerationId,RowKind,Ordinal|1
+knowledge_units_numeric_v1|numeric_knowledge_unit_pilot|KeyValueTable|NumericKnowledgeUnitPilot|kv_supported|logical_adapter_required|KnowledgeUnitId|1
+knowledge_units_numeric_v1_used|numeric_knowledge_unit_pilot|KeyValueTable|NumericKnowledgeUnitPilot|kv_supported|logical_adapter_required|KnowledgeUnitId|1
+knowledge_units_numeric_v1_meta|numeric_knowledge_unit_pilot|KeyValueTable|NumericKnowledgeUnitPilot|kv_supported|logical_adapter_required|SchemaKey|1
+ku_typed_v1|knowledge_unit_typed_numeric|KeyValueTable|KnowledgeUnitTypedNumeric|kv_supported|logical_adapter_required|KnowledgeUnitId|1
+ku_typed_v1_used|knowledge_unit_typed_numeric|KeyValueTable|KnowledgeUnitTypedNumeric|kv_supported|logical_adapter_required|KnowledgeUnitId|1
+ku_typed_v1_meta|knowledge_unit_typed_numeric|KeyValueTable|KnowledgeUnitTypedNumeric|kv_supported|logical_adapter_required|SchemaKey,SequenceKey|1
+ku_typed_v1_content|knowledge_unit_typed_numeric|KeyValueTable|KnowledgeUnitTypedNumeric|kv_supported|derived_rebuildable|KnowledgeUnitKind,ScopeId,ContentHash|1
+ku_typed_v1_kind|knowledge_unit_typed_numeric|KeyValueTable|KnowledgeUnitTypedNumeric|kv_supported|derived_rebuildable|ScopeId,KnowledgeUnitKind,KnowledgeUnitId|1
+canonical_flat_meta_v2|canonical_content_flat|KeyValueTable|CanonicalFlatStorage|kv_supported|logical_adapter_required|SchemaKey|1
+canonical_flat_heads_v2|canonical_content_flat|KeyValueTable|CanonicalFlatStorage|kv_supported|logical_adapter_required|DocumentStorageId|1
+canonical_flat_structures_v2|canonical_content_flat|KeyValueTable|CanonicalFlatStorage|kv_supported|logical_adapter_required|DocumentStorageId,DocumentRevision|1
+canonical_flat_blocks_v2|canonical_content_flat|KeyValueTable|CanonicalFlatStorage|kv_supported|logical_adapter_required|BlockStorageId,BlockRevision|1
+identity_records_v1|storage_identity_mapping_pilot|KeyValueTable|StorageIdentityMapping|kv_supported|logical_adapter_required|RecordKind,DocumentId,OptionalContentBlockId|1
+identity_documents_v1|storage_identity_mapping_pilot|KeyValueTable|StorageIdentityMapping|kv_supported|logical_adapter_required|DocumentStorageId|1
+identity_blocks_v1|storage_identity_mapping_pilot|KeyValueTable|StorageIdentityMapping|kv_supported|logical_adapter_required|BlockStorageId|1
+identity_meta_v1|storage_identity_mapping_pilot|KeyValueTable|StorageIdentityMapping|kv_supported|logical_adapter_required|SchemaKey,SequenceKey|1
 agent_memory_canonical_heads|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId|1
 agent_memory_canonical_revisions|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId,DocumentRevision|1
 agent_memory_canonical_bodies|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId,BodyRevision,PhysicalEncodingGeneration|1
