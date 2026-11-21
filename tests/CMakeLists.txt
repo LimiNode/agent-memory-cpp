@@ -815,6 +815,13 @@ target_compile_definitions(agent_memory_feature_flags_test
 add_test(NAME agent_memory_feature_flags_test COMMAND agent_memory_feature_flags_test)
 
 if(AGENT_MEMORY_ENABLE_MDBX)
+    add_executable(agent_memory_mdbx_dependency_bulk_retrieval_test
+        infrastructure/mdbx/mdbx_dependency_bulk_retrieval_test.cpp)
+    target_link_libraries(agent_memory_mdbx_dependency_bulk_retrieval_test
+        PRIVATE agent_memory::agent_memory ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET})
+    add_test(NAME agent_memory_mdbx_dependency_bulk_retrieval_test
+        COMMAND agent_memory_mdbx_dependency_bulk_retrieval_test)
+
     add_executable(agent_memory_mdbx_document_storage_test
         infrastructure/mdbx/mdbx_document_storage_test.cpp
     )
@@ -1235,22 +1242,29 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         COMMAND agent_memory_mdbx_shared_unit_projections_conformance_test
     )
 
-    add_executable(agent_memory_mdbx_lexical_product_path_qualification_test
-        infrastructure/mdbx/mdbx_lexical_product_path_qualification_test.cpp
-    )
-    target_link_libraries(agent_memory_mdbx_lexical_product_path_qualification_test
-        PRIVATE
-            agent_memory::agent_memory
-            agent_memory::json
-            mdbx_containers::mdbx_containers
-    )
-    add_test(
-        NAME agent_memory_mdbx_lexical_product_path_qualification_test
-        COMMAND agent_memory_mdbx_lexical_product_path_qualification_test
-                ${CMAKE_CURRENT_BINARY_DIR}/lexical-product-path-qualification.json
-                ${CMAKE_BINARY_DIR}/lexical-product-path-smoke-workload.json
-    )
-    if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
+    if(AGENT_MEMORY_ENABLE_JSON)
+        add_executable(agent_memory_mdbx_lexical_product_path_qualification_test
+            infrastructure/mdbx/mdbx_lexical_product_path_qualification_test.cpp
+        )
+        target_link_libraries(agent_memory_mdbx_lexical_product_path_qualification_test
+            PRIVATE
+                agent_memory::agent_memory
+                agent_memory::json
+                mdbx_containers::mdbx_containers
+        )
+        set(_agent_memory_lexical_qualification_workload)
+        if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
+            list(APPEND _agent_memory_lexical_qualification_workload
+                ${CMAKE_BINARY_DIR}/lexical-product-path-smoke-workload.json)
+        endif()
+        add_test(
+            NAME agent_memory_mdbx_lexical_product_path_qualification_test
+            COMMAND agent_memory_mdbx_lexical_product_path_qualification_test
+                    ${CMAKE_CURRENT_BINARY_DIR}/lexical-product-path-qualification.json
+                    ${_agent_memory_lexical_qualification_workload}
+        )
+    endif()
+    if(AGENT_MEMORY_BUILD_RESEARCH_TESTS AND AGENT_MEMORY_ENABLE_JSON)
         set_tests_properties(agent_memory_mdbx_lexical_product_path_qualification_test
             PROPERTIES DEPENDS agent_memory_lexical_product_path_workload_self_test
         )
