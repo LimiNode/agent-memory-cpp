@@ -162,3 +162,29 @@ The untracked local archive is `tmp/true-global-exact-mih-evidence-v1.zip`
 source snapshot, strengthened external-conformance fixture, runner, and Docker
 receipt. It is retained for review and may be published as an evidence release
 only after explicit approval.
+
+## Native frozen-fixture replay correction (2026-11-20)
+
+The R5 combined full CTest run exposed an existing mismatch at
+`main@bfa01a22d4091bb5c5f7c17606199fda6342b790`: the native fixture reader
+still required the obsolete word-zero-only construction, while the frozen
+fixture and independent upstream verifier already used four sparse XOR masks.
+The native fixture test failed at its construction guard before checking any
+canonical results. This is a fixture-replay correction, not a new MIH algorithm
+or evidence that the earlier 1M performance measurements were repeated.
+
+The reader now follows `verify-norouzi-mih-conformance.py::words`: each of the
+four words XORs its fixed base with the AND of two consecutive SplitMix64
+outputs. Document/query seeds, all four words, exact stopping certificates,
+flat ordering checks, the four K=768 cutoffs (107/114/110/108), and golden digest
+`42b7c3569043ae184a654700e918489192da3b0adced5fed80a9f93f3f98e104`
+remain enforced. Frozen JSON bytes are unchanged.
+
+GNU 15.2, Windows, Release/C++17, JSON=ON/MDBX=OFF: 3/3 focused CTests passed.
+The native CLI additionally rejected unknown construction, obsolete v1
+construction, a corrupted golden digest and a corrupted cutoff at their
+specific gates. These four mutation controls are registered in full research
+CTest and never edit the tracked fixture. Reproduce after building the native
+sparse target with `ctest --test-dir <build> --output-on-failure -R
+'agent_memory_mih_(global_exact_fixture|native_sparse_arbitrary_m_self_test)'`.
+No production source, API, defaults, storage schema or dependency pin changed.

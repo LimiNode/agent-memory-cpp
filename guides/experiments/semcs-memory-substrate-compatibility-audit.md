@@ -1,5 +1,12 @@
 # SemCS memory-substrate compatibility audit
 
+> **Physical-storage baseline notice (2026-11-19).** This audit's preview and
+> reopen references are pre-numeric physical-storage evidence. The graph-free
+> provenance conclusions remain applicable, while any claim about opening an
+> old MDBX file after numeric-key integration requires a fresh migration or
+> reject-old fixture. See
+> [`../mdbx-numeric-identity-evidence-register.md`](../mdbx-numeric-identity-evidence-register.md).
+
 Status: **research/audit only**. This document does not implement SemCS/SCS,
 add a graph backend, create a new `KnowledgeUnitKind`, or change an MDBX
 schema. It records whether the current `agent-memory-cpp` contracts can host a

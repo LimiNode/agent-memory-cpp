@@ -408,7 +408,7 @@ std::vector<KnowledgeUnitId> MdbxKnowledgeUnitTypedStore::scan_by_scope_and_kind
         first,
         last,
         [&result, &prefix, &txn, this, &scope_id, kind](const std::string& key, const std::uint64_t value) {
-            if(key.size() < prefix.size() + sizeof(std::uint64_t)
+            if(key.size() != prefix.size() + sizeof(std::uint64_t)
                || key.compare(0, prefix.size(), prefix) != 0
                || decode_index_id(key) != value
                || value == 0) {
@@ -448,6 +448,10 @@ KnowledgeUnitEnvelope MdbxKnowledgeUnitTypedStore::create_or_get_unit(
     const auto key_payload = content_key(key);
     if(const auto indexed = m_impl->content_keys.find(key_payload, txn)) {
         const auto existing = m_impl->read_checked(KnowledgeUnitId{*indexed}, txn);
+        if(existing.kind != key.kind || existing.scope_id != key.scope_id
+           || existing.content_hash != key.content_hash) {
+            throw std::runtime_error("Typed content index identity mismatch");
+        }
         txn.commit();
         return existing;
     }
