@@ -59,6 +59,14 @@ types, templates, and trivial inline helpers.
 - Avoid speculative plugin systems before at least two real implementations
   require the same extension point.
 
+The source-bound [domain identity and public API audit](audits/2026-11-domain-identity-public-api-audit.md)
+and [type catalogue](audits/2026-11-public-type-catalogue.json) distinguish
+logical identities, scoped external references, binary content digests and
+physical allocation keys. They also record feature-local type ownership and
+the retained compatibility status of legacy DTOs. Its conversation/event and
+typed-metadata ADRs are proposals awaiting review, not implemented APIs or
+permission to change persisted identity, include paths or product defaults.
+
 ## Agent Runtime Integration
 
 `agent-memory-cpp` may store durable cognitive records for external runtimes:
@@ -183,6 +191,15 @@ Components + SearchProjections. There is NO single `KnowledgeUnit`
 value type and NO discriminated union of payload types in one struct.
 The old `DocumentChunk` / `MemoryObject` / `chat::Message` /
 `facts::Fact` value types are retired and replaced by these contracts:
+
+Here, retired describes the target canonical model, not removal from the
+installed API: the legacy value headers and their existing consumers remain
+source-compatible. The chat/facts labels are conceptual areas; the current
+Message and Fact declarations are in `agent_memory`. Do not grow a second
+authoritative Fact/Message store beside envelope components. The source-bound
+[ownership/maturity audit](audits/2026-11-domain-identity-public-api-audit.md#module-ownership-and-maturity)
+records retained scaffolds and the proposed adapter/deprecation path; no
+deprecation or source removal is performed by that audit.
 
 - A lean `KnowledgeUnitEnvelope` (~16-field hot-path struct): id, kind,
   scope_id, primary_text, display_text, lifecycle_state, sources,
