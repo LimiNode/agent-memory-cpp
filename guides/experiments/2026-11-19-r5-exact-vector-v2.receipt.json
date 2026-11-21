@@ -1,0 +1,61 @@
+{
+  "schema": "r5.exact_vector_index.receipt.v2",
+  "execution_status": "EXECUTED",
+  "status": "PASS",
+  "production_activation": false,
+  "decision": "KEEP CURRENT",
+  "oracle": "Decimal precision=100 on exact exported FP32 values; FP32 rounding before ranking",
+  "oracle_scope": "six correctness cases, not large timing matrix",
+  "tested_source_head": "6272e7b230f7dbbc5d2b235614b9d5badb95ea7e",
+  "expected_pr_head": "6272e7b230f7dbbc5d2b235614b9d5badb95ea7e",
+  "compiled_checkout_sha": "6272e7b230f7dbbc5d2b235614b9d5badb95ea7e",
+  "runner_source_sha256": "445fe22a14fe24e1c787fc90f9eb098c6ff1259818633f1eda93c26107509721",
+  "index_source_sha256": "5d3ff8ca60e2d772cfcf5bd4a4dd7294d9ad24827a7d929856e43a35b9d52e16",
+  "compiled_executable_sha256": "1a5b0210939f23ec6ae651b2ddecc68e341efe3f295a739da4d17d51b7d31d88",
+  "raw_output_sha256": "999fd6b981be20de0a620a8e444898dfd79cd4ef54c48dc3fddf259ae15af96d",
+  "raw_output_path": "E:\\_repoz\\agent-memory-workspaces\\2026-11-19-r5-exact-vector-v2\\exact-vector.raw.json",
+  "correctness_corpus_sha256": "a3732fba8a08c7c0f7b0bb86703ba672572b205bac2d8232585fa321f94751a4",
+  "environment": {
+    "platform": "Windows-10-10.0.26100-SP0",
+    "python": "3.11.9",
+    "compiler": "GNU 15.2.0",
+    "build": "Release",
+    "cxx_standard": 17,
+    "base_flags_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "configuration_flags_sha256": "c7ed25de8f271a1fe3c740baa5e616d276f86f1648d1e80d39a10624af27fbd7"
+  },
+  "source_worktree_status": [],
+  "timing_scopes": {
+    "search_samples_ms": "four fixed independent query vectors through full prebuilt search, including filtering/selection/materialization",
+    "kernel_samples_ms": "four queries/corpus; arithmetic controls only; precomputed record norms for cosine; actual scalar/auto primitive for dot",
+    "construction_ms": "one separate observation; not search latency"
+  },
+  "sample_semantics": "7 repeated batches of 4 fixed queries; not 28 independent requests; no stable p99 claim",
+  "limitations": [
+    "candidate kernels are arithmetic controls, not replacement indexes",
+    "synthetic data; no production activation",
+    "kernel timings are not end-to-end candidate speedups",
+    "host load is not isolated; simultaneous research builds may affect directional timings"
+  ],
+  "validation": {
+    "correctness_cases": 6,
+    "performance_cases": 10,
+    "production_max_absolute_score_error": {
+      "cosine": 0.0,
+      "dot": 4.76837158203125e-07,
+      "negative_squared_l2": 7.62939453125e-06
+    },
+    "rejected_arithmetic_controls": {
+      "fp32": [
+        "cancellation",
+        "random_cosine",
+        "tiny_cosine"
+      ],
+      "fp64_sequential": [
+        "cancellation"
+      ],
+      "neumaier": []
+    },
+    "negative_controls": 9
+  }
+}

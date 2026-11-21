@@ -10,7 +10,9 @@
 #include <cctype>
 #include <charconv>
 #include <mdbx_containers/KeyValueTable.hpp>
+#include <map>
 #include <mutex>
+#include <limits>
 #include <set>
 #include <stdexcept>
 #include <string_view>
@@ -31,6 +33,7 @@ constexpr std::string_view LEDGER_VERSION = "agent_memory.canonical_ledger.v1";
 constexpr std::uint64_t RAW_ENCODING_GENERATION = 1;
 constexpr std::string_view RAW_CODEC = "raw";
 constexpr std::uint8_t SHA256_DIGEST_ALGORITHM = 1;
+constexpr std::size_t kMaxNavigationBlocks = 1U << 20;
 
 // The shared BlobDigest value type is specified by the artifact-provenance
 // contract but is not materialized in the C++ domain yet. C1 keeps the same
@@ -132,13 +135,18 @@ class Reader final {
         return value;
     }
 
-    std::string string() {
+    std::string_view view() {
         const auto n = size();
         if (n > m_payload.size() - m_pos)
             throw std::runtime_error("canonical payload overrun");
-        std::string v(m_payload.data() + m_pos, n);
+        const auto value = m_payload.substr(m_pos, n);
         m_pos += n;
-        return v;
+        return value;
+    }
+
+    std::string string() {
+        const auto value = view();
+        return std::string(value.data(), value.size());
     }
 
     std::uint8_t byte() {
@@ -155,6 +163,14 @@ class Reader final {
         return v;
     }
 
+    std::string_view raw_bytes(std::size_t n) {
+        if (n > m_payload.size() - m_pos)
+            throw std::runtime_error("canonical payload overrun");
+        const auto value = m_payload.substr(m_pos, n);
+        m_pos += n;
+        return value;
+    }
+
     std::uint64_t u64() {
         return parse_u64(string(), "integer");
     }
@@ -162,10 +178,14 @@ class Reader final {
     LogicalBodyDigest digest() {
         LogicalBodyDigest result;
         result.algorithm = byte();
-        const auto raw = bytes(result.value.size());
+        const auto raw = raw_bytes(result.value.size());
+        if(raw.size() != result.value.size())
+            throw std::runtime_error("invalid canonical digest size");
         std::copy(raw.begin(), raw.end(), result.value.begin());
         return result;
     }
+
+    [[nodiscard]] std::size_t position() const noexcept { return m_pos; }
 
     void end() const {
         if (m_pos != m_payload.size())
@@ -221,7 +241,9 @@ std::string encode_revision(const CanonicalDocumentRevision& revision,
     return out;
 }
 
-DecodedRevision decode_revision(std::string_view payload) {
+DecodedRevision decode_revision(
+    std::string_view payload,
+    std::size_t max_blocks = std::numeric_limits<std::size_t>::max()) {
     Reader r(payload);
     if (r.string() != REV_VERSION)
         throw std::runtime_error("unsupported canonical revision payload");
@@ -231,6 +253,12 @@ DecodedRevision decode_revision(std::string_view payload) {
         throw std::runtime_error("unsupported canonical logical digest algorithm");
     CanonicalDocumentRevision revision{DocumentId{r.string()}, r.u64(), metadata_get(r), {}};
     const auto n = r.size();
+    if (n > max_blocks)
+        throw std::runtime_error("canonical revision block count exceeds navigation bound");
+    // Even empty IDs need a length marker, a framed revision, kind and parent
+    // marker (2 + 3 + 2 + 2 bytes). Do not reserve from an impossible count.
+    if (n > (payload.size() - r.position()) / 9U)
+        throw std::runtime_error("canonical revision block count exceeds remaining payload");
     revision.blocks.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
         ContentBlock b;
@@ -249,6 +277,185 @@ DecodedRevision decode_revision(std::string_view payload) {
     }
     r.end();
     return {std::move(revision), body_revision, logical_body_digest};
+}
+
+void hash_field(Sha256Accumulator& digest, std::string_view value) {
+    const auto length = std::to_string(value.size()) + ":";
+    digest.update(length);
+    digest.update(value);
+}
+
+void hash_size(Sha256Accumulator& digest, std::size_t value) {
+    const auto encoded = std::to_string(value) + ":";
+    digest.update(encoded);
+}
+
+struct NavigationPlan final {
+    std::vector<unsigned char> selected;
+    bool select_all = false;
+    bool include_text = false;
+    std::size_t max_blocks = 0;
+    std::size_t max_text_bytes = 0;
+};
+
+struct NavigationDecoded final {
+    CanonicalDocumentRevision revision;
+    std::vector<std::size_t> text_sizes;
+    std::vector<std::size_t> admitted_indices;
+    bool budget_exceeded = false;
+    bool selection_root_found = true;
+};
+
+// The domain reference builder deliberately favors simple scans.  A storage
+// adapter must not inherit that O(V^2) cost for every bounded navigation read.
+// Parent links in a canonical preorder let us validate the same tree contract
+// in one pass; ordered maps keep the lookup cost at O(V log V) without exposing
+// a backend-specific identity type in the public API.
+std::optional<CanonicalOutline> build_storage_outline(
+    const CanonicalDocumentRevision& document,
+    std::size_t max_entries) {
+    if (max_entries == 0U || document.blocks.size() > max_entries ||
+        document.document_id.empty()) {
+        return std::nullopt;
+    }
+
+    std::map<ContentBlockId, std::size_t> positions;
+    std::map<ContentBlockId, std::size_t> active_depths;
+    std::vector<ContentBlockId> active_path;
+    std::vector<std::size_t> depths(document.blocks.size(), 0U);
+    std::vector<std::size_t> child_counts(document.blocks.size(), 0U);
+
+    for (std::size_t index = 0; index < document.blocks.size(); ++index) {
+        const auto& block = document.blocks[index];
+        if (block.id.empty() || !positions.emplace(block.id, index).second) {
+            return std::nullopt;
+        }
+
+        std::size_t depth = 0U;
+        if (block.parent_id) {
+            const auto parent_position = positions.find(*block.parent_id);
+            if (parent_position == positions.end() || parent_position->second >= index) {
+                return std::nullopt;
+            }
+            const auto parent_active = active_depths.find(*block.parent_id);
+            if (parent_active == active_depths.end()) {
+                // The parent exists but its subtree has already closed, so
+                // the input is not canonical preorder.
+                return std::nullopt;
+            }
+            while (active_path.size() > parent_active->second + 1U) {
+                active_depths.erase(active_path.back());
+                active_path.pop_back();
+            }
+            depth = parent_active->second + 1U;
+            ++child_counts[parent_position->second];
+        } else {
+            active_depths.clear();
+            active_path.clear();
+        }
+
+        depths[index] = depth;
+        active_path.push_back(block.id);
+        active_depths[block.id] = depth;
+    }
+
+    CanonicalOutline result{document.document_id, document.revision, {}};
+    result.entries.reserve(document.blocks.size());
+    for (std::size_t index = 0; index < document.blocks.size(); ++index) {
+        const auto& block = document.blocks[index];
+        result.entries.push_back({
+            {document.document_id, document.revision, block.id, block.revision},
+            block.kind,
+            block.parent_id,
+            depths[index],
+            block.text.size(),
+            child_counts[index]
+        });
+    }
+    return result;
+}
+
+NavigationDecoded decode_navigation_body(const DecodedRevision& decoded,
+                                         std::string_view payload,
+                                         const NavigationPlan& plan) {
+    Reader r(payload);
+    if (r.string() != BODY_VERSION)
+        throw std::runtime_error("unsupported canonical body payload");
+    const auto body_revision = r.u64();
+    const auto encoding_generation = r.u64();
+    const auto codec = r.string();
+    if (encoding_generation != RAW_ENCODING_GENERATION || codec != RAW_CODEC)
+        throw std::runtime_error("invalid canonical physical encoding descriptor");
+    const auto block_count = r.size();
+    if (block_count > kMaxNavigationBlocks)
+        throw std::runtime_error("canonical body block count exceeds navigation bound");
+    if (block_count != decoded.revision.blocks.size() ||
+        (!plan.select_all && plan.selected.size() != block_count))
+        throw std::runtime_error("canonical body binding mismatch");
+
+    NavigationDecoded result;
+    result.revision = decoded.revision;
+    result.text_sizes.resize(block_count);
+    Sha256Accumulator logical_digest;
+    hash_field(logical_digest, LOGICAL_BODY_VERSION);
+    hash_size(logical_digest, block_count);
+    std::size_t text_bytes = 0U;
+    for (std::size_t index = 0; index < block_count; ++index) {
+        auto& expected = decoded.revision.blocks[index];
+        const auto id = r.string();
+        const auto kind = r.size();
+        if (kind > 2U)
+            throw std::runtime_error("invalid canonical body kind");
+        const auto has_parent = r.size();
+        if (has_parent > 1U)
+            throw std::runtime_error("invalid canonical body parent marker");
+        std::optional<std::string> parent;
+        if (has_parent == 1U)
+            parent = r.string();
+        const auto text = r.view();
+        result.text_sizes[index] = text.size();
+
+        if (id != expected.id.value() || kind != static_cast<std::size_t>(expected.kind) ||
+            (parent.has_value() != expected.parent_id.has_value()) ||
+            (parent && *parent != expected.parent_id->value())) {
+            throw std::runtime_error("canonical body structure mismatch");
+        }
+        hash_field(logical_digest, id);
+        hash_size(logical_digest, kind);
+        hash_size(logical_digest, has_parent);
+        if (parent)
+            hash_field(logical_digest, *parent);
+        hash_field(logical_digest, text);
+
+        const bool selected = plan.select_all || plan.selected[index] != 0U;
+        if (selected && !result.budget_exceeded) {
+            if (result.admitted_indices.size() >= plan.max_blocks ||
+                (plan.include_text &&
+                 (text_bytes > plan.max_text_bytes ||
+                  text.size() > plan.max_text_bytes - text_bytes))) {
+                result.budget_exceeded = true;
+            } else {
+                result.admitted_indices.push_back(index);
+                if (plan.include_text) {
+                    result.revision.blocks[index].text.assign(text.data(), text.size());
+                    text_bytes += text.size();
+                }
+            }
+        }
+    }
+
+    const auto stored_logical_digest = r.digest();
+    if (body_revision != decoded.body_revision ||
+        stored_logical_digest != decoded.logical_body_digest ||
+        logical_digest.finish() != stored_logical_digest.value) {
+        throw std::runtime_error("canonical logical body digest mismatch");
+    }
+    const auto checksum_position = r.position();
+    const auto stored_physical_checksum = r.u64();
+    r.end();
+    if (digest_bytes(payload.substr(0, checksum_position)) != stored_physical_checksum)
+        throw std::runtime_error("canonical physical body checksum mismatch");
+    return result;
 }
 
 struct EncodedBody final {
@@ -333,6 +540,13 @@ DecodedBody decode_body(std::string_view payload) {
     if (result.encoding_generation != RAW_ENCODING_GENERATION || result.codec != RAW_CODEC)
         throw std::runtime_error("invalid canonical physical encoding descriptor");
     const auto n = r.size();
+    // Each block needs at least four two-byte fields. The digest and framed
+    // checksum need at least 33 + 3 more bytes. This is a byte-feasibility
+    // check, not the navigation-only ceiling on otherwise valid C1 bodies.
+    const auto remaining = payload.size() - r.position();
+    constexpr std::size_t minimum_trailer = 36U;
+    if (remaining < minimum_trailer || n > (remaining - minimum_trailer) / 8U)
+        throw std::runtime_error("canonical body block count exceeds remaining payload");
     result.blocks.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
         ContentBlock block;
@@ -488,20 +702,101 @@ class MdbxCanonicalContentStore::Impl final {
         return loaded;
     }
 
-    std::optional<CanonicalDocumentRevision> read_revision(const DocumentId& id,
-                                                           std::uint64_t revision,
-                                                           const mdbxc::Transaction& txn) const {
+    std::optional<DecodedRevision> read_decoded_revision(
+        const DocumentId& id,
+        std::uint64_t revision,
+        const mdbxc::Transaction& txn,
+        std::size_t max_blocks = std::numeric_limits<std::size_t>::max()) const {
         const auto payload = revisions.find(key(id.value(), revision), txn);
         if (!payload)
             return std::nullopt;
-        const auto decoded = decode_revision(*payload);
+        const auto decoded = decode_revision(*payload, max_blocks);
         if (decoded.revision.document_id != id || decoded.revision.revision != revision)
             throw std::runtime_error("canonical revision identity mismatch");
-        const auto body = bodies.find(body_key(id.value(), decoded.body_revision, RAW_ENCODING_GENERATION),
+        return decoded;
+    }
+
+    std::optional<CanonicalDocumentRevision> read_revision(
+        const DocumentId& id,
+        std::uint64_t revision,
+        const mdbxc::Transaction& txn) const {
+        const auto decoded = read_decoded_revision(id, revision, txn);
+        if (!decoded)
+            return std::nullopt;
+        const auto body = bodies.find(body_key(id.value(), decoded->body_revision, RAW_ENCODING_GENERATION),
                                       txn);
         if (!body)
             throw std::runtime_error("canonical revision references missing body");
-        return bind_body(decoded, decode_body(*body));
+        return bind_body(*decoded, decode_body(*body));
+    }
+
+    std::optional<NavigationDecoded> read_navigation_revision(
+        const DocumentId& id,
+        std::uint64_t revision,
+        const NavigationPlan& plan,
+        const mdbxc::Transaction& txn) const {
+        const auto decoded = read_decoded_revision(
+            id, revision, txn, kMaxNavigationBlocks);
+        if (!decoded)
+            return std::nullopt;
+        const auto body = bodies.find(
+            body_key(id.value(), decoded->body_revision, RAW_ENCODING_GENERATION), txn);
+        if (!body)
+            throw std::runtime_error("canonical revision references missing body");
+        return decode_navigation_body(*decoded, *body, plan);
+    }
+
+    std::optional<NavigationDecoded> read_navigation_subtree(
+        const DocumentId& id,
+        std::uint64_t revision,
+        const CanonicalSubtreeRequest& request,
+        const mdbxc::Transaction& txn) const {
+        const auto decoded = read_decoded_revision(
+            id, revision, txn, kMaxNavigationBlocks);
+        if (!decoded)
+            return std::nullopt;
+        const auto outline = build_storage_outline(
+            decoded->revision, std::numeric_limits<std::size_t>::max());
+        if (!outline)
+            throw std::runtime_error("canonical revision structure is invalid");
+
+        NavigationPlan plan;
+        plan.include_text = request.include_text;
+        plan.max_blocks = request.max_blocks;
+        plan.max_text_bytes = request.max_text_bytes;
+        plan.selected.assign(decoded->revision.blocks.size(), 0U);
+        if (!request.root_id) {
+            plan.select_all = true;
+        } else {
+            const auto root = std::find_if(
+                outline->entries.begin(), outline->entries.end(),
+                [&](const CanonicalOutlineEntry& entry) {
+                    return entry.locator.block_id == *request.root_id;
+                });
+            if (root == outline->entries.end()) {
+                const auto body = bodies.find(
+                    body_key(id.value(), decoded->body_revision, RAW_ENCODING_GENERATION), txn);
+                if (!body)
+                    throw std::runtime_error("canonical revision references missing body");
+                auto result = decode_navigation_body(*decoded, *body, plan);
+                result.selection_root_found = false;
+                return result;
+            }
+            const auto root_index = static_cast<std::size_t>(
+                std::distance(outline->entries.begin(), root));
+            const auto root_depth = root->depth;
+            for (std::size_t index = root_index; index < outline->entries.size(); ++index) {
+                if (index != root_index && outline->entries[index].depth <= root_depth)
+                    break;
+                plan.selected[index] = 1U;
+            }
+        }
+
+        const auto body = bodies.find(
+            body_key(id.value(), decoded->body_revision, RAW_ENCODING_GENERATION), txn);
+        if (!body)
+            throw std::runtime_error("canonical revision references missing body");
+        return decode_navigation_body(*decoded, *body, plan);
     }
 
     void write_revision(const CanonicalDocumentRevision& revision,
@@ -644,6 +939,144 @@ MdbxCanonicalContentStore::read_revision(const DocumentId& id, std::uint64_t rev
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
     auto result = m_impl->read_revision(id, rev, txn);
     txn.commit();
+    return result;
+}
+
+std::optional<CanonicalOutline> MdbxCanonicalContentStore::read_outline(
+    const DocumentId& id, std::uint64_t rev, std::size_t max_entries) const {
+    auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+    NavigationPlan plan;
+    plan.select_all = true;
+    plan.max_blocks = std::numeric_limits<std::size_t>::max();
+    const auto navigation = m_impl->read_navigation_revision(id, rev, plan, txn);
+    txn.commit();
+    if (!navigation) {
+        return std::nullopt;
+    }
+    auto outline = build_storage_outline(navigation->revision, max_entries);
+    if (!outline || navigation->text_sizes.size() != outline->entries.size()) {
+        return std::nullopt;
+    }
+    for (std::size_t index = 0; index < outline->entries.size(); ++index) {
+        outline->entries[index].text_bytes = navigation->text_sizes[index];
+    }
+    return outline;
+}
+
+CanonicalChildrenResult MdbxCanonicalContentStore::read_children(
+    const DocumentId& id, std::uint64_t rev, std::optional<ContentBlockId> parent_id,
+    std::size_t max_children) const {
+    CanonicalChildrenResult result;
+    result.document_id = id;
+    result.document_revision = rev;
+    result.parent_id = parent_id;
+    auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+    if (max_children == 0U) {
+        const auto decoded = m_impl->read_decoded_revision(
+            id, rev, txn, kMaxNavigationBlocks);
+        txn.commit();
+        if (!decoded) {
+            result.status = CanonicalNavigationStatus::NotFound;
+            result.message = "document revision was not found";
+            return result;
+        }
+        result.message = "max_children must be non-zero";
+        return result;
+    }
+    NavigationPlan plan;
+    plan.select_all = true;
+    plan.max_blocks = std::numeric_limits<std::size_t>::max();
+    const auto navigation = m_impl->read_navigation_revision(id, rev, plan, txn);
+    txn.commit();
+    if (!navigation) {
+        result.status = CanonicalNavigationStatus::NotFound;
+        result.message = "document revision was not found";
+        return result;
+    }
+    const auto outline = build_storage_outline(
+        navigation->revision, std::numeric_limits<std::size_t>::max());
+    if (!outline || navigation->text_sizes.size() != outline->entries.size()) {
+        result.message = "document is malformed or exceeds navigation bounds";
+        return result;
+    }
+    if (parent_id) {
+        const auto parent = std::find_if(
+            outline->entries.begin(), outline->entries.end(),
+            [&](const CanonicalOutlineEntry& entry) {
+                return entry.locator.block_id == *parent_id;
+            });
+        if (parent == outline->entries.end()) {
+            result.status = CanonicalNavigationStatus::NotFound;
+            result.message = "parent block was not found";
+            return result;
+        }
+    }
+    result.status = CanonicalNavigationStatus::Ok;
+    for (std::size_t index = 0; index < outline->entries.size(); ++index) {
+        auto entry = outline->entries[index];
+        entry.text_bytes = navigation->text_sizes[index];
+        if (entry.parent_id != parent_id) {
+            continue;
+        }
+        if (result.entries.size() >= max_children) {
+            result.status = CanonicalNavigationStatus::BudgetExceeded;
+            result.truncated = true;
+            result.message = "children budget exhausted";
+            break;
+        }
+        result.entries.push_back(std::move(entry));
+    }
+    return result;
+}
+
+CanonicalSubtreeResult MdbxCanonicalContentStore::read_subtree(
+    const DocumentId& id, std::uint64_t rev,
+    const CanonicalSubtreeRequest& request) const {
+    CanonicalSubtreeResult result;
+    result.document_id = id;
+    result.document_revision = rev;
+    auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+    if (request.max_blocks == 0U) {
+        const auto decoded = m_impl->read_decoded_revision(
+            id, rev, txn, kMaxNavigationBlocks);
+        txn.commit();
+        if (!decoded) {
+            result.status = CanonicalNavigationStatus::NotFound;
+            result.message = "document revision was not found";
+            return result;
+        }
+        result.message = "max_blocks must be non-zero";
+        return result;
+    }
+    const auto navigation = m_impl->read_navigation_subtree(id, rev, request, txn);
+    txn.commit();
+    if (!navigation) {
+        result.status = CanonicalNavigationStatus::NotFound;
+        result.message = "document revision was not found";
+        return result;
+    }
+    if (!navigation->selection_root_found) {
+        result.status = CanonicalNavigationStatus::NotFound;
+        result.message = "subtree root was not found";
+        return result;
+    }
+    result.status = navigation->budget_exceeded
+        ? CanonicalNavigationStatus::BudgetExceeded
+        : CanonicalNavigationStatus::Ok;
+    result.truncated = navigation->budget_exceeded;
+    if (result.truncated) {
+        result.message = "subtree budget exhausted";
+    }
+    result.blocks.reserve(navigation->admitted_indices.size());
+    for (const auto index : navigation->admitted_indices) {
+        if (index >= navigation->revision.blocks.size()) {
+            result.status = CanonicalNavigationStatus::InvalidDocument;
+            result.blocks.clear();
+            result.message = "navigation decoder returned an invalid block index";
+            return result;
+        }
+        result.blocks.push_back(navigation->revision.blocks[index]);
+    }
     return result;
 }
 

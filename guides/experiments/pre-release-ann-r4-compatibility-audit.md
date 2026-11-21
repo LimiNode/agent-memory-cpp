@@ -1,5 +1,12 @@
 # Pre-release ANN/R4 compatibility audit
 
+> **Physical-storage baseline notice (2026-11-19).** The commit-based
+> compatibility and exact-generation evidence in this dated audit predates the
+> numeric MDBX identity pilot. Keep the R4 measurements and logical provenance
+> conclusions as historical research, but mark physical reopen/upgrade claims
+> `HISTORICAL_ONLY` and re-run them before any post-migration release claim.
+> See [`../mdbx-numeric-identity-evidence-register.md`](../mdbx-numeric-identity-evidence-register.md).
+
 Status: `COMPATIBILITY NOT PROVEN / IMPLEMENTATION PENDING`
 
 Date: 2026-11-12
