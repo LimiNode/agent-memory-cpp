@@ -541,6 +541,7 @@ main SHA observed immediately after that operation.
 | #657 | `281d73c505864e28697f30e7e01e9b2e922813f7` | `76af612918d84051a0bcd30283f4eb8382d902c9` | 44796648919 attempt 2 / 44796648892 SUCCESS | 44859486239 / 44859486250 SUCCESS |
 | #658 | `c2a6f14e520cb08e5f63e692fafac2adaa94fbe1` | `aa71b2b29fc0d68f959304cb26a323c4df53ffc6` | 44861143324 / 44861143210 SUCCESS | 44861882073 / 44861882126 SUCCESS |
 | #659 | `91254e0f9fff1abee295da2f70c5af5edc9401bb` | `a7db7d94086aa979212671049e6b2a44dff7b0d0` | 44862754338 / 44862754286 SUCCESS | 44863527891 / 44863527811 SUCCESS |
+| #667 | `ea76d6a706ca86fc56a2fde5ffd30f4175f8f801` | `0c8b940373600479dce2d90e5cd80f512d92a4e2` | 44864254966 / 44864254963 SUCCESS | 44865075989 / 44865075992 SUCCESS |
 
 The newly imposed per-step post-merge wait applies from #657 onward; the
 earlier #655/#656 documentation sequence is reported as actually observed,
@@ -576,8 +577,8 @@ used. The cause of the server-side inconsistency remains unknown; successful
 recovery does not establish its root cause.
 
 GitHub protected-rule suites 5264438407 (#654), 5271919573 (#657), 5272215667
-(#658) and 5272415504 (#659) record result pass, not bypass. For #657/#658/#659
-the active required-status
+(#658), 5272415504 (#659) and 5272601606 (#667) record result pass, not bypass.
+For #657/#658/#659/#667 the active required-status
 and pull-request rules from ruleset 24881787 individually passed. The ruleset
 remained enabled; no privileged bypass or review-thread bypass was requested.
 Before/after diagnostic JSON, merge ledger and raw protected-rule evaluations
@@ -668,8 +669,8 @@ directory. TSan remains unexecuted.
 ### Remaining queue and decision boundaries
 
 #658 is MERGED but its no-reuse contract is not considered complete without
-#661. Pending guarded order is #667, #660, #661, #662, #670, #672, #669,
-#675, #673, #663. Post-merge confirmation is complete through #659. The earlier
+#661. Pending guarded order is #660, #661, #662, #670, #672, #669,
+#675, #673, #663. Post-merge confirmation is complete through #667. The earlier
 dependency DAG
 still applies; source branches are retained for safe child retargeting.
 
