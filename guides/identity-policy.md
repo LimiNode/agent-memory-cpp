@@ -50,6 +50,9 @@ Authority is deliberately distributed, without duplicated wire grammars:
 Specific legacy encodings win over a generic recommendation in this guide.
 An actual contradiction requires a named owner correction and conformance
 proof, not silent normalization, numeric conversion or schema modification.
+The narrowly scoped [AMXR v1 ADR](adr/2026-11-external-identity-amxr-v1.md)
+records the standalone-format rationale and architecture-review boundary;
+it does not approve the separate conversation/event proposal.
 
 ## 2. External namespace issuance and missing identity
 
@@ -90,6 +93,10 @@ the same tuple a different meaning. No generic URI canonicalization, case
 folding, Unicode normalization, whitespace trim or decimal parsing occurs.
 If an issuer defines an equivalence, its adapter must implement the declared
 versioned recipe before constructing the tuple and retain the source value.
+The lowercase namespace-label grammar below is a validation rule, not an
+instruction to lowercase supplied input. Any change to that grammar needs a
+new reviewed wire version; changing issuer or key equivalence needs a new
+namespace/recipe assignment as described above. The codec guesses neither.
 
 A parent belongs to the **same provider, service instance and identity domain**
 as the object. The immutable object-kind recipe defines whether it denotes a
@@ -151,11 +158,24 @@ it is not ArtifactId, ContentHash, std::hash, proof of authority or a substitute
 for full reference equality. Collision policy cannot silently merge unequal
 full references.
 
+For admitted values, `a == b` if and only if `encode(a) == encode(b)` and if
+and only if neither `a < b` nor `b < a`. Equal values have equal fingerprints;
+equal fingerprints alone never establish equality. Finite collision regression
+vectors qualify namespace/type/framing separation, not cryptographic collision
+freedom. No std::hash specialization is introduced; a caller's runtime hash
+must respect full equality and must not become a durable identity recipe.
+
 ## 4. Canonical ExternalObjectRef codec (AMXR v1)
 
 AMXR is a new **standalone** value encoding. It is not wired into an existing
 DBI/key, persisted C1/flat record, content-hash recipe or publication manifest.
 Adding any such persistence is a separate schema/version/migration decision.
+AMXR v1 defines **binary interchange only**. It introduces no public textual
+prefix, URI, decimal form, hex/base64 wrapper or diagnostic interchange grammar.
+The hex literals in golden tests merely display exact binary bytes. Logs or
+diagnostic renderings are not serialized identities and must not be parsed as
+AMXR interchange. A future public text form needs its own reviewed canonical
+grammar, version discriminator and independent golden vectors.
 
 All lengths/counts are unsigned big-endian and count bytes/elements, not code
 points. Fixed-width integer payloads are exactly eight bytes. The complete

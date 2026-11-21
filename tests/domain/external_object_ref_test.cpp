@@ -166,6 +166,79 @@ void field_boundaries() {
     for(const auto* name : {"A", "a-b", "1a", "a.b"}) { parts[0].name = name; rejected_value(ref); }
 }
 
+void identity_consistency_matrix() {
+    std::vector<am::ExternalObjectRef> refs{
+        minimal(), minimal({std::int64_t{123}}), minimal({std::uint64_t{123}}),
+        minimal({std::string{"123"}}), minimal({std::string{"00123"}}),
+        minimal({std::string{"X"}}), minimal({std::string{"x "}}),
+        minimal({std::string{"x\0", 2}}), minimal({std::string{"\xc3\xa9"}}),
+        minimal({std::string{"e\xcc\x81"}}),
+        minimal({std::vector<am::ExternalIdentityComponent>{{"a", std::string{"x|y"}}, {"b", std::string{"z"}}}}),
+        minimal({std::vector<am::ExternalIdentityComponent>{{"a", std::string{"x"}}, {"b", std::string{"y|z"}}}}),
+        minimal({std::vector<am::ExternalIdentityComponent>{{"b", std::string{"z"}}, {"a", std::string{"x|y"}}}}),
+        minimal({std::vector<am::ExternalIdentityComponent>{{"a", std::uint64_t{1}}, {"b", std::uint64_t{2}}}}),
+        minimal({std::vector<am::ExternalIdentityComponent>{{"a", std::int64_t{1}}, {"b", std::uint64_t{2}}}})};
+    for(const auto field : {&am::ExternalObjectRef::provider, &am::ExternalObjectRef::service_instance,
+                            &am::ExternalObjectRef::identity_domain, &am::ExternalObjectRef::object_kind}) {
+        auto ref = minimal();
+        ref.*field = "q";
+        refs.push_back(std::move(ref));
+    }
+    for(const auto field : {&am::ExternalObjectRef::service_instance, &am::ExternalObjectRef::identity_domain}) {
+        for(const auto& text : {std::string{"S"}, std::string{"s "}}) {
+            auto ref = minimal();
+            ref.*field = text;
+            refs.push_back(std::move(ref));
+        }
+    }
+    for(const auto& key : {am::ExternalObjectKey{std::int64_t{0}}, am::ExternalObjectKey{std::uint64_t{0}},
+                           am::ExternalObjectKey{std::string{"0"}}}) {
+        auto ref = minimal();
+        ref.parent_key = key;
+        refs.push_back(std::move(ref));
+    }
+    const auto count = refs.size();
+    refs.push_back(refs.front()); // A distinct owned copy must have identical bytes/order/digest.
+    for(std::size_t i = 0; i < refs.size(); ++i) {
+        round_trip(refs[i]);
+        const auto a = am::serialize_external_object_ref(refs[i]);
+        const auto digest = am::external_object_ref_digest(refs[i]);
+        for(std::size_t j = 0; j < refs.size(); ++j) {
+            const auto b = am::serialize_external_object_ref(refs[j]);
+            const bool equal = i == j || (i == 0 && j == count) || (i == count && j == 0);
+            expect((refs[i] == refs[j]) == equal, "identity fixture equality collapsed a scoped or typed value");
+            expect((a == b) == equal, "canonical encoding is not injective for identity fixtures");
+            const bool ordered = std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(),
+                [](unsigned char x, unsigned char y) { return x < y; });
+            expect((refs[i] < refs[j]) == ordered, "ordering disagrees with unsigned canonical bytes");
+            // Collision regression for this finite corpus, not a proof of SHA-256 collision freedom.
+            expect((digest == am::external_object_ref_digest(refs[j])) == equal, "identity fixture digest mismatch");
+        }
+    }
+}
+
+void isolated_component_count_boundary() {
+    const auto prefix = unhex("414d58520001000000017000000001730000000164000000016b00");
+    std::vector<am::ExternalIdentityComponent> components;
+    std::string frames;
+    for(std::size_t i = 0; i < 16; ++i) {
+        const auto name = std::string(1, static_cast<char>('a' + i));
+        components.push_back({name, std::string{"x"}});
+        frames += unhex("0001") + name + unhex("030000000178"); // Independent nine-byte component.
+    }
+    const auto valid = prefix + unhex("04000000920010") + frames; // 2 + 16*9 payload bytes.
+    expect(am::deserialize_external_object_ref(valid) == minimal({components}), "16-component golden rejected");
+    expect(am::serialize_external_object_ref(minimal({components})) == valid, "16-component golden differs");
+    components.push_back({"q", std::string{"x"}});
+    const auto oversized_count = prefix + unhex("040000009b0011") + frames + unhex("000171030000000178");
+    expect(oversized_count.size() < am::kMaxExternalObjectRefBytes, "count fixture accidentally exceeds byte bound");
+    rejected_value(minimal({components}));
+    rejected_bytes(oversized_count); // Complete valid frames: only component count exceeds its limit.
+    auto bad_name = valid;
+    bad_name[36] = 'A'; // First component name, with all frame lengths still valid.
+    rejected_bytes(bad_name);
+}
+
 void encoder_validation_and_bounds() {
     rejected_value({});
     auto ref = minimal();
@@ -247,6 +320,8 @@ int main() {
         source_domains_and_remapping();
         encoder_validation_and_bounds();
         field_boundaries();
+        identity_consistency_matrix();
+        isolated_component_count_boundary();
         decoder_controls();
         legacy_source_compatibility();
         std::cout << "external identity goldens, domains, remapping, bounds, corruption and compatibility: PASS\n";

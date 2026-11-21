@@ -15,7 +15,9 @@ The [normative policy](../identity-policy.md) is Draft #682 at
 `95262b9d52cd96d88a05b106f5df5e0e498e4340`. Its companion implementation is
 [Draft #684](https://github.com/LimiNode/agent-memory-cpp/pull/684) at
 `a27e0c0558314d3760b41217ca37b29ab71c3bff`, based on that policy and verified
-main ancestry. This conformance addendum does not change library or test code.
+main ancestry. At its initial publication (`d974fa90`), this conformance addendum
+did not change library or test code; the dated follow-up below adds test-only
+qualification and contract clarifications without changing library code.
 
 - Implementation `src` tree: `213eb5fad08b5e16cde6ef2583c2d19366a0577c`.
 - Dependency tree: `b816ddeccafa0375c15b977e71d4a36f6728f59f`.
@@ -203,3 +205,70 @@ TypedMetadata, ConversationStore and general coordinator implementation were
 not started. No PR was merged, no release/tag/default activation or existing
 database migration was performed. CLOSED still requires approved integration
 and qualification on the exact final main.
+
+## 2026-11-22: eight-requirement AMXR follow-up
+
+Starting point: #685 at `d974fa900cc75b12af1772e19578e1bacd3f23c6`, based
+on unchanged implementation #684 at `a27e0c05`. This follow-up is no longer a
+docs-only change: it adds conformance tests, not library behavior. The source
+and dependency trees recorded above, historical catalogue and extracted type
+delta remain unchanged. The standalone [AMXR ADR](../adr/2026-11-external-identity-amxr-v1.md)
+records exact-choice rationale by reference to the one normative policy. Its
+status is Proposed / architecture review required, not implicit acceptance of
+an implemented permanent format or of the conversation/event proposal.
+
+The acceptance question is whether the eight additional public-contract
+requirements leave a wire defect or a qualification gap. Inspection found no
+codec change needed. The policy now explicitly excludes a public textual
+interchange format, distinguishes lowercase label validation from conversion,
+and states equality/encoding/order/fingerprint implications. Golden hex is
+only a display of binary bytes; no URI, prefix or text parser was introduced.
+
+| Required boundary | Direct control / retained contract |
+| --- | --- |
+| One canonical encoding | Literal goldens, exact re-encode and pairwise equality/bytes equivalence |
+| Scoped uniqueness and parent presence | Pairwise provider/instance/domain/kind and absent/i64/u64/string parent controls; immutable host/adapter namespace recipe |
+| Scalar types and leading zeros | Separate i64/u64/string values, `123` versus `00123`, typed composite components |
+| No implicit normalization | Opaque case, whitespace, NUL and NFC/NFD fixtures; namespace grammar validates rather than lowercases |
+| Bounded strict decoding | Existing malformed/length/UTF-8 controls plus isolated complete 16/17-component vectors and malformed-name input |
+| Binary/text boundary | Binary-only AMXR v1; no public textual interchange syntax; diagnostics cannot be parsed as identity |
+| Legacy compatibility | No source/dependency/schema/default changes; legacy fixture and existing identity/mapping tests pass |
+| API invariant and example | 27-reference / 729-pair equality/bytes/unsigned-order/digest matrix; existing installed C++17 example retained |
+
+The 17-component negative has complete otherwise-valid frames, a 155-byte
+composite payload and total input far below 65,536 bytes. Unlike the earlier
+oversized fixture, rejection is attributable to component count, not aggregate
+size. The valid 16-component counterpart has an independently authored
+146-byte payload and must decode and encode exactly. The finite digest matrix
+is a regression control, **not proof that SHA-256 is collision-free**; full
+reference comparison remains mandatory for collision handling.
+
+Executed locally on the working patch over `d974fa90`, with test-file SHA-256
+`c4347f9e5989c32b5b84e227e663a8db1f3c4fdba1e2bff446fd1dc3b8fea188`:
+
+- GNU/MinGW 15.2 C++17 Release, JSON OFF / MDBX OFF: focused rebuild/test PASS;
+  complete configured CTest **55/55 PASS**, no skipped/disabled tests.
+- MSVC 19.44 C++17 Release, JSON ON / MDBX ON: focused rebuild/test PASS;
+  the same eight affected tests listed above **8/8 PASS**, none skipped.
+- Delta verifier PASS against unchanged implementation source; `git diff
+  --quiet a27e0c05 -- src external` confirms no library/dependency drift.
+- Relative documentation links (21), historical/PCA12 preservation validators
+  and their six/fourteen negative self-tests, plus `git diff --check`: PASS.
+- Independent read-only peer review of policy, both ADR boundaries, full
+  codec, example and new fixtures: APPROVE, no confirmed P1/P2. The reviewer
+  did not run tests or submit a GitHub review. This is not merge authority.
+
+The two new complete-suite JUnit artifacts are under the existing local build
+root, without replacing the earlier evidence:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| amxr-v1-20261122-gnu-all.xml | `9f8af995c7e1570585f67e76fd6619693f9ccab38c656b5319c45cec3f97f74f` |
+| amxr-v1-20261122-msvc-affected.xml | `8ba0bc9775e0fda7ebee6307a5fef684763e9182778baa7f5f8c9548af9be919` |
+
+No new numeric subprocess, installed-consumer or sanitizer qualification is
+claimed by this local follow-up; their earlier evidence and limitations remain
+as dated above. In particular TSan remains NOT_QUALIFIED. Updated exact-head
+GitHub CI and packaging observations belong to the PR handoff, not to the old
+docs-only run. AMXR PRs remain Draft; no merge, release, migration, production
+activation or Conversation/Event Model/ConversationStore work is included.
