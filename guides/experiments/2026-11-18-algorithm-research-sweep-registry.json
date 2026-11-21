@@ -1,0 +1,396 @@
+{
+  "schema_version": 2,
+  "source_commit": "e34a59a19abc4346cd541bd0ce139df098eb011e",
+  "integration_baseline_commit": "bfa01a22d4091bb5c5f7c17606199fda6342b790",
+  "production_activation": false,
+  "evidence_disposition_manifest": {
+    "owner_pull_request": "https://github.com/LimiNode/agent-memory-cpp/pull/664",
+    "source_commit": "76914c0c3422407325aaf097622fbd5478de2ab1",
+    "path": "guides/experiments/2026-11-20-r5-evidence-dispositions.json",
+    "sha256": "87deebcd629a470396b6b5522e0818bb7204eda876bcab42c4fba506d6479214",
+    "validation_scope": "PINNED_EXTERNAL_MANIFEST_CHECK_LOCAL_BYTES_IF_PRESENT"
+  },
+  "rows": [
+    {
+      "algorithm_id": "exact_vector_and_flat_scan",
+      "family": "exact_vector",
+      "scope": "production exact-result baseline and numerical controls",
+      "status": "ALREADY_IMPLEMENTED",
+      "evidence_status": "EVIDENCE_PENDING",
+      "source_snapshot": "src/agent_memory/index/ExactVectorIndex.cpp",
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": ["https://github.com/LimiNode/agent-memory-cpp/pull/635"],
+        "research_guides": ["guides/experiments/2026-10-03-fresh-qrels-exact-reference.md"]
+      },
+      "quality_scope": "exact top-k with deterministic tie ordering",
+      "latency_scope": "implementation-dependent; measure only with the production-shaped index",
+      "next_gate": "independent review of exact-vector numerical frontier and representative scan benchmark"
+    },
+    {
+      "algorithm_id": "binary_flat_and_multiprobe",
+      "family": "binary_retrieval",
+      "scope": "candidate generation followed by exact rerank",
+      "status": "ALREADY_IMPLEMENTED",
+      "evidence_status": "EVIDENCE_PENDING",
+      "source_snapshot": "src/agent_memory/index/MultiProbeHammingIndex.cpp",
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/experiments/2026-07-20-binary-flat-vs-exact-vector.md", "guides/experiments/2026-08-10-ann-cascade-comparison.md"]
+      },
+      "quality_scope": "candidate recall and exact-rerank quality; binary score is not final rank",
+      "latency_scope": "Python and native harnesses have separate scopes; no production ANN claim",
+      "next_gate": "matched native MIH layout and budget benchmark"
+    },
+    {
+      "algorithm_id": "lexical_bm25_and_token_dictionary",
+      "family": "lexical_retrieval",
+      "scope": "tokenization, dictionary lookup, exact lexical scoring",
+      "status": "ALREADY_IMPLEMENTED",
+      "evidence_status": "EVIDENCE_PENDING",
+      "source_snapshot": "src/agent_memory/lexical/ExactLexicalIndex.cpp",
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": ["https://github.com/LimiNode/agent-memory-cpp/pull/633"],
+        "research_guides": ["guides/lexical-search-roadmap.md"]
+      },
+      "quality_scope": "lexical top-k and metadata/filter contract",
+      "latency_scope": "measure scoring, candidate generation, sorting, and I/O separately",
+      "next_gate": "real-corpus hybrid and pruning benchmark"
+    },
+    {
+      "algorithm_id": "hybrid_retrieval_scaffolding",
+      "family": "hybrid_retrieval",
+      "scope": "lexical retrieval and reranker composition",
+      "status": "ALREADY_IMPLEMENTED",
+      "evidence_status": "EVIDENCE_PENDING",
+      "source_snapshot": "src/agent_memory/retrieval/HybridRetrievalEngine.cpp",
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/experiments/2026-11-11-source-bound-retrieval-quality-benchmark.md"]
+      },
+      "quality_scope": "contract and source-bound quality fixture; no BM25+dense fusion receipt yet",
+      "latency_scope": "end-to-end retrieve() only when all stages use the same query and filters",
+      "next_gate": "sealed lexical-only, dense-only, fusion, and worst-query comparison"
+    },
+    {
+      "algorithm_id": "scalar_adc_and_packed_lut",
+      "family": "quantization",
+      "scope": "matched-payload scalar ADC candidate scoring",
+      "status": "WORTH_BENCHMARK",
+      "evidence_status": "EVIDENCE_PENDING",
+      "source_snapshot": "guides/experiments/2026-08-06-scalar-projection-rate-distortion-grid-contract.json",
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/experiments/2026-08-06-scalar-projection-rate-distortion-grid-contract.json"]
+      },
+      "quality_scope": "held-out recall/quality at fixed payload and exact rerank budget",
+      "latency_scope": "native packed-LUT scorer and top-k; training/materialization measured separately",
+      "next_gate": "native C++ receipt with exact oracle and mutation controls"
+    },
+    {
+      "algorithm_id": "mih_native_layouts",
+      "family": "binary_ann",
+      "scope": "native MIH block layout and probe-budget alternatives",
+      "status": "WORTH_BENCHMARK",
+      "evidence_status": "EVIDENCE_PENDING",
+      "source_snapshot": "tools/agent-memory-bench/mih_native_hot_path.cpp",
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/experiments/2026-08-11-mih-native-hot-path-baseline.md"]
+      },
+      "quality_scope": "exact top-k parity and candidate recall under fixed bit budget",
+      "latency_scope": "native candidate lookup; excludes corpus build unless explicitly reported",
+      "next_gate": "matched block-CSR/whole-band and external-control comparison"
+    },
+    {
+      "algorithm_id": "prototype_ivf_and_compact_cascade",
+      "family": "ann_ivf",
+      "scope": "offline prototype centroids and compact candidate cascades",
+      "status": "WORTH_BENCHMARK",
+      "evidence_status": "EVIDENCE_PENDING",
+      "source_snapshot": "guides/experiments/research-timeline.md",
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": ["https://github.com/LimiNode/agent-memory-cpp/pull/638", "https://github.com/LimiNode/agent-memory-cpp/pull/641"],
+        "research_guides": ["guides/retrieval-techniques-roadmap.md"]
+      },
+      "quality_scope": "held-out assignment error, recall, exact rerank quality, and empty clusters",
+      "latency_scope": "training, index build, candidate lookup, rerank, and retraining reported separately",
+      "next_gate": "design note and representative corpus feasibility check"
+    },
+    {
+      "algorithm_id": "pq_opq_matched_byte_control",
+      "family": "quantization",
+      "scope": "matched-byte PQ/OPQ controls against scalar and THQ variants",
+      "status": "NEEDS_CORRECTION",
+      "evidence_status": "EVIDENCE_PENDING",
+      "source_snapshot": "guides/experiments/2026-08-06-scalar-projection-rate-distortion-grid-contract.json",
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/experiments/2026-08-06-scalar-projection-rate-distortion-grid-contract.json"]
+      },
+      "quality_scope": "full calibration, fixed payload, explicit seed, and held-out quality",
+      "latency_scope": "Python/reference results are diagnostic until native timing exists",
+      "next_gate": "rerun with explicit seed, raw samples, orthogonal/PCA/ITQ controls, and native scorer"
+    },
+    {
+      "algorithm_id": "direct_binary_final_rank",
+      "family": "binary_retrieval",
+      "scope": "using Hamming distance as the final result rank",
+      "status": "PREVIOUSLY_REJECTED",
+      "evidence_status": "SUPERSEDED",
+      "source_snapshot": "guides/experiments/2026-07-20-binary-flat-vs-exact-vector.md",
+      "evidence_refs": ["guides/experiments/2026-07-20-binary-flat-vs-exact-vector.md"],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/experiments/2026-07-20-binary-flat-vs-exact-vector.md"]
+      },
+      "quality_scope": "weak final-rank recall in the recorded synthetic control",
+      "latency_scope": "not a production serving decision",
+      "next_gate": "none without a new mechanism and a matched exact-rerank control"
+    },
+    {
+      "algorithm_id": "production_ivf_hnsw_pq_opq",
+      "family": "production_ann",
+      "scope": "new production index classes and defaults",
+      "status": "DEFER",
+      "evidence_status": "EVIDENCE_PENDING",
+      "source_snapshot": "guides/retrieval-techniques-roadmap.md",
+      "evidence_refs": [],
+      "cross_references": {
+        "pull_requests": [],
+        "research_guides": ["guides/retrieval-techniques-roadmap.md"]
+      },
+      "quality_scope": "not established for the current production corpus and contract",
+      "latency_scope": "not executed",
+      "next_gate": "representative corpus, serving contract, and independent quality/latency evidence"
+    }
+  ],
+  "evidence_ledger": [
+    {
+      "experiment_id": "r5_exact_vector_v2",
+      "algorithm_id": "exact_vector_and_flat_scan",
+      "owner_pull_request": "https://github.com/LimiNode/agent-memory-cpp/pull/664",
+      "latest_code_commit": "76914c0c3422407325aaf097622fbd5478de2ab1",
+      "evidence_role": "BOUNDED_EXECUTION_INDEX",
+      "decision_status": "KEEP CURRENT",
+      "production_default_decision": "KEEP CURRENT",
+      "decision_scope": "Keep compensated production cosine: sequential FP64 fails cancellation; FP32 fails tiny cosine. No replacement index or default is activated.",
+      "production_activation": false,
+      "timing_scope": "Full prebuilt ExactVectorIndex search is separate from arithmetic-only kernels and one construction observation; seven repeated batches of four fixed queries are not independent requests or stable p99.",
+      "limitations": ["Synthetic correctness/timing only", "Large timing cases are not fully Decimal-oracle checked", "Historical v1 is superseded methodology, not decision evidence"],
+      "runs": [
+        {
+          "experiment_id": "r5_exact_vector_v2",
+          "source_commit": "6272e7b230f7dbbc5d2b235614b9d5badb95ea7e",
+          "execution_checkout_commit": "6272e7b230f7dbbc5d2b235614b9d5badb95ea7e",
+          "execution_status": "EXECUTED",
+          "environment": "Local Windows / GNU 15.2 / Release / C++17",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/blob/1fc9c8b35eb61a6a35c5392f604ed962ccb4ebc0/guides/experiments/2026-11-19-r5-exact-vector-v2.receipt.json",
+          "receipt_validation_status": "EXTERNAL_POINTER_NOT_REPLAYED",
+          "receipt_sha256": "faeb068bb94bc570d843e6ea5b2ef3d388b86f3486ecaf3baa7416dc474f0c68",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/blob/1fc9c8b35eb61a6a35c5392f604ed962ccb4ebc0/guides/experiments/2026-11-19-r5-exact-vector-v2.receipt.json.sha256",
+          "raw_output_sha256": "999fd6b981be20de0a620a8e444898dfd79cd4ef54c48dc3fddf259ae15af96d",
+          "validation_summary": "6 correctness cases, 10 timing cases, 9 evidence mutations; Decimal oracle; Neumaier retained"
+        },
+        {
+          "experiment_id": "r5_exact_vector_v2",
+          "source_commit": "1fc9c8b35eb61a6a35c5392f604ed962ccb4ebc0",
+          "execution_checkout_commit": "1fc9c8b35eb61a6a35c5392f604ed962ccb4ebc0",
+          "execution_status": "EXECUTED",
+          "environment": "Local actual MSVC 19.44.35228.0 / Release / C++17",
+          "receipt_locator": "E:/_repoz/agent-memory-workspaces/2026-11-19-r5-exact-vector-v2-msvc/exact-vector.receipt.json",
+          "receipt_validation_status": "UNAVAILABLE_HISTORICAL_POINTER",
+          "receipt_sidecar_locator": "E:/_repoz/agent-memory-workspaces/2026-11-19-r5-exact-vector-v2-msvc/exact-vector.receipt.json.sha256",
+          "receipt_sha256": "afdc8522477e9d3a70c1430273711a9a6b228b210d491f49c16cd296ba521daf",
+          "raw_output_sha256": "dd9a1765951eaa922d342ea050b914e9c5203cdaa8515d952725e884b48fa3a5",
+          "validation_summary": "6 correctness cases, 10 timing cases, 9 evidence mutations; actual MSVC is not inferred from MinGW"
+        }
+      ]
+    },
+    {
+      "experiment_id": "r5_emeans_v2",
+      "algorithm_id": "prototype_ivf_and_compact_cascade",
+      "owner_pull_request": "https://github.com/LimiNode/agent-memory-cpp/pull/664",
+      "latest_code_commit": "76914c0c3422407325aaf097622fbd5478de2ab1",
+      "evidence_role": "BOUNDED_EXECUTION_INDEX",
+      "decision_status": "DEFER",
+      "production_default_decision": "KEEP CURRENT",
+      "decision_scope": "Executed CPU NumpyEmeans/Lloyd synthetic smoke; no representative R4, O-means or portable native serving qualification.",
+      "production_activation": false,
+      "timing_scope": "Equal complete training input and measured assignment work, not equal update cost or wall time; native IVF ndis rows and Python equal-scan rerank proxy are separate; repeated samples are not independent requests.",
+      "limitations": ["v1 INVALID_FOR_COMPARISON; timing ratio and quality comparison withdrawn without rewriting old receipts", "Synthetic smoke only", "Representative comparison NOT_EXECUTED: REPRESENTATIVE_CORPUS_UNAVAILABLE", "Peak RSS NOT_MEASURED; O-means, GPU and native serving NOT_EXECUTED"],
+      "runs": [
+        {
+          "experiment_id": "r5_emeans_v2",
+          "source_commit": "6272e7b230f7dbbc5d2b235614b9d5badb95ea7e",
+          "execution_checkout_commit": "6272e7b230f7dbbc5d2b235614b9d5badb95ea7e",
+          "execution_status": "EXECUTED",
+          "environment": "Local Windows / CPython 3.11.9 / NumPy 2.4.6 / Faiss 1.16.0 / one thread",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/blob/1fc9c8b35eb61a6a35c5392f604ed962ccb4ebc0/guides/experiments/2026-11-19-r5-emeans-vs-lloyd-v2.receipt.json",
+          "receipt_validation_status": "EXTERNAL_POINTER_NOT_REPLAYED",
+          "receipt_sha256": "0229176e93f80cc891ac43a828be3c6cbbd15c513d953145565e1091f22f450a",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/blob/1fc9c8b35eb61a6a35c5392f604ed962ccb4ebc0/guides/experiments/2026-11-19-r5-emeans-vs-lloyd-v2.receipt.json.sha256",
+          "raw_output_sha256": "d4f2912c5adebfec29f9b895201fb3ca140d507b97546fd9c80ee54bf41d3608",
+          "validation_summary": "2 real methods, final independent MSE, disjoint splits, native ndis and capped proxy; 13 negative controls"
+        }
+      ]
+    },
+    {
+      "experiment_id": "r5_exact_lexical_topk",
+      "algorithm_id": "lexical_bm25_and_token_dictionary",
+      "owner_pull_request": "https://github.com/LimiNode/agent-memory-cpp/pull/665",
+      "latest_code_commit": "f2bb63527f9d8289b5f592e89873641b552265ca",
+      "evidence_role": "BOUNDED_EXECUTION_INDEX",
+      "decision_status": "CONDITIONAL",
+      "production_default_decision": "KEEP CURRENT",
+      "decision_scope": "Selection alternatives merit follow-up only for large N and small K; near-N and no-match cases do not support one universal selector or production activation.",
+      "production_activation": false,
+      "timing_scope": "Uninstrumented complete in-memory search, selector-only kernels and index construction remain separate. Closure v2 additionally measures candidate traversal, filtering, BM25 scoring, candidate construction, selection, vector truncation and full search directly in a separately instrumented scope; never subtract these timings from uninstrumented samples.",
+      "limitations": ["Four SYNTHETIC token/metadata/filter profiles do not establish representative query frequencies", "Candidate generation means map iterator traversal; result materialization means vector truncation, while metadata copies belong to candidate construction", "Per-record clock calls perturb direct stage timings; separate phase medians are not additive", "Actual HybridRetrievalEngine metadata filters and source preservation PASS, but authoritative authorization, tenant isolation and revision freshness remain NOT_EXECUTED", "Peak RSS and retained workspace NOT_MEASURED; repeated samples do not establish stable tails", "Historical runs retain their original source identities; current CI compiles the recorded synthetic merge checkout, not the expected PR HEAD"],
+      "runs": [
+        {
+          "experiment_id": "r5_exact_lexical_topk",
+          "source_commit": "7a99add27e71fbe5010ac43443a97a4c8f2b2545",
+          "execution_checkout_commit": "9724be450f6ff436652066deacf6f8ea338fc55c",
+          "execution_status": "EXECUTED",
+          "environment": "Historical Ubuntu / GNU 15.2 / Release CI pilot",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44614602649 (exact-lexical-topk-decision artifact, receipt.json)",
+          "receipt_validation_status": "EXTERNAL_POINTER_NOT_REPLAYED",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44614602649 (exact-lexical-topk-decision artifact, receipt.json.sha256)",
+          "receipt_sha256": "55ca25cd96095a29c11401dc28d3ce7a3a594c45fe89a0345484676275c89097",
+          "validation_summary": "16 cases and 1024 samples; original source/checkout preserved, not rebound to the current HEAD"
+        },
+        {
+          "experiment_id": "r5_exact_lexical_topk",
+          "source_commit": "59ce09c3e18feff33fc7d2a2292eb11d53bb3b43",
+          "execution_checkout_commit": "59ce09c3e18feff33fc7d2a2292eb11d53bb3b43",
+          "execution_status": "EXECUTED",
+          "environment": "Local actual MSVC 19.44.35228.0 / Release / C++17",
+          "receipt_locator": "E:/_repoz/agent-memory-cpp/.worktrees/exact-lexical-topk-decision/.build/vs/receipt.json",
+          "receipt_validation_status": "UNAVAILABLE_HISTORICAL_POINTER",
+          "receipt_sidecar_locator": "E:/_repoz/agent-memory-cpp/.worktrees/exact-lexical-topk-decision/.build/vs/receipt.json.sha256",
+          "receipt_sha256": "bfded1f443cc85a55b80c8723efc1a6bd2bc9b76fb749066994e727d2f6d0b19",
+          "source_manifest_sha256": "747fb62a8ad7bade19883185605da6a6f4017dbeaecaf826e48efdcb76d1f167",
+          "validation_summary": "3 self-tests and complete matched matrix; final actual-Hit noexcept and generated-header guard contracts"
+        },
+        {
+          "experiment_id": "r5_exact_lexical_topk",
+          "source_commit": "59ce09c3e18feff33fc7d2a2292eb11d53bb3b43",
+          "execution_checkout_commit": "59ce09c3e18feff33fc7d2a2292eb11d53bb3b43",
+          "execution_status": "EXECUTED",
+          "environment": "Local GNU 15.2 / Release / C++17",
+          "receipt_locator": "E:/_repoz/agent-memory-cpp/.worktrees/exact-lexical-topk-decision/.build/exact-lexical-topk/receipt.json",
+          "receipt_validation_status": "UNAVAILABLE_HISTORICAL_POINTER",
+          "receipt_sidecar_locator": "E:/_repoz/agent-memory-cpp/.worktrees/exact-lexical-topk-decision/.build/exact-lexical-topk/receipt.json.sha256",
+          "receipt_sha256": "3b4b62fd412fafbdaf89ab24adda7212e64ec8db1b4956eb95a29f2193c7548c",
+          "source_manifest_sha256": "747fb62a8ad7bade19883185605da6a6f4017dbeaecaf826e48efdcb76d1f167",
+          "validation_summary": "3 self-tests and complete matched matrix; not substituted for actual MSVC evidence"
+        },
+        {
+          "experiment_id": "r5_exact_lexical_topk",
+          "source_commit": "65a77fbd71f909b7b81b098063a9471da9a7284f",
+          "execution_checkout_commit": "65a77fbd71f909b7b81b098063a9471da9a7284f",
+          "expected_pr_head_sha": "f2bb63527f9d8289b5f592e89873641b552265ca",
+          "execution_status": "EXECUTED",
+          "environment": "GitHub Actions Ubuntu / GNU 15.2.0 / Unix Makefiles / Release / C++17 / x86_64",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44644634821 (exact-lexical-topk-decision-ubuntu-latest artifact, receipt.json)",
+          "receipt_validation_status": "EXTERNAL_POINTER_NOT_REPLAYED",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44644634821 (exact-lexical-topk-decision-ubuntu-latest artifact, receipt.json.sha256)",
+          "receipt_sha256": "c1de07a7a92883d41e0e694cc8ced88eb6a4f4dda9c03cf5d423465a89fe4d6b",
+          "source_manifest_sha256": "49458c61951989b37aded84c6494e090a88a7e017d5d0d28697337c25c1f373f",
+          "generated_source_manifest_sha256": "f1e8d700cb40c9cb5fe4ff85ef0a5b220d35cc8d347648cadf5f8d76bebf9ec5",
+          "fixture_recipe_sha256": "b38985811e7db76cab0172bdbb9af53b48da54e7a2507d7ac48e1218ac0547c5",
+          "validation_summary": "2026-11-20 owner-validator review of downloaded raw/sidecar against exact compiled checkout PASS; 3 focused CTests, 37 receipt negatives and 3 source-transform negatives; 16 legacy plus 12 profile cases, 1792 repeated operations; source/generated/corpus hashes, direct intervals and hybrid-filter preservation PASS. Registry only pins the reviewed external identity."
+        },
+        {
+          "experiment_id": "r5_exact_lexical_topk",
+          "source_commit": "65a77fbd71f909b7b81b098063a9471da9a7284f",
+          "execution_checkout_commit": "65a77fbd71f909b7b81b098063a9471da9a7284f",
+          "expected_pr_head_sha": "f2bb63527f9d8289b5f592e89873641b552265ca",
+          "execution_status": "EXECUTED",
+          "environment": "GitHub Actions Windows / MSVC 19.51.36260.0 / Visual Studio 18 2026 / Release / C++17 / AMD64",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44644634821 (exact-lexical-topk-decision-windows-latest artifact, receipt.json)",
+          "receipt_validation_status": "EXTERNAL_POINTER_NOT_REPLAYED",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44644634821 (exact-lexical-topk-decision-windows-latest artifact, receipt.json.sha256)",
+          "receipt_sha256": "5f94ffe4744b22ce39fea3994c8350550321072dcd88d331a75501f924ab8778",
+          "source_manifest_sha256": "92cd81088d74f92d93df87a556e35e8e2c8c477f493187aa5b326e23c315e297",
+          "generated_source_manifest_sha256": "f1e8d700cb40c9cb5fe4ff85ef0a5b220d35cc8d347648cadf5f8d76bebf9ec5",
+          "fixture_recipe_sha256": "b38985811e7db76cab0172bdbb9af53b48da54e7a2507d7ac48e1218ac0547c5",
+          "validation_summary": "2026-11-20 owner-validator review of downloaded raw/sidecar against exact compiled checkout PASS; 3 focused CTests, 37 receipt negatives and 3 source-transform negatives; 16 legacy plus 12 profile cases, 1792 repeated operations; actual MSVC/platform identity and source/generated/corpus hashes PASS. Registry only pins the reviewed external identity."
+        }
+      ]
+    },
+    {
+      "experiment_id": "r5_production_shaped_admission",
+      "algorithm_id": "hybrid_retrieval_scaffolding",
+      "owner_pull_request": "https://github.com/LimiNode/agent-memory-cpp/pull/666",
+      "latest_code_commit": "fd29d257c4a6017f41870e3cf845125e7a473130",
+      "evidence_role": "BOUNDED_EXECUTION_INDEX",
+      "decision_status": "CONDITIONAL",
+      "production_default_decision": "KEEP CURRENT",
+      "decision_scope": "Candidate crossover is conditional on the synthetic candidate/metadata regime; production defaults KEEP CURRENT. Generated admission replacements are not product-path activation.",
+      "production_activation": false,
+      "timing_scope": "Primary uninstrumented retrieve() includes fixture-index search, deterministic reranker, per-query lookup-index construction, admission checks and response materialization; fixture setup is excluded. Closure v2 separately times index search, trusted pool copy, reranker, admission, lookup construction, validation, trusted result copy and response materialization directly. Nested stage timers and setup+retrieve are not interchangeable with primary latency.",
+      "limitations": ["SYNTHETIC fixture index and deterministic reranker, not full product-path qualification", "Actual request-size frequencies NOT_EXECUTED: REPRESENTATIVE_REQUEST_DISTRIBUTION_UNAVAILABLE", "Sorted trusted-input and repeated-ID cases are controlled fixtures, not a representative workload distribution", "864 uninstrumented primary, 216 positive instrumented and 108 negative instrumented samples are fixed-fixture repetitions, not independent requests or stable tails", "Instrumented timings include nested scopes and clock overhead; never subtract unrelated scopes", "First observed mean crossover is machine/metadata dependent, not a stable threshold; conditional dispatch remains DEFER", "Ordinary C++ new/new[] allocation counters do not measure every allocator; peak retained workspace and process RSS NOT_MEASURED"],
+      "first_observed_mean_crossovers_source_commit": "df17946cb6cbad36f0da25caa6823dc67d3f41d7",
+      "first_observed_mean_crossovers": [
+        {"metadata_width": 2, "sorted_candidate_count": 500, "hash_candidate_count": 50},
+        {"metadata_width": 8, "sorted_candidate_count": 500, "hash_candidate_count": 100},
+        {"metadata_width": 32, "sorted_candidate_count": 100, "hash_candidate_count": 100}
+      ],
+      "runs": [
+        {
+          "experiment_id": "r5_production_shaped_admission",
+          "source_commit": "df17946cb6cbad36f0da25caa6823dc67d3f41d7",
+          "execution_checkout_commit": "df17946cb6cbad36f0da25caa6823dc67d3f41d7",
+          "execution_status": "EXECUTED",
+          "environment": "Local actual MSVC 19.44.35228.0 / Release / C++17 / one benchmark thread / shared host",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/blob/93855f56d432cbe8347c6ef4587b748c7540fbbe/guides/experiments/2026-11-19-r5-reranker-admission.receipt.json",
+          "receipt_validation_status": "EXTERNAL_POINTER_NOT_REPLAYED",
+          "receipt_sha256": "1eced1960433147dd5b6294cb06628b81916af3fa6b2ffe80de6972292249827",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/blob/93855f56d432cbe8347c6ef4587b748c7540fbbe/guides/experiments/2026-11-19-r5-reranker-admission.receipt.json.sha256",
+          "raw_output_sha256": "65a1cdc9ff6a0eca7e54b6093719f0ec697079220fde33c057793d3e0002dcd1",
+          "source_manifest_sha256": "0cff4e6862e7ddaa357a5d93bc9a57129b124f2dba50dee08d5784f4eafa0938",
+          "validation_summary": "3 focused CTests, 18 cases / 648 measured query samples, 11 fail-closed controls per arm; production linear parity and raw/source/generated/sidecar checks PASS"
+        },
+        {
+          "experiment_id": "r5_production_shaped_admission",
+          "source_commit": "50a3658359870cc5b8cb4d8a850986532f9477a2",
+          "execution_checkout_commit": "50a3658359870cc5b8cb4d8a850986532f9477a2",
+          "expected_pr_head_sha": "fd29d257c4a6017f41870e3cf845125e7a473130",
+          "execution_status": "EXECUTED",
+          "environment": "GitHub Actions Ubuntu / GNU 15.2.0 / Release / C++17 / x86_64 / clean configured source worktree",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44645703444 (production-reranker-admission-receipt-ubuntu-latest artifact, production-reranker-admission.json)",
+          "receipt_validation_status": "EXTERNAL_POINTER_NOT_REPLAYED",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44645703444 (production-reranker-admission-receipt-ubuntu-latest artifact, production-reranker-admission.sha256.json)",
+          "receipt_sha256": "1806f65ab584b5b62bc1769a2037ce678055c9d550cba23e5e472aae29fd0a7c",
+          "source_manifest_sha256": "f89f45061dedd4ac88d972a92a934a7396187cbbb7f143c5e42bc60be35b7dd9",
+          "fixture_sha256": "ac7da95c39b98136fb2d87c5e1d7d1ce73f6ed561022e82f0e628717080c4159",
+          "validation_summary": "2026-11-20 owner-validator review of downloaded raw/JSON-sidecar against exact compiled checkout PASS; 3 focused CTests, source/generated/fixture and clean-source gates; 18 primary cases, 6 sorted-input cases, 36 negative profile scenarios, 13 fail-closed controls per arm; 864 primary plus 324 separate instrumented samples. Registry only pins the reviewed external identity."
+        },
+        {
+          "experiment_id": "r5_production_shaped_admission",
+          "source_commit": "50a3658359870cc5b8cb4d8a850986532f9477a2",
+          "execution_checkout_commit": "50a3658359870cc5b8cb4d8a850986532f9477a2",
+          "expected_pr_head_sha": "fd29d257c4a6017f41870e3cf845125e7a473130",
+          "execution_status": "EXECUTED",
+          "environment": "GitHub Actions Windows / MSVC 19.51.36260.0 / Release / C++17 / AMD64 / clean configured source worktree",
+          "receipt_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44645703444 (production-reranker-admission-receipt-windows-latest artifact, production-reranker-admission.json)",
+          "receipt_validation_status": "EXTERNAL_POINTER_NOT_REPLAYED",
+          "receipt_sidecar_locator": "https://github.com/LimiNode/agent-memory-cpp/actions/runs/44645703444 (production-reranker-admission-receipt-windows-latest artifact, production-reranker-admission.sha256.json)",
+          "receipt_sha256": "a6d90d2fe685a95683ad18ce47ebff37cf05949f511342697ccbd449449aa1dd",
+          "source_manifest_sha256": "a8a9fb5c9f655903930bba7fedb335cacb8a246dc0a40918787337cfc362586d",
+          "fixture_sha256": "ac7da95c39b98136fb2d87c5e1d7d1ce73f6ed561022e82f0e628717080c4159",
+          "validation_summary": "2026-11-20 owner-validator review of downloaded raw/JSON-sidecar against exact compiled checkout PASS; 3 focused CTests, actual MSVC/platform identity and source/generated/fixture gates; 18 primary cases, 6 sorted-input cases, 36 negative profile scenarios, 13 fail-closed controls per arm; 864 primary plus 324 separate instrumented samples. Registry only pins the reviewed external identity."
+        }
+      ]
+    }
+  ]
+}

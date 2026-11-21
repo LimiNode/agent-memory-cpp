@@ -1123,7 +1123,7 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
         std::ifstream stream(fixture_path);
         if(!stream) throw std::runtime_error("cannot open native global exact MIH fixture");
         nlohmann::json fixture; stream >> fixture;
-        if(fixture.value("schema_version", 0) != 1 || fixture.value("family", "") != "mih_global_exact_conformance_fixture_v1" || fixture.value("code_bits", 0) != kCodeBits || fixture.value("construction", "") != "splitmix64_word0_only_zero_extend_to_256_v1" || fixture.value("canonical_order", "") != "hamming_distance_ascending_then_document_position_ascending_v1") throw std::runtime_error("native global exact MIH fixture contract is invalid");
+        if(fixture.value("schema_version", 0) != 1 || fixture.value("family", "") != "mih_global_exact_conformance_fixture_v1" || fixture.value("code_bits", 0) != kCodeBits || fixture.value("construction", "") != "splitmix64_four_sparse_xor_masks_per_code_little_endian_v2" || fixture.value("canonical_order", "") != "hamming_distance_ascending_then_document_position_ascending_v1") throw std::runtime_error("native global exact MIH fixture contract is invalid");
         const auto document_count = fixture.at("document_count").get<std::size_t>();
         const auto query_count = fixture.at("query_count").get<std::size_t>();
         const auto band_count = fixture.at("band_count").get<std::size_t>();
@@ -1132,12 +1132,23 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
         if(document_count < 768U || query_count == 0U || cutoff.size() != query_count || ks != std::vector<std::size_t>{10U, 64U, 128U, 256U, 512U, 768U} || band_count == 0U || kCodeBits % band_count != 0U) throw std::runtime_error("native global exact MIH fixture dimensions are invalid");
         const auto& upstream = fixture.at("upstream_reference");
         if(upstream.value("repository", "") != "https://github.com/norouzi/mih" || upstream.value("commit", "") != "96a629de834c1b974b0c5e378ab1037ee42120ab" || upstream.value("required_cutoff_max", 0U) != 128U || *std::max_element(cutoff.begin(), cutoff.end()) > 128U) throw std::runtime_error("native global exact MIH fixture upstream contract differs");
-        Input input; input.document_count = document_count; input.documents.assign(document_count * kWordCount, 0U);
-        std::uint64_t document_state = parse_hex_u64(fixture.at("document_seed").get<std::string>());
-        for(std::size_t position = 0; position < document_count; ++position) input.documents[position * kWordCount] = splitmix64_next(document_state);
-        std::vector<std::uint64_t> queries(query_count * kWordCount, 0U);
-        std::uint64_t query_state = parse_hex_u64(fixture.at("query_seed").get<std::string>());
-        for(std::size_t position = 0; position < query_count; ++position) queries[position * kWordCount] = splitmix64_next(query_state);
+        constexpr std::array<std::uint64_t, kWordCount> bases{{
+            0x6a09e667f3bcc909ULL, 0xbb67ae8584caa73bULL,
+            0x3c6ef372fe94f82bULL, 0xa54ff53a5f1d36f1ULL
+        }};
+        const auto generate_codes = [&bases](std::vector<std::uint64_t>& codes, std::uint64_t state) {
+            for(std::size_t position = 0; position < codes.size(); ++position) {
+                const auto first = splitmix64_next(state);
+                const auto second = splitmix64_next(state);
+                codes[position] = bases[position % kWordCount] ^ (first & second);
+            }
+        };
+        Input input; input.document_count = document_count; input.documents.resize(document_count * kWordCount);
+        const auto document_state = parse_hex_u64(fixture.at("document_seed").get<std::string>());
+        generate_codes(input.documents, document_state);
+        std::vector<std::uint64_t> queries(query_count * kWordCount);
+        const auto query_state = parse_hex_u64(fixture.at("query_seed").get<std::string>());
+        generate_codes(queries, query_state);
         const std::vector<std::size_t> widths(band_count, kCodeBits / band_count);
         const auto bands = make_bands(widths);
         const SparseIndex index(input.documents, input.document_count, bands, DirectoryMode::FlatOpenAddress);

@@ -94,6 +94,17 @@ int main() {
         if(digest_hex(agent_memory::sha256(input)) != vector.second) {
             return fail("SHA-256 boundary vector must match the standard digest");
         }
+        // Exercise every split across padding and compression-block boundaries.
+        for(std::size_t split = 0; split <= input.size(); ++split) {
+            agent_memory::Sha256Accumulator accumulator;
+            accumulator.update(std::string_view{input}.substr(0, split));
+            accumulator.update(std::string_view{});
+            accumulator.update(std::string_view{input}.substr(split));
+            const auto digest = accumulator.finish();
+            if(digest_hex(digest) != vector.second || accumulator.finish() != digest) {
+                return fail("incremental SHA-256 must preserve byte-exact boundary vectors");
+            }
+        }
     }
     std::string binary_input;
     for(unsigned value = 0; value < 256U; ++value) {
@@ -104,6 +115,19 @@ int main() {
         != "40aff2e9d2d8922e47afd4648e6967497158785fbd1da870e7110266bf944880"
     ) {
         return fail("SHA-256 binary multi-block vector must match the standard digest");
+    }
+    agent_memory::Sha256Accumulator binary_accumulator;
+    for(const auto byte : binary_input) {
+        binary_accumulator.update(std::string_view{&byte, 1});
+    }
+    if(binary_accumulator.finish() != agent_memory::sha256(binary_input)) {
+        return fail("incremental SHA-256 must preserve NUL and high-bit byte values");
+    }
+    const auto prefix_digest = binary_accumulator.finish();
+    binary_accumulator.update("abc");
+    if(prefix_digest != agent_memory::sha256(binary_input) ||
+       binary_accumulator.finish() != agent_memory::sha256(binary_input + "abc")) {
+        return fail("SHA-256 finish must not consume the accumulator state");
     }
 
     const auto global_scope = ScopeId::global();

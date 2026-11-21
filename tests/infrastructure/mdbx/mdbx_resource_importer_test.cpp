@@ -817,6 +817,18 @@ void run_offline_fencing_migration_checks() {
                    "offline fencing migration did not install schema marker");
             expect(token_value && !token_value->empty(),
                    "offline fencing migration did not create token");
+            // Frozen pre-consolidation wire vectors, independently calculated
+            // from the length-framed v3/v4 intent and the original domain bytes.
+            std::string token_hex;
+            constexpr char hex[] = "0123456789abcdef";
+            for(const unsigned char byte : *token_value) {
+                token_hex.push_back(hex[byte >> 4U]);
+                token_hex.push_back(hex[byte & 0x0fU]);
+            }
+            const auto expected_token = std::string_view{item.suffix} == "offline_migrate_v4"
+                ? "c63280240d52329aca828d72c16108edb66eef08c7a3c3e46b16cc26ca943033"
+                : "fca275820e03effe9d90cfe9f915ba638658f9a4ea7f93392a15aeef15115140";
+            expect(token_hex == expected_token, "persisted fencing token bytes changed");
         }
 
         MdbxResourceImporterOptions options;
