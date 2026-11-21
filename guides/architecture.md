@@ -51,6 +51,13 @@ types, templates, and trivial inline helpers.
 
 ## Boundary Guidelines
 
+The central [identity policy](identity-policy.md) owns category separation,
+external namespace issuance and the standalone AMXR value codec. It preserves
+the existing topic-owned allocation, revision, lifecycle, authorization and
+persistence contracts. External object identity is neither a local occurrence
+nor an MDBX physical address. Its current closure status is REVIEW_REQUIRED;
+it does not activate a conversation model, schema migration or production path.
+
 - Put stable value objects and contracts near the domain they describe.
 - Put dependency-owning implementations under `infrastructure/` or a
   dependency-specific subarea.

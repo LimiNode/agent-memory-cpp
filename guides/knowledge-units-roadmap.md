@@ -1,5 +1,12 @@
 # knowledge-units-roadmap.md
 
+Cross-cutting identity categories, external namespace issuance and standalone
+AMXR encoding are owned by [identity policy](identity-policy.md). This guide
+retains KnowledgeUnit occurrence/content-key, ScopeId, source binding and
+recipe-version semantics. The new reference does not replace KnowledgeUnitId,
+select a canonical revision, alter recipe v0/v1/v2 or silently normalize existing
+ScopeId bytes. Broader typed metadata and portable store profiles remain separate.
+
 Спецификация per-kind payload-компонентов и lifecycle FSM для подсистемы памяти `agent-memory-cpp`. Документ конкретизирует компонентную модель, описанную в `guides/memory-stacks-roadmap.md` (ADR-001), и согласована с retrieval-флоу в `guides/knowledge-base-roadmap.md`.
 
 > В будущем планируется переименование файла в `knowledge-payloads-roadmap.md` после завершения всех изменений; текущее имя сохранено для совместимости cross-references.

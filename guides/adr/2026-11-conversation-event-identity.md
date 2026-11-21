@@ -6,6 +6,12 @@
 - Milestone: later M2 conversation/session integration, not M1b text storage.
 - Scope: domain identity, source events, compatibility and implementation gates.
 
+Identity Architecture addendum: [identity policy](../identity-policy.md) is now
+the central owner of reusable external-reference namespaces, value semantics
+and exact AMXR v1 grammar. It supersedes this ADR's initial codec candidate,
+not its still-proposed conversation/event model. The companion identity value
+implementation does not implement ConversationId, EntryId, actors or a store.
+
 ## Context and owner
 
 [Canonical content storage, section 2.2](../canonical-content-storage-roadmap.md)
@@ -62,36 +68,15 @@ Neither an integer constructor nor this ADR supplies an allocator.
 
 ### External-reference tuple
 
-The proposed logical fields are:
-
-```text
-codec_version, object_kind,
-provider, service_instance, provider_identity_domain,
-conversation_key? (when the object key is conversation-local),
-object_key
-```
-
-Provider, service instance and identity domain are mandatory adapter-defined
-namespaces. A self-hosted service is not the same issuer as another instance.
-The identity domain records any account/workspace/tenant boundary required by
-the provider's uniqueness rule. An observer account used to download a shared
-message is normally observation/access provenance, not an identity component.
-Include it in identity only when the provider's actual identifier domain is
-account-local; document this choice in that adapter's contract.
-
-Keys are tagged signed i64, unsigned u64 or opaque UTF-8 string components,
-and explicitly framed tuples where a provider needs composite keys. A bare
-`variant<uint64_t, string>` is insufficient. Preserve component type, tuple
-arity and optional presence. Do not concatenate unescaped text with separators.
-Display names, aliases and URLs are mutable descriptors unless an adapter
-explicitly establishes a stable identity rule.
-
-For a future codec prototype, evaluate a versioned tuple framing with a type
-tag and u32 big-endian byte length per component, fixed-width big-endian
-two's-complement i64/u64 payloads, and strict UTF-8 string payloads. The tuple
-must encode arity, required fields and absent/present optional fields. This is
-a candidate, not an existing wire format; exact tags, limits, namespace
-normalization and hex goldens require review before persistence.
+Use the generic ExternalObjectRef described by the
+[central owner](../identity-policy.md#2-external-namespace-issuance-and-missing-identity),
+not a second chat-specific ExternalEntryRef. The parent_key's role is fixed by
+the object-kind recipe; it is not a separate unqualified ConversationId.
+Provider/instance/domain issuance, account-local exceptions, missing IDs,
+flat composite bounds, strict scalar equality and exact AMXR framing are
+specified there once. A selected event revision remains a separate binding.
+Any future durable event codec needs its own reviewed schema and provenance
+contract; the standalone reference does not supply that event format.
 
 Examples that the future fixture must distinguish:
 
@@ -164,11 +149,11 @@ validity remain distinct, as in the linked-derived-knowledge contract.
 | Episode payload and knowledge envelope | Derived references/provenance, not a second canonical conversation store |
 | Numeric MDBX mapping | Reuse reviewed storage composition later; do not change DBIs/comparators in this ADR |
 
-The smallest implementation after review is a dependency-free external-reference
-value/codec prototype with exact golden vectors and explicit limits. A canonical
-event store is a separate M2 slice after the product storage foundation and
-store/transaction/recovery owner are agreed. No provider SDK is required in
-core, and no implementation is included here.
+The current Identity Architecture workstream supplies the separate reusable
+external-reference value/codec and its qualification. A canonical event model
+and event store remain separate M2 slices after their product storage and
+store/transaction/recovery owners are agreed. No provider SDK is required in
+core, and no conversation implementation is included here.
 
 The following acceptance matrix is **required future work, not tests run by this
 documentation PR**:
