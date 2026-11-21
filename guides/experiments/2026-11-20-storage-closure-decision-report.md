@@ -543,6 +543,7 @@ main SHA observed immediately after that operation.
 | #659 | `91254e0f9fff1abee295da2f70c5af5edc9401bb` | `a7db7d94086aa979212671049e6b2a44dff7b0d0` | 44862754338 / 44862754286 SUCCESS | 44863527891 / 44863527811 SUCCESS |
 | #667 | `ea76d6a706ca86fc56a2fde5ffd30f4175f8f801` | `0c8b940373600479dce2d90e5cd80f512d92a4e2` | 44864254966 / 44864254963 SUCCESS | 44865075989 / 44865075992 SUCCESS |
 | #660 | `6d6602b952f33dcf0bc904bb0366a9b1bc7f49c8` | `1cc82fbcd5a1b685f9797bbea1afe88d75e953f4` | 44865894692 / 44865892974 SUCCESS | 44866555240 / 44866555095 SUCCESS |
+| #661 | `34c8572272b372580b009c469e4e8c4622e10247` | `a28031b698f8569b678fa8813e133fa806fa49ce` | 44867528171 / 44867528271 SUCCESS | 44868248866 / 44868248859 attempt 2 SUCCESS |
 
 The newly imposed per-step post-merge wait applies from #657 onward. The initial
 report had no separately captured #655 post-merge result. A later 2026-11-21
@@ -582,13 +583,25 @@ recovery does not establish its root cause.
 
 GitHub protected-rule suites 5261046327 (#655), 5261146696 (#656),
 5264438407 (#654), 5271919573 (#657), 5272215667
-(#658), 5272415504 (#659), 5272601606 (#667) and 5272781596 (#660) record
+(#658), 5272415504 (#659), 5272601606 (#667), 5272781596 (#660) and
+5272983669 (#661) record
 result pass, not bypass.
 The active required-status and pull-request rules from ruleset 24881787
 individually passed. The ruleset
 remained enabled; no privileged bypass or review-thread bypass was requested.
 Before/after diagnostic JSON, merge ledger and raw protected-rule evaluations
 are retained under `.artifacts/storage-integration-2026-11-20/`.
+
+#661's first post-merge packaging attempt failed in the Ubuntu minimal-package
+negative header-manifest diagnostic matcher, after package build/install and
+add_subdirectory, installed and relocated consumer executions had passed.
+The workflow did not print its rejected captured diagnostic, so the underlying
+cause is unknown. The other five packaging jobs passed. A normal targeted job
+rerun at the unchanged merge SHA completed successfully and printed the expected
+forbidden-header diagnostic. Both attempt logs are retained; attempt 1 is not
+erased or reclassified as success. No source/workflow/protection change was used
+to obtain attempt 2. Exact post-CI and a fresh protected-merge verification also
+passed before proceeding to #662.
 
 ### Fresh composed qualification, separate from final-main acceptance
 
@@ -674,9 +687,10 @@ directory. TSan remains unexecuted.
 
 ### Remaining queue and decision boundaries
 
-#658 is MERGED but its no-reuse contract is not considered complete without
-#661. Pending guarded order is #661, #662, #670, #672, #669,
-#675, #673, #663. Post-merge confirmation is complete through #660. The earlier
+#658 and its no-reuse corrective #661 are both MERGED. The combined identity
+slice has successful exact-head and post-merge checks; final-main qualification
+is still pending. Pending guarded order is #662, #670, #672, #669,
+#675, #673, #663. Post-merge confirmation is complete through #661. The earlier
 dependency DAG
 still applies; source branches are retained for safe child retargeting.
 
