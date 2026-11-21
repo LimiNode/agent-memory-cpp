@@ -535,18 +535,22 @@ main SHA observed immediately after that operation.
 
 | PR | Reviewed integrating HEAD | Merge / observed main | Exact-head CI / packaging | Post-merge CI / packaging |
 | --- | --- | --- | --- | --- |
-| #655 | `50ee4304dd4e824f2cefaf0556380c7561c4e6f5` | `f30901cf8fcee98d61f3b49396a6720f193f6579` | 44768591286 / 44768590922 SUCCESS | Superseded by the #656 checkpoint below; not represented as a separately observed #655 post-merge result |
+| #655 | `50ee4304dd4e824f2cefaf0556380c7561c4e6f5` | `f30901cf8fcee98d61f3b49396a6720f193f6579` | 44768591286 / 44768590922 SUCCESS | 44769910996 / 44769911078 SUCCESS, retrieved retrospectively on 2026-11-21 |
 | #656 | `ee8dffe4a9b205fb64ad9b966bac5909bff5ae54` | `0a43df571d4e2d5ad29de2c2cd3b00006637e248` | 44769936646 / 44769936617 SUCCESS | 44770689023 / 44770689239 SUCCESS |
 | #654 | `856d6039290f548592e2973d42345a9eb33f0e1a` | `cf054590b6a24a616bc23b03aa534fd6befbcefb` | 44794871155 / 44794871164 SUCCESS | 44796589327 / 44796589264 SUCCESS |
 | #657 | `281d73c505864e28697f30e7e01e9b2e922813f7` | `76af612918d84051a0bcd30283f4eb8382d902c9` | 44796648919 attempt 2 / 44796648892 SUCCESS | 44859486239 / 44859486250 SUCCESS |
 | #658 | `c2a6f14e520cb08e5f63e692fafac2adaa94fbe1` | `aa71b2b29fc0d68f959304cb26a323c4df53ffc6` | 44861143324 / 44861143210 SUCCESS | 44861882073 / 44861882126 SUCCESS |
 | #659 | `91254e0f9fff1abee295da2f70c5af5edc9401bb` | `a7db7d94086aa979212671049e6b2a44dff7b0d0` | 44862754338 / 44862754286 SUCCESS | 44863527891 / 44863527811 SUCCESS |
 | #667 | `ea76d6a706ca86fc56a2fde5ffd30f4175f8f801` | `0c8b940373600479dce2d90e5cd80f512d92a4e2` | 44864254966 / 44864254963 SUCCESS | 44865075989 / 44865075992 SUCCESS |
+| #660 | `6d6602b952f33dcf0bc904bb0366a9b1bc7f49c8` | `1cc82fbcd5a1b685f9797bbea1afe88d75e953f4` | 44865894692 / 44865892974 SUCCESS | 44866555240 / 44866555095 SUCCESS |
 
-The newly imposed per-step post-merge wait applies from #657 onward; the
-earlier #655/#656 documentation sequence is reported as actually observed,
-without inventing an individual #655 CI receipt. Links follow the repository
-Actions run form `https://github.com/LimiNode/agent-memory-cpp/actions/runs/<id>`.
+The newly imposed per-step post-merge wait applies from #657 onward. The initial
+report had no separately captured #655 post-merge result. A later 2026-11-21
+retrospective GitHub query recovered its exact-merge successful workflows and
+consistent GitHub Actions check records, closing that observation gap. This
+does not claim that a per-step wait was observed before #656 was merged.
+Links follow the repository Actions run form
+`https://github.com/LimiNode/agent-memory-cpp/actions/runs/<id>`.
 
 #654's corrective decoder distinguishes full C1 reads from bounded navigation.
 The direct-wire 1,048,577-block regression passes after same-process connection
@@ -576,10 +580,12 @@ owned by GitHub Actions app 15368. No empty commit or manufactured status was
 used. The cause of the server-side inconsistency remains unknown; successful
 recovery does not establish its root cause.
 
-GitHub protected-rule suites 5264438407 (#654), 5271919573 (#657), 5272215667
-(#658), 5272415504 (#659) and 5272601606 (#667) record result pass, not bypass.
-For #657/#658/#659/#667 the active required-status
-and pull-request rules from ruleset 24881787 individually passed. The ruleset
+GitHub protected-rule suites 5261046327 (#655), 5261146696 (#656),
+5264438407 (#654), 5271919573 (#657), 5272215667
+(#658), 5272415504 (#659), 5272601606 (#667) and 5272781596 (#660) record
+result pass, not bypass.
+The active required-status and pull-request rules from ruleset 24881787
+individually passed. The ruleset
 remained enabled; no privileged bypass or review-thread bypass was requested.
 Before/after diagnostic JSON, merge ledger and raw protected-rule evaluations
 are retained under `.artifacts/storage-integration-2026-11-20/`.
@@ -669,8 +675,8 @@ directory. TSan remains unexecuted.
 ### Remaining queue and decision boundaries
 
 #658 is MERGED but its no-reuse contract is not considered complete without
-#661. Pending guarded order is #660, #661, #662, #670, #672, #669,
-#675, #673, #663. Post-merge confirmation is complete through #667. The earlier
+#661. Pending guarded order is #661, #662, #670, #672, #669,
+#675, #673, #663. Post-merge confirmation is complete through #660. The earlier
 dependency DAG
 still applies; source branches are retained for safe child retargeting.
 
