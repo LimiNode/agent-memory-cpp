@@ -123,3 +123,88 @@ retain separate measurements for query execution, index publication, snapshot
 materialization, and reopen. The current branch does not claim R3A execution
 or quality. A persistent adapter should only be wired into the product path
 after an equivalent query contract and freshness/scope proof exist.
+
+## 2026-11-22: full persistent candidate-call baseline
+
+This is a new experiment using the opt-in candidate API from Draft #683, not a
+relabeling of the historical rebuild/R2 measurements above. The question is
+whether TF and BM25 agree with independent arithmetic on identical inputs,
+and how the complete `generate_window()` cost scales with active flat state.
+This does not complete product lexical Phase 1 or enable a new default.
+
+The native target is
+`agent-memory-persistent-lexical-candidate-qualification`; its runner/validator
+is `tools/lexical-research/validate_persistent_candidate_qualification.py`.
+It invokes the production adapter, including tokenization, MDBX snapshot
+reconstruction, postings, scoring, selection, result creation and destruction.
+It does not substitute a separately timed scalar scorer for the public call.
+
+The full matrix has 144 arms: N=32/128/512, fixed 16-token or mixed 16/128-token
+documents, six query classes (common, rare, absent, repeated, technical
+identifier, Russian/English), K=1/10 and TF/BM25. The smoke matrix omits N=512
+(96 arms). Each matched pair uses the same database and ordered token-corpus
+SHA-256. K changes the request limit, not the unadmitted window; equality of
+the returned windows is checked. TF remains the default, including old
+three-field aggregate options and legacy `generate()` limiting.
+
+The independent double oracle computes collection lengths, DF and scores from
+input tokens without calling the production BM25 helper or reading snapshot
+statistics. It checks every candidate ID/order/score, including empty results
+and ties, with absolute/relative tolerance 1e-5. Analytic BM25 goldens and
+score/identity/nonfinite mutations test the oracle comparison. Replacement
+uses explicit expected-current identity; erase and same-process close/reopen
+are checked against the new corpus. This is not a crash/restart test.
+
+After two warm-ups, seven fixed-query samples alternate TF/BM25 execution
+order. C++ ordinary/aligned `new` counts and cumulative allocated bytes are
+measured in separate calls, with counters disabled for latency samples. These
+are not MDBX malloc/mmap, live memory, peak memory or RSS. Independent
+`read_snapshot()` and tokenizer timings are diagnostics: their medians cannot
+be subtracted from the full call to infer internal stage costs. No internal
+postings/scoring/selection stage attribution is claimed.
+
+The source binding covers the sorted union of the explicit evaluator/build
+list and every tracked file under `src/` and `cmake/`, hashed as ordered
+`path:sha256\n` records. Receipts also record exact compiled checkout, expected
+HEAD, actual executable hash/size, compiler/configuration/flag hashes, platform,
+pointer width, pinned dependency revisions and compiled JSON version. Qualified
+runs require actual in-tree libmdbx/mdbx-containers targets in BUNDLED mode and
+clean source/dependency checkouts. JSON version is observed, not a complete
+third-party header-source attestation. The executable hash identifies its
+linked bytes; these records are reproducibility checks, not signed execution
+attestation.
+
+The expected HEAD must be the checkout or the second parent of a two-parent
+merge (CI may compile the synthetic PR merge). Receipt validation requires the exact measured
+checkout and executable; a later documentation commit must not rebind old raw
+data to itself. The SHA-256 sidecar detects receipt-byte changes. CI runs the
+native/validator controls and smoke matrix for research or storage changes,
+and uploads the receipt plus sidecar.
+
+Build with JSON, benchmarks, tests, research tests and MDBX enabled, BUNDLED
+dependencies, and a Release C++17 compiler. Set
+`AGENT_MEMORY_CANDIDATE_EXPECTED_HEAD` explicitly on every measured configure;
+a Git HEAD change alone does not refresh CMake definitions. With a clean
+committed checkout:
+
+```text
+ctest --test-dir <build> -C Release --output-on-failure -R persistent_candidate_qualification
+python tools/lexical-research/validate_persistent_candidate_qualification.py --source-root . --binary <executable> --expected-head <measured-sha> --output <build>/candidate-full.json
+python tools/lexical-research/validate_persistent_candidate_qualification.py --source-root . --binary <executable> --expected-head <measured-sha> --receipt <build>/candidate-full.json
+```
+
+This protocol is a directional synthetic mechanics/cost baseline. Seven
+repeated invocations are not seven independent requests or process trials;
+they do not establish stable p99, a capacity SLO or a production threshold.
+Applied query quality remains unqualified. The existing manually judged
+synthetic English fixture is not representative applied qrels; the R3A corpus
+has no qrels. Neither is silently promoted into new quality evidence.
+
+For a future flat-snapshot optimization, preserve this source-bound workload,
+all IDs/order/scores and completeness/lifecycle/admission controls. Compare
+full-call cost, including absent/common queries and both length profiles;
+do not move reconstruction outside the timer. Require independent process
+trials and environment control before claiming a stable performance change.
+Lower scorer-only latency or a faster incomplete window is not equivalent.
+No storage schema, production default, metadata/access authority or shared
+canonical/lexical frontier is changed by this qualification.
