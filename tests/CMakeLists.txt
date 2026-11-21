@@ -891,6 +891,25 @@ if(AGENT_MEMORY_ENABLE_MDBX)
     )
     set_tests_properties(agent_memory_mdbx_canonical_flat_storage_test PROPERTIES TIMEOUT 60)
 
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_executable(agent_memory_numeric_storage_conformance
+        infrastructure/mdbx/numeric_storage_conformance.cpp
+    )
+    target_link_libraries(agent_memory_numeric_storage_conformance
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(NAME agent_memory_numeric_storage_conformance
+        COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/tools/run-numeric-storage-conformance.py
+            --executable $<TARGET_FILE:agent_memory_numeric_storage_conformance>
+            --artifacts ${CMAKE_CURRENT_BINARY_DIR}/numeric-conformance-$<CONFIG>
+    )
+    set_tests_properties(agent_memory_numeric_storage_conformance PROPERTIES TIMEOUT 180)
+    add_test(NAME agent_memory_numeric_storage_conformance_diagnostics
+        COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/tools/test-numeric-storage-conformance.py)
+    set_tests_properties(agent_memory_numeric_storage_conformance_diagnostics PROPERTIES TIMEOUT 20)
+
     add_executable(agent_memory_mdbx_canonical_large_body_test
         infrastructure/mdbx/mdbx_canonical_large_body_test.cpp
     )
