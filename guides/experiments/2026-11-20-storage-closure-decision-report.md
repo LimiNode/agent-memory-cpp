@@ -2,8 +2,9 @@
 
 Currency note (2026-11-21): the sections preceding the
 [Post-Merge Integration Addendum](#post-merge-integration-addendum) preserve
-historical pre-integration evidence. The addendum records the current partial
-integration; it is not final acceptance of the remaining queue.
+historical pre-integration evidence. The addendum records all sixteen runtime
+merges and actual final-main qualification, with their separate evidence
+bindings. This report still requires independent final merge-review.
 
 Date: 2026-11-20. Status: engineering qualification complete within the stated
 boundaries; no merge authorization.
@@ -521,7 +522,8 @@ numeric migration or production activation was performed by this refresh.
 
 ## Post-Merge Integration Addendum
 
-Date: 2026-11-21. Status: **integration in progress**, not final merge-review.
+Date: 2026-11-21. Status: **runtime integration and scoped final qualification
+complete; separate final merge-review required**.
 The user authorized guarded normal merges of the selected storage stack. The
 new review requires post-merge CI/packaging before advancing each PR and a
 separate final merge-review of this report (#674). This report must not be
@@ -550,7 +552,7 @@ main SHA observed immediately after that operation.
 | #669 | `518e31afcbca1784ca9ab2e0fb64aa923d10d37f` | `8017a6de2c8ab5bcd030ed57fa9e0915679a426d` | 44875003336 / 44875003298 SUCCESS | 44875283009 / 44875283463 SUCCESS |
 | #675 | `be4c2506823f3e10609fa4ed60285ad3bd0b5234` | `01e6f4817ddf75a741a2e34f7f56fe0c74003b2e` | 44875602227 / 44875602186 SUCCESS | 44876083593 / 44876083534 SUCCESS |
 | #673 | `bcbdabe0b84c578f1ae354ae474bdbec7c415c0c` | `e8c69e65c92d570132e2405a7a632b53a74fa92a` | 44876737183 / 44876737170 SUCCESS | 44877545491 / 44877545482 SUCCESS |
-| #663 | `af598cb28d3b4a79beb026fc1fbf6076c79e65ee` | `acd5ad5545386b3feeaa79f8a587855b60801b4d` | 44878411285 / 44878411384 SUCCESS | 44879234606 / 44879234421 PENDING |
+| #663 | `af598cb28d3b4a79beb026fc1fbf6076c79e65ee` | `acd5ad5545386b3feeaa79f8a587855b60801b4d` | 44878411285 / 44878411384 SUCCESS | 44879234606 / 44879234421 SUCCESS |
 
 The newly imposed per-step post-merge wait applies from #657 onward. The initial
 report had no separately captured #655 post-merge result. A later 2026-11-21
@@ -671,7 +673,8 @@ all eight owned evidence/tool/header blobs and the immutable raw/receipt pair.
 Independent exact-composition review found no blocker. Its exact-head benchmark
 job passed all nineteen selected harness cases. Its existing CI regex does not
 select the five registered canonical benchmark self-test/replay/launch-control
-cases; they require a separate direct final-source execution. The retained measurements still name
+cases; their separate direct final-source execution passed 5/5 below.
+The retained measurements still name
 `a7a71807...`, not the integrating HEAD or final main. Adapter KV/value-byte
 counters do not measure physical page I/O or allocated disk blocks, and the
 16,384-block timing does not establish universal flat-over-C1 superiority.
@@ -758,18 +761,145 @@ limitation. Receipt SHA-256:
 Both original and repeat logs/XML are retained under the integration evidence
 directory. TSan remains unexecuted.
 
+### Actual final-main qualification
+
+Final runtime main is `acd5ad5545386b3feeaa79f8a587855b60801b4d`.
+Its post-merge CI [44879234606](https://github.com/LimiNode/agent-memory-cpp/actions/runs/44879234606)
+and packaging [44879234421](https://github.com/LimiNode/agent-memory-cpp/actions/runs/44879234421)
+both passed. A fresh protected-rule verification records ordinary `pass` and
+`post_merge_pass=true`. The existing storage-final worktree was switched
+normally to this exact detached commit; the preflight branch remains at
+`847b49b...`. Final `src` and `external` trees equal the recorded preflight trees.
+That static equality is not substituted for the new executions below.
+
+At actual final main, the DBI manifest/self-test, publication audit self-test,
+four directional dependency/upgrade controls, benchmark validator self-test,
+ten launch controls and immutable full retained receipt replay all pass.
+Validator receipt SHA-256:
+`57431d8ffccbcadae416728c30dd27abde4d53299060581c65688d19f2b0e399`.
+All seven configuration rebuilds, installed-consumer checks and targeted
+final-source sanitizer qualification pass. These are new final-source
+executions, not the preflight results:
+
+| Toolchain / configuration | MDBX / JSON | CTest | Final-source receipt SHA-256 |
+| --- | --- | --- | --- |
+| MinGW Release | OFF / OFF | 52/52 PASS | `5931b000f25ab56d7161c7704b95fcef856157d2463d93a73d17fbf8b2227702` |
+| MinGW Release | OFF / ON | 57/57 PASS | `6c332d08110da5abfcfa38c6a2cd0e5be8cd2a05254f584952a3b93f14e3754f` |
+| MinGW Release | ON / OFF | 91/91 PASS | `f99ed04f708e724a614e450b413f1e5d083242cd706ee056515aaa7b7f773cf3` |
+| MinGW Release | ON / ON | 97/97 PASS | `c47dfbef3378e4899dbf8ad4ecef03140af7c50ae9d04ae085f2f2feb5c2300f` |
+| MinGW Debug | ON / OFF | 91/91 PASS | `d1253677d863b41aa57b329a246485d5f5293fed9cd2441e63ecde4abc6336f3` |
+| MSVC Release | ON / OFF | 91/91 PASS | `f2261d025b8f3ab0176abb53e89557b3fc915cf701a63a224dcdcddc79635416` |
+| MSVC Debug | ON / OFF | 91/91 PASS | `e9c4bec652688feffc49af32e0606ffeadc63d28d7d0c1333c7270be1d3a2728` |
+
+This is 570 test executions across seven configurations, not 570 distinct
+tests. All have zero failures/disabled/skipped cases. Each retained build
+directory was explicitly reconfigured and rebuilt with `--clean-first`, not
+created from an empty CMake cache. C++17/options, exact dependency checkouts,
+source cleanliness, all seven JUnit suites and twenty-eight execution artifact
+hashes were separately rechecked. TMP/TEMP is isolated per profile; each CTest
+suite runs serially. The earlier long-TEMP and checked-STL limitations remain
+as documented above.
+
+Final-source native installed-consumer qualification passes all twenty-two
+steps and six executable runs across Release/Debug. The matching source-built
+core/MDBX `.lib` archives equal their installed copies; exports contain no
+source/build dependency paths. New configuration-separated prefixes are under
+`.build/sf-msvc-package-final-acd5ad55/`. As in preflight, this uses the retained
+local native SDK fixture and does not qualify the unchanged Unix-only provider
+as an MSVC provider. Receipt SHA-256:
+`bc3d50d50e49416d5a0aa56629dd435f1fca1c52002f42309688ba0371ec1e8c`.
+
+The final-main CI Linux MDBX job 136770695187 passed 97/97 CTest cases in
+7.29 seconds. Its complete downloaded log has SHA-256
+`82282e27dab7225da52f4aaff221ca30754879795a5e6dc68dd52ee1c541a1f8`.
+This is source-bound GitHub-hosted Linux execution, separate from the local
+Windows matrix and the targeted WSL sanitizer qualification.
+
+Final-source MinGW installed-consumer qualification passes all thirty-four
+steps, including minimal, JSON, MDBX catalog, hydration and Raw Markdown
+consumers. The two MDBX profiles each pass the required named numeric/flat
+installed CTest cases (2/2 each). New prefixes are under
+`.build/sf-package-final-acd5ad55/`; the preflight prefixes remain intact.
+Relocation, installed-export path checks, exact version policy, missing-prefix
+rejection, positive/negative header manifests and built/installed archive
+equality all pass. Receipt SHA-256:
+`7bad1b6730535081d796cbcee05a7e4e0a6297617d19b867061f58da45b5a87f`
+(installed) and
+`8f8c7e8d7f7b131d76060d63fc7a11e31057c75e3899f2ff00ec84f60fd5fba3`
+(package controls).
+
+The five canonical benchmark gates excluded by the existing CI regex were
+directly executed at final main: native self-test, smoke receipt replay,
+immutable retained receipt replay, validator self-test and launch controls.
+All 5/5 named enabled cases passed in 2.21 seconds. Their temporary benchmark
+configuration was restored to OFF, and all five execution artifacts were
+retained and hashed. Receipt SHA-256:
+`6e7c8ec021c56f2d1f097eb84340168c554ef7bdd55e9f4d916b5154e9a93b0d`.
+Only smoke/control work was newly measured; the full retained benchmark was
+replayed, not remeasured. Future automatic CI coverage of these five gates
+remains distinct from this completed manual qualification.
+
+The downloaded post-main Linux numeric conformance receipt names this actual
+final SHA and external tree `b816ddeccafa0375c15b977e71d4a36f6728f59f`.
+It passes nineteen fresh processes/five negative controls, numeric round-trip,
+OLD rejection without modification, reopen and interrupted-transaction recovery.
+Receipt SHA-256:
+`5ae2385c20b41252e13755a987b83dfcd91a98f910f45c7c260515fd070d3843`.
+It retains `migration_executed=false` and `post_migration_upgrade_proof=false`;
+the OLD schema fixture is still not an OLD library executable or migration.
+
+The separate downloaded historical upgrade receipt also names this final SHA,
+source tree `87a70c0f850266e549458be40f05760febb1050f` and the exact audited
+external transition. It passes seven processes and fresh-process reopen, while
+remaining `HISTORICAL_ONLY`, with both proof flags false and zero logical-row
+validation entries. Receipt SHA-256:
+`288fcb22ff53ef4b7b8d73bf8a63e078c8bbf575f594d1e42670437d76ecc947`.
+
+The first final-source sanitizer launch stopped before build/CTest: Linux Git
+could not interpret this Windows-owned worktree's Windows-absolute gitdir.
+Its FAIL receipt is retained, SHA-256
+`8b2d2af6c27cf25e424dc10180856cc7152403f3cc9751ab2bf068ec36d3c699`.
+It has no JUnit result because no tests ran. Only the local launcher guard was
+corrected to convert paths and use the owning Windows Git through WSL; native
+command exits, exact HEAD/cleanliness and both dependency pins remain checked.
+No Git metadata, product source, sanitizer flags, test selection or timeouts
+changed. The corrected source-bound execution is assessed separately below.
+
+The corrected final-main WSL GCC 15.2 C++17 Debug ASan/UBSan execution passed
+all eight named enabled tests with zero failures/disabled/skipped in 102.80
+seconds. Leak detection, halt-on-error, `MDBX_UNALIGNED_OK=0`, Linux-native TMP,
+serial execution and the unchanged 60/120-second timeouts were retained.
+The flat-storage test took 55.52 seconds; the large C1 body took 44.96 seconds.
+The source/dependency guards passed after execution and the complete log/XML
+were hashed. Receipt SHA-256:
+`b56b6ab01393428da5d7133a4f44242efa1d5b5f7e741009bb4c1596d408f5c2`.
+This single passing run does not establish general timing robustness or
+diagnose the earlier preflight timeout. The initial launcher FAIL is not
+reclassified as a passed test. TSan remains unexecuted.
+
+### Remaining Open/Draft inventory
+
+A fresh GitHub snapshot on 2026-11-21 still observes final main `acd5ad55...`:
+28 open PRs, of which 27 are Draft. #674 is the only Ready PR in that snapshot
+and remains reserved for separate final merge-review. The untouched drafts are
+#679, #678, #677, #676, #651, #650, #649, #648, #644, #637, #629, #626, #618,
+#561, #558, #557, #556, #555, #554, #553, #552, #551, #550, #549, #544, #534
+and #518. Their exact heads/bases are retained in the timestamped local GitHub
+inventory. No outside-batch branch, PR disposition or second-agent research was
+changed by this integration.
+
 ### Remaining queue and decision boundaries
 
 #658 and its no-reuse corrective #661 are both MERGED. The combined identity
-slice has successful exact-head and post-merge checks; final-main qualification
-is still pending. #672 is merged with successful post-merge checks.
-#673 is merged with successful post-merge checks. #663 is merged; its post-merge
-checks remain pending. Post-merge confirmation is complete through #673. The earlier
-dependency DAG
-still applies; source branches are retained for safe child retargeting.
+slice has successful exact-head, post-merge and final-main qualification.
+#672 is merged with successful post-merge checks and final consumer validation.
+#673 and #663 are merged with successful post-merge checks. All sixteen runtime
+merges have fresh normal protected-rule and post-merge confirmation. The earlier
+dependency DAG records the actual integration order; source branches remain
+retained. No runtime PR remains in this authorized set.
 
-Final-main qualification and this report's separate final merge-review remain
-pending. TESTED and REVIEWED do not imply MERGED; MERGED does not imply
+Scoped final-main qualification is complete; this report's separate final
+merge-review remains pending. TESTED and REVIEWED do not imply MERGED; MERGED does not imply
 PRODUCTION ACTIVE or MIGRATED. Numeric production retrieval/default activation,
 real database migration, tag/release and changes to second-agent research were
 not performed. Both migration flags remain false. The retained OLD physical
