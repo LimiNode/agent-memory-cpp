@@ -1,5 +1,10 @@
 # Storage correctness closure and integration decision
 
+Currency note (2026-11-21): the sections preceding the
+[Post-Merge Integration Addendum](#post-merge-integration-addendum) preserve
+historical pre-integration evidence. The addendum records the current partial
+integration; it is not final acceptance of the remaining queue.
+
 Date: 2026-11-20. Status: engineering qualification complete within the stated
 boundaries; no merge authorization.
 Scope: first-agent storage batch #654–#663, #667, #669, #670, #672, #673 and #675.
@@ -513,3 +518,125 @@ BEHIND despite its published-head SUCCESS. The dependency order above still
 applies: refresh the selected parents/children and checks against then-current
 main before any separately authorized integration. No merge/tag/release,
 numeric migration or production activation was performed by this refresh.
+
+## Post-Merge Integration Addendum
+
+Date: 2026-11-21. Status: **integration in progress**, not final merge-review.
+The user authorized guarded normal merges of the selected storage stack. The
+new review requires post-merge CI/packaging before advancing each PR and a
+separate final merge-review of this report (#674). This report must not be
+automatically merged under that authorization.
+
+### Confirmed integration ledger
+
+Each merge used an exact expected HEAD, normal protected merge, verification
+of both parents, and retained source branches. Each merge commit is also the
+main SHA observed immediately after that operation.
+
+| PR | Reviewed integrating HEAD | Merge / observed main | Exact-head CI / packaging | Post-merge CI / packaging |
+| --- | --- | --- | --- | --- |
+| #655 | `50ee4304dd4e824f2cefaf0556380c7561c4e6f5` | `f30901cf8fcee98d61f3b49396a6720f193f6579` | 44768591286 / 44768590922 SUCCESS | Superseded by the #656 checkpoint below; not represented as a separately observed #655 post-merge result |
+| #656 | `ee8dffe4a9b205fb64ad9b966bac5909bff5ae54` | `0a43df571d4e2d5ad29de2c2cd3b00006637e248` | 44769936646 / 44769936617 SUCCESS | 44770689023 / 44770689239 SUCCESS |
+| #654 | `856d6039290f548592e2973d42345a9eb33f0e1a` | `cf054590b6a24a616bc23b03aa534fd6befbcefb` | 44794871155 / 44794871164 SUCCESS | 44796589327 / 44796589264 SUCCESS |
+| #657 | `281d73c505864e28697f30e7e01e9b2e922813f7` | `76af612918d84051a0bcd30283f4eb8382d902c9` | 44796648919 attempt 2 / 44796648892 SUCCESS | 44859486239 / 44859486250 SUCCESS |
+| #658 | `c2a6f14e520cb08e5f63e692fafac2adaa94fbe1` | `aa71b2b29fc0d68f959304cb26a323c4df53ffc6` | 44861143324 / 44861143210 SUCCESS | 44861882073 pending / 44861882126 SUCCESS at this checkpoint |
+
+The newly imposed per-step post-merge wait applies from #657 onward; the
+earlier #655/#656 documentation sequence is reported as actually observed,
+without inventing an individual #655 CI receipt. Links follow the repository
+Actions run form `https://github.com/LimiNode/agent-memory-cpp/actions/runs/<id>`.
+
+#654's corrective decoder distinguishes full C1 reads from bounded navigation.
+The direct-wire 1,048,577-block regression passes after same-process connection
+reopen. It does not qualify the ordinary writer at that size, fresh-process
+recovery at that size, or numeric migration. #658's normal main refresh resolved
+only a CMake test-registration conflict, preserving both the numeric-pilot and
+identity tests; those focused MDBX tests passed 2/2. The runtime patch remained
+six files / 770 insertions with no accidental main deletions.
+
+### Required-check recovery and protected merge evidence
+
+The original #657 check 136505277190 had contradictory in_progress/success
+state despite its completion timestamp and successful workflow/suites. The
+guard rejected it. The installed GitHub CLI subsequently recovered and its
+existing keyring credential could normally rerun that job; a different
+environment credential had returned 403. Workflow 44796648919 attempt 2 retained
+the exact reviewed HEAD. Replacement gate 136708785347 is completed/success,
+owned by GitHub Actions app 15368. No empty commit or manufactured status was
+used. The cause of the server-side inconsistency remains unknown; successful
+recovery does not establish its root cause.
+
+GitHub protected-rule suites 5264438407 (#654), 5271919573 (#657) and 5272215667
+(#658) record result pass, not bypass. For #657/#658 the active required-status
+and pull-request rules from ruleset 24881787 individually passed. The ruleset
+remained enabled; no privileged bypass or review-thread bypass was requested.
+Before/after diagnostic JSON, merge ledger and raw protected-rule evaluations
+are retained under `.artifacts/storage-integration-2026-11-20/`.
+
+### Fresh composed qualification, separate from final-main acceptance
+
+Clean local composition `847b49b334798bc8b8b214aeb607aa71e6cc15e9` normally
+includes main `76af6129...` and the remaining selected stack. Its src tree is
+`87a70c0f850266e549458be40f05760febb1050f`; its external tree is
+`b816ddeccafa0375c15b977e71d4a36f6728f59f`. It is an existing preflight branch,
+not a replacement integration PR. The following are new C++17 executions at
+that exact source, not relabelled historical benchmark or main results.
+
+| Toolchain / configuration | MDBX / JSON | CTest | Receipt SHA-256 |
+| --- | --- | --- | --- |
+| MinGW Release | OFF / OFF | 52/52 PASS | `3c44021e18a70c7dd0b2547c971ad997c10845b19178db41d5ea25edcd49f988` |
+| MinGW Release | OFF / ON | 57/57 PASS | `1f6e646b9b22e4a2dc10cda3e78e973113bb6536c8e9377c74c5d44f1b9a9f85` |
+| MinGW Release | ON / OFF | 91/91 PASS | `20dfa0ad3877bfe62c8c50ac14c58fa32db368ecd564794c647ec261396f100a` |
+| MinGW Release | ON / ON | 97/97 PASS | `3f1b9c83ed63aaace63a033a9fe8bb19b53f6dded88a5cabd8a613e756e6139a` |
+| MinGW Debug | ON / OFF | 91/91 PASS | `5112246f9302c090b3007e194cbbac9bd45ae2099c5a9faead3a5c1840d132ab` |
+| MSVC Release | ON / OFF | 91/91 PASS | `b7e98d85da7423f6043a6474ef865d286ff725afb92893445e49cd573ab232c7` |
+| MSVC Debug | ON / OFF | 91/91 PASS | `131866d0e8366c7a63258b5eaa8be1414428baa0127f0f11692f0475c6eef45b` |
+
+All seven have zero failures/disabled tests. Existing build directories were
+reconfigured and rebuilt, not empty-cache builds. Research/benchmark registration
+is OFF. TMP/TEMP is isolated per profile and CTest is serial. The first MSVC
+Release execution with the longer temporary path failed the artifact catalog
+test (exit 0xc0000409); its original log/XML is retained. The identical binary
+passed a short-TEMP focused rerun, then the complete short-TEMP Release/Debug
+profiles passed as above. This does not establish general long-path support.
+The local runner was also corrected to retain native nonzero exit evidence
+instead of stopping on PowerShell's stderr conversion before writing a receipt.
+
+Fresh installed-consumer execution at this source covers minimal, JSON, both
+MDBX catalog profiles, both hydration profiles, both Raw Markdown profiles and
+numeric/flat conformance (2/2 CTest per MDBX profile). The installed fixtures use
+public installed targets, not core source/build include paths. Relocation,
+export-path checks, exact version policy, missing-prefix negative control,
+positive/negative public-header manifest checks and archive equality all pass.
+New prefixes are under `.build/sf-package-847b49b/`; the historical package
+qualification is preserved. Receipts SHA-256:
+`46ae5500ef0c278f5ad08d086025cc5335926e9a10777e69b727264d55f794f6`
+(installed consumers) and
+`37842e0d55de94b6e3bbefade233607c1022a2d461e2db02b90a949bab9a1483`
+(package controls). An initial local runner argument-shape failure is retained
+as FAIL and is not library qualification evidence.
+
+Direct current-source DBI manifest/self-tests, publication audit, dependency /
+upgrade evidence controls (4/4), benchmark validator/self-tests, benchmark launch
+controls (10/10) and full retained benchmark replay pass. These direct checks
+are necessary because the matrix disables research/benchmark CTest registration.
+Validator receipt SHA-256:
+`b3a4f31a78b43f0e91882670c88ebe234ba01ce4425c6177d55560bc6bc1db8d`.
+The measured TSV/receipt and their original measured-source hashes were not
+modified. New targeted Linux ASan/UBSan execution is pending; older sanitizer
+results above retain their original source binding.
+
+### Remaining queue and decision boundaries
+
+#658 is MERGED but its no-reuse contract is not considered complete without
+#661. Pending guarded order is #659, #667, #660, #661, #662, #670, #672, #669,
+#675, #673, #663 after #658 post-merge confirmation. The earlier dependency DAG
+still applies; source branches are retained for safe child retargeting.
+
+Final-main qualification and this report's separate final merge-review remain
+pending. TESTED and REVIEWED do not imply MERGED; MERGED does not imply
+PRODUCTION ACTIVE or MIGRATED. Numeric production retrieval/default activation,
+real database migration, tag/release and changes to second-agent research were
+not performed. Both migration flags remain false. The retained OLD physical
+fixture is not a historical OLD library executable. Historical replay and
+fresh-process numeric conformance remain distinct evidence classes.
