@@ -4,6 +4,7 @@
 #if AGENT_MEMORY_HAS_MDBX
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <mdbx_containers/KeyValueTable.hpp>
 #include <string_view>
 #include <stdexcept>
@@ -58,7 +59,7 @@ void make_revision_block_count_oversized(std::string& payload) {
     payload.replace(count_start, position - count_start, "1048577:");
 }
 
-void make_body_block_count_oversized(std::string& payload) {
+void replace_body_block_count(std::string& payload, const std::string& count) {
     std::size_t position = 0U;
     skip_length_field(payload, position); // body codec version
     skip_length_field(payload, position); // body revision
@@ -66,7 +67,7 @@ void make_body_block_count_oversized(std::string& payload) {
     skip_length_field(payload, position); // codec name
     const auto count_start = position;
     read_length_field(payload, position);
-    payload.replace(count_start, position - count_start, "1048577:");
+    payload.replace(count_start, position - count_start, count + ":");
 }
 
 CanonicalDocumentRevision fixture() {
@@ -286,6 +287,15 @@ int main() {
         }
         expect(oversized_children_rejected && oversized_subtree_rejected,
                "zero-budget navigation decoded an oversized revision");
+        bool impossible_revision_rejected = false;
+        try {
+            (void)store.read_revision(initial.document_id, 0);
+        } catch (const std::runtime_error& exception) {
+            impossible_revision_rejected = std::string_view(exception.what()) ==
+                "canonical revision block count exceeds remaining payload";
+        }
+        expect(impossible_revision_rejected,
+               "ordinary revision read did not reject an impossible count before allocation");
 
         revision_transaction =
             context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
@@ -300,18 +310,25 @@ int main() {
         auto body_payload = bodies.find(body_key("navigation-mdbx", 1), body_transaction);
         expect(body_payload.has_value(), "initial body row was not found");
         const auto original_body_payload = *body_payload;
-        make_body_block_count_oversized(*body_payload);
-        bodies.insert_or_assign(
-            body_key("navigation-mdbx", 1), *body_payload, body_transaction);
-        body_transaction.commit();
-        bool oversized_body_rejected = false;
-        try {
-            (void)store.read_revision(initial.document_id, 0);
-        } catch(const std::runtime_error&) {
-            oversized_body_rejected = true;
+        body_transaction.rollback();
+        for (const auto& count : {std::string{"1048577"},
+                                 std::to_string(std::numeric_limits<std::size_t>::max())}) {
+            auto corrupted = original_body_payload;
+            replace_body_block_count(corrupted, count);
+            body_transaction =
+                context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+            bodies.insert_or_assign(body_key("navigation-mdbx", 1), corrupted, body_transaction);
+            body_transaction.commit();
+            bool impossible_body_rejected = false;
+            try {
+                (void)store.read_revision(initial.document_id, 0);
+            } catch (const std::runtime_error& exception) {
+                impossible_body_rejected = std::string_view(exception.what()) ==
+                    "canonical body block count exceeds remaining payload";
+            }
+            expect(impossible_body_rejected,
+                   "full body read did not reject an impossible count before allocation");
         }
-        expect(oversized_body_rejected,
-               "full canonical body read accepted an oversized block count");
         body_transaction =
             context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
         bodies.insert_or_assign(
