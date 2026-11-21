@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <limits>
 #include <system_error>
 
 namespace {
@@ -33,7 +34,7 @@ std::string row_key(const std::string& generation) {
 int main() try {
     const auto path = std::filesystem::current_path() /
         ("exact-generation-" + std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count()));
-    std::filesystem::create_directories(path);
+    expect(std::filesystem::create_directory(path), "test directory is not exclusively owned");
     const auto db = path / "knowledge.mdbx", cas = path / "cas";
     const auto allow = [](const KnowledgeUnitEnvelope&) { return true; };
     const auto d = descriptor();
@@ -52,12 +53,28 @@ int main() try {
         auto other_space = d; other_space.model_id = "other-space";
         rejects(IndexGenerationFailure::Conflict, [&] { store.begin("first", other_space, 2); });
         rejects(IndexGenerationFailure::Incomplete, [&] { store.activate("first", d); });
+        for(float value : {std::numeric_limits<float>::quiet_NaN(),
+                           std::numeric_limits<float>::infinity(),
+                           -std::numeric_limits<float>::infinity()}) {
+            rejects(IndexGenerationFailure::InvalidInput, [&] {
+                store.append("first", {{a, 1, {value, 0}}});
+            });
+        }
         store.append("first", {{a, 1, {10, 0}}});
         rejects(IndexGenerationFailure::Incomplete, [&] { store.complete("first"); });
         rejects(IndexGenerationFailure::RebuildUnavailable, [&] { store.append("first", {{b, 1, {}}}); });
         rejects(IndexGenerationFailure::Conflict, [&] { store.append("first", {{a, 1, {1, 0}}}); });
         store.append("first", {{b, 1, {1, 0}}}); store.complete("first"); store.complete("first");
         store.activate("first", d); pinned = store.pin(d);
+        for(float value : {std::numeric_limits<float>::quiet_NaN(),
+                           std::numeric_limits<float>::infinity(),
+                           -std::numeric_limits<float>::infinity()}) {
+            for(std::size_t limit : {std::size_t{0}, std::size_t{1}}) {
+                rejects(IndexGenerationFailure::InvalidInput, [&] {
+                    (void)store.query(*pinned, d.scope_id, {value, 0}, limit, allow);
+                });
+            }
+        }
         MdbxExactIndexGenerationStore other_index(context, "other-index");
         rejects(IndexGenerationFailure::Incompatible, [&] {
             (void)other_index.query(*pinned, d.scope_id, {1, 0}, 8, allow);
@@ -117,6 +134,36 @@ int main() try {
         rejects(IndexGenerationFailure::Incomplete, [&] { store.complete("atomic-batch"); });
         store.append("atomic-batch", {{a, 1, {10, 0}}, {b, 1, {1, 0}}});
         store.complete("atomic-batch");
+        {
+            auto binding_context = MdbxStorageContext::open((path / "binding.mdbx").string());
+            const auto binding_cas = path / "binding-cas";
+            create(binding_context, binding_cas);
+            const auto regular = ids(binding_context, d.scope_id);
+            MdbxRawMarkdownProductIngestion ingestion(ingestion_options(binding_context, binding_cas));
+            const auto imported = ingestion.import(ObservedResource{d.scope_id, ResourceId{"resource:oversized"},
+                "https://example.test/" + std::string(65536, 'x'), "# Oversized\n\nSource binding.\n",
+                SourceTextOrigin::OriginalText, std::nullopt, 1}, 1);
+            expect(imported.status == RawMarkdownProductImportStatus::Published,
+                   "canonical ingestion rejected valid long URI");
+            auto oversized = ids(binding_context, d.scope_id);
+            oversized.erase(std::remove_if(oversized.begin(), oversized.end(), [&](KnowledgeUnitId id) {
+                return std::find(regular.begin(), regular.end(), id) != regular.end();
+            }), oversized.end());
+            expect(regular.size() == 2 && oversized.size() == 1, "long-binding fixture identity mismatch");
+            MdbxExactIndexGenerationStore binding_store(binding_context, "test");
+            binding_store.begin("binding-limit", d, 2);
+            rejects(IndexGenerationFailure::InvalidInput, [&] {
+                binding_store.append("binding-limit", {
+                    {regular[0], 1, {1, 0}}, {oversized[0], 1, {0, 1}}});
+            });
+            mdbxc::KeyValueTable<std::string, std::string> binding_rows(
+                binding_context->connection(), "agent_memory_exact_index_generations");
+            expect(!binding_rows.find(row_key("binding-limit")), "failed binding batch retained its first row");
+            rejects(IndexGenerationFailure::Incomplete, [&] { binding_store.complete("binding-limit"); });
+            binding_store.append("binding-limit", {{regular[0], 1, {1, 0}}, {regular[1], 1, {0, 1}}});
+            binding_store.complete("binding-limit"); binding_store.activate("binding-limit", d);
+            expect(binding_store.pin(d).size() == 2, "failed binding batch changed persisted progress");
+        }
         rejects(IndexGenerationFailure::InvalidInput, [&] {
             store.append("oversized-batch", std::vector<ExactIndexVectorInput>(33));
         });
@@ -206,6 +253,20 @@ int main() try {
         mdbxc::KeyValueTable<std::string, std::string> rows(context->connection(), "agent_memory_exact_index_generations");
         const auto original = rows.find(row_key("first")); expect(original.has_value(), "missing persisted test row");
         rows.insert_or_assign(row_key("first"), std::string("corrupt"));
+        rejects(IndexGenerationFailure::Corrupt, [&] { (void)store.pin(d); });
+        rejects(IndexGenerationFailure::Corrupt, [&] { store.activate("first", d); });
+        rows.insert_or_assign(row_key("first"), *original);
+        for(std::uint32_t bits : {0x7fc00000U, 0x7f800000U, 0xff800000U}) {
+            auto nonfinite = *original;
+            expect(nonfinite.size() >= 8, "retained FP32 payload is missing");
+            for(unsigned i = 0; i < 4; ++i)
+                nonfinite[nonfinite.size() - 4 + i] = static_cast<char>((bits >> (8U * i)) & 255U);
+            rows.insert_or_assign(row_key("first"), nonfinite);
+            rejects(IndexGenerationFailure::Corrupt, [&] { (void)store.pin(d); });
+            rejects(IndexGenerationFailure::Corrupt, [&] { store.activate("first", d); });
+        }
+        rows.insert_or_assign(row_key("first"), *original);
+        expect(rows.erase(row_key("first")), "retained row deletion failed");
         rejects(IndexGenerationFailure::Corrupt, [&] { (void)store.pin(d); });
         rejects(IndexGenerationFailure::Corrupt, [&] { store.activate("first", d); });
         rows.insert_or_assign(row_key("first"), *original);
