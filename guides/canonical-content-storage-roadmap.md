@@ -954,6 +954,58 @@ decision.
 
 ## 10. Acceptance Gates
 
+### Experimental Numeric Flat Storage v2
+
+The opt-in `MdbxCanonicalFlatStorage` uses four separately versioned DBIs:
+`<prefix>_canonical_flat_meta_v2`, `_heads_v2`, `_structures_v2` and
+`_blocks_v2` (the full `canonical_flat` stem applies to every suffix).
+This is not a production-default change. A v1 DBI under the same prefix is
+rejected; rebuild/export into a fresh namespace is required. Comparator flags
+are inspected before opening existing v2 DBIs and never changed in place.
+
+Structure and block keys consist of two independent uint64 values encoded as
+exactly 16 bytes: identity in big-endian order followed by revision in big-endian
+order. They use MDBX's bytewise comparator (flags 0), not `MDBX_INTEGERKEY` and
+not decimal strings. Heads retain native uint64 keys (`MDBX_INTEGERKEY`) and
+eight-byte little-endian revision values. These native head keys remain tied to
+the MDBX environment's native integer format; only the composite key encoding
+is claimed endian-independent.
+
+Physical values use an `AMF2` SHA-256-bound envelope over the exact physical key,
+logical document identity and the standalone AMFS/AMFB v1 logical codec payload.
+A structure additionally binds each block's numeric address, text byte count
+and complete envelope digest, and carries the bounded historical block-ID
+ledger. Block payloads are immutable: an existing physical key may be reused
+only with byte-identical value bytes. Structures obey the same rule.
+
+Create/commit check duplicate identity or expected revision inside the same MDBX
+write transaction that admits mappings and publishes payloads, structure and
+head. Aborting before head publication rolls back all of them. Revision-aware
+domain restoration receives the persistent historical ledger; it does not reset
+the document or block revisions to manufacture a revision-zero baseline.
+
+Navigation pins one exact revision in one read transaction. Outline and children
+read the structure but no block payloads. Subtree and point lookup read only
+selected payloads after checking text/block budgets and all bindings. Reading
+and validating the structure remains O((V+H) log(V+H)), where V is the active
+block count and H is the historical no-reuse identity count;
+point/subtree operations are not O(1) as whole operations. Unchanged block
+versions are reused without payload writes; a metadata-only edit publishes only
+the new structure and head. Commit still loads the current revision for the
+shared semantic engine, so bounded payload writes do not imply bounded reads.
+
+Optional caller-owned `MdbxCanonicalStorageMetrics` counts actual canonical DBI
+value operations and value bytes, plus new block versions and codec timings.
+Identity dictionary calls/time are recorded separately; internal identity DBI
+operations and MDBX page/disk I/O are not included. These are instrumentation
+boundaries, not estimates of page I/O or production performance claims.
+
+The executable [opt-in Markdown consumer fixture](flat-markdown-consumer.md)
+checks a narrow Markdown grammar through edit, navigation, fresh-process reopen
+and actual raw-product retrieval. Its host-side exact-source consistency check
+does not make publication across those stores atomic and does not activate a
+production retrieval path.
+
 A text canonical-content profile is not complete until it demonstrates the
 storage behaviors and semantic conformance cases below.
 

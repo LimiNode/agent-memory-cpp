@@ -76,6 +76,11 @@ function(_agent_memory_try_flat_libmdbx agent_memory_root)
         "${CMAKE_BINARY_DIR}/_deps/libmdbx"
         EXCLUDE_FROM_ALL
     )
+    if(MSVC AND TARGET mdbx-static)
+        # libmdbx's C++ translation unit checks the actual language level.
+        target_compile_options(mdbx-static PRIVATE
+            "$<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>")
+    endif()
 endfunction()
 
 function(agent_memory_provide_mdbx_containers out_target)

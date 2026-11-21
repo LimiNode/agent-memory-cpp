@@ -136,7 +136,21 @@ separate processes. The packaging workflow invokes it explicitly with
 `post_migration_upgrade_proof=false`. It is retained for reproducibility, but
 does not qualify a numeric MDBX layout.
 
-The numeric physical-layout gate is **NOT_EXECUTED**. Selecting
+Dependency audit `mdbxc-db-load-private-template-2026-11-20` admits only the
+external-tree transition
+`b949d6822582edc1f445837442b91aabf5093ac6` ->
+`b816ddeccafa0375c15b977e71d4a36f6728f59f`. The sole changed entry is
+`mdbx-containers` from `4ab32b5eab3cdfce95d1a6c0f05f566019793ec4` to
+`c2a2326273a3d85f29283e2cd34942c7b8d72cbd`: a private `db_load` template
+deduction correction and its bulk-retrieval runtime test. Libmdbx remains
+`fc8b8e4697e0ef8b2cd5aee1f2d9fb0974fc665f`; every other external tree entry
+must match byte-for-byte. Unknown, reversed or additional dependency changes
+fail closed. Receipts record both external trees and `dependency_audit_id`,
+remain `HISTORICAL_ONLY`, and carry `migration_proof=false` as well as
+`post_migration_upgrade_proof=false`. This audit neither implements nor
+qualifies a physical-layout migration and grants no production activation.
+
+The migration-backed numeric OLD/NEW gate is **NOT_EXECUTED**. Selecting
 `--post-numeric-upgrade` currently writes a `NOT_EXECUTED` receipt and exits with
 code 3; it never runs the historical consumer as numeric proof. A CLI flag,
 manifest text, or a supplied evidence file cannot establish execution.
@@ -146,6 +160,26 @@ decoded-row equality (counts, revisions, scopes, digests, no-reuse and derived
 index consistency), exact source/dependency/schema hashes, and the separate
 reopen/crash process observations. A successful historical replay must never be
 relabelled as this gate.
+
+The separate `agent_memory_numeric_storage_conformance` CTest executes an
+explicit **reject-old** policy and current numeric round trips. It uses real
+typed KnowledgeUnit, identity, and canonical rows in separate processes, not
+the historical exact-generation consumer. Run it in an MDBX-enabled test build:
+
+```sh
+ctest --test-dir <build> -R '^agent_memory_numeric_storage_conformance$' --output-on-failure
+```
+
+Each run retains a fresh receipt under
+`<build>/tests/numeric-conformance-<config>/run-*/receipt.json`. The OLD input
+is a physical-schema fixture pinned to the original flat-v1 definition, **not
+an OLD library binary**. The NEW adapter must reject it and preserve its
+decoded contents; a separate numeric v2 fixture must survive repeated reopen,
+historical reads, index/no-reuse checks, interrupted publication and negative
+corruption controls. The receipt is `POST_NUMERIC_REJECT_OLD`, with
+`migration_executed=false` and `post_migration_upgrade_proof=false`, even when
+all checks pass. This does not prove data migration, OLD-binary compatibility,
+production activation, or recovery of an interrupted migration.
 
 Synthetic SHA-derived reference vectors qualify lifecycle, not embedding
 quality. The packaging workflow retains the selected receipt, log and

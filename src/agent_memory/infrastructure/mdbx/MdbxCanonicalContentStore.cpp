@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <chrono>
 #include <mdbx_containers/KeyValueTable.hpp>
 #include <map>
 #include <mutex>
@@ -208,8 +209,11 @@ void metadata_put(std::string& out, const Metadata& metadata) {
 Metadata metadata_get(Reader& r) {
     Metadata result;
     const auto n = r.size();
-    for (std::size_t i = 0; i < n; ++i)
-        result.set(r.string(), r.string());
+    for (std::size_t i = 0; i < n; ++i) {
+        const auto key = r.string();
+        const auto value = r.string();
+        result.set(key, value);
+    }
     return result;
 }
 
@@ -640,6 +644,7 @@ class MdbxCanonicalContentStore::Impl final {
                                   : MdbxStorageContext::open(std::move(options.path),
                                                              options.relative_to_exe,
                                                              options.max_dbs)),
+          metrics(options.metrics),
           prefix(safe_part(std::move(options.table_prefix))),
           heads(context->connection(), prefix + "_canonical_heads"),
           revisions(context->connection(), prefix + "_canonical_revisions"),
@@ -664,6 +669,38 @@ class MdbxCanonicalContentStore::Impl final {
                     )
           ) {}
 
+    using Table = mdbxc::KeyValueTable<std::string, std::string>;
+
+    std::optional<std::string> find_value(
+        const Table& table, const std::string& key, const mdbxc::Transaction& txn) const {
+        const auto value = table.find(key, txn);
+        if (metrics) {
+            ++metrics->value_reads;
+            if (value) metrics->value_bytes_read += value->size();
+        }
+        return value;
+    }
+
+    void put_value(Table& table, const std::string& key, const std::string& value,
+                   const mdbxc::Transaction& txn) {
+        table.insert_or_assign(key, value, txn);
+        if (metrics) {
+            ++metrics->value_writes;
+            metrics->value_bytes_written += value.size();
+        }
+    }
+
+    template<typename Function>
+    auto measure_codec(Function&& function, bool encode) const {
+        if (!metrics) return function();
+        const auto begin = std::chrono::steady_clock::now();
+        auto result = function();
+        const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - begin).count();
+        (encode ? metrics->encode_ns : metrics->decode_ns) += static_cast<std::uint64_t>(ns);
+        return result;
+    }
+
     struct Loaded {
         std::optional<CanonicalDocumentRevision> current; ///< Current immutable revision.
         std::set<ContentBlockId> ledger;                  ///< Durable block-ID no-reuse ledger.
@@ -676,25 +713,25 @@ class MdbxCanonicalContentStore::Impl final {
         // Resolve and cross-check the complete current state inside the caller's
         // single snapshot. A missing or mismatched link fails closed.
         Loaded loaded;
-        const auto head = heads.find(id.value(), txn);
+        const auto head = find_value(heads, id.value(), txn);
         if (!head)
             return loaded;
-        const auto ledger = ledgers.find(id.value(), txn);
+        const auto ledger = find_value(ledgers, id.value(), txn);
         if (!ledger)
             throw std::runtime_error("canonical head references missing ledger");
-        loaded.ledger = decode_ledger(*ledger);
+        loaded.ledger = measure_codec([&] { return decode_ledger(*ledger); }, false);
         const auto head_revision = parse_u64(*head, "head revision");
-        const auto payload = revisions.find(key(id.value(), head_revision), txn);
+        const auto payload = find_value(revisions, key(id.value(), head_revision), txn);
         if (!payload)
             throw std::runtime_error("canonical head references missing revision");
-        const auto decoded = decode_revision(*payload);
+        const auto decoded = measure_codec([&] { return decode_revision(*payload); }, false);
         if (decoded.revision.document_id != id || decoded.revision.revision != head_revision)
             throw std::runtime_error("canonical head binding mismatch");
-        const auto body = bodies.find(body_key(id.value(), decoded.body_revision, RAW_ENCODING_GENERATION),
+        const auto body = find_value(bodies, body_key(id.value(), decoded.body_revision, RAW_ENCODING_GENERATION),
                                       txn);
         if (!body)
             throw std::runtime_error("canonical revision references missing body");
-        const auto decoded_body = decode_body(*body);
+        const auto decoded_body = measure_codec([&] { return decode_body(*body); }, false);
         loaded.body_revision = decoded.body_revision;
         loaded.body_generation = decoded_body.encoding_generation;
         loaded.logical_body_digest = decoded.logical_body_digest;
@@ -707,10 +744,10 @@ class MdbxCanonicalContentStore::Impl final {
         std::uint64_t revision,
         const mdbxc::Transaction& txn,
         std::size_t max_blocks = std::numeric_limits<std::size_t>::max()) const {
-        const auto payload = revisions.find(key(id.value(), revision), txn);
+        const auto payload = find_value(revisions, key(id.value(), revision), txn);
         if (!payload)
             return std::nullopt;
-        const auto decoded = decode_revision(*payload, max_blocks);
+        const auto decoded = measure_codec([&] { return decode_revision(*payload, max_blocks); }, false);
         if (decoded.revision.document_id != id || decoded.revision.revision != revision)
             throw std::runtime_error("canonical revision identity mismatch");
         return decoded;
@@ -723,11 +760,11 @@ class MdbxCanonicalContentStore::Impl final {
         const auto decoded = read_decoded_revision(id, revision, txn);
         if (!decoded)
             return std::nullopt;
-        const auto body = bodies.find(body_key(id.value(), decoded->body_revision, RAW_ENCODING_GENERATION),
+        const auto body = find_value(bodies, body_key(id.value(), decoded->body_revision, RAW_ENCODING_GENERATION),
                                       txn);
         if (!body)
             throw std::runtime_error("canonical revision references missing body");
-        return bind_body(*decoded, decode_body(*body));
+        return bind_body(*decoded, measure_codec([&] { return decode_body(*body); }, false));
     }
 
     std::optional<NavigationDecoded> read_navigation_revision(
@@ -739,11 +776,11 @@ class MdbxCanonicalContentStore::Impl final {
             id, revision, txn, kMaxNavigationBlocks);
         if (!decoded)
             return std::nullopt;
-        const auto body = bodies.find(
+        const auto body = find_value(bodies,
             body_key(id.value(), decoded->body_revision, RAW_ENCODING_GENERATION), txn);
         if (!body)
             throw std::runtime_error("canonical revision references missing body");
-        return decode_navigation_body(*decoded, *body, plan);
+        return measure_codec([&] { return decode_navigation_body(*decoded, *body, plan); }, false);
     }
 
     std::optional<NavigationDecoded> read_navigation_subtree(
@@ -774,11 +811,11 @@ class MdbxCanonicalContentStore::Impl final {
                     return entry.locator.block_id == *request.root_id;
                 });
             if (root == outline->entries.end()) {
-                const auto body = bodies.find(
+                const auto body = find_value(bodies,
                     body_key(id.value(), decoded->body_revision, RAW_ENCODING_GENERATION), txn);
                 if (!body)
                     throw std::runtime_error("canonical revision references missing body");
-                auto result = decode_navigation_body(*decoded, *body, plan);
+                auto result = measure_codec([&] { return decode_navigation_body(*decoded, *body, plan); }, false);
                 result.selection_root_found = false;
                 return result;
             }
@@ -792,11 +829,11 @@ class MdbxCanonicalContentStore::Impl final {
             }
         }
 
-        const auto body = bodies.find(
+        const auto body = find_value(bodies,
             body_key(id.value(), decoded->body_revision, RAW_ENCODING_GENERATION), txn);
         if (!body)
             throw std::runtime_error("canonical revision references missing body");
-        return decode_navigation_body(*decoded, *body, plan);
+        return measure_codec([&] { return decode_navigation_body(*decoded, *body, plan); }, false);
     }
 
     void write_revision(const CanonicalDocumentRevision& revision,
@@ -808,19 +845,19 @@ class MdbxCanonicalContentStore::Impl final {
                         const mdbxc::Transaction& txn) {
         // The caller supplies one writable transaction for all logical records.
         // A metadata-only edit intentionally leaves the immutable body row alone.
-        revisions.insert_or_assign(
+        put_value(revisions,
             key(revision.document_id.value(), revision.revision),
-            encode_revision(revision, body_revision, logical_body_digest),
+            measure_codec([&] { return encode_revision(revision, body_revision, logical_body_digest); }, true),
             txn);
         if (body) {
-            bodies.insert_or_assign(
+            put_value(bodies,
                 body_key(revision.document_id.value(), body_revision, body_generation),
                 body->payload,
                 txn);
         }
-        heads.insert_or_assign(
+        put_value(heads,
             revision.document_id.value(), std::to_string(revision.revision), txn);
-        ledgers.insert_or_assign(revision.document_id.value(), encode_ledger(ledger), txn);
+        put_value(ledgers, revision.document_id.value(), measure_codec([&] { return encode_ledger(ledger); }, true), txn);
     }
 
     bool guard_matches(
@@ -834,7 +871,7 @@ class MdbxCanonicalContentStore::Impl final {
             throw std::invalid_argument("canonical publication guard table is not configured");
         }
         if(guard.expected_token.empty()) {
-            const auto current = publication_guard_table->find(guard.key, txn);
+            const auto current = find_value(*publication_guard_table, guard.key, txn);
             if(!current) {
                 throw MdbxPublicationFenceError(
                     "canonical publication fence rejected: key missing"
@@ -853,7 +890,7 @@ class MdbxCanonicalContentStore::Impl final {
                     "canonical publication token table is not configured"
                 );
             }
-            const auto token = publication_token_guard_table->find(guard.key, txn);
+            const auto token = find_value(*publication_token_guard_table, guard.key, txn);
             if(!token || *token != guard.expected_token) {
                 throw MdbxPublicationFenceError(
                     "canonical publication fence rejected: token changed"
@@ -864,6 +901,7 @@ class MdbxCanonicalContentStore::Impl final {
     }
 
     std::shared_ptr<MdbxStorageContext> context; ///< Shared MDBX environment.
+    MdbxCanonicalStorageMetrics* metrics = nullptr; ///< Optional externally synchronized counters.
     std::string prefix;                          ///< Sanitized application table prefix.
     mutable std::mutex mutex;                    ///< Serializes this wrapper's table access.
     mdbxc::KeyValueTable<std::string, std::string> heads;     ///< Current revision per document.
@@ -909,12 +947,12 @@ bool MdbxCanonicalContentStore::create_document_impl(
             "canonical publication fence rejected the creation"
         );
     }
-    if (m_impl->heads.find(initial.document_id.value(), txn))
+    if (m_impl->find_value(m_impl->heads, initial.document_id.value(), txn))
         return false;
     std::set<ContentBlockId> ids;
     for (const auto& block : initial.blocks)
         ids.insert(block.id);
-    const auto body = encode_body(initial, 1);
+    const auto body = m_impl->measure_codec([&] { return encode_body(initial, 1); }, true);
     m_impl->write_revision(
         initial, 1, RAW_ENCODING_GENERATION, body.logical_body_digest, body, ids, txn);
     txn.commit();
@@ -924,7 +962,7 @@ bool MdbxCanonicalContentStore::create_document_impl(
 std::optional<CanonicalDocumentRevision>
 MdbxCanonicalContentStore::read_current(const DocumentId& id) const {
     auto txn = m_impl->context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-    const auto head = m_impl->heads.find(id.value(), txn);
+    const auto head = m_impl->find_value(m_impl->heads, id.value(), txn);
     if (!head) {
         txn.commit();
         return std::nullopt;
@@ -1177,7 +1215,7 @@ CanonicalEditResult MdbxCanonicalContentStore::commit_impl(
     LogicalBodyDigest logical_body_digest = loaded.logical_body_digest;
     if (body_changed) {
         ++body_revision;
-        body = encode_body(revision, body_revision);
+        body = m_impl->measure_codec([&] { return encode_body(revision, body_revision); }, true);
         logical_body_digest = body->logical_body_digest;
     }
     std::set<ContentBlockId> ledger = loaded.ledger;

@@ -815,6 +815,13 @@ target_compile_definitions(agent_memory_feature_flags_test
 add_test(NAME agent_memory_feature_flags_test COMMAND agent_memory_feature_flags_test)
 
 if(AGENT_MEMORY_ENABLE_MDBX)
+    add_executable(agent_memory_mdbx_dependency_bulk_retrieval_test
+        infrastructure/mdbx/mdbx_dependency_bulk_retrieval_test.cpp)
+    target_link_libraries(agent_memory_mdbx_dependency_bulk_retrieval_test
+        PRIVATE agent_memory::agent_memory ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET})
+    add_test(NAME agent_memory_mdbx_dependency_bulk_retrieval_test
+        COMMAND agent_memory_mdbx_dependency_bulk_retrieval_test)
+
     add_executable(agent_memory_mdbx_document_storage_test
         infrastructure/mdbx/mdbx_document_storage_test.cpp
     )
@@ -878,6 +885,52 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         NAME agent_memory_mdbx_canonical_navigation_test
         COMMAND agent_memory_mdbx_canonical_navigation_test
     )
+
+    add_executable(agent_memory_mdbx_canonical_flat_storage_test
+        infrastructure/mdbx/mdbx_canonical_flat_storage_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_canonical_flat_storage_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_canonical_flat_storage_test
+        COMMAND agent_memory_mdbx_canonical_flat_storage_test
+    )
+    set_tests_properties(agent_memory_mdbx_canonical_flat_storage_test PROPERTIES TIMEOUT 60)
+
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_executable(agent_memory_flat_markdown_consumer
+        infrastructure/mdbx/flat_markdown_consumer.cpp
+    )
+    target_link_libraries(agent_memory_flat_markdown_consumer
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(NAME agent_memory_flat_markdown_consumer
+        COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/tools/run-flat-markdown-consumer.py
+            --executable $<TARGET_FILE:agent_memory_flat_markdown_consumer>
+            --fixture ${PROJECT_SOURCE_DIR}/tests/fixtures/canonical-flat-consumer.md
+            --artifacts ${CMAKE_CURRENT_BINARY_DIR}/flat-markdown-consumer-$<CONFIG>
+    )
+    set_tests_properties(agent_memory_flat_markdown_consumer PROPERTIES TIMEOUT 120)
+
+    add_executable(agent_memory_numeric_storage_conformance
+        infrastructure/mdbx/numeric_storage_conformance.cpp
+    )
+    target_link_libraries(agent_memory_numeric_storage_conformance
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(NAME agent_memory_numeric_storage_conformance
+        COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/tools/run-numeric-storage-conformance.py
+            --executable $<TARGET_FILE:agent_memory_numeric_storage_conformance>
+            --artifacts ${CMAKE_CURRENT_BINARY_DIR}/numeric-conformance-$<CONFIG>
+    )
+    set_tests_properties(agent_memory_numeric_storage_conformance PROPERTIES TIMEOUT 180)
+    add_test(NAME agent_memory_numeric_storage_conformance_diagnostics
+        COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/tools/test-numeric-storage-conformance.py)
+    set_tests_properties(agent_memory_numeric_storage_conformance_diagnostics PROPERTIES TIMEOUT 20)
 
     add_executable(agent_memory_mdbx_canonical_large_body_test
         infrastructure/mdbx/mdbx_canonical_large_body_test.cpp
@@ -1189,22 +1242,29 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         COMMAND agent_memory_mdbx_shared_unit_projections_conformance_test
     )
 
-    add_executable(agent_memory_mdbx_lexical_product_path_qualification_test
-        infrastructure/mdbx/mdbx_lexical_product_path_qualification_test.cpp
-    )
-    target_link_libraries(agent_memory_mdbx_lexical_product_path_qualification_test
-        PRIVATE
-            agent_memory::agent_memory
-            agent_memory::json
-            mdbx_containers::mdbx_containers
-    )
-    add_test(
-        NAME agent_memory_mdbx_lexical_product_path_qualification_test
-        COMMAND agent_memory_mdbx_lexical_product_path_qualification_test
-                ${CMAKE_CURRENT_BINARY_DIR}/lexical-product-path-qualification.json
-                ${CMAKE_BINARY_DIR}/lexical-product-path-smoke-workload.json
-    )
-    if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
+    if(AGENT_MEMORY_ENABLE_JSON)
+        add_executable(agent_memory_mdbx_lexical_product_path_qualification_test
+            infrastructure/mdbx/mdbx_lexical_product_path_qualification_test.cpp
+        )
+        target_link_libraries(agent_memory_mdbx_lexical_product_path_qualification_test
+            PRIVATE
+                agent_memory::agent_memory
+                agent_memory::json
+                mdbx_containers::mdbx_containers
+        )
+        set(_agent_memory_lexical_qualification_workload)
+        if(AGENT_MEMORY_BUILD_RESEARCH_TESTS)
+            list(APPEND _agent_memory_lexical_qualification_workload
+                ${CMAKE_BINARY_DIR}/lexical-product-path-smoke-workload.json)
+        endif()
+        add_test(
+            NAME agent_memory_mdbx_lexical_product_path_qualification_test
+            COMMAND agent_memory_mdbx_lexical_product_path_qualification_test
+                    ${CMAKE_CURRENT_BINARY_DIR}/lexical-product-path-qualification.json
+                    ${_agent_memory_lexical_qualification_workload}
+        )
+    endif()
+    if(AGENT_MEMORY_BUILD_RESEARCH_TESTS AND AGENT_MEMORY_ENABLE_JSON)
         set_tests_properties(agent_memory_mdbx_lexical_product_path_qualification_test
             PROPERTIES DEPENDS agent_memory_lexical_product_path_workload_self_test
         )
