@@ -2,6 +2,26 @@ add_executable(agent-memory-bench
     main.cpp
 )
 
+add_executable(agent-memory-canonical-content-prompt-benchmark
+    canonical-content-prompt-benchmark.cpp
+)
+
+target_compile_features(agent-memory-canonical-content-prompt-benchmark
+    PRIVATE cxx_std_17
+)
+
+target_link_libraries(agent-memory-canonical-content-prompt-benchmark
+    PRIVATE
+        agent_memory::agent_memory
+)
+
+if(AGENT_MEMORY_ENABLE_MDBX)
+    target_link_libraries(agent-memory-canonical-content-prompt-benchmark
+        PRIVATE
+            mdbx_containers::mdbx_containers
+    )
+endif()
+
 target_link_libraries(agent-memory-bench
     PRIVATE
         agent_memory::agent_memory

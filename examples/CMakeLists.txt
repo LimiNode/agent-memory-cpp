@@ -25,6 +25,15 @@ target_link_libraries(agent_memory_prompt_composition
         agent_memory::agent_memory
 )
 
+add_executable(agent_memory_canonical_prompt_subtree
+    canonical_prompt_subtree.cpp
+)
+
+target_link_libraries(agent_memory_canonical_prompt_subtree
+    PRIVATE
+        agent_memory::agent_memory
+)
+
 if(AGENT_MEMORY_ENABLE_MDBX)
     add_executable(agent_memory_durable_lexical_document_memory
         durable_lexical_document_memory.cpp
