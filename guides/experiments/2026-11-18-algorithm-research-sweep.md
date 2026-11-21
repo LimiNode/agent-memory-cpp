@@ -270,3 +270,48 @@ Both studies leave peak retained workspace/process RSS `NOT_MEASURED` and make
 no stable-tail claim. These updates close bounded measurement gaps; they do not
 qualify production activation or replace the independent combined integration
 gate owned by the closure assembly.
+
+## 2026-11-21 R6 continuation: bounded MultiProbe deduplication
+
+The [owning full-search note](2026-11-20-r6-multiprobe-dedup.md) records
+Draft [#679](https://github.com/LimiNode/agent-memory-cpp/pull/679), measured
+source `fdc21558678e2985d260824f7929d89ceb3bd276` on the unchanged MultiProbe
+baseline `0a43df571d4e2d5ad29de2c2cd3b00006637e248`. It is separate from the
+historical ADC experiment #677 and implementation-efficiency corrective #678;
+no earlier measurements or source attributions are replaced.
+
+K8 required normalized prototypes/memberships remain `MISSING`. Original IVF
+model/bindings are incomplete; recovered alternate IVF4096 trains on
+base/evaluation documents and is `INVALID` for the requested disjoint quality
+protocol. Those experiments remain `NOT_EXECUTED`, not silently replaced with
+synthetic data. The owner note pins the retained input qualification matrix.
+
+The independent synthetic fallback compares actual production, a source-bound
+unchanged dense copy, a query-local unordered set and one compact open-address
+set. Each of GNU/MSVC completed 24 profiles, 3840 raw samples, 960 matched
+trials, 768 warmups and 768 separate diagnostic rows on the same frozen commit.
+Full result/counter and private candidate/probe/distance parity passes. Owner
+and independent retained-artifact audits verify input/source/generated/binary
+bindings, all fixtures and 52 rejection controls per package. The reviewer
+independently recomputed all 96 decision gates. Native CTest passes 4/4 per
+compiler; the production implementation is unchanged.
+
+Compact dedup is `CONDITIONAL` only at width256/N262144 with sparse uniform
+discovery, with and without the cohort filter: full-search p50 falls
+31.3%/32.9% and 23.3%/19.6% on GNU/MSVC, with no descriptive p95 or measured
+ordinary-new payload regression against either control. The MSVC-only width128
+win is not a cross-compiler result. Unordered-set replacement passes no profile.
+Broad/skew compact regressions reach 4.48x p50, unordered set 16.37x; filtered
+skew also substantially increases requested-live allocation payload. Thus no
+unconditional replacement or dispatch threshold is proposed. The production
+default remains `KEEP_CURRENT`.
+
+The note retains all profile decisions, control discrepancies, physical work,
+setup/first-search boundaries and both immutable local package hashes. Eight
+exposed synthetic queries with repeats do not establish representative request
+frequencies, held-out quality or stable tails. Ordinary allocation observations
+exclude aligned allocations, allocator overhead and process RSS; no whole-process
+memory qualification is claimed. Local packages are not public replay. Keep R6
+Draft with no merge. A future product-path proposal requires a frozen applied
+quality corpus and representative candidate/filter workload; no rescue sweep
+or production change is authorized by this bounded result.

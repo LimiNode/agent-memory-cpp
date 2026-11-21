@@ -397,6 +397,49 @@ target_link_libraries(agent-memory-hamming-hot-path-bench
         agent_memory::json
 )
 
+if(AGENT_MEMORY_BUILD_MULTIPROBE_DEDUP_RESEARCH)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+find_package(Threads REQUIRED)
+set(agent_memory_mp_generated "${CMAKE_CURRENT_BINARY_DIR}/multiprobe-dedup-generated")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/generate-multiprobe-dedup.py"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/MultiProbeHammingIndex.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/MultiProbeHammingIndex.hpp")
+execute_process(
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate-multiprobe-dedup.py"
+        --output-dir "${agent_memory_mp_generated}"
+    COMMAND_ERROR_IS_FATAL ANY)
+get_target_property(agent_memory_mp_release_ipo agent_memory INTERPROCEDURAL_OPTIMIZATION_RELEASE)
+if(agent_memory_mp_release_ipo MATCHES "-NOTFOUND$")
+    get_target_property(agent_memory_mp_release_ipo agent_memory INTERPROCEDURAL_OPTIMIZATION)
+endif()
+if(agent_memory_mp_release_ipo)
+    message(FATAL_ERROR "Source-bound MultiProbe comparison requires the non-LTO production call boundary")
+endif()
+get_target_property(agent_memory_mp_unity agent_memory UNITY_BUILD)
+if(agent_memory_mp_unity)
+    message(FATAL_ERROR "Source-bound MultiProbe comparison requires separate production translation units")
+endif()
+foreach(agent_memory_mp_target IN ITEMS agent-memory-multiprobe-dedup agent-memory-multiprobe-dedup-diagnostic)
+    add_executable(${agent_memory_mp_target}
+        multiprobe_dedup.cpp
+        "${agent_memory_mp_generated}/DenseResearchMultiProbe.cpp"
+        "${agent_memory_mp_generated}/SparseResearchMultiProbe.cpp"
+        "${agent_memory_mp_generated}/CompactResearchMultiProbe.cpp")
+    target_compile_features(${agent_memory_mp_target} PRIVATE cxx_std_17)
+    set_property(TARGET ${agent_memory_mp_target} PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE)
+    set_property(TARGET ${agent_memory_mp_target} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE FALSE)
+    set_property(TARGET ${agent_memory_mp_target} PROPERTY UNITY_BUILD FALSE)
+    target_include_directories(${agent_memory_mp_target} PRIVATE
+        "${agent_memory_mp_generated}" "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(${agent_memory_mp_target} PRIVATE
+        AGENT_MEMORY_MP_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
+        AGENT_MEMORY_MP_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}")
+    target_link_libraries(${agent_memory_mp_target} PRIVATE agent_memory::agent_memory agent_memory::json Threads::Threads)
+endforeach()
+target_compile_definitions(agent-memory-multiprobe-dedup-diagnostic PRIVATE AGENT_MEMORY_MP_DIAGNOSTIC=1)
+endif()
+
 add_executable(agent-memory-mih-native-hot-path
     mih_native_hot_path.cpp
 )
