@@ -15,6 +15,7 @@
 #include "mdbx/MdbxSnapshotRevisionBoundRetriever.hpp"
 #include "mdbx/MdbxKb0RetrievalFacade.hpp"
 #include "mdbx/MdbxStorageContext.hpp"
+#include "mdbx/MdbxStorageIdentityMapping.hpp"
 #include "mdbx/MdbxExactIndexGenerationStore.hpp"
 #include "mdbx/MdbxWorkspaceStorageRegistry.hpp"
 #include "mdbx/MdbxDurableLexicalDocumentMemory.hpp"
