@@ -454,6 +454,17 @@ regressions.
 The Windows MDBX matrix additionally runs native MSVC Release and Debug CTest
 with JSON disabled. Both configurations are required by the storage CI gate.
 
+The Linux MDBX benchmark harness also builds the canonical comparison target
+and runs its five quick gates: self-test smoke, smoke receipt replay, retained
+receipt replay, validator self-test, and launch controls. Before execution,
+`tools/check-canonical-benchmark-ci-selection.py` compares the full CTest
+inventory and the actual CI selection with the reviewed quick-gate set. New or
+renamed canonical benchmark tests fail closed until explicitly classified;
+the smoke command must retain `--self-test`. CI uses an isolated temporary root
+and serial CTest execution, and uploads raw smoke observations, receipts,
+selection inventories, JUnit, and the test log even on failure. It does not run
+the full comparison or regenerate immutable historical measurements.
+
 MDBX-enabled test builds register `agent_memory_mdbx_document_storage_test`,
 which opens a temporary MDBX database and validates the document storage
 adapter.

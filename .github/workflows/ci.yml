@@ -568,8 +568,10 @@ jobs:
           agent-memory-mih-storage-bench
           agent-memory-native-thq-mdbx-serving
           agent-memory-mdbx-finalist-harness
+          agent_memory_mdbx_canonical_flat_benchmark
           agent_memory_segmented_lexical_benchmark
           agent_memory_lexical_retrieval_qualification_r2
+          --parallel 2
 
       - name: Test storage benchmark harness
         run: >
@@ -577,6 +579,37 @@ jobs:
           --output-on-failure
           -R
           "agent_memory_mih_storage|agent_memory_native_thq_mdbx_serving_(lifecycle|integer_key)|agent_memory_native_mdbx_(serving_audit|layout_sweep)(_audit)?_self_test|agent_memory_mdbx_finalist_harness_self_test|agent_memory_segmented_lexical_(benchmark_contract|qualification_(validator_self_test|corpus_self_test|receipt_replay|timeout_self_test))|agent_memory_lexical_retrieval_qualification_r2_(smoke|receipt|validator_self_test|parallel|parallel_self_test)"
+
+      - name: Check and run quick canonical benchmark gates
+        shell: bash
+        env:
+          CANONICAL_BENCHMARK_TEST_REGEX: "^agent_memory_mdbx_canonical_flat_benchmark_"
+        run: |
+          set -euo pipefail
+          canonical_tmp="$(mktemp -d "$RUNNER_TEMP/canonical-benchmark.XXXXXX")"
+          export TMPDIR="$canonical_tmp" TMP="$canonical_tmp" TEMP="$canonical_tmp"
+          python tools/check-canonical-benchmark-ci-selection.py --self-test
+          python tools/check-canonical-benchmark-ci-selection.py \
+            --build-dir build-mdbx-benchmark --config Release \
+            --test-regex "$CANONICAL_BENCHMARK_TEST_REGEX"
+          ctest --test-dir build-mdbx-benchmark --build-config Release \
+            --output-on-failure --no-tests=error --parallel 1 \
+            --output-junit canonical-benchmark-junit.xml \
+            -R "$CANONICAL_BENCHMARK_TEST_REGEX"
+
+      - name: Upload quick canonical benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canonical-benchmark-quick-gates
+          path: |
+            build-mdbx-benchmark/canonical-benchmark-inventory.json
+            build-mdbx-benchmark/canonical-benchmark-selection.json
+            build-mdbx-benchmark/canonical-benchmark-junit.xml
+            build-mdbx-benchmark/canonical-comparison-smoke.tsv
+            build-mdbx-benchmark/canonical-comparison-smoke.json
+            build-mdbx-benchmark/Testing/Temporary/LastTest.log
+          if-no-files-found: error
 
       - name: Upload lexical retrieval R2 receipt
         uses: actions/upload-artifact@v4
