@@ -105,6 +105,7 @@ add_library(agent_memory STATIC
     src/agent_memory/storage/IDocumentStorage.cpp
     src/agent_memory/storage/CanonicalContentStore.cpp
     src/agent_memory/storage/CanonicalFlatStorage.cpp
+    src/agent_memory/storage/CanonicalNavigationStore.cpp
     src/agent_memory/storage/FileRawBlobStore.cpp
     src/agent_memory/storage/FramedZstdCodec.cpp
     src/agent_memory/storage/IKnowledgeUnitStore.cpp
@@ -183,6 +184,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxSegmentedLexicalIndex.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceImporter.cpp
             src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitNumericKeyPilot.cpp
     )
 
     agent_memory_provide_mdbx_containers(AGENT_MEMORY_MDBX_CONTAINERS_TARGET)
@@ -232,6 +234,10 @@ endif()
 
 if(AGENT_MEMORY_BUILD_BENCHMARKS)
     add_subdirectory(tools/agent-memory-bench)
+    add_test(
+        NAME agent_memory_exact_selection_self_test
+        COMMAND agent-memory-exact-selection-benchmark --self-test
+    )
     if(AGENT_MEMORY_ENABLE_MDBX)
         add_executable(agent_memory_segmented_lexical_benchmark
             tools/segmented-lexical-benchmark.cpp
@@ -305,6 +311,34 @@ endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
+    if(AGENT_MEMORY_BUILD_RESEARCH_TESTS AND TARGET agent-memory-production-reranker-admission)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME agent_memory_production_reranker_admission_self_test
+            COMMAND agent-memory-production-reranker-admission --self-test)
+        add_test(NAME agent_memory_production_reranker_generator_self_test
+            COMMAND "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/generate-production-reranker-variants.py" --self-test)
+        add_test(NAME agent_memory_production_reranker_validator_self_test
+            COMMAND "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/validate-production-reranker-admission.py" --self-test)
+    endif()
+    if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        add_test(
+            NAME agent_memory_exact_vector_numerical_frontier_self_test
+            COMMAND $<TARGET_FILE:agent-memory-exact-vector-numerical-frontier> --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_exact_vector_numerical_frontier_invalid_cli
+            COMMAND $<TARGET_FILE:agent-memory-exact-vector-numerical-frontier> --invalid-option
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        set_tests_properties(
+            agent_memory_exact_vector_numerical_frontier_invalid_cli
+            PROPERTIES
+                WILL_FAIL TRUE
+        )
+    endif()
     if(AGENT_MEMORY_BUILD_EXAMPLES)
         add_test(
             NAME agent_memory_canonical_content_example
@@ -531,6 +565,13 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/eval/fixtures/mih-global-exact-conformance-v1.json"
         )
         add_test(
+            NAME agent_memory_mih_global_exact_fixture_mutation_self_test
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/test-mih-global-exact-fixture.py"
+                --binary $<TARGET_FILE:agent-memory-mih-native-sparse-arbitrary-m>
+                --fixture "${CMAKE_CURRENT_SOURCE_DIR}/tests/eval/fixtures/mih-global-exact-conformance-v1.json"
+        )
+        add_test(
             NAME agent_memory_standard_binary_encoder_evaluator_self_test
             COMMAND agent-memory-standard-binary-eval --self-test
         )
@@ -542,8 +583,27 @@ if(AGENT_MEMORY_BUILD_TESTS)
             NAME agent_memory_neuroute_full_corpus_codec_native_self_test
             COMMAND agent-memory-neuroute-full-corpus-codec --self-test
         )
+        add_test(
+            NAME agent_memory_exact_lexical_topk_decision_self_test
+            COMMAND agent-memory-exact-lexical-topk-decision --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
     endif()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        add_test(
+            NAME agent_memory_exact_lexical_topk_decision_validator_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/validate-exact-lexical-topk-decision.py
+                --self-test
+        )
+        add_test(
+            NAME agent_memory_exact_lexical_topk_decision_source_transform_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/generate-exact-lexical-topk-variants.py
+                --source-root ${CMAKE_CURRENT_SOURCE_DIR} --self-test
+        )
+    endif()
     execute_process(
         COMMAND ${Python3_EXECUTABLE} -c "import numpy; import yaml"
         RESULT_VARIABLE AGENT_MEMORY_PYTHON_TOOLS_IMPORT_RESULT
@@ -1904,6 +1964,19 @@ if(AGENT_MEMORY_BUILD_TESTS)
         message(STATUS "Python3 interpreter not found; skipping DBI manifest validator tests")
     endif()
     if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(
+            NAME agent_memory_exact_vector_index_decision
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/validate_exact_vector_index_decision.py
+                --executable $<TARGET_FILE:agent-memory-exact-vector-index-decision>
+                --raw ${CMAKE_CURRENT_BINARY_DIR}/exact-vector-index-decision.json
+                --receipt ${CMAKE_CURRENT_BINARY_DIR}/exact-vector-index-decision.receipt.json
+                --sidecar ${CMAKE_CURRENT_BINARY_DIR}/exact-vector-index-decision.sha256
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
         add_test(
             NAME agent_memory_benchmark_cli_synthetic_sweep
             COMMAND
@@ -2427,6 +2500,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --raw ${CMAKE_CURRENT_SOURCE_DIR}/guides/experiments/2026-10-27-seg-v2-qualification.raw.tsv
                     --receipt ${CMAKE_CURRENT_SOURCE_DIR}/guides/experiments/2026-10-27-seg-v2-qualification.receipt.json
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+    endif()
+    if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        # This control is a bounded C++ research executable, not a full
+        # research-test matrix; keep it available when research tests are off.
+        add_test(
+            NAME agent_memory_reranker_admission_scaling_self_test
+            COMMAND agent-memory-reranker-admission-scaling --self-test
         )
     endif()
     add_subdirectory(tests)
