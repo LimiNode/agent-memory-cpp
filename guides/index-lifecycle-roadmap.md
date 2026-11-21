@@ -1,5 +1,13 @@
 # Index Lifecycle Roadmap
 
+> **Evidence baseline notice (2026-11-19).** The durable exact-generation
+> profile and the OLD-to-NEW command below were qualified against a
+> pre-numeric MDBX physical layout. They remain a lifecycle contract and
+> historical replay, not proof that a numeric-key migration is compatible.
+> Regenerate the upgrade fixture at the post-migration HEAD and record
+> `migration`, `rebuild`, or `reject-old` before using it as release evidence.
+> See [`mdbx-numeric-identity-evidence-register.md`](mdbx-numeric-identity-evidence-register.md).
+
 Status: `Proposal`, owned by the storage/index boundary. Derived indexes are
 rebuildable views; canonical resources, knowledge units, payloads, and source
 provenance remain the source of truth.

@@ -168,3 +168,7 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
 - `guides/architecture.md` — общая архитектура проекта
 - `guides/memory-stacks-roadmap.md` — центральный манифест архитектуры (CapabilitySet, MemoryProfileSpec, MemoryStack, validation, Maturity Levels M0/M1/M2).
 - `guides/mdbx-containers-extension-tz.md` — canonical physical MDBX manifest and DBI budget.
+- `guides/adr/2026-11-mdbx-storage-architecture.md` — typed record/key codec,
+  numeric identity and migration dispositions.
+- `guides/audits/2026-11-mdbx-storage-numeric-identity-audit.md` — source/test
+  inventory and fixture/release evidence disposition for the numeric migration.

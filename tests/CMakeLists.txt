@@ -115,6 +115,16 @@ target_link_libraries(agent_memory_canonical_navigation_test
 )
 add_test(NAME agent_memory_canonical_navigation_test COMMAND agent_memory_canonical_navigation_test)
 
+add_executable(agent_memory_canonical_navigation_store_test
+    storage/canonical_navigation_store_test.cpp
+)
+target_link_libraries(agent_memory_canonical_navigation_store_test
+    PRIVATE agent_memory::agent_memory
+)
+add_test(NAME agent_memory_canonical_navigation_store_test
+    COMMAND agent_memory_canonical_navigation_store_test
+)
+
 add_executable(agent_memory_prompt_composition_test
     domain/prompt_composition_test.cpp
 )
@@ -858,6 +868,29 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         COMMAND agent_memory_mdbx_canonical_content_store_test
     )
 
+    add_executable(agent_memory_mdbx_canonical_navigation_test
+        infrastructure/mdbx/mdbx_canonical_navigation_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_canonical_navigation_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_canonical_navigation_test
+        COMMAND agent_memory_mdbx_canonical_navigation_test
+    )
+
+    add_executable(agent_memory_mdbx_canonical_large_body_test
+        infrastructure/mdbx/mdbx_canonical_large_body_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_canonical_large_body_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_canonical_large_body_test
+        COMMAND agent_memory_mdbx_canonical_large_body_test
+    )
+    set_tests_properties(agent_memory_mdbx_canonical_large_body_test PROPERTIES TIMEOUT 120)
+
     add_executable(agent_memory_mdbx_workspace_routing_test
         infrastructure/mdbx/mdbx_workspace_routing_test.cpp
     )
@@ -966,6 +999,28 @@ if(AGENT_MEMORY_ENABLE_MDBX)
     add_test(
         NAME agent_memory_mdbx_knowledge_unit_store_test
         COMMAND agent_memory_mdbx_knowledge_unit_store_test
+    )
+
+    add_executable(agent_memory_mdbx_storage_identity_mapping_test
+        infrastructure/mdbx/mdbx_storage_identity_mapping_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_storage_identity_mapping_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_storage_identity_mapping_test
+        COMMAND agent_memory_mdbx_storage_identity_mapping_test
+    )
+
+    add_executable(agent_memory_mdbx_knowledge_unit_numeric_key_pilot_test
+        infrastructure/mdbx/mdbx_knowledge_unit_numeric_key_pilot_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_knowledge_unit_numeric_key_pilot_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_knowledge_unit_numeric_key_pilot_test
+        COMMAND agent_memory_mdbx_knowledge_unit_numeric_key_pilot_test
     )
 
     add_executable(agent_memory_mdbx_article_to_citation_vertical_test
