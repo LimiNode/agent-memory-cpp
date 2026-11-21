@@ -61,6 +61,11 @@ metadata-only read. C1 still stores the raw body as one MDBX value, so the
 physical value read is not a per-block I/O claim. A future framed body profile
 may reduce byte reads, while preserving this result contract. Navigation rows
 above the hard backend block bound fail closed.
+That ceiling applies only to navigation, not to ordinary full C1 reads or the
+persisted body format. Full revision/body decoders reject impossible counts
+against the remaining encoded bytes before reserving their vectors. The
+`mdbx_canonical_large_body_test.cpp` fixture reopens a valid 1,048,577-block C1
+body, requires an ordinary read to succeed, and retains navigation rejection.
 The C1 backend validates canonical preorder and derives depths/child counts in
 one pass with ordered identity maps (`O(V log V)`); it does not reuse the
 reference builder's quadratic child scans on the storage path.

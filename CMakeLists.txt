@@ -191,6 +191,8 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxSegmentedLexicalIndex.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceImporter.cpp
             src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitNumericKeyPilot.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitTypedStore.cpp
     )
 
     agent_memory_provide_mdbx_containers(AGENT_MEMORY_MDBX_CONTAINERS_TARGET)
@@ -240,6 +242,10 @@ endif()
 
 if(AGENT_MEMORY_BUILD_BENCHMARKS)
     add_subdirectory(tools/agent-memory-bench)
+    add_test(
+        NAME agent_memory_exact_selection_self_test
+        COMMAND agent-memory-exact-selection-benchmark --self-test
+    )
     if(AGENT_MEMORY_ENABLE_MDBX)
         add_executable(agent_memory_segmented_lexical_benchmark
             tools/segmented-lexical-benchmark.cpp
@@ -345,6 +351,17 @@ endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
+    if(AGENT_MEMORY_BUILD_RESEARCH_TESTS AND TARGET agent-memory-production-reranker-admission)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME agent_memory_production_reranker_admission_self_test
+            COMMAND agent-memory-production-reranker-admission --self-test)
+        add_test(NAME agent_memory_production_reranker_generator_self_test
+            COMMAND "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/generate-production-reranker-variants.py" --self-test)
+        add_test(NAME agent_memory_production_reranker_validator_self_test
+            COMMAND "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/tools/agent-memory-bench/validate-production-reranker-admission.py" --self-test)
+    endif()
     if(AGENT_MEMORY_BUILD_BENCHMARKS)
         add_test(
             NAME agent_memory_exact_vector_numerical_frontier_self_test
@@ -606,8 +623,27 @@ if(AGENT_MEMORY_BUILD_TESTS)
             NAME agent_memory_neuroute_full_corpus_codec_native_self_test
             COMMAND agent-memory-neuroute-full-corpus-codec --self-test
         )
+        add_test(
+            NAME agent_memory_exact_lexical_topk_decision_self_test
+            COMMAND agent-memory-exact-lexical-topk-decision --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
     endif()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        add_test(
+            NAME agent_memory_exact_lexical_topk_decision_validator_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/validate-exact-lexical-topk-decision.py
+                --self-test
+        )
+        add_test(
+            NAME agent_memory_exact_lexical_topk_decision_source_transform_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/generate-exact-lexical-topk-variants.py
+                --source-root ${CMAKE_CURRENT_SOURCE_DIR} --self-test
+        )
+    endif()
     execute_process(
         COMMAND ${Python3_EXECUTABLE} -c "import numpy; import yaml"
         RESULT_VARIABLE AGENT_MEMORY_PYTHON_TOOLS_IMPORT_RESULT
@@ -1968,6 +2004,19 @@ if(AGENT_MEMORY_BUILD_TESTS)
         message(STATUS "Python3 interpreter not found; skipping DBI manifest validator tests")
     endif()
     if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(
+            NAME agent_memory_exact_vector_index_decision
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/validate_exact_vector_index_decision.py
+                --executable $<TARGET_FILE:agent-memory-exact-vector-index-decision>
+                --raw ${CMAKE_CURRENT_BINARY_DIR}/exact-vector-index-decision.json
+                --receipt ${CMAKE_CURRENT_BINARY_DIR}/exact-vector-index-decision.receipt.json
+                --sidecar ${CMAKE_CURRENT_BINARY_DIR}/exact-vector-index-decision.sha256
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
         add_test(
             NAME agent_memory_benchmark_cli_synthetic_sweep
             COMMAND

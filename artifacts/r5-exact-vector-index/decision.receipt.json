@@ -1,0 +1,21 @@
+{
+  "schema": "r5.exact_vector_index.receipt.v1",
+  "execution_status": "EXECUTED",
+  "production_activation": false,
+  "production_path": "ExactVectorIndex::search",
+  "raw_output": {
+    "path": "artifacts/r5-exact-vector-index/decision.raw.json",
+    "sha256": "cdb93342c42f1e97ab145742ae2a03b178182c83f8fe70fa9070b14793110f1c"
+  },
+  "runner": {
+    "source_path": "tools/agent-memory-bench/exact_vector_index_decision.cpp",
+    "source_sha256": "d860cb2ea1c1e021caf7e3c6e2685bdce1d4cdb00fc26605eea267ec5be1509d"
+  },
+  "source_revision": "bfa01a22d4091bb5c5f7c17606199fda6342b790",
+  "timing_scopes": {
+    "kernel_only": "ExactVectorIndex::search on prebuilt index",
+    "end_to_end": "index construction plus ExactVectorIndex::search"
+  },
+  "quality": "top-1/top-K parity against compensated long-double oracle",
+  "limitations": "One local MinGW run; timing samples are directional, not a p99 claim"
+}
