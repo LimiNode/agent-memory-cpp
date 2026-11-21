@@ -12,6 +12,7 @@
 #include <memory>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #if AGENT_MEMORY_HAS_MDBX
@@ -57,6 +58,22 @@ namespace agent_memory {
 
         MdbxKnowledgeUnitStore(const MdbxKnowledgeUnitStore&) = delete;
         MdbxKnowledgeUnitStore& operator=(const MdbxKnowledgeUnitStore&) = delete;
+
+        /// Encodes one envelope with the store's versioned v1 payload codec.
+        ///
+        /// This narrow codec hook is provided for opt-in storage pilots. It
+        /// does not open MDBX or alter the legacy store's physical tables.
+        [[nodiscard]] static std::string encode_envelope_payload(
+            const KnowledgeUnitEnvelope& envelope
+        );
+
+        /// Decodes one envelope with the store's versioned v1 payload codec.
+        ///
+        /// Invalid, unsupported, or corrupt payloads are rejected with
+        /// `std::runtime_error`.
+        [[nodiscard]] static KnowledgeUnitEnvelope decode_envelope_payload(
+            std::string_view payload
+        );
 
         void upsert(KnowledgeUnitEnvelope envelope) override;
 

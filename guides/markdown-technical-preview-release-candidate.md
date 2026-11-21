@@ -1,5 +1,11 @@
 # Markdown Technical Preview release-candidate matrix
 
+> **Numeric-identity migration notice (2026-11-19).** The matrix below is a
+> pre-numeric physical-storage snapshot. Its exact SHAs and CI receipts are
+> retained for provenance, but the matrix is `HISTORICAL_ONLY` until the
+> numeric-key migration decision is exercised with a fresh OLD/NEW fixture.
+> See [`mdbx-numeric-identity-evidence-register.md`](mdbx-numeric-identity-evidence-register.md).
+
 This is a historical readiness snapshot, not a release approval. It evaluates
 the frozen candidate main `dde38ae89fd8bef4be4e7306f2250a7fe3a094d4` after
 #611. The current release decision is recorded in

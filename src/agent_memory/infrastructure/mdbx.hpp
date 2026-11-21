@@ -24,6 +24,8 @@
 #include "mdbx/MdbxPersistentLexicalCandidateAdapter.hpp"
 #include "mdbx/MdbxResourceImporter.hpp"
 #include "mdbx/MdbxKnowledgeUnitStore.hpp"
+#include "mdbx/MdbxKnowledgeUnitNumericKeyPilot.hpp"
+#include "mdbx/MdbxKnowledgeUnitTypedStore.hpp"
 #include "mdbx/MdbxProjectionStore.hpp"
 #include "mdbx/MdbxDerivedPublicationStore.hpp"
 #include "mdbx/MdbxArtifactCatalog.hpp"

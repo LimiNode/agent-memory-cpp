@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "kind": "SYNTHETIC",
+  "seed": "deterministic-lexical-profile-v1",
+  "profiles": [
+    {"name": "short_narrow", "document_count": 1024, "tokens_per_document": 3, "metadata_width": 2, "filter_modulus": 1, "common_every": 1, "anchor_every": 7, "ties": false, "terms": ["common", "anchor"]},
+    {"name": "long_wide", "document_count": 1024, "tokens_per_document": 128, "metadata_width": 32, "filter_modulus": 2, "common_every": 1, "anchor_every": 2, "ties": false, "terms": ["common", "anchor", "word:3", "word:19"]},
+    {"name": "rare_selective", "document_count": 8192, "tokens_per_document": 16, "metadata_width": 8, "filter_modulus": 10, "common_every": 64, "anchor_every": 97, "ties": false, "terms": ["anchor"]},
+    {"name": "long_repeated_ties", "document_count": 1024, "tokens_per_document": 128, "metadata_width": 16, "filter_modulus": 1, "common_every": 1, "anchor_every": 1, "ties": true, "terms": ["common"]}
+  ]
+}

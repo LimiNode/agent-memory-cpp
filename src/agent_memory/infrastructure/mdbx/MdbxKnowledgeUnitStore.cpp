@@ -1152,6 +1152,18 @@ namespace agent_memory {
 
     MdbxKnowledgeUnitStore::~MdbxKnowledgeUnitStore() = default;
 
+    std::string MdbxKnowledgeUnitStore::encode_envelope_payload(
+        const KnowledgeUnitEnvelope& envelope
+    ) {
+        return serialize_envelope(envelope);
+    }
+
+    KnowledgeUnitEnvelope MdbxKnowledgeUnitStore::decode_envelope_payload(
+        std::string_view payload
+    ) {
+        return deserialize_envelope(payload);
+    }
+
     void MdbxKnowledgeUnitStore::upsert(KnowledgeUnitEnvelope envelope) {
         m_impl->upsert(std::move(envelope));
     }
