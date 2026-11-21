@@ -208,3 +208,66 @@ trials and environment control before claiming a stable performance change.
 Lower scorer-only latency or a faster incomplete window is not equivalent.
 No storage schema, production default, metadata/access authority or shared
 canonical/lexical frontier is changed by this qualification.
+
+### Observed baseline (2026-11-22)
+
+Measured source: `5b2535bdf37ff32d4d8749a37353322a3abd1d1f`, on main
+`acd5ad5545386b3feeaa79f8a587855b60801b4d` plus #683. GNU 15.2.0 and
+MSVC 19.44.35228.0, Release C++17, Windows AMD64, 64-bit; JSON 3.11.3.
+Host diagnostic: Intel64 Family 6 Model 63 Stepping 2, GenuineIntel,
+36 hardware threads. Both builds use libmdbx
+`fc8b8e4697e0ef8b2cd5aee1f2d9fb0974fc665f` and mdbx-containers
+`c2a2326273a3d85f29283e2cd34942c7b8d72cbd`. Source-manifest SHA-256:
+`c72ac0b76f850a5808607e4913959f70c8a5cf76c4e8fa1826fda576eab87b61`.
+
+Both compilers passed all 144 matched arms and 16 lifecycle comparisons.
+All seven required controls passed. Native self-test: 10 checks; validator:
+16 schema and 14 binding rejection controls. CTest: 3/3 per compiler,
+including the source-bound 96-arm smoke. Independent source review approved
+the bounded scaffold after correcting expected-current replacement, source
+closure and provenance checks; it did not independently replay timings.
+
+Full-call medians in milliseconds, mixed lengths, common-term query, K=10:
+
+| N | GNU TF | GNU BM25 | MSVC TF | MSVC BM25 |
+| --- | --- | --- | --- | --- |
+| 32 | 0.5526 | 0.5504 | 0.5868 | 0.5760 |
+| 128 | 2.0999 | 2.1387 | 2.2771 | 2.3408 |
+| 512 | 8.5332 | 8.8476 | 10.8568 | 10.5050 |
+
+At N=512, the absent-term BM25 call still took 8.0914 ms (GNU) and
+9.1598 ms (MSVC), despite returning zero candidates and examining zero
+postings. Common-term BM25 C++ allocation diagnostics were 16,766 calls /
+6,307,488 cumulative bytes (GNU), and 37,189 / 7,719,060 (MSVC). These are
+implementation-specific allocation observations, not process memory or a
+cross-compiler allocator-efficiency conclusion.
+
+The result is consistent with the statically observed full flat reconstruction
+cost, including for absent terms. Independently timed snapshots are in the
+same range and can exceed full-call medians; they are not subtractable stage
+attributions. This run does not establish an asymptotic exponent, a stable
+TF/BM25 speed ratio, or an optimization win. Full runs were sequential after
+the agent's builds finished, but the shared host was not reserved or otherwise
+controlled. Each compiler has one process trial and seven samples per arm.
+
+Raw artifacts and sidecars remain untracked under the repository build root:
+
+- `.build/search-lexical-qualification-gnu/candidate-full-5b2535bd.json`,
+  SHA-256 `4d6dfcf935c5ec3c57c995ba25dc0c1a19d686cadefc0ce3e02cba4147760baf`;
+- `.build/search-lexical-qualification-msvc/candidate-full-5b2535bd.json`,
+  SHA-256 `68fb948bcc905a1440e3b139f15908ee6f41c4898a1c7f41020a5e211ca4b493`.
+
+Both were revalidated with `--receipt` at the measured checkout before this
+documentation-only follow-up. Their embedded source and executable hashes
+remain unchanged; later PR HEAD/CI evidence must be recorded separately.
+Installed C++17 compatibility and same-process BM25 reopen are covered by
+the existing #683 installed consumer, not by pretending this in-tree benchmark
+is an installed consumer. CI packaging reruns that actual consumer.
+
+The independent mechanics/cost baseline is available for future optimization.
+Phase 1 remains open for authoritative metadata/access admission, an approved
+shared frontier, hydration and representative applied quality. Those external
+contracts remain requests to the first agent; this experiment neither changes
+their ownership nor interrupts Identity/AMXR work. A separate Exact Semantic
+slice may now reuse the existing durable generation API without inventing a
+second index or canonical publication system.
