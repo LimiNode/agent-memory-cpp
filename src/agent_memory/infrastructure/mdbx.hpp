@@ -6,6 +6,7 @@
 /// \brief Aggregate include for optional MDBX-backed infrastructure adapters.
 
 #include "mdbx/MdbxCanonicalContentStore.hpp"
+#include "mdbx/MdbxCanonicalFlatStorage.hpp"
 #include "mdbx/MdbxCanonicalContentRouter.hpp"
 #include "mdbx/MdbxFederatedCanonicalReader.hpp"
 #include "mdbx/MdbxDocumentStorage.hpp"

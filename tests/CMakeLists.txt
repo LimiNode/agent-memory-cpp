@@ -879,6 +879,18 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         COMMAND agent_memory_mdbx_canonical_navigation_test
     )
 
+    add_executable(agent_memory_mdbx_canonical_flat_storage_test
+        infrastructure/mdbx/mdbx_canonical_flat_storage_test.cpp
+    )
+    target_link_libraries(agent_memory_mdbx_canonical_flat_storage_test
+        PRIVATE agent_memory::agent_memory mdbx_containers::mdbx_containers
+    )
+    add_test(
+        NAME agent_memory_mdbx_canonical_flat_storage_test
+        COMMAND agent_memory_mdbx_canonical_flat_storage_test
+    )
+    set_tests_properties(agent_memory_mdbx_canonical_flat_storage_test PROPERTIES TIMEOUT 60)
+
     add_executable(agent_memory_mdbx_canonical_large_body_test
         infrastructure/mdbx/mdbx_canonical_large_body_test.cpp
     )

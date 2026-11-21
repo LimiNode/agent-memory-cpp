@@ -161,6 +161,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxStorageIdentityMapping.cpp
             src/agent_memory/infrastructure/mdbx/MdbxExactIndexGenerationStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentStore.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxCanonicalFlatStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentRouter.cpp
             src/agent_memory/infrastructure/mdbx/MdbxProjectionStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxDerivedPublicationStore.cpp

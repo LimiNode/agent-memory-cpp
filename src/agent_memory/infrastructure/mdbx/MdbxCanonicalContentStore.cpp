@@ -208,8 +208,11 @@ void metadata_put(std::string& out, const Metadata& metadata) {
 Metadata metadata_get(Reader& r) {
     Metadata result;
     const auto n = r.size();
-    for (std::size_t i = 0; i < n; ++i)
-        result.set(r.string(), r.string());
+    for (std::size_t i = 0; i < n; ++i) {
+        const auto key = r.string();
+        const auto value = r.string();
+        result.set(key, value);
+    }
     return result;
 }
 
