@@ -134,13 +134,18 @@ automatic clustering, LLM summarization or hierarchical routing. Those later
 policies consume the same linked substrate and remain independently evaluated;
 see [`linked-derived-knowledge.md`](linked-derived-knowledge.md).
 
-The merged `main` branch provides the canonical-content foundation, lexical
-primitives and the implemented durable lexical document-memory vertical slice
-from PR #508: durable canonical text, deterministic lexical search, scope
-isolation, update and reopen. This closes part of KB-0, but it does not
-complete the normative M0 table in `milestones.md`: resource
-manifests/importers, knowledge-unit stores, source summaries, projections and
-retrieval traces remain explicit gaps.
+The merged `main` branch provides the canonical-content foundation and the
+durable lexical document-memory slice introduced by PR #508. Later slices
+added resource import/manifests, revision-bound units/projections, snapshot
+admission, trace and authoritative Raw Markdown hydration. At
+`main@acd5ad5545386b3feeaa79f8a587855b60801b4d`, the storage integration batch
+also provides experimental numeric typed-KU and flat canonical adapters.
+Those components are not automatically one product publication path and do
+not establish completion of the normative M0/M1 table or activation on existing
+data. The source-bound map, exact current gaps and proposed next operation are
+in [Storage Product Integration: Phase 1](storage-product-integration-audit.md)
+and its [ADR](storage-product-integration-adr.md). The separate
+[numeric migration plan](storage-numeric-migration-plan.md) is design only.
 
 ## Research policy
 
