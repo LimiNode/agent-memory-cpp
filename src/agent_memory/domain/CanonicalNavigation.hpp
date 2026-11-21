@@ -39,19 +39,35 @@ namespace agent_memory {
         std::vector<CanonicalOutlineEntry> entries;
     };
 
+    enum class CanonicalNavigationStatus {
+        Ok,
+        NotFound,
+        InvalidDocument,
+        BudgetExceeded
+    };
+
+    /// \brief Result of reading direct children from one exact revision.
+    struct CanonicalChildrenResult final {
+        CanonicalNavigationStatus status = CanonicalNavigationStatus::InvalidDocument;
+        DocumentId document_id;
+        std::uint64_t document_revision = 0;
+        std::optional<ContentBlockId> parent_id;
+        std::vector<CanonicalOutlineEntry> entries;
+        bool truncated = false;
+        std::string message;
+
+        [[nodiscard]] bool succeeded() const noexcept {
+            return status == CanonicalNavigationStatus::Ok ||
+                status == CanonicalNavigationStatus::BudgetExceeded;
+        }
+    };
+
     /// \brief Bounded subtree read request against an already pinned revision.
     struct CanonicalSubtreeRequest final {
         std::optional<ContentBlockId> root_id;
         std::size_t max_blocks = 256;
         std::size_t max_text_bytes = 256U * 1024U;
         bool include_text = true;
-    };
-
-    enum class CanonicalNavigationStatus {
-        Ok,
-        NotFound,
-        InvalidDocument,
-        BudgetExceeded
     };
 
     struct CanonicalSubtreeResult final {

@@ -1,0 +1,125 @@
+{
+  "base_rows": 4096,
+  "centroids": 8,
+  "cpu": "Intel64 Family 6 Model 63 Stepping 2, GenuineIntel",
+  "dataset_kind": "synthetic_smoke",
+  "dimension": 16,
+  "exact_oracle": "faiss.IndexFlatL2",
+  "execution_status": "EXECUTED",
+  "faiss": "1.16.0",
+  "faiss_compile_options": "",
+  "leakage": "train/base/query generated independently; query rows are never used for training",
+  "limitations": [
+    "Synthetic smoke only; no quality claim for a production corpus.",
+    "nprobe values are not equivalent work budgets; scanned_documents_mean is reported.",
+    "O-means is not implemented or represented by these results."
+  ],
+  "methods": [
+    {
+      "centroid_digest": "7ced7fa02d03deed774c3e0bf70b59f28afc6f55349ac472e2f0a2474aad6b15",
+      "cluster_occupancy": [
+        521,
+        541,
+        516,
+        465,
+        536,
+        302,
+        964,
+        251
+      ],
+      "epochs": 10,
+      "ivf_build_ms": 0.9034997783601284,
+      "method": "faiss_lloyd",
+      "retrieval": [
+        {
+          "distance_checksum": 4012.86669921875,
+          "nprobe": 1,
+          "recall_at_10": 0.951171875,
+          "retrieval_ms": 2.0443000830709934,
+          "scanned_documents_mean": 620.953125
+        },
+        {
+          "distance_checksum": 3968.057373046875,
+          "nprobe": 2,
+          "recall_at_10": 1.0,
+          "retrieval_ms": 3.2787001691758633,
+          "scanned_documents_mean": 1189.8046875
+        },
+        {
+          "distance_checksum": 3968.057373046875,
+          "nprobe": 4,
+          "recall_at_10": 1.0,
+          "retrieval_ms": 6.120700389146805,
+          "scanned_documents_mean": 2422.6015625
+        },
+        {
+          "distance_checksum": 3968.057373046875,
+          "nprobe": 8,
+          "recall_at_10": 1.0,
+          "retrieval_ms": 9.016899857670069,
+          "scanned_documents_mean": 4096.0
+        }
+      ],
+      "train_mse": 8.11662526224546,
+      "training_ms": 2.9033999890089035
+    },
+    {
+      "centroid_digest": "c256508e3986bd69e224ca47e06b0c7ca49f6a829a9b75bc62da297992e01ff3",
+      "cluster_occupancy": [
+        521,
+        541,
+        516,
+        465,
+        536,
+        242,
+        964,
+        311
+      ],
+      "epochs": 10,
+      "ivf_build_ms": 0.8826996199786663,
+      "method": "faiss_numpy_emeans",
+      "retrieval": [
+        {
+          "distance_checksum": 3999.39404296875,
+          "nprobe": 1,
+          "recall_at_10": 0.958984375,
+          "retrieval_ms": 1.7702998593449593,
+          "scanned_documents_mean": 620.91796875
+        },
+        {
+          "distance_checksum": 3968.057373046875,
+          "nprobe": 2,
+          "recall_at_10": 1.0,
+          "retrieval_ms": 2.8222999535501003,
+          "scanned_documents_mean": 1192.7890625
+        },
+        {
+          "distance_checksum": 3968.057373046875,
+          "nprobe": 4,
+          "recall_at_10": 1.0,
+          "retrieval_ms": 5.190200172364712,
+          "scanned_documents_mean": 2427.30859375
+        },
+        {
+          "distance_checksum": 3968.057373046875,
+          "nprobe": 8,
+          "recall_at_10": 1.0,
+          "retrieval_ms": 8.382100146263838,
+          "scanned_documents_mean": 4096.0
+        }
+      ],
+      "train_mse": 8.110681936923836,
+      "training_ms": 102.57320012897253
+    }
+  ],
+  "numpy": "2.4.6",
+  "production_activation": false,
+  "python": "3.11.9",
+  "query_rows": 256,
+  "schema": "r5.emeans_vs_lloyd.synthetic_smoke.v1",
+  "seed": 20261119,
+  "status": "PASS",
+  "threads": 1,
+  "top_k": 10,
+  "train_rows": 4096
+}

@@ -6,6 +6,7 @@
 /// \brief Aggregate include for optional MDBX-backed infrastructure adapters.
 
 #include "mdbx/MdbxCanonicalContentStore.hpp"
+#include "mdbx/MdbxCanonicalFlatStorage.hpp"
 #include "mdbx/MdbxCanonicalContentRouter.hpp"
 #include "mdbx/MdbxFederatedCanonicalReader.hpp"
 #include "mdbx/MdbxDocumentStorage.hpp"
@@ -15,6 +16,7 @@
 #include "mdbx/MdbxSnapshotRevisionBoundRetriever.hpp"
 #include "mdbx/MdbxKb0RetrievalFacade.hpp"
 #include "mdbx/MdbxStorageContext.hpp"
+#include "mdbx/MdbxStorageIdentityMapping.hpp"
 #include "mdbx/MdbxExactIndexGenerationStore.hpp"
 #include "mdbx/MdbxWorkspaceStorageRegistry.hpp"
 #include "mdbx/MdbxDurableLexicalDocumentMemory.hpp"
@@ -22,6 +24,8 @@
 #include "mdbx/MdbxPersistentLexicalCandidateAdapter.hpp"
 #include "mdbx/MdbxResourceImporter.hpp"
 #include "mdbx/MdbxKnowledgeUnitStore.hpp"
+#include "mdbx/MdbxKnowledgeUnitNumericKeyPilot.hpp"
+#include "mdbx/MdbxKnowledgeUnitTypedStore.hpp"
 #include "mdbx/MdbxProjectionStore.hpp"
 #include "mdbx/MdbxDerivedPublicationStore.hpp"
 #include "mdbx/MdbxArtifactCatalog.hpp"
