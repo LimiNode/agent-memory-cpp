@@ -2,7 +2,7 @@
 
 Currency note (2026-11-21): the sections preceding the
 [Post-Merge Integration Addendum](#post-merge-integration-addendum) preserve
-historical pre-integration evidence. The addendum records all sixteen runtime
+historical pre-integration evidence. The addendum records all sixteen selected storage
 merges and actual final-main qualification, with their separate evidence
 bindings. This report still requires independent final merge-review.
 
@@ -522,7 +522,7 @@ numeric migration or production activation was performed by this refresh.
 
 ## Post-Merge Integration Addendum
 
-Date: 2026-11-21. Status: **runtime integration and scoped final qualification
+Date: 2026-11-21. Status: **selected storage batch integration and scoped final qualification
 complete; separate final merge-review required**.
 The user authorized guarded normal merges of the selected storage stack. The
 new review requires post-merge CI/packaging before advancing each PR and a
@@ -763,7 +763,7 @@ directory. TSan remains unexecuted.
 
 ### Actual final-main qualification
 
-Final runtime main is `acd5ad5545386b3feeaa79f8a587855b60801b4d`.
+Final integration main is `acd5ad5545386b3feeaa79f8a587855b60801b4d`.
 Its post-merge CI [44879234606](https://github.com/LimiNode/agent-memory-cpp/actions/runs/44879234606)
 and packaging [44879234421](https://github.com/LimiNode/agent-memory-cpp/actions/runs/44879234421)
 both passed. A fresh protected-rule verification records ordinary `pass` and
@@ -893,10 +893,10 @@ changed by this integration.
 #658 and its no-reuse corrective #661 are both MERGED. The combined identity
 slice has successful exact-head, post-merge and final-main qualification.
 #672 is merged with successful post-merge checks and final consumer validation.
-#673 and #663 are merged with successful post-merge checks. All sixteen runtime
+#673 and #663 are merged with successful post-merge checks. All sixteen selected storage
 merges have fresh normal protected-rule and post-merge confirmation. The earlier
 dependency DAG records the actual integration order; source branches remain
-retained. No runtime PR remains in this authorized set.
+retained. No PR remains in this authorized integration batch.
 
 Scoped final-main qualification is complete; this report's separate final
 merge-review remains pending. TESTED and REVIEWED do not imply MERGED; MERGED does not imply
