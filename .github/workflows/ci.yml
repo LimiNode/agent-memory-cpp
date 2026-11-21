@@ -530,7 +530,7 @@ jobs:
           --output-on-failure
 
   mdbx-benchmark:
-    if: needs.changes.outputs.research == 'true'
+    if: needs.changes.outputs.research == 'true' || needs.changes.outputs.storage == 'true'
     needs: changes
     name: MDBX benchmark harness
     runs-on: ubuntu-latest
@@ -1810,6 +1810,7 @@ jobs:
           CORE_REQUIRED: ${{ needs.changes.outputs.core }}
           STORAGE_REQUIRED: ${{ needs.changes.outputs.storage }}
           RESEARCH_REQUIRED: ${{ needs.changes.outputs.research }}
+          MDBX_BENCHMARK_REQUIRED: ${{ needs.changes.outputs.research == 'true' || needs.changes.outputs.storage == 'true' }}
           DOCS_REQUIRED: ${{ needs.changes.outputs.docs }}
           FULL_REQUIRED: ${{ needs.changes.outputs.full }}
           DOCS_RESULT: ${{ needs.docs.result }}
@@ -1859,7 +1860,7 @@ jobs:
           check_required "$STORAGE_REQUIRED" "$ZSTD_RESULT" "Framed Zstd"
           check_required "$STORAGE_REQUIRED" "$STORAGE_RESULT" "MDBX storage"
           check_required "$STORAGE_REQUIRED" "$MSVC_STORAGE_RESULT" "MDBX MSVC storage"
-          check_required "$RESEARCH_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
+          check_required "$MDBX_BENCHMARK_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
           check_required "$RESEARCH_REQUIRED" "$MIH_RESULT" "native MIH"
           check_required "$RESEARCH_REQUIRED" "$NUMERICAL_FRONTIER_RESULT" "exact-vector numerical frontier"
           check_required "$RESEARCH_REQUIRED" "$PRODUCTION_RERANKER_RESULT" "production-shaped reranker admission"
