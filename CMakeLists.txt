@@ -105,6 +105,7 @@ add_library(agent_memory STATIC
     src/agent_memory/storage/IDocumentStorage.cpp
     src/agent_memory/storage/CanonicalContentStore.cpp
     src/agent_memory/storage/CanonicalFlatStorage.cpp
+    src/agent_memory/storage/CanonicalNavigationStore.cpp
     src/agent_memory/storage/FileRawBlobStore.cpp
     src/agent_memory/storage/FramedZstdCodec.cpp
     src/agent_memory/storage/IKnowledgeUnitStore.cpp
@@ -157,6 +158,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         PRIVATE
             src/agent_memory/infrastructure/mdbx/MdbxDocumentStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxStorageContext.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxStorageIdentityMapping.cpp
             src/agent_memory/infrastructure/mdbx/MdbxExactIndexGenerationStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentRouter.cpp
@@ -182,6 +184,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxSegmentedLexicalIndex.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceImporter.cpp
             src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitStore.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitNumericKeyPilot.cpp
     )
 
     agent_memory_provide_mdbx_containers(AGENT_MEMORY_MDBX_CONTAINERS_TARGET)

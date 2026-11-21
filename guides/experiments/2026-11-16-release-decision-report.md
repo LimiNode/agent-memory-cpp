@@ -1,5 +1,12 @@
 # Release decision report — 2026-11-16
 
+> **Superseded physical-storage baseline (2026-11-19).** This decision record
+> predates the numeric MDBX identity pilot. Preserve its exact SHAs, CI links,
+> and bounded conclusions as historical evidence, but do not treat its
+> reopen/upgrade or preview decision as valid for a post-migration release.
+> The decision matrix must be regenerated at the numeric-key HEAD.
+> See [`../mdbx-numeric-identity-evidence-register.md`](../mdbx-numeric-identity-evidence-register.md).
+
 This report records the release decision for the exact integrated candidate
 `main` at the current integrated source candidate:
 
