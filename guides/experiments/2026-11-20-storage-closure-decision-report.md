@@ -539,7 +539,7 @@ main SHA observed immediately after that operation.
 | #656 | `ee8dffe4a9b205fb64ad9b966bac5909bff5ae54` | `0a43df571d4e2d5ad29de2c2cd3b00006637e248` | 44769936646 / 44769936617 SUCCESS | 44770689023 / 44770689239 SUCCESS |
 | #654 | `856d6039290f548592e2973d42345a9eb33f0e1a` | `cf054590b6a24a616bc23b03aa534fd6befbcefb` | 44794871155 / 44794871164 SUCCESS | 44796589327 / 44796589264 SUCCESS |
 | #657 | `281d73c505864e28697f30e7e01e9b2e922813f7` | `76af612918d84051a0bcd30283f4eb8382d902c9` | 44796648919 attempt 2 / 44796648892 SUCCESS | 44859486239 / 44859486250 SUCCESS |
-| #658 | `c2a6f14e520cb08e5f63e692fafac2adaa94fbe1` | `aa71b2b29fc0d68f959304cb26a323c4df53ffc6` | 44861143324 / 44861143210 SUCCESS | 44861882073 pending / 44861882126 SUCCESS at this checkpoint |
+| #658 | `c2a6f14e520cb08e5f63e692fafac2adaa94fbe1` | `aa71b2b29fc0d68f959304cb26a323c4df53ffc6` | 44861143324 / 44861143210 SUCCESS | 44861882073 / 44861882126 SUCCESS |
 
 The newly imposed per-step post-merge wait applies from #657 onward; the
 earlier #655/#656 documentation sequence is reported as actually observed,
@@ -553,6 +553,14 @@ recovery at that size, or numeric migration. #658's normal main refresh resolved
 only a CMake test-registration conflict, preserving both the numeric-pilot and
 identity tests; those focused MDBX tests passed 2/2. The runtime patch remained
 six files / 770 insertions with no accidental main deletions.
+
+That auxiliary two-test build used the host dependency override, whose observed
+checkout is `e9e9f2fd5139f7fb386afd458fcdd8e20d7ec6e3`, rather than this PR's
+pin. Its 2/2 result is therefore auxiliary only, not exact-dependency
+qualification. The exact-head and post-merge CI above use pinned source-built
+dependencies and both pass. The seven composed profiles below were independently
+checked through their caches and logs: they use the correctly pinned checkout
+inside storage-final, not that host override. No dependency was modified.
 
 ### Required-check recovery and protected merge evidence
 
@@ -630,7 +638,7 @@ results above retain their original source binding.
 
 #658 is MERGED but its no-reuse contract is not considered complete without
 #661. Pending guarded order is #659, #667, #660, #661, #662, #670, #672, #669,
-#675, #673, #663 after #658 post-merge confirmation. The earlier dependency DAG
+#675, #673, #663. #658 post-merge confirmation is complete. The earlier dependency DAG
 still applies; source branches are retained for safe child retargeting.
 
 Final-main qualification and this report's separate final merge-review remain
