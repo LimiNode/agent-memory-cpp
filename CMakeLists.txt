@@ -2589,6 +2589,12 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND agent-memory-reranker-admission-scaling --self-test
         )
     endif()
+    if(TARGET agent-memory-thq-fastscan-v3-benchmark)
+        add_test(
+            NAME agent_memory_thq_certified_adc_self_test
+            COMMAND agent-memory-thq-fastscan-v3-benchmark --certificate-self-test
+        )
+    endif()
     add_subdirectory(tests)
 endif()
 
