@@ -2507,6 +2507,19 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND agent-memory-reranker-admission-scaling --self-test
         )
     endif()
+    if(AGENT_MEMORY_BUILD_BENCHMARKS AND AGENT_MEMORY_BUILD_MULTIPROBE_DEDUP_RESEARCH)
+        add_test(NAME agent_memory_multiprobe_dedup_native_self_test
+            COMMAND agent-memory-multiprobe-dedup --self-test)
+        add_test(NAME agent_memory_multiprobe_dedup_diagnostic_self_test
+            COMMAND agent-memory-multiprobe-dedup-diagnostic --self-test)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME agent_memory_multiprobe_dedup_generator_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/generate-multiprobe-dedup.py --self-test)
+        add_test(NAME agent_memory_multiprobe_dedup_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-multiprobe-dedup.py --self-test)
+    endif()
     add_subdirectory(tests)
 endif()
 
