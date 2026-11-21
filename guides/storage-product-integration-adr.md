@@ -32,6 +32,15 @@ contract and backend transaction seams. Under the current no-schema-change
 instruction, this PR delivers the exact proposal and acceptance matrix rather
 than implementing a weaker path and calling it qualified.
 
+The unmerged historical #549–#554 stack already implements experimental
+transaction ownership, concrete write participants and pinned target reads.
+The [exact-head differential audit](experiments/2026-11-21-publication-stack-differential-audit.md)
+is a required reuse input, together with #555's writer-admission limits. This
+ADR does not approve a clean-room replacement or whole-stack import. Its
+`Complete`/`TargetExact` states are not the new product contract: lexical
+token-content binding, global legacy-writer exclusion and complete crash
+qualification remain absent from that historical proof.
+
 ## Alternatives
 
 | Property | A. Minimal host composition | B. Scoped publication operation |
@@ -112,6 +121,11 @@ Required additive infrastructure seams, names provisional:
    logic with typed readers and validates the canonical binding in one snapshot.
 
 Mapping/projection/manifest transaction overloads already exist; reuse them.
+Their existing read seams do not imply that all required write seams exist.
+For missing typed/flat seams, port the historical ownership, closed-family,
+connection-binding and persisted-read-back patterns only after reconciling
+current provenance validation, lock ordering and family identity. Do not copy
+historical C1/legacy-KU implementations or metadata codecs over current stores.
 The generic `ProjectionAwareLexicalRetriever` remains candidate production.
 Adapt the existing snapshot admission helper for typed reads rather than write
 another lexical ranking implementation. Candidate budgets and no-refill
@@ -234,6 +248,14 @@ canonical commit does not delete immutable history or reuse IDs: either finish
 publication or record an explicit abandoned/withdrawn outcome. Reverting content
 is a new canonical edit. Garbage collection requires a separate retention gate.
 
+Such participating-writer fencing is not global legacy-writer exclusion.
+Before activation, #555's updated gate must prove initial writer drain and
+continuous control of permitted writer startup, or enforce equivalent admission
+on every writer. One-time quiescence, a new schema marker and MDBX's serialized
+writer lock do not prevent an old process or public unfenced API from writing.
+Require independent-process stale-writer and activation crash/restart controls;
+unmanaged legacy processes leave activation unsupported.
+
 ## Phase 3 implementation proposal and gates
 
 After review and explicit schema/API authorization, implement in a small Draft
@@ -272,8 +294,10 @@ follows from passing this opt-in acceptance matrix.
 
 ## Review checklist and next change
 
-The first implementation PR should contain only the transaction/read seams and
-their provenance/no-ownership-transfer tests, without a new serving default.
+After the separately active Identity Architecture workstream, the first
+authorized publication implementation PR should contain only the minimal
+transaction/read seam delta after historical selective reuse review and its
+provenance/no-ownership-transfer tests, without a new serving default.
 The next reviewed step defines the binding/intent's codec, DBI budget, resource
 limits and canonical digest recipe; only then implement publication/recovery.
 The final slice uses those seams for end-to-end/fresh-process qualification.

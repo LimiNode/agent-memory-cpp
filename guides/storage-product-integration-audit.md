@@ -138,6 +138,14 @@ unit, authorization binding and published resource/projection tuple. No durable
 intent currently owns **that entire tuple**. Importer/catalog intents own their
 existing narrower profiles; they must not be reinterpreted as a new schema.
 
+This is a current-main gap, not a claim that transaction/read participants have
+never been implemented. The unmerged #549–#554 coordinator stack contains real
+experimental participants and a pinned target read. Its exact-head
+[differential reuse audit](experiments/2026-11-21-publication-stack-differential-audit.md)
+maps those to main, records #555's legacy-writer gate and distinguishes
+`TargetExact` from the stronger numeric/flat product contract. Evaluate that
+implementation selectively before creating new seams; do not merge it whole.
+
 ## Currentness and failure matrix
 
 The right column is the **required proposed product result**, not a claim that
@@ -234,8 +242,10 @@ quick benchmark gates, not a multi-hour sweep or production throughput gate.
 1. Independently finalize #674 without merging it under the old authorization.
 2. Review this audit/ADR and the separately delivered identity/API proposals.
 3. Review the small independent canonical benchmark CI corrective.
-4. Authorize the bounded transaction/binding prerequisites, then implement the
-   proposed opt-in product slice with the complete negative/fresh-process matrix.
+4. After Identity Architecture, review the historical coordinator reuse matrix,
+   authorize only the missing bounded transaction/binding prerequisites, then
+   implement the proposed opt-in product slice with the complete
+   negative/fresh-process matrix. No coordinator is implemented in this phase.
 5. Only after that qualification, review the separate real migration plan.
 
 ### Old Draft differential audit
