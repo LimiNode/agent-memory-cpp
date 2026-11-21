@@ -185,9 +185,13 @@ claim follows from choosing an integer type.
 ## Consequences and unresolved decisions
 
 This separates source truth from local lookup without making every ID numeric.
-It costs explicit namespaces, adapters and versioning. Review must settle the
-portable namespace issuance rule, exact event revision model, missing-ID policy,
-codec grammar/limits and first concrete consumer before public API or durable
-schema implementation. Rejected alternatives are a bare numeric/string variant,
-provider-specific canonical DTOs, mandatory whole-conversation vectors, and
-silently replacing legacy IDs with counters.
+It costs explicit namespaces, adapters and versioning. External namespace
+issuance, missing-ID handling and AMXR grammar/limits now belong to
+[identity policy](../identity-policy.md); an event adapter cannot silently
+redefine them. Remaining conversation review must settle the exact event
+revision/relationship schema, occurrence/actor/thread allocation, store and
+recovery semantics, and first concrete consumer before a durable event API or
+schema is implemented. AMXR alone supplies none of that event/store behavior.
+Rejected alternatives remain a bare numeric/string variant, provider-specific
+canonical DTOs, mandatory whole-conversation vectors, and silently replacing
+legacy IDs with counters.
