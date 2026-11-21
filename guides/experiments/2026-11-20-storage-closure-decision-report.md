@@ -544,12 +544,22 @@ main SHA observed immediately after that operation.
 | #667 | `ea76d6a706ca86fc56a2fde5ffd30f4175f8f801` | `0c8b940373600479dce2d90e5cd80f512d92a4e2` | 44864254966 / 44864254963 SUCCESS | 44865075989 / 44865075992 SUCCESS |
 | #660 | `6d6602b952f33dcf0bc904bb0366a9b1bc7f49c8` | `1cc82fbcd5a1b685f9797bbea1afe88d75e953f4` | 44865894692 / 44865892974 SUCCESS | 44866555240 / 44866555095 SUCCESS |
 | #661 | `34c8572272b372580b009c469e4e8c4622e10247` | `a28031b698f8569b678fa8813e133fa806fa49ce` | 44867528171 / 44867528271 SUCCESS | 44868248866 / 44868248859 attempt 2 SUCCESS |
+| #662 | `4fdfb08a37df8da245185cf1bc1679d9ad622649` | `732bd3329bf38cd1525ff87b129cea22b575ab78` | 44868960744 / 44868960675 SUCCESS | 44869760177 / 44869760078 SUCCESS |
+| #670 | `b4b110aeb47f395015f9ed3054bc27d046451c93` | `d188be2010ef8dd12fa7b065aaa55073f40738bb` | 44870824862 / 44870824851 SUCCESS | 44871573981 / 44871573872 SUCCESS |
+| #672 | `6e9ed55e1b60b18f050fb7b6cf2b54c7dfbcc550` | `daff45ecf8d204c69f013c8e25a83c676ac0c52b` | 44873219127 / 44873219086 SUCCESS | 44874143284 / 44874143267 SUCCESS |
+| #669 | `518e31afcbca1784ca9ab2e0fb64aa923d10d37f` | `8017a6de2c8ab5bcd030ed57fa9e0915679a426d` | 44875003336 / 44875003298 SUCCESS | 44875283009 / 44875283463 SUCCESS |
+| #675 | `be4c2506823f3e10609fa4ed60285ad3bd0b5234` | `01e6f4817ddf75a741a2e34f7f56fe0c74003b2e` | 44875602227 / 44875602186 SUCCESS | 44876083593 / 44876083534 SUCCESS |
+| #673 | `bcbdabe0b84c578f1ae354ae474bdbec7c415c0c` | `e8c69e65c92d570132e2405a7a632b53a74fa92a` | 44876737183 / 44876737170 SUCCESS | 44877545491 / 44877545482 SUCCESS |
+| #663 | `af598cb28d3b4a79beb026fc1fbf6076c79e65ee` | `acd5ad5545386b3feeaa79f8a587855b60801b4d` | 44878411285 / 44878411384 SUCCESS | 44879234606 / 44879234421 PENDING |
 
 The newly imposed per-step post-merge wait applies from #657 onward. The initial
 report had no separately captured #655 post-merge result. A later 2026-11-21
 retrospective GitHub query recovered its exact-merge successful workflows and
 consistent GitHub Actions check records, closing that observation gap. This
 does not claim that a per-step wait was observed before #656 was merged.
+#654's exact-merge workflows and ordinary protected-rule pass were also
+recaptured directly from GitHub on 2026-11-21 into a retained machine-readable
+post-merge snapshot; they agree with the earlier observed workflow IDs.
 Links follow the repository Actions run form
 `https://github.com/LimiNode/agent-memory-cpp/actions/runs/<id>`.
 
@@ -584,7 +594,9 @@ recovery does not establish its root cause.
 GitHub protected-rule suites 5261046327 (#655), 5261146696 (#656),
 5264438407 (#654), 5271919573 (#657), 5272215667
 (#658), 5272415504 (#659), 5272601606 (#667), 5272781596 (#660) and
-5272983669 (#661) record
+5272983669 (#661), 5273174532 (#662), 5273393432 (#670) and
+5273703139 (#672), 5273858511 (#669), 5273955915 (#675) and
+5274119784 (#673) and 5274313624 (#663) record
 result pass, not bypass.
 The active required-status and pull-request rules from ruleset 24881787
 individually passed. The ruleset
@@ -602,6 +614,67 @@ forbidden-header diagnostic. Both attempt logs are retained; attempt 1 is not
 erased or reclassified as success. No source/workflow/protection change was used
 to obtain attempt 2. Exact post-CI and a fresh protected-merge verification also
 passed before proceeding to #662.
+
+#662's exact CI MDBX lane passed 93/93 tests, including numeric flat history,
+identity, navigation and the large C1 decoder regression. The integration
+preserved the earlier #654 guards and #667 shared digest changes; its C1
+change is the approved sequential metadata decoder, not a second copy of B4.
+
+#670's downloaded exact-PR receipt passed all nineteen processes and five
+negative controls. Its actual source is GitHub's synthetic merge
+`9aa3139c50bc007ab32db772cb40e27f6893571a`, whose full Git tree independently
+equals the integrating HEAD's tree `41e688e85ea177aecc424eb26bfd28d4d41baba5`.
+The receipt is not relabelled as the PR HEAD. Its SHA-256 is
+`576bed3bfe690273fc8e52ff276bd1f890c965650d0f695bedb8e02c2458010a`.
+The separately downloaded post-main receipt names the actual main
+`d188be2010ef8dd12fa7b065aaa55073f40738bb`, passes nineteen processes/five
+controls, and has SHA-256
+`32172638a8d5fa87927b699010d6ddf81b97dcce8c623fa10b50d11d3a7d4b51`.
+Both confirm fresh reopen, interrupted-transaction recovery and unchanged OLD;
+both retain `migration_executed=false` and `post_migration_upgrade_proof=false`.
+
+#672's first integrating HEAD `38d1bf70...` passed CI 44872484691 but failed
+packaging 44872484693 at the same Ubuntu negative diagnostic matcher as #661.
+The original captured error was not printed; the cause remains unknown.
+Corrective HEAD `6e9ed55e1b60b18f050fb7b6cf2b54c7dfbcc550` captures CMake
+stdout/stderr separately, always prints both and bounds each fixture at thirty
+seconds, while retaining the exact forbidden-header rejection in stderr.
+Windows/Linux fixture pairs and three local rejection controls passed;
+independent review found no P0/P1/P2. This is capture/observability hardening,
+not a claimed diagnosis of the old failure. Both new exact-head workflows
+passed, including all six packaging jobs and the revised Ubuntu fixture.
+The PR merged normally; both post-merge workflows and a fresh ordinary
+protected-merge verification passed before updating #669.
+
+#673's normal refresh resolved one documentation conflict, retaining both the
+exact audited loader transition and main's migration-backed `NOT_EXECUTED`
+wording. Its effective change is fourteen approved files; production source,
+research, packaging and #675's lexical files remain identical to main. The
+CTest registration difference from the composed preflight is order only.
+Independent review found no blockers. Four directional audit/upgrade rejection
+tests passed locally. Exact-HEAD native MSVC Debug and Release each passed
+91/91 tests. Their logs are retained separately from preflight results.
+
+The exact-HEAD historical packaging receipt names actual source
+`bcbdabe0b84c578f1ae354ae474bdbec7c415c0c` and source tree
+`9fd876a450c3661d60ed6b8ffbd7de1ddb727f43`. It passed seven processes with
+fresh-process reopen and exactly the audited external-tree transition
+`b949d6822582edc1f445837442b91aabf5093ac6` to
+`b816ddeccafa0375c15b977e71d4a36f6728f59f` under audit
+`mdbxc-db-load-private-template-2026-11-20`. Receipt SHA-256 is
+`2f4506b5678f703bcb627daa059864e572b89ec04cc010855decd358834942ce`.
+It remains `HISTORICAL_ONLY`, with both migration proof flags false and an
+empty `logical_row_validation` array. No numeric migration proof is claimed.
+
+#663's normal main refresh retained the approved eleven-file effective diff,
+all eight owned evidence/tool/header blobs and the immutable raw/receipt pair.
+Independent exact-composition review found no blocker. Its exact-head benchmark
+job passed all nineteen selected harness cases. Its existing CI regex does not
+select the five registered canonical benchmark self-test/replay/launch-control
+cases; they require a separate direct final-source execution. The retained measurements still name
+`a7a71807...`, not the integrating HEAD or final main. Adapter KV/value-byte
+counters do not measure physical page I/O or allocated disk blocks, and the
+16,384-block timing does not establish universal flat-over-C1 superiority.
 
 ### Fresh composed qualification, separate from final-main acceptance
 
@@ -689,8 +762,9 @@ directory. TSan remains unexecuted.
 
 #658 and its no-reuse corrective #661 are both MERGED. The combined identity
 slice has successful exact-head and post-merge checks; final-main qualification
-is still pending. Pending guarded order is #662, #670, #672, #669,
-#675, #673, #663. Post-merge confirmation is complete through #661. The earlier
+is still pending. #672 is merged with successful post-merge checks.
+#673 is merged with successful post-merge checks. #663 is merged; its post-merge
+checks remain pending. Post-merge confirmation is complete through #673. The earlier
 dependency DAG
 still applies; source branches are retained for safe child retargeting.
 
