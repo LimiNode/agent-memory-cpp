@@ -19,6 +19,7 @@
 #include "lexical/Lexical.hpp"
 #include "lexical/LexicalHash.hpp"
 #include "lexical/PersistentLexicalIndex.hpp"
+#include "lexical/PublicationPlan.hpp"
 #include "lexical/QueryAnalysis.hpp"
 #include "lexical/StandardTokenizer.hpp"
 #include "lexical/TokenDictionary.hpp"
