@@ -869,6 +869,10 @@ jobs:
           - windows-latest
 
     steps:
+      - name: Preserve byte-exact research sources on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
       - name: Checkout
         uses: actions/checkout@v4
 

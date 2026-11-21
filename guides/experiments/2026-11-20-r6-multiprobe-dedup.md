@@ -1,6 +1,8 @@
 # R6 production-shaped MultiProbe deduplication
 
-Date: 2026-11-20. Status: **PREREGISTERED, NOT_EXECUTED**.
+Preregistered: 2026-11-20. Executed: 2026-11-21. Status: **EXECUTED**.
+Research decision: **CONDITIONAL** in two synthetic profiles; production
+default decision: **KEEP_CURRENT**.
 This research continuation does not change the production index, API, defaults,
 dependencies, persisted schema or storage workstream. No merge is authorized.
 
@@ -192,21 +194,29 @@ qualification. Report dense/skew regressions and sparse wins together rather
 than averaging them into an adoption claim. K8/IVF remain `NOT_EXECUTED` until
 their actual prerequisites are satisfied.
 
-## Actual result and next gate
+## Execution, correctness and source attribution
 
-The bounded implementation and local correctness checks are complete on the
-uncommitted research source with C++ SHA-256
+Draft PR: [#679](https://github.com/LimiNode/agent-memory-cpp/pull/679).
+Both compilers measured the same clean commit
+`fdc21558678e2985d260824f7929d89ceb3bd276`, C++ SHA-256
 `c0fd5f26ff2f072f31079bef461ec5d6321472da358b08167a4a36c43425b4bc`.
-This is not a measured commit attribution. GNU 15.2 and MSVC 19.44.35228.0
-both pass 121 normal native controls, three literal goldens, 4096 compact-set
-positions, and four concurrent readers per shared index. Additional allocation
-failure/trace controls pass 309 cases on GNU and 334 on MSVC; different standard
-library allocation counts explain the different failure-point sweep lengths.
-The controls include widths 128/256, radii 0/1/2 and metadata filtering.
-Focused CTest passes 4/4 on each compiler: normal native, diagnostic native,
-source-generator and Python-auditor controls. The generator rejects four source
-corruptions; the independent validator rejects 52 corruptions. PowerShell syntax
-and actual GNU/MSVC Release optimization-parity checks pass.
+The later documentation/CI correction is not a new measured source. Production
+source, generated variants, scoring, matrix and receipts remain unchanged.
+GNU 15.2.0 and MSVC 19.44.35228.0 each completed exactly 3840 samples,
+960 matched trials, 768 warmups and 768 separate diagnostic rows. All full
+results, metadata and exposed counters match production; all three private
+candidate/probe/distance traces match in memory. Cross-compiler fixture hashes
+and all 192 production reference cases agree. No rerun or rescue arm was used.
+
+Each compiler passes 121 normal native controls, three literal goldens,
+4096 compact-set positions and four concurrent readers per shared index.
+Diagnostic allocation/fault/trace controls pass 309 cases on GNU and 334 on
+MSVC; standard-library allocation counts account for the different failure-point
+sweep lengths. Controls cover widths 128/256, radii 0/1/2 and metadata filters.
+Focused CTest is 4/4 on each compiler: normal native, diagnostic native,
+source-generator and auditor controls. The generator rejects four corruptions;
+the auditor rejects 52. PowerShell syntax and effective GNU/MSVC Release
+optimization/no-LTO/separate-translation-unit checks pass.
 
 The diagnostic observer uses an out-of-band, fixed 1,048,576-entry pointer/size
 table allocated with `calloc` before observations. Its 16 MiB x64 bookkeeping
@@ -216,9 +226,155 @@ memory. It is released after observations. Allocation pointers remain ordinary
 is added. Aligned allocation and process RSS remain outside the observation
 scope. This observer and trace code are absent from the normal timing target.
 
-No full matrix, generated corpus replay, performance run, measured decision,
-commit or PR publication has executed yet for this research line. Next:
-independent code review, one clean frozen source, then matched GNU/MSVC
-execution after the ADC timings finish. Update the
-[existing algorithm registry](2026-11-18-algorithm-research-sweep.md)
-with the resulting limited decision; do not create a second registry.
+The original Windows R4 CI configure rejected CRLF checkout bytes before
+compilation (`production cpp digest changed`). The final CI correction sets
+`core.autocrlf=false` only on the ephemeral Windows runner before checkout.
+It does not normalize or weaken the generator's byte-exact hash gate. An
+additional in-memory check accepts LF/LF and rejects CPP-only, HPP-only and
+both-file CRLF conversion. These checks do not alter the measured generator.
+
+## Full-search result
+
+Only the compact set in profiles 18 and 19 passes the preregistered latency
+and ordinary-allocation-payload gates against **both** controls on **both**
+compilers. These are width 256, N=262144, sparse uniform radius-0 discovery.
+Times below are descriptive milliseconds; filter means `cohort == "0"`.
+
+| Compiler / filter | Production p50 | Dense-copy p50 | Sparse-set p50 | Compact-set p50 | Production / compact p95 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| GNU / none | 0.0632 | 0.0633 | 0.0779 | 0.0434 | 0.1038 / 0.0588 |
+| GNU / cohort | 0.1264 | 0.1263 | 0.1343 | 0.0970 | 0.1694 / 0.1255 |
+| MSVC / none | 0.0697 | 0.0711 | 0.0762 | 0.0468 | 0.1566 / 0.0768 |
+| MSVC / cohort | 0.1353 | 0.1333 | 0.1404 | 0.1088 | 0.1675 / 0.1284 |
+
+That is 31.3%/32.9% lower p50 without a filter and 23.3%/19.6% lower with
+the filter on GNU/MSVC respectively. The width-128 large unfiltered case
+passes only on MSVC, not GNU, so it is not a cross-compiler win. No small-N
+case passes both compilers. The unordered set passes no profile.
+
+All profiles remain visible below. Each entry is compact/production
+`p50 / p95`; lower is better. The decision additionally checks the dense copy
+and all eight per-query allocation peaks, not just these rounded ratios.
+
+| Width / N | Workload / filter | GNU ratio | MSVC ratio | Cross-compiler decision |
+| --- | --- | ---: | ---: | --- |
+| 128 / 4096 | sparse / none | 1.024 / 1.020 | 1.077 / 1.000 | KEEP_CURRENT |
+| 128 / 4096 | sparse / cohort | 0.964 / 1.091 | 1.032 / 1.077 | KEEP_CURRENT |
+| 128 / 4096 | broad / none | 2.842 / 3.350 | 2.367 / 2.365 | KEEP_CURRENT |
+| 128 / 4096 | broad / cohort | 1.406 / 1.355 | 1.138 / 1.178 | KEEP_CURRENT |
+| 128 / 4096 | skew / none | 3.372 / 3.329 | 3.190 / 3.120 | KEEP_CURRENT |
+| 128 / 4096 | skew / cohort | 2.241 / 2.111 | 2.017 / 1.538 | KEEP_CURRENT |
+| 128 / 262144 | sparse / none | 0.979 / 0.847 | 0.854 / 0.887 | KEEP_CURRENT |
+| 128 / 262144 | sparse / cohort | 0.984 / 0.969 | 0.959 / 0.987 | KEEP_CURRENT |
+| 128 / 262144 | broad / none | 2.596 / 2.535 | 2.390 / 2.273 | KEEP_CURRENT |
+| 128 / 262144 | broad / cohort | 1.197 / 1.175 | 1.130 / 1.126 | KEEP_CURRENT |
+| 128 / 262144 | skew / none | 4.177 / 3.841 | 4.385 / 5.019 | KEEP_CURRENT |
+| 128 / 262144 | skew / cohort | 2.990 / 2.978 | 2.367 / 2.994 | KEEP_CURRENT |
+| 256 / 4096 | sparse / none | 0.939 / 0.977 | 0.978 / 0.891 | KEEP_CURRENT |
+| 256 / 4096 | sparse / cohort | 0.952 / 1.107 | 1.000 / 1.000 | KEEP_CURRENT |
+| 256 / 4096 | broad / none | 2.591 / 2.154 | 2.246 / 2.530 | KEEP_CURRENT |
+| 256 / 4096 | broad / cohort | 1.599 / 1.293 | 1.142 / 1.136 | KEEP_CURRENT |
+| 256 / 4096 | skew / none | 3.177 / 3.081 | 3.045 / 3.905 | KEEP_CURRENT |
+| 256 / 4096 | skew / cohort | 2.338 / 2.092 | 1.887 / 1.777 | KEEP_CURRENT |
+| 256 / 262144 | sparse / none | 0.687 / 0.566 | 0.671 / 0.490 | CONDITIONAL |
+| 256 / 262144 | sparse / cohort | 0.767 / 0.741 | 0.804 / 0.767 | CONDITIONAL |
+| 256 / 262144 | broad / none | 2.237 / 2.275 | 1.866 / 1.484 | KEEP_CURRENT |
+| 256 / 262144 | broad / cohort | 1.205 / 1.202 | 1.130 / 1.269 | KEEP_CURRENT |
+| 256 / 262144 | skew / none | 3.771 / 3.799 | 4.475 / 4.940 | KEEP_CURRENT |
+| 256 / 262144 | skew / cohort | 2.939 / 3.025 | 2.404 / 2.491 | KEEP_CURRENT |
+
+The dense copy is an essential control, not a presumed identical timer.
+Its p50 differs by as much as 15.1% from production in one small filtered
+skew case; in the two passing profiles the discrepancy is at most 2.1%.
+Therefore no result is selected against the more favorable control alone.
+Across all profiles, unordered-set p50 ratios are 1.06–8.34 on GNU and
+1.04–16.37 on MSVC; compact ratios are 0.687–4.18 and 0.671–4.48.
+
+## Physical work, allocation cost and limits
+
+In the two passing profiles each query visits 497–536 postings in eight
+bucket lookups and encounters 494–536 distinct positions. Without filtering,
+all those positions receive full Hamming scoring; with filtering only 26–45
+are scored. The first-seen-before-filter contract is unchanged. Removing the
+262144-byte dense initialization is useful here without changing candidate
+work. These observations are not a measured isolated initialization timer.
+
+At width 256 / large N, broad unfiltered search instead visits
+130745–132135 postings and scores 105471–106138 positions. Projected skew
+visits 1835081 postings, encounters 229449 positions and scores all of them
+without filtering or 16384 with filtering. All arms perform the same work;
+hashing/growth/probing adds cost rather than reducing Hamming evaluations.
+At that skew, compact p50 is 3.77x/4.48x slower unfiltered on GNU/MSVC.
+
+| Passing profile / compiler | Production = dense peak requested-live bytes | Compact peak requested-live bytes | Maximum allocation requests, production / compact |
+| --- | ---: | ---: | ---: |
+| none / GNU | 277680 | 31920 | 14 / 21 |
+| cohort / GNU | 269824 | 29696 | 14 / 21 |
+| none / MSVC | 278533 | 32773 | 34 / 41 |
+| cohort / MSVC | 270638 | 29813 | 34 / 41 |
+
+The compact arm uses fewer requested bytes, not fewer allocation calls.
+For large filtered skew it instead peaks at 6373376/6379053 bytes on
+GNU/MSVC versus production 689968/658197 bytes, so memory also regresses.
+These are separate ordinary-new payload observations, not allocator overhead,
+aligned allocation or process RSS. Four full indexes plus the synthetic input
+are resident per profile; they are outside the query allocation window and
+are not treated as zero process memory. Process RSS and process CPU time are
+`NOT_MEASURED`; no whole-process memory Pareto claim is made.
+
+Sequential index builds are outside search timing. Across profiles, production
+builds range 6.92–1157.58 ms on GNU and 13.15–1862.60 ms on MSVC; compact
+builds range 6.41–1200.94 ms and 11.62–1881.22 ms. Build order is not randomized,
+so these are retained setup costs, not a build-speed claim. First-search timings
+are retained separately for every arm/profile, never pooled into steady-state
+quantiles. The machine is Windows 10.0.26100, Xeon E5-2696 v3 @ 2.30 GHz,
+18 physical / 36 logical cores, 137272254464 bytes reported RAM. GNU uses
+`-O3`; MSVC uses Release `MaxSpeed|AnySuitable||`; both are verified non-LTO.
+Timing/generation/build/preflight took 107.47 seconds on GNU and 209.10 seconds
+on MSVC in their separately recorded execution windows. These elapsed windows
+are not pure search time or process CPU measurements.
+
+## Retention, qualification and decision
+
+Immutable local packages are under canonical `.artifacts/r6-multiprobe-dedup/`.
+Each retains both executables, source/generated bytes, build provenance,
+native controls, 48 fixture files, raw timing/diagnostics and manifest sidecar.
+The fixture files alone occupy 424134144 bytes per package. No external
+dataset, fitting, download, dependency change or evidence release was used.
+
+| Package | Manifest SHA-256 | Measured executable SHA-256 |
+| --- | --- | --- |
+| `fdc21558-gnu-v1` | `81ccf97f57f5e9ea8cc61d0696999bbbe211cf33c74c7714fff90c94bab2e7c1` | `fe48cf9f5a6c9289f190d1e760b1745b42eb2986a42ea03cb8851812faa6a3fe` |
+| `fdc21558-msvc-v1` | `52081910df6d0ac4835187c6090b7fbadc14b3ca3888cfa1465887b6e3287e36` | `9cbe1d678946bf4444f9669238acbf10f92bc14eb880434b9c4f71bd43395c1c` |
+
+Replay the retained auditor with `--directory <package> --repository <checkout>`
+`--expected-source fdc21558678e2985d260824f7929d89ceb3bd276`
+`--verify-fixtures --mutation-self-test`. This checks every retained size/hash,
+source blob/tree, compiler ID/version, generated byte and synthetic record,
+then exercises 52 rejection controls. Local retention and audit are not public
+artifact publication or independent held-out quality replication.
+
+Owner and independent retained-auditor replays both pass on both complete
+packages, including full fixture verification and all 52 rejection controls.
+The independent reviewer also recomputed all 96 compiler/profile/alternative
+decision gates separately from the auditor and confirmed the same outcomes.
+The review found no research blocker; it does not authorize production use.
+
+The input qualification matrix remains at canonical
+`.artifacts/r6-batch2-input-qualification/qualification.json`, SHA-256
+`5b28c851770d38703ea9abbdd3cbb88490ac09f284d74687741da4475713bf3f`.
+K8 is `MISSING` for required normalized prototypes and complete memberships;
+alternate IVF4096 is `AVAILABLE` for historical mechanics but its training on
+base/evaluation documents is `INVALID` for the requested disjoint quality
+protocol. Original IVF256 model/binding is incomplete. Both requested quality
+experiments remain `NOT_EXECUTED`, with no invented synthetic replacement.
+
+The bounded fallback is complete: compact dedup has a real full-search
+**CONDITIONAL** benefit in two synthetic profiles, with significant broad/skew
+losses elsewhere. Unordered-set replacement is **KEEP_CURRENT** throughout.
+Keep production unchanged. Before any implementation proposal, obtain a
+representative query/candidate/filter distribution and a frozen applied-quality
+corpus, then preregister a separate product-path validation; do not choose a
+dispatch threshold from these exposed synthetic timings. Keep this PR Draft,
+request independent review, and update only the
+[existing registry](2026-11-18-algorithm-research-sweep.md).
