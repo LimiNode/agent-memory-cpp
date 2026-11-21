@@ -415,6 +415,13 @@ overridden. Invalid options or impossible count relationships are rejected;
 non-finite arithmetic is an error, not a sortable score. Numeric goldens use
 absolute tolerance `1e-6`; comparisons with the exact index use `1e-5`.
 
+The added scoring members retain source compatibility with existing
+three-member `PersistentLexicalCandidateOptions` aggregate initializers: omitted
+members select legacy TF. They change the public C++ object layout, however;
+this is not a binary drop-in replacement. Rebuild the static library and all
+consumer translation units together rather than mixing old option objects
+with new library code. No persisted layout or DBI changes are involved.
+
 `generate()` preserves the legacy pre-admission `query.limit` cap.
 `generate_window()` instead retains the complete bounded candidate window,
 up to `max_candidates`, for canonical admission before a caller selects final

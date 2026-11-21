@@ -6,8 +6,11 @@ Baseline: `acd5ad5545386b3feeaa79f8a587855b60801b4d`.
 This work reuses existing algorithms in the product path. It does not promote
 research conclusions to production readiness or replace the normative
 [milestones](milestones.md). The only active functional goal is persistent
-lexical retrieval. Exact semantic follows its correctness/review closure;
-PRR/PR-IVF + THQ follows exact semantic, then explicit search composition.
+lexical retrieval. Complete its independent correctness/qualification work
+before switching to exact semantic. If only approved metadata/access/publication
+contracts remain external, that documented dependency may remain open during
+the exact-semantic slice; it does not close lexical Phase 1. PRR/PR-IVF + THQ
+follows exact semantic, then explicit search composition.
 PRR means Prototype–Representative Routing; PR-IVF means
 Prototype–Representative Inverted File. Historical R4 is evidence, not a backend.
 
@@ -111,6 +114,9 @@ not process/crash recovery or proof of canonical admission.
 ## Interface requests to the canonical/domain owner
 
 These are requests for the first agent's decision, not new competing APIs.
+They remain deferred dependencies, not a request to interrupt the first agent's
+Identity Architecture / AMXR work. Do not implement dependent authority paths
+until their owner approves the contracts.
 
 1. **Metadata authority.** `KnowledgeUnitEnvelope` has no metadata map and the
    Original projection has body-only lexical statistics. Confirm which existing
