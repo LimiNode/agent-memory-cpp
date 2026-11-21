@@ -1,5 +1,13 @@
 # Index Lifecycle Roadmap
 
+> **Evidence baseline notice (2026-11-19).** The durable exact-generation
+> profile and the OLD-to-NEW command below were qualified against a
+> pre-numeric MDBX physical layout. They remain a lifecycle contract and
+> historical replay, not proof that a numeric-key migration is compatible.
+> Regenerate the upgrade fixture at the post-migration HEAD and record
+> `migration`, `rebuild`, or `reject-old` before using it as release evidence.
+> See [`mdbx-numeric-identity-evidence-register.md`](mdbx-numeric-identity-evidence-register.md).
+
 Status: `Proposal`, owned by the storage/index boundary. Derived indexes are
 rebuildable views; canonical resources, knowledge units, payloads, and source
 provenance remain the source of truth.
@@ -123,12 +131,45 @@ that directory for a diagnostic run; failure paths retain it automatically.
 checkouts, installed dependency packages and a fresh artifact destination. It
 builds those packages itself, then runs OLD create, NEW upgrade, NEW interrupted
 build, NEW reopen, NEW uncommitted-pointer crash, NEW reopen, OLD verify as
-separate processes. OLD is pinned to the post-Raw-Markdown baseline
-`52004324bc0d2b07c3657245195db349dd391774`. The receipt records both commits,
-source/dependency trees, options/toolchains, executable and fixture digests,
-canonical logical snapshot and process exit codes. Synthetic SHA-derived
-reference vectors qualify lifecycle, not embedding quality. The packaging
-workflow retains the receipt, log and canonical snapshot as an artifact.
+separate processes. The packaging workflow invokes it explicitly with
+`--allow-pre-numeric-baseline`; that receipt is `HISTORICAL_ONLY` and carries
+`post_migration_upgrade_proof=false`. It is retained for reproducibility, but
+does not qualify a numeric MDBX layout.
+
+The migration-backed numeric OLD/NEW gate is **NOT_EXECUTED**. Selecting
+`--post-numeric-upgrade` currently writes a `NOT_EXECUTED` receipt and exits with
+code 3; it never runs the historical consumer as numeric proof. A CLI flag,
+manifest text, or a supplied evidence file cannot establish execution.
+Before numeric activation, implement a real fresh-process numeric OLD/NEW
+consumer. Its post-numeric receipt must record logical
+decoded-row equality (counts, revisions, scopes, digests, no-reuse and derived
+index consistency), exact source/dependency/schema hashes, and the separate
+reopen/crash process observations. A successful historical replay must never be
+relabelled as this gate.
+
+The separate `agent_memory_numeric_storage_conformance` CTest executes an
+explicit **reject-old** policy and current numeric round trips. It uses real
+typed KnowledgeUnit, identity, and canonical rows in separate processes, not
+the historical exact-generation consumer. Run it in an MDBX-enabled test build:
+
+```sh
+ctest --test-dir <build> -R '^agent_memory_numeric_storage_conformance$' --output-on-failure
+```
+
+Each run retains a fresh receipt under
+`<build>/tests/numeric-conformance-<config>/run-*/receipt.json`. The OLD input
+is a physical-schema fixture pinned to the original flat-v1 definition, **not
+an OLD library binary**. The NEW adapter must reject it and preserve its
+decoded contents; a separate numeric v2 fixture must survive repeated reopen,
+historical reads, index/no-reuse checks, interrupted publication and negative
+corruption controls. The receipt is `POST_NUMERIC_REJECT_OLD`, with
+`migration_executed=false` and `post_migration_upgrade_proof=false`, even when
+all checks pass. This does not prove data migration, OLD-binary compatibility,
+production activation, or recovery of an interrupted migration.
+
+Synthetic SHA-derived reference vectors qualify lifecycle, not embedding
+quality. The packaging workflow retains the selected receipt, log and
+canonical snapshot as an artifact.
 
 Authorization callbacks run inside the query's read transaction and must not
 reenter this context or perform canonical writes. The store and test hook are

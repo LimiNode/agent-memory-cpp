@@ -13,6 +13,7 @@
 /// `guides/mdbx-containers-extension-tz.md`.
 
 #include <agent_memory/storage/CanonicalContentStore.hpp>
+#include <agent_memory/domain/CanonicalNavigation.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
 #include "MdbxStorageContext.hpp"
@@ -118,6 +119,16 @@ class MdbxCanonicalContentStore final : public ICanonicalContentStore,
     [[nodiscard]] std::optional<std::string>
     materialize_markdown(const DocumentId&,
                          std::optional<std::uint64_t> = std::nullopt) const override;
+    /// \brief Reads a metadata-only outline from one exact MDBX snapshot.
+    [[nodiscard]] std::optional<CanonicalOutline> read_outline(
+        const DocumentId&, std::uint64_t, std::size_t max_entries = 4096) const;
+    /// \brief Reads direct children from one exact MDBX snapshot.
+    [[nodiscard]] CanonicalChildrenResult read_children(
+        const DocumentId&, std::uint64_t, std::optional<ContentBlockId>,
+        std::size_t max_children = 256) const;
+    /// \brief Reads a bounded subtree without materializing unrelated text.
+    [[nodiscard]] CanonicalSubtreeResult read_subtree(
+        const DocumentId&, std::uint64_t, const CanonicalSubtreeRequest&) const;
     /// \copydoc ICanonicalContentEditor::commit
     [[nodiscard]] CanonicalEditResult commit(const CanonicalEditRequest&) override;
     /// \brief Publishes an edit only while the durable publication guard matches.

@@ -71,6 +71,8 @@ int main() {
         {},
         {{ContentBlockId{"a"}, 99, ContentBlockKind::Heading, std::nullopt, "A"},
          {ContentBlockId{"b"}, 99, ContentBlockKind::Paragraph, ContentBlockId{"a"}, "B"}}};
+    initial.metadata.set("owner", "test-author");
+    initial.metadata.set("title", "initial-title");
     {
         auto context = MdbxStorageContext::open(path.string());
         MdbxCanonicalContentStoreOptions options;
@@ -104,6 +106,8 @@ int main() {
         options.context = context;
         MdbxCanonicalContentStore store(std::move(options));
         if (!store.read_revision(id, 0) || !store.read_revision(id, 1) ||
+            store.read_revision(id, 0)->metadata.values() != initial.metadata.values() ||
+            store.read_revision(id, 1)->metadata.values() != initial.metadata.values() ||
             store.read_block(id, ContentBlockId{"b"}, 0)->text != "B")
             return 4;
         const auto body_before_metadata =
@@ -114,6 +118,8 @@ int main() {
             store.commit({id, 1, {UpdateDocumentMetadata{std::move(metadata)}}});
         if (metadata_edit.status != CanonicalEditStatus::Ok ||
             metadata_edit.revision->revision != 2 ||
+            store.read_revision(id, 2)->metadata.values() != metadata_edit.revision->metadata.values() ||
+            store.read_revision(id, 0)->metadata.values() != initial.metadata.values() ||
             store.read_block(id, ContentBlockId{"b"})->text != "B2")
             return 16;
         if (read_table_value(context, "agent_memory_canonical_bodies", body_row_key("c1-doc", 1)) !=

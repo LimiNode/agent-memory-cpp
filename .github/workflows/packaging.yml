@@ -9,7 +9,7 @@ on:
 
 jobs:
   exact-generation-upgrade:
-    name: OLD to NEW exact generation upgrade
+    name: Historical OLD to NEW exact generation replay
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Reject unexecuted numeric upgrade evidence
+        run: python tools/test-exact-generation-upgrade.py
       - name: Prepare exact OLD source and flat dependencies
         run: |
           git submodule update --init external/libmdbx external/mdbx-containers
@@ -31,6 +33,7 @@ jobs:
           --new-commit "$(git rev-parse HEAD)"
           --build-root .build/exact-upgrade
           --artifacts .artifacts/exact-upgrade
+          --allow-pre-numeric-baseline
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -107,28 +110,11 @@ jobs:
           & (Join-Path $relocatedBuild 'agent_memory_installed_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'relocated installed consumer failed' }
 
-          $headerFixturePositive = Join-Path $repo '.build/packaging-header-manifest-nested'
-          cmake -S (Join-Path $repo 'packaging/consumers/header-manifest-fixture') `
-            -B $headerFixturePositive -G Ninja `
-            "-DAGENT_MEMORY_SOURCE_DIR=$repo" `
-            -DAGENT_MEMORY_FIXTURE_WITH_FORBIDDEN_HEADER=OFF
-          if ($LASTEXITCODE -ne 0) { throw 'nested header-manifest fixture failed' }
-
-          $headerFixtureNegative = Join-Path $repo '.build/packaging-header-manifest-negative'
-          $negativeFixtureOutput = & cmake -S (Join-Path $repo 'packaging/consumers/header-manifest-fixture') `
-            -B $headerFixtureNegative -G Ninja `
-            "-DAGENT_MEMORY_SOURCE_DIR=$repo" `
-            -DAGENT_MEMORY_FIXTURE_WITH_FORBIDDEN_HEADER=ON 2>&1 | Out-String
-          $negativeFixtureExitCode = $LASTEXITCODE
-          if ($negativeFixtureExitCode -eq 0) {
-            throw 'negative header-manifest fixture unexpectedly passed'
-          }
-          if ($negativeFixtureOutput -notmatch
-              'backend-only CanonicalContentStoreInternal\.hpp leaked into the installed\s+package') {
-            throw 'negative header-manifest fixture failed without the expected forbidden-header diagnostic'
-          }
-          Write-Host 'negative header-manifest fixture failed as expected:'
-          Write-Host $negativeFixtureOutput
+          cmake "-DAGENT_MEMORY_SOURCE_DIR=$repo" `
+            "-DAGENT_MEMORY_HEADER_FIXTURE_BUILD_ROOT=$(Join-Path $repo '.build/packaging-header-manifest')" `
+            -DAGENT_MEMORY_HEADER_FIXTURE_GENERATOR=Ninja `
+            -P (Join-Path $repo 'packaging/consumers/header-manifest-fixture/run.cmake')
+          if ($LASTEXITCODE -ne 0) { throw 'header-manifest fixtures failed' }
           exit 0
 
   mdbx-installed-consumer:
