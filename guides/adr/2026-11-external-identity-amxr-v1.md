@@ -1,8 +1,8 @@
 # ADR: standalone AMXR v1 external identity
 
-- Status: **Architecture APPROVED for standalone binary interchange;
-  integration REVIEW_REQUIRED, not CLOSED.** Implemented in Draft #684;
-  no merge or default activation authorized.
+- Status: **Standalone binary interchange integrated and CLOSED** in
+  `main@386e26fe9176d268722894cd9f48df33f3b7bf72` via #682/#684/#685.
+  No default activation, provider adapter or store is implied.
 - Date: 2026-11-22.
 - Owner: domain identity; normative contract: [identity policy](../identity-policy.md).
 - Scope: bounded ExternalObjectRef values and binary codec only.
@@ -63,9 +63,10 @@ owns exact revisions, executed checks and limitations. Independent architecture
 review supplied by the user on 2026-11-22 approved the policy, codec and vectors
 at #682 `95262b9d`, #684 `a27e0c05` and #685 `7024b088`, limited to standalone
 binary interchange. The approval does not cover arbitrary provider adapters,
-issuer authentication or universal decoder security, and is **not permission
-to merge**. Final mutation/sanitizer qualification and exact-head integration
-checks remain distinct gates. Revisit the decision
+issuer authentication or universal decoder security. That architecture approval
+alone was not merge permission; subsequent qualification and separately
+authorized integration completed the standalone gate at the integrated baseline
+above. Historical source-bound records retain their original results. Revisit the decision
 for any wire/namespace-rule change or newly required provider shape; never
 quietly extend version 1.
 

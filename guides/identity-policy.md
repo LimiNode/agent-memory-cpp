@@ -1,13 +1,15 @@
 # Identity policy and decision register
 
 **Status: normative specification for Identity Architecture; standalone AMXR v1
-architecture APPROVED, integration REVIEW_REQUIRED, not CLOSED.** Existing
+architecture APPROVED, integrated and CLOSED within standalone AMXR v1.** Existing
 implementation observations below are bound to
 `main@acd5ad5545386b3feeaa79f8a587855b60801b4d`. The new ExternalObjectRef /
-AMXR value-and-codec implementation is a separate review-required change; this
+AMXR value-and-codec implementation was separately reviewed; this
 policy was first published in documentation PR #682. Companion implementation
 [#684](https://github.com/LimiNode/agent-memory-cpp/pull/684) supplies the opt-in
-values and codec; neither PR is integrated into main yet.
+values and codec. #682/#684/#685 are integrated in
+`main@386e26fe9176d268722894cd9f48df33f3b7bf72`; historical qualification records
+retain their original source/HEAD identities and are not rewritten.
 
 This is the central owner of identity-category separation, external namespace
 issuance and the standalone AMXR codec. Topic owners retain allocation,
@@ -242,7 +244,7 @@ AMXR. `REVIEW_REQUIRED` is not CLOSED or permission to merge.
 | ScopeId | COMPATIBILITY_RETAINED; units / scope admission | Current wrapper/recipe v2 use supplied bytes; empty is unspecified, not implicit global. Future roadmap canonical_bytes normalization is not current wrapper behavior |
 | RepresentationId / SegmentSetId / SegmentId / EvidenceAnchorId | COMPATIBILITY_RETAINED; artifact/representation owner | Preserve opaque IDs and existing locator bytes; use containing source/revision/recipe/representation where required. No local-counter substitution |
 | LexicalSegmentPhysicalKey | IMPLEMENTED; lexical physical contract | Preserve versioned composite widths/comparator/epoch; rebuildable key is not source provenance |
-| ExternalIdentityScalar / component / key / ExternalObjectRef | IMPLEMENTED in #684; domain / this guide; integration REVIEW_REQUIRED | Dependency-free values and exact standalone AMXR v1 codec; no existing DBI integration, issuer registry or default activation |
+| ExternalIdentityScalar / component / key / ExternalObjectRef | IMPLEMENTED in #684; domain / this guide; standalone integration CLOSED | Dependency-free values and exact standalone AMXR v1 codec; no existing DBI integration, issuer registry or default activation |
 | MessageId / ThreadId / AuthorId | COMPATIBILITY_RETAINED; legacy chat / future conversation owner | Keep old strings, constructors and validation. No automatic external-ref conversion; internal/external namespaces in the old shapes remain incomplete |
 | FactId / MemoryObjectId | COMPATIBILITY_RETAINED; legacy facts/memory | Keep existing value APIs; do not invent or activate a competing canonical allocator/store |
 | Portable namespace registry persistence | PLANNED_NOT_BLOCKING; host / source catalog | The issuance contract is mandatory now; an additional library registry/store is not needed to encode caller-supplied verified tuples |

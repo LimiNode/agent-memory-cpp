@@ -1,18 +1,19 @@
 # Conversation/Event Model: proposed domain contract
 
-- Status: **Draft: Phase 1 C++17 values/field validation implemented on the
-  dependent branch; event codec/store and Conversation Core remain Planned**.
+- Status: **Phase 1 values/field validation integrated in main; Phase 2 Event
+  Codec v1 under independent review in a separate Draft PR. Store and the
+  complete Conversation Core profile remain Planned**.
 - Date: 2026-11-22. Scheduling: planned early opt-in Conversation Core;
   advanced conversation memory remains M2/M2+ under [milestones](milestones.md).
-- Baseline inspected: `main@acd5ad5545386b3feeaa79f8a587855b60801b4d`.
-- Prerequisite: approved standalone AMXR v1, with integration still pending.
+- Baseline inspected: `main@386e26fe9176d268722894cd9f48df33f3b7bf72`.
+- Prerequisite: standalone AMXR v1 integrated and CLOSED within its approved scope.
 - Owner: conversation/session domain; rationale:
   [conversation/event ADR](adr/2026-11-conversation-event-identity.md).
 
-This owns the next domain contract after the Identity integration gate. Phase 1
+This owns the domain contract following the completed Identity integration gate. Phase 1
 implements only the value subset in section 4.1; the broader model below is
 still proposed. It does not change legacy chat values or add another identity
-codec. AMXR is implemented in the prerequisite stack. A separate assignment
+codec. AMXR and Phase 1 are integrated by #682/#684/#685/#688/#689. A separate assignment
 and review must authorize each later implementation slice. The event-versus-representation-revision baseline in
 section 2 is approved as the basis of Phase 1 domain values; that approval
 does not freeze an event codec, import/store schema or allocation protocol.
@@ -421,11 +422,137 @@ comparison, inference, parsing or lossy conversion is performed by this layer.
 Existence/retention, scope access, committed allocation/no-reuse, authenticity,
 revision monotonicity, mutation-chain membership, chronology/cycles, replay
 conflict, publication and current freshness require future transactional
-admission/read checks. No store, importer, codec, graph or retrieval activation
-is supplied. The
+admission/read checks. Phase 1 supplies no store, importer, codec, graph or
+retrieval activation; section 4.2 separately defines the Phase 2 codec. The
 [`conversation_test`](../tests/domain/conversation_test.cpp) fixture exercises
 these positive/negative field contracts; legacy chat and knowledge tests remain
 separate compatibility controls.
+
+### 4.2. Event Codec v1 (Phase 2 review contract)
+
+This section is the sole wire owner for the existing Phase 1 `ConversationEntry`,
+not the broader sketch. It is a new standalone encoding, not a DBI layout,
+allocator, journal, import key, admission proof or current-message view.
+Public API: `serialize_conversation_entry(const ConversationEntry&)` and
+`deserialize_conversation_entry(std::string_view)` in
+`<agent_memory/domain/conversation_codec.hpp>` and the domain umbrella.
+Malformed, noncanonical, field-invalid or codec-limit-exceeding inputs throw
+`std::invalid_argument`; allocation failures propagate. No partial result is
+returned, no identifier/time is normalized and no latest revision is resolved.
+
+#### Primitives and canonical framing
+
+All integers are fixed width, most-significant byte first: `u8`, `u16be`,
+`u32be`, `u64be`. `i64be` is exactly eight two's-complement bytes, preserving
+`INT64_MIN..INT64_MAX`; it is never converted through floating point.
+`B(max)` means `u32be(byte_count) + byte_count exact bytes`, bounded by `max`.
+Zero length is represented, not silently omitted; Phase 1 determines whether
+an empty value is valid at that position. `O(T)` means exactly `u8(0)` for
+absence or `u8(1) + T` for presence. All other presence bytes reject.
+`V(max,T)` means `u16be(count) + count ordered T`, with count at most `max`.
+Order and duplicates are retained; no sorting/deduplication occurs.
+
+One frame is ASCII `AMCE` + `u16be(1)` + the following **ten tagged fields in
+exact order**, including absent optionals and empty sequences. The input view
+is the frame boundary; all bytes must be consumed. Tags are explicit wire
+constants, unrelated to C++ enum representations or `std::variant::index()`.
+There is no padding, raw object layout, generic TLV map or extension area.
+Unknown/duplicate/omitted/out-of-order tags, unknown versions, invalid lengths,
+malformed nested values and trailing bytes reject; they are not skipped.
+
+| Field tag | Value, in wire order |
+| --- | --- |
+| `01` | `ref: EntryRef` |
+| `02` | `scope: B(65536)` (opaque bytes) |
+| `03` | `source: O(SourceBinding)` |
+| `04` | `actor: O(ActorRef)` |
+| `05` | `llm_role: O(u8 role_tag)` |
+| `06` | `observer: O(ActorRef)` |
+| `07` | `source_unix_us: O(i64be)` |
+| `08` | `observed_unix_us: O(i64be)` |
+| `09` | `payload: u8 payload_tag + its record below` |
+| `0a` | `links: V(256, Link)` |
+
+Nested records have fixed positional fields, **without additional field tags**:
+
+```text
+EntryRef = B(128 allocation_namespace) + u64be(ConversationId)
+         + u64be(EntryId) + u64be(EventRevision)
+ActorRef = B(128 allocation_namespace) + u64be(ActorId)
+AMXR = B(65536 complete existing AMXR v1 frame)
+Evidence = B(4096 artifact_binding) + B(4096 record_locator)
+SourceBinding = u8 identity_tag + O(AMXR object) + O(AMXR event)
+              + B(4096 source_revision) + O(B(4096 provider_revision_marker))
+              + B(1024 adapter_recipe) + Evidence
+Content = O(B(1048576 text)) + V(256, B(4096 artifact_binding))
+Link = u8 link_kind + u8 target_tag + target_record
+target_record[1] = EntryRef
+target_record[2] = O(AMXR external) + Evidence
+```
+
+| Tag family | Exact mapping |
+| --- | --- |
+| Identity | `1 ExternalEvent`, `2 ObjectRevision`, `3 LocalObservation` |
+| LLM role | `1 System`, `2 Developer`, `3 User`, `4 Assistant`, `5 Tool` |
+| Link kind | `1 Reply`, `2 Thread`, `3 Branch`, `4 Forward`, `5 Quote` |
+| Target | `1 resolved EntryRef`, `2 unresolved external/evidence` |
+| Payload | `1 MessageCreated: Content`; `2 SnapshotObserved: Content`; `3 Edited: EntryRef affected + Content replacement`; `4 Tombstoned: EntryRef affected`; `5 Restored: EntryRef affected + EntryRef retained_state` |
+
+All other tags reject. Every exact reference includes its own namespace,
+conversation, entry and revision; no contextual shortening is permitted.
+Nested AMXR uses the unchanged v1 grammar/limits, including typed signed parent
+keys, byte identity and component ordering. Absent text differs from present
+empty text. Actor/observer/role and the two timestamps remain independent.
+Scope, source revisions, artifact bindings and provider markers remain opaque:
+NUL and invalid UTF-8 bytes are preserved where Phase 1 permits them.
+Text, recipe and locator remain strict shortest-form UTF-8 without normalization
+(including NUL where permitted). Allocation namespaces retain Phase 1 ASCII.
+Source-mode shape, snapshot evidence, mutation targets and resolved-link policy
+are exactly section 4.1, not new provider/authenticity/chronology checks.
+
+#### Exact limits and bounded admission
+
+The complete encoded event is at most **33,554,432 bytes (32 MiB)**. Maximum
+inline text is 1,048,576 bytes; attachments and links are at most 256 each;
+nested AMXR is at most 65,536 bytes each; namespaces 128; bindings, markers and
+locators 4,096; recipe 1,024. **Scope at most 65,536 opaque bytes is an additional
+codec admission limit**: Phase 1 only requires nonempty scope and is unchanged.
+A Phase 1-valid DTO beyond that scope bound is explicitly not codec-admissible.
+
+With these primitives the field records' conservative maximum is 21,186,961
+bytes before the six-byte header and ten top-level tags (21,186,977 total).
+This combines 1 MiB text, 256 maximal attachments, 256 unresolved links each
+with maximal AMXR/evidence, maximal ExternalEvent source with both AMXR refs,
+and maximal scope/metadata. Thus the 32 MiB aggregate cap does not silently
+exclude combinations of the bounded Phase 1 fields. The fixture exercises the
+combined maxima, not merely each limit in isolation.
+
+Serialization validates fields, counts the exact complete wire size with
+checked arithmetic, then reserves once and writes; a size mismatch is an
+internal error. Decoding rejects excessive total input before parsing, checks
+lengths against both field bounds and remaining bytes before copying strings,
+and checks counts/bounded minimum element bytes before reserving vectors.
+There is no recursive event decoding; nested identity depth is AMXR v1's
+existing flat bound. A failed parse never returns a partially accepted DTO.
+
+#### Evolution, verification and later store boundary
+
+Changing/adding fields, field order, tag meanings, primitive encodings, limits
+or validation rules requires a separately reviewed **new wire version**.
+Unknown values cannot be introduced as "compatible" v1 extensions. New exact
+opaque identifier/text values under the existing rules and declared provider
+recipes need no new wire tag; they do not authorize reinterpreting old values.
+V1 defines binary interchange only, no public textual event syntax or digest
+identity recipe. Test SHA-256 values identify literal fixtures, not event IDs.
+
+Independent literal goldens cover all five payloads, all three source modes,
+exact targets, unresolved links, optional presence, UTF-8/opaque bytes and signed
+boundaries. Bounded deterministic mutation and truncation controls must either
+reject or decode a field-valid value whose re-encoding exactly matches input.
+The codec does not allocate domain IDs, deduplicate imports, access artifacts,
+authenticate evidence or choose event order. Those remain Phase 3 history/store
+contracts; existence, expected-revision conflicts, replay, no-reuse and crash
+recovery are not proven by a successful codec round-trip.
 
 ## 5. Bounded reads and retrieval projections
 
@@ -536,12 +663,13 @@ integration PR #683 are part of this proposal.
 
 ### 6.1. REUSE / EXTEND / NEW
 
-This matrix distinguishes available code in the prerequisite stack from
-contract-only reuse. It does not claim those branches are integrated into main.
+This matrix distinguishes integrated identity/domain code from contract-only
+reuse and the separately reviewed Phase 2 codec. It does not claim the full
+Conversation Core is implemented.
 
 | Action | Types / storage / indexes | Status and boundary |
 | --- | --- | --- |
-| REUSE | `ExternalObjectRef` / AMXR, `ScopeId`, source/artifact bindings | Value/codec code exists in the prerequisite stack; source/anchor/retention semantics stay with artifact provenance. No new external ID grammar or implicit legacy conversion |
+| REUSE | `ExternalObjectRef` / AMXR, `ScopeId`, source/artifact bindings | Value/AMXR codec code is integrated; source/anchor/retention semantics stay with artifact provenance. No new external ID grammar or implicit legacy conversion |
 | REUSE | `KnowledgeUnit`, `SearchProjection`, access and representation contracts | Existing envelope/projection code is narrower than the complete roadmap. No new universal memory envelope, aspect registry or embedding system here |
 | REUSE | `MdbxStorageContext`, transaction provenance and numeric-mapping patterns | Backend code exists; document/block mapping APIs are not Conversation/Entry APIs and cannot be reused by casting their IDs |
 | EXTEND | Canonical publication/provenance and trusted frontier adapters | B1/B2/B3 code validates KnowledgeUnit/root Resource bindings, not event history. Add exact Entry/source binding and bounded direct/reverse lookup with their owners; do not claim arbitrary transitive/event support already works |
@@ -583,11 +711,12 @@ together. MDBX remains the first-party canonical backend; any later SQLite
 profile must pass the same domain conformance. No backend/default activation,
 TypedMetadata or storage migration is included here.
 
-## 7. Decisions and fixtures required before codec/store work
+## 7. Remaining decisions and fixtures for store work
 
-The event-versus-representation-revision baseline is approved for Phase 1;
-per-conversation Entry allocation, source-event/local-observation key recipes
-and their durable representation still need the codec/store reviews below.
+The event-versus-representation-revision baseline is implemented in Phase 1;
+section 4.2 defines the separately reviewed Phase 2 wire format and limits.
+Per-conversation Entry allocation, source-event/local-observation key recipes
+and their transactional persistence still need the store reviews below.
 The first proposed consumers are a chat importer and Efi dialogue memory. Core
 qualification uses bounded normalized import/session fixtures, not a live provider SDK: message
 creation, attachment-only content, edit, tombstone/restore, replay and unresolved
@@ -595,8 +724,7 @@ reply. The broader development-session follow-up adds tool call/result and
 patch evidence. Neither proves Telegram/Discord/forum API compatibility or
 installs an agent runtime.
 
-Before serialization/store work, separately settle event schema and size limits,
-timestamp precision/error handling, actor/alias history, retention/erase policy,
+Before store work, separately settle actor/alias history, retention/erase policy,
 publication/root-frontier adapter, cursor/reopen semantics and import conflict
 disposition. Each choice needs its owning contract and direct fixture; none is
 silently supplied by AMXR or by the shape of this C++ sketch.

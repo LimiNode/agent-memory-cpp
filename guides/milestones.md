@@ -81,11 +81,15 @@ Core name assigns no persistent capability number or DBI schema.
 
 The [Conversation/Event proposal](conversation-event-contract.md) owns the
 proposed domain invariants and small-PR plan; its
-[ADR](adr/2026-11-conversation-event-identity.md) remains review pending.
-Identity Architecture must first pass its separate integration gate. Review
-and qualify each implementation slice before advertising this profile.
+[ADR](adr/2026-11-conversation-event-identity.md) records Phase 1 values integrated
+in `main@386e26fe9176d268722894cd9f48df33f3b7bf72`. Standalone AMXR v1 passed its
+integration gate and is CLOSED within that scope. Phase 2 Event Codec v1 is
+implemented/reviewed in a separate Draft PR; canonical history, ID allocation,
+import and durable Conversation persistence remain Planned. Review and qualify
+each slice before advertising the complete profile.
 
-Required gates **when this chat profile is selected** (all `Planned`):
+Required gates **when this chat profile is selected** (full profile still `Planned`;
+implemented values/codec do not prove store/admission/recovery behavior):
 
 | Capability | Required surface / profile delta | Required evidence | Owner |
 | --- | --- | --- | --- |
