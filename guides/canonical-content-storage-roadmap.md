@@ -2,6 +2,13 @@
 
 **Status:** Normative design contract; implementation is not complete.
 
+The central [identity policy](identity-policy.md) separates logical/source,
+external, content and physical identities and owns the standalone AMXR codec.
+This guide retains document/block/entry scope, no-rebinding, revision and edit
+semantics. A document keeps its logical identity over ordinary edits; an exact
+historical read additionally selects its revision. New external references do
+not change C1/flat bytes, public IDs, numeric mapping or publication rules.
+
 This guide defines the durable content substrate used by three different domain
 forms:
 
@@ -193,6 +200,16 @@ A Telegram conversation, a two-party agent dialogue and an AI coding session are
 profiles of this event model. An individual message is normally a canonical
 small record in the domain store. Retrieval episodes or thread windows are
 versioned derived segment sets.
+
+The [Conversation/Event contract proposal](conversation-event-contract.md)
+refines this future domain's entities, exact event/revision references, typed
+payloads and bounded reads. It is Draft / not implemented and does not change
+this guide's document edit/publication rules or existing C1/flat formats.
+Canonical communication history has one authoritative journal; independent
+assertions/relations remain KnowledgeUnits and lexical/dense/aspect indexes
+remain rebuildable projections. Exact Entry/source revisions must join the existing
+publication/provenance substrate, with bounded evidence drill-down and reverse
+dependency lookup; they do not create a second generic knowledge/graph store.
 
 For coding sessions, file content must carry input/output revision identities
 and patch provenance. Short hash anchors may help a UI or tool protocol detect a
@@ -834,10 +851,19 @@ original PDF/page citation after the original body is removed.
 
 ### Phase 2 — conversation/session vertical slice
 
-- typed event entries, replies/branches, tool events, file revisions and
-  patches;
-- JSONL/structured materialization and append/edit/supersede operations;
-- episode segment sets and contextual embedding recipes.
+The early opt-in **Conversation Core** priority and gates are owned by
+[`milestones.md`](milestones.md#early-opt-in-conversation-core-planned), not by
+the completion of all M2. This phase remains planned and separate from the
+M1b document slice:
+
+- first qualify Conversation/Entry identity, AMXR source bindings, actors/roles,
+  canonical message/change history and reply/thread links;
+- add idempotent bounded import/read, reviewed numeric MDBX mappings and
+  fresh-process reopen/recovery with exact retained source references;
+- reuse backend/storage and provenance owners; no mandatory graph or embeddings;
+- later add the broader tool/file/patch vocabulary, structured/JSONL exports,
+  source-admitted episode segment sets and contextual embedding recipes under
+  their own gates. These derived views never replace canonical history.
 
 ### Phase 3 — agent-memory integration
 

@@ -1,0 +1,136 @@
+{
+  "schema": "agent-memory.identity-type-delta.v1",
+  "source_commit": "a27e0c0558314d3760b41217ca37b29ab71c3bff",
+  "baseline_commit": "acd5ad5545386b3feeaa79f8a587855b60801b4d",
+  "status": "REVIEW_REQUIRED_NOT_CLOSED",
+  "scope": "Fresh complete-header AST comparison; only added declarations are repeated here. Name-based identity-field counts are heuristics, not complete semantic ID classification.",
+  "extraction": {
+    "tool": "clang version 22.1.4 (https://github.com/llvm/llvm-project 35990504507d79e0b9deb809c8ee5e1b34ceef20)",
+    "language": "C++17",
+    "target": "x86_64-w64-windows-gnu",
+    "mode": "syntax-only AST; no objects, library, executable, or CMake build",
+    "definitions": {
+      "AGENT_MEMORY_HAS_MDBX": 1,
+      "AGENT_MEMORY_ENABLE_JSON": 1,
+      "AGENT_MEMORY_ENABLE_ZSTD": 1
+    },
+    "standard_library": "MinGW GCC 15.2.0 headers",
+    "diagnostics_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "baseline_type_count": 561,
+  "source_type_count": 565,
+  "source_counts": {
+    "headers": 149,
+    "type_declarations": 565,
+    "namespace_types": 524,
+    "nested_types": 41,
+    "private_or_protected_types": 39,
+    "identity_fields": 317,
+    "raw_string_identity_fields": 74
+  },
+  "unchanged_existing_declaration_hashes": true,
+  "changed_source_files": [
+    {
+      "path": "src/agent_memory/domain.hpp",
+      "sha256": "8fdc8b6ee8c089cf809551db4ff465e7d1c46900558287efc9421006f0a2f046"
+    },
+    {
+      "path": "src/agent_memory/domain/ExternalObjectRef.cpp",
+      "sha256": "6ae6a8163e9e12e7590910f1840180712409bf02dfad7ce097cb2f9419012580"
+    },
+    {
+      "path": "src/agent_memory/domain/ExternalObjectRef.hpp",
+      "sha256": "722cc03ec6f3250bccc15bf0caff361cd0432cd8650ac11bb331765a69e83a5d"
+    },
+    {
+      "path": "src/agent_memory/domain/Identifiers.hpp",
+      "sha256": "37a37d5be1f35f9a84f5782584a6ed841894870850f10bcfe5162f816edaa690"
+    }
+  ],
+  "new_type_declarations": [
+    {
+      "qualified_name": "agent_memory::ExternalIdentityScalar",
+      "name": "ExternalIdentityScalar",
+      "kind": "alias",
+      "header": "src/agent_memory/domain/ExternalObjectRef.hpp",
+      "ast_kind": "TypeAliasDecl",
+      "line": 20,
+      "offset": 555,
+      "range_begin": 549,
+      "range_end": 634,
+      "scope": "namespace",
+      "access": "public",
+      "api_role": "alias",
+      "definition": true,
+      "type": "std::variant<std::int64_t, std::uint64_t, std::string>",
+      "template_arguments": [],
+      "semantic_owner": "domain",
+      "primary_contract_owner_candidate": "guides/identity-policy.md",
+      "owner_status": "IMPLEMENTED_REVIEW_REQUIRED",
+      "declaration_sha256": "9542e1f0d7792c3c956cfae6f1c8d1775976a11edfc5cb052e89c751843caf55"
+    },
+    {
+      "qualified_name": "agent_memory::ExternalIdentityComponent",
+      "name": "ExternalIdentityComponent",
+      "kind": "struct",
+      "header": "src/agent_memory/domain/ExternalObjectRef.hpp",
+      "ast_kind": "CXXRecordDecl",
+      "line": 23,
+      "offset": 728,
+      "range_begin": 721,
+      "range_end": 835,
+      "scope": "namespace",
+      "access": "public",
+      "api_role": "value_or_dto",
+      "definition": true,
+      "type": null,
+      "template_arguments": [],
+      "semantic_owner": "domain",
+      "primary_contract_owner_candidate": "guides/identity-policy.md",
+      "owner_status": "IMPLEMENTED_REVIEW_REQUIRED",
+      "declaration_sha256": "dbf608846ac21990f09ad0c78a610f2dc2dbd789595dc0e540a9e1574f8cb912"
+    },
+    {
+      "qualified_name": "agent_memory::ExternalObjectKey",
+      "name": "ExternalObjectKey",
+      "kind": "struct",
+      "header": "src/agent_memory/domain/ExternalObjectRef.hpp",
+      "ast_kind": "CXXRecordDecl",
+      "line": 30,
+      "offset": 980,
+      "range_begin": 973,
+      "range_end": 1146,
+      "scope": "namespace",
+      "access": "public",
+      "api_role": "value_or_dto",
+      "definition": true,
+      "type": null,
+      "template_arguments": [],
+      "semantic_owner": "domain",
+      "primary_contract_owner_candidate": "guides/identity-policy.md",
+      "owner_status": "IMPLEMENTED_REVIEW_REQUIRED",
+      "declaration_sha256": "4ef43275059fa8ba963bd4f233a6199e89e98f8f31ca464abc72afd3a0afe371"
+    },
+    {
+      "qualified_name": "agent_memory::ExternalObjectRef",
+      "name": "ExternalObjectRef",
+      "kind": "struct",
+      "header": "src/agent_memory/domain/ExternalObjectRef.hpp",
+      "ast_kind": "CXXRecordDecl",
+      "line": 44,
+      "offset": 1844,
+      "range_begin": 1837,
+      "range_end": 2076,
+      "scope": "namespace",
+      "access": "public",
+      "api_role": "value_or_dto",
+      "definition": true,
+      "type": null,
+      "template_arguments": [],
+      "semantic_owner": "domain",
+      "primary_contract_owner_candidate": "guides/identity-policy.md",
+      "owner_status": "IMPLEMENTED_REVIEW_REQUIRED",
+      "declaration_sha256": "85e253cf1ccc15e6cbe7e7093e6de98d420c95d0410b836701998f37ee243652"
+    }
+  ]
+}

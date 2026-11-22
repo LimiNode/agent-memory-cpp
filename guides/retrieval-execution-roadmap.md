@@ -493,6 +493,12 @@ index can dominate storage.
 
 ## Identity, deduplication, ties and deletion
 
+[Identity policy](identity-policy.md) owns cross-cutting identity categories and
+external namespaces. ExternalObjectRef may preserve source identity but does not
+replace the profile's canonical result key, selected revision, scope checks or
+existing tie order. AMXR's own unsigned-byte order is not a new global ordering
+rule for KnowledgeUnitId, TokenId, textual IDs or digests.
+
 Every candidate retains its exact source revision and projection version for
 provenance. Hydration validates that binding against the pinned canonical
 frontier. Superseded or stale revisions are dropped. Final deduplication uses

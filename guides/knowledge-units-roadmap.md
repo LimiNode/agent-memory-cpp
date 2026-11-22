@@ -1,5 +1,12 @@
 # knowledge-units-roadmap.md
 
+Cross-cutting identity categories, external namespace issuance and standalone
+AMXR encoding are owned by [identity policy](identity-policy.md). This guide
+retains KnowledgeUnit occurrence/content-key, ScopeId, source binding and
+recipe-version semantics. The new reference does not replace KnowledgeUnitId,
+select a canonical revision, alter recipe v0/v1/v2 or silently normalize existing
+ScopeId bytes. Broader typed metadata and portable store profiles remain separate.
+
 Спецификация per-kind payload-компонентов и lifecycle FSM для подсистемы памяти `agent-memory-cpp`. Документ конкретизирует компонентную модель, описанную в `guides/memory-stacks-roadmap.md` (ADR-001), и согласована с retrieval-флоу в `guides/knowledge-base-roadmap.md`.
 
 > В будущем планируется переименование файла в `knowledge-payloads-roadmap.md` после завершения всех изменений; текущее имя сохранено для совместимости cross-references.
@@ -1085,6 +1092,12 @@ Full valid-time vs recorded-time bi-temporal semantics are M2+ AM-13 in
 
 ### 5.4. EventPayload (опциональный)
 
+`KnowledgeUnitKind::Event` is knowledge about a domain event, not an entry or
+change in a canonical conversation journal. The
+[Conversation/Event proposal](conversation-event-contract.md#1-ownership-and-canonical-entities)
+owns that distinct source history. An assertion extracted from a message is a
+separate derived unit with exact source provenance, not a renamed journal row.
+
 Для `KnowledgeUnitKind::Event` dedicated payload не обязателен — обычно достаточно `TemporalComponent` + `primary_text`. Если use-case требует structured event data, добавляется:
 
 ```cpp
@@ -1100,6 +1113,19 @@ struct EventPayload {
 Примечание: в M1 Event обходится без dedicated payload, используя `TemporalComponent` + `envelope.primary_text`. Если payload нужен — включается аналогично FactPayload, через `enable_event_payload` (M2+).
 
 ### 5.5. ConversationEpisodePayload
+
+The [Conversation/Event contract proposal](conversation-event-contract.md)
+separates canonical source events from this retrieval payload. Future episode
+adapters must bind exact source entries/revisions and derivation provenance;
+the proposal does not implement an event store or alter this payload's fields,
+capabilities or DBIs.
+Future adapters for Summary, Relation and independently retained
+ConversationEpisode units must use the existing publication/provenance substrate
+for exact Entry/source revisions,
+evidence drill-down and reverse dependent lookup. Their search/aspect vectors
+are rebuildable projections, not typed relation truth or independent evidence.
+Conversation Core does not require automatic extraction or the episode store;
+its planned early opt-in priority is owned by [milestones](milestones.md#early-opt-in-conversation-core-planned).
 
 Payload для `KnowledgeUnitKind::ConversationEpisode`. Используется в SpeakerAwareChatStack и FullResearch stack.
 

@@ -11,6 +11,8 @@
 #include "domain/CanonicalNavigation.hpp"
 #include "domain/Artifact.hpp"
 #include "domain/Identifiers.hpp"
+#include "domain/ExternalObjectRef.hpp"
+#include "domain/Conversation.hpp"
 #include "domain/KnowledgeUnit.hpp"
 #include "domain/Metadata.hpp"
 #include "domain/MetadataFilter.hpp"

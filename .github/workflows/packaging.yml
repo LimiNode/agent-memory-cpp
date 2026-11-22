@@ -100,6 +100,10 @@ jobs:
           cmake --build $installedBuild --parallel
           & (Join-Path $installedBuild 'agent_memory_installed_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'installed consumer failed' }
+          & (Join-Path $installedBuild 'agent_memory_external_identity_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'external identity installed consumer failed' }
+          & (Join-Path $installedBuild 'agent_memory_conversation_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'conversation installed consumer failed' }
 
           $relocatedPrefix = Join-Path $repo '.build/packaging-prefix-minimal-relocated'
           Copy-Item -Recurse -Force $packagePrefix $relocatedPrefix
@@ -109,6 +113,10 @@ jobs:
           cmake --build $relocatedBuild --parallel
           & (Join-Path $relocatedBuild 'agent_memory_installed_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'relocated installed consumer failed' }
+          & (Join-Path $relocatedBuild 'agent_memory_external_identity_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'relocated external identity consumer failed' }
+          & (Join-Path $relocatedBuild 'agent_memory_conversation_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'relocated conversation consumer failed' }
 
           cmake "-DAGENT_MEMORY_SOURCE_DIR=$repo" `
             "-DAGENT_MEMORY_HEADER_FIXTURE_BUILD_ROOT=$(Join-Path $repo '.build/packaging-header-manifest')" `
