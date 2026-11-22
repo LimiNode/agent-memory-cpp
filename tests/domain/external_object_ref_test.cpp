@@ -166,6 +166,79 @@ void field_boundaries() {
     for(const auto* name : {"A", "a-b", "1a", "a.b"}) { parts[0].name = name; rejected_value(ref); }
 }
 
+void identity_consistency_matrix() {
+    std::vector<am::ExternalObjectRef> refs{
+        minimal(), minimal({std::int64_t{123}}), minimal({std::uint64_t{123}}),
+        minimal({std::string{"123"}}), minimal({std::string{"00123"}}),
+        minimal({std::string{"X"}}), minimal({std::string{"x "}}),
+        minimal({std::string{"x\0", 2}}), minimal({std::string{"\xc3\xa9"}}),
+        minimal({std::string{"e\xcc\x81"}}),
+        minimal({std::vector<am::ExternalIdentityComponent>{{"a", std::string{"x|y"}}, {"b", std::string{"z"}}}}),
+        minimal({std::vector<am::ExternalIdentityComponent>{{"a", std::string{"x"}}, {"b", std::string{"y|z"}}}}),
+        minimal({std::vector<am::ExternalIdentityComponent>{{"b", std::string{"z"}}, {"a", std::string{"x|y"}}}}),
+        minimal({std::vector<am::ExternalIdentityComponent>{{"a", std::uint64_t{1}}, {"b", std::uint64_t{2}}}}),
+        minimal({std::vector<am::ExternalIdentityComponent>{{"a", std::int64_t{1}}, {"b", std::uint64_t{2}}}})};
+    for(const auto field : {&am::ExternalObjectRef::provider, &am::ExternalObjectRef::service_instance,
+                            &am::ExternalObjectRef::identity_domain, &am::ExternalObjectRef::object_kind}) {
+        auto ref = minimal();
+        ref.*field = "q";
+        refs.push_back(std::move(ref));
+    }
+    for(const auto field : {&am::ExternalObjectRef::service_instance, &am::ExternalObjectRef::identity_domain}) {
+        for(const auto& text : {std::string{"S"}, std::string{"s "}}) {
+            auto ref = minimal();
+            ref.*field = text;
+            refs.push_back(std::move(ref));
+        }
+    }
+    for(const auto& key : {am::ExternalObjectKey{std::int64_t{0}}, am::ExternalObjectKey{std::uint64_t{0}},
+                           am::ExternalObjectKey{std::string{"0"}}}) {
+        auto ref = minimal();
+        ref.parent_key = key;
+        refs.push_back(std::move(ref));
+    }
+    const auto count = refs.size();
+    refs.push_back(refs.front()); // A distinct owned copy must have identical bytes/order/digest.
+    for(std::size_t i = 0; i < refs.size(); ++i) {
+        round_trip(refs[i]);
+        const auto a = am::serialize_external_object_ref(refs[i]);
+        const auto digest = am::external_object_ref_digest(refs[i]);
+        for(std::size_t j = 0; j < refs.size(); ++j) {
+            const auto b = am::serialize_external_object_ref(refs[j]);
+            const bool equal = i == j || (i == 0 && j == count) || (i == count && j == 0);
+            expect((refs[i] == refs[j]) == equal, "identity fixture equality collapsed a scoped or typed value");
+            expect((a == b) == equal, "canonical encoding is not injective for identity fixtures");
+            const bool ordered = std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(),
+                [](unsigned char x, unsigned char y) { return x < y; });
+            expect((refs[i] < refs[j]) == ordered, "ordering disagrees with unsigned canonical bytes");
+            // Collision regression for this finite corpus, not a proof of SHA-256 collision freedom.
+            expect((digest == am::external_object_ref_digest(refs[j])) == equal, "identity fixture digest mismatch");
+        }
+    }
+}
+
+void isolated_component_count_boundary() {
+    const auto prefix = unhex("414d58520001000000017000000001730000000164000000016b00");
+    std::vector<am::ExternalIdentityComponent> components;
+    std::string frames;
+    for(std::size_t i = 0; i < 16; ++i) {
+        const auto name = std::string(1, static_cast<char>('a' + i));
+        components.push_back({name, std::string{"x"}});
+        frames += unhex("0001") + name + unhex("030000000178"); // Independent nine-byte component.
+    }
+    const auto valid = prefix + unhex("04000000920010") + frames; // 2 + 16*9 payload bytes.
+    expect(am::deserialize_external_object_ref(valid) == minimal({components}), "16-component golden rejected");
+    expect(am::serialize_external_object_ref(minimal({components})) == valid, "16-component golden differs");
+    components.push_back({"q", std::string{"x"}});
+    const auto oversized_count = prefix + unhex("040000009b0011") + frames + unhex("000171030000000178");
+    expect(oversized_count.size() < am::kMaxExternalObjectRefBytes, "count fixture accidentally exceeds byte bound");
+    rejected_value(minimal({components}));
+    rejected_bytes(oversized_count); // Complete valid frames: only component count exceeds its limit.
+    auto bad_name = valid;
+    bad_name[36] = 'A'; // First component name, with all frame lengths still valid.
+    rejected_bytes(bad_name);
+}
+
 void encoder_validation_and_bounds() {
     rejected_value({});
     auto ref = minimal();
@@ -197,6 +270,13 @@ void encoder_validation_and_bounds() {
     ref = minimal({components});
     expect(am::serialize_external_object_ref(ref).size() == am::kMaxExternalObjectRefBytes, "total-size boundary fixture wrong");
     round_trip(ref);
+    auto oversized_wire = am::serialize_external_object_ref(ref);
+    expect(static_cast<unsigned char>(oversized_wire[31]) == 0xe0 &&
+        static_cast<unsigned char>(oversized_wire[61601]) == 0x5e, "oversized wire fixture offsets drifted");
+    oversized_wire[31] = static_cast<char>(0xe1); // Composite payload: 65,504 -> 65,505 bytes.
+    oversized_wire[61601] = static_cast<char>(0x5f); // Last string: 3,934 -> 3,935 bytes.
+    oversized_wire.push_back('x');
+    rejected_bytes(oversized_wire); // Every frame/field is legal; only the whole-reference limit is exceeded.
     std::get<std::string>(components.back().value).push_back('x');
     rejected_value(minimal({components}));
     components.push_back({"q", std::uint64_t{0}});
@@ -225,6 +305,48 @@ void decoder_controls() {
     rejected_bytes(prefix + unhex("040000001c00020001610200000008000000000000000100016203000000017800")); // Tuple trailing byte.
 }
 
+void deterministic_decoder_mutations() {
+    // Literal seeds cover text, UTF-8 upper boundary, composite and present numeric parent.
+    const auto prefix = unhex("414d58520001000000017000000001730000000164000000016b");
+    const std::vector<std::string> seeds{
+        prefix + unhex("00030000000178"),
+        prefix + unhex("000300000004f48fbfbf"),
+        prefix + unhex("00040000001b000200016102000000080000000000000001000162030000000178"),
+        prefix + unhex("010100000008ffffffffffffffff0200000008000000000000002a")};
+    std::size_t accepted = 0;
+    std::size_t rejected = 0;
+    std::size_t truncations = 0;
+    for(const auto& seed : seeds) {
+        const auto decoded_seed = am::deserialize_external_object_ref(seed);
+        expect(am::serialize_external_object_ref(decoded_seed) == seed, "mutation seed is not canonical");
+        for(std::size_t size = 0; size < seed.size(); ++size) {
+            rejected_bytes(std::string_view(seed).substr(0, size));
+            ++truncations;
+        }
+        for(const auto& suffix : {std::string(1, '\0'), std::string{"x"}, std::string{"AMXR"}})
+            rejected_bytes(seed + suffix);
+        for(std::size_t offset = 0; offset < seed.size(); ++offset) {
+            for(unsigned bit = 0; bit < 8; ++bit) {
+                auto mutated = seed;
+                mutated[offset] = static_cast<char>(static_cast<unsigned char>(mutated[offset]) ^ (1U << bit));
+                std::optional<am::ExternalObjectRef> decoded;
+                try { decoded = am::deserialize_external_object_ref(mutated); }
+                catch(const std::invalid_argument&) { ++rejected; }
+                if(decoded) {
+                    // A mutation can legally change identity: do not demand rejection of valid data.
+                    expect(am::is_valid_external_object_ref(*decoded), "decoder admitted an invalid mutation");
+                    expect(am::serialize_external_object_ref(*decoded) == mutated, "decoder repaired a noncanonical mutation");
+                    ++accepted;
+                }
+            }
+        }
+    }
+    expect(accepted != 0 && rejected != 0, "mutation matrix missed an outcome class");
+    std::cout << "AMXR deterministic mutations: " << accepted + rejected << " bit flips ("
+              << accepted << " accepted, " << rejected << " rejected), " << truncations
+              << " truncations, 12 trailing-byte cases\n";
+}
+
 void legacy_source_compatibility() {
     const am::MessageId message{"00123"};
     const am::ThreadId thread{"-100123"};
@@ -247,7 +369,10 @@ int main() {
         source_domains_and_remapping();
         encoder_validation_and_bounds();
         field_boundaries();
+        identity_consistency_matrix();
+        isolated_component_count_boundary();
         decoder_controls();
+        deterministic_decoder_mutations();
         legacy_source_compatibility();
         std::cout << "external identity goldens, domains, remapping, bounds, corruption and compatibility: PASS\n";
         return 0;

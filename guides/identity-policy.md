@@ -1,10 +1,13 @@
 # Identity policy and decision register
 
-**Status: normative specification for Identity Architecture; REVIEW_REQUIRED for
-integration, not CLOSED.** Existing implementation observations below are bound
-to `main@acd5ad5545386b3feeaa79f8a587855b60801b4d`. The new ExternalObjectRef /
+**Status: normative specification for Identity Architecture; standalone AMXR v1
+architecture APPROVED, integration REVIEW_REQUIRED, not CLOSED.** Existing
+implementation observations below are bound to
+`main@acd5ad5545386b3feeaa79f8a587855b60801b4d`. The new ExternalObjectRef /
 AMXR value-and-codec implementation is a separate review-required change; this
-documentation PR does not contain it or claim it is already in main.
+policy was first published in documentation PR #682. Companion implementation
+[#684](https://github.com/LimiNode/agent-memory-cpp/pull/684) supplies the opt-in
+values and codec; neither PR is integrated into main yet.
 
 This is the central owner of identity-category separation, external namespace
 issuance and the standalone AMXR codec. Topic owners retain allocation,
@@ -48,6 +51,9 @@ Authority is deliberately distributed, without duplicated wire grammars:
 Specific legacy encodings win over a generic recommendation in this guide.
 An actual contradiction requires a named owner correction and conformance
 proof, not silent normalization, numeric conversion or schema modification.
+The narrowly scoped [AMXR v1 ADR](adr/2026-11-external-identity-amxr-v1.md)
+records the standalone-format rationale and architecture-review boundary;
+it does not approve the separate conversation/event proposal.
 
 ## 2. External namespace issuance and missing identity
 
@@ -88,6 +94,10 @@ the same tuple a different meaning. No generic URI canonicalization, case
 folding, Unicode normalization, whitespace trim or decimal parsing occurs.
 If an issuer defines an equivalence, its adapter must implement the declared
 versioned recipe before constructing the tuple and retain the source value.
+The lowercase namespace-label grammar below is a validation rule, not an
+instruction to lowercase supplied input. Any change to that grammar needs a
+new reviewed wire version; changing issuer or key equivalence needs a new
+namespace/recipe assignment as described above. The codec guesses neither.
 
 A parent belongs to the **same provider, service instance and identity domain**
 as the object. The immutable object-kind recipe defines whether it denotes a
@@ -149,11 +159,24 @@ it is not ArtifactId, ContentHash, std::hash, proof of authority or a substitute
 for full reference equality. Collision policy cannot silently merge unequal
 full references.
 
+For admitted values, `a == b` if and only if `encode(a) == encode(b)` and if
+and only if neither `a < b` nor `b < a`. Equal values have equal fingerprints;
+equal fingerprints alone never establish equality. Finite collision regression
+vectors qualify namespace/type/framing separation, not cryptographic collision
+freedom. No std::hash specialization is introduced; a caller's runtime hash
+must respect full equality and must not become a durable identity recipe.
+
 ## 4. Canonical ExternalObjectRef codec (AMXR v1)
 
 AMXR is a new **standalone** value encoding. It is not wired into an existing
 DBI/key, persisted C1/flat record, content-hash recipe or publication manifest.
 Adding any such persistence is a separate schema/version/migration decision.
+AMXR v1 defines **binary interchange only**. It introduces no public textual
+prefix, URI, decimal form, hex/base64 wrapper or diagnostic interchange grammar.
+The hex literals in golden tests merely display exact binary bytes. Logs or
+diagnostic renderings are not serialized identities and must not be parsed as
+AMXR interchange. A future public text form needs its own reviewed canonical
+grammar, version discriminator and independent golden vectors.
 
 All lengths/counts are unsigned big-endian and count bytes/elements, not code
 points. Fixed-width integer payloads are exactly eight bytes. The complete
@@ -219,7 +242,7 @@ AMXR. `REVIEW_REQUIRED` is not CLOSED or permission to merge.
 | ScopeId | COMPATIBILITY_RETAINED; units / scope admission | Current wrapper/recipe v2 use supplied bytes; empty is unspecified, not implicit global. Future roadmap canonical_bytes normalization is not current wrapper behavior |
 | RepresentationId / SegmentSetId / SegmentId / EvidenceAnchorId | COMPATIBILITY_RETAINED; artifact/representation owner | Preserve opaque IDs and existing locator bytes; use containing source/revision/recipe/representation where required. No local-counter substitution |
 | LexicalSegmentPhysicalKey | IMPLEMENTED; lexical physical contract | Preserve versioned composite widths/comparator/epoch; rebuildable key is not source provenance |
-| ExternalIdentityScalar / component / key / ExternalObjectRef | REVIEW_REQUIRED; this guide | New dependency-free values and exact AMXR v1 contract; companion implementation/qualification required before integration |
+| ExternalIdentityScalar / component / key / ExternalObjectRef | IMPLEMENTED in #684; domain / this guide; integration REVIEW_REQUIRED | Dependency-free values and exact standalone AMXR v1 codec; no existing DBI integration, issuer registry or default activation |
 | MessageId / ThreadId / AuthorId | COMPATIBILITY_RETAINED; legacy chat / future conversation owner | Keep old strings, constructors and validation. No automatic external-ref conversion; internal/external namespaces in the old shapes remain incomplete |
 | FactId / MemoryObjectId | COMPATIBILITY_RETAINED; legacy facts/memory | Keep existing value APIs; do not invent or activate a competing canonical allocator/store |
 | Portable namespace registry persistence | PLANNED_NOT_BLOCKING; host / source catalog | The issuance contract is mandatory now; an additional library registry/store is not needed to encode caller-supplied verified tuples |
@@ -286,6 +309,13 @@ The implementation PR records exact source HEADs, actual test results and a
 new source-bound catalogue/addendum for newly introduced declarations. It must
 not relabel or overwrite the original `acd5ad55` audit/catalogue as current.
 This policy PR alone supplies no runtime-test or namespace-registry evidence.
+
+The public [usage example](../examples/external_identity.cpp) is also the
+installed C++17 consumer executed by packaging CI. The separately extracted
+[type delta](audits/2026-11-identity-closure-type-delta.json) compares the complete
+header AST at `a27e0c0558314d3760b41217ca37b29ab71c3bff`: 149 headers, 565
+declarations, exactly four added types and unchanged hashes for the 561 old
+declarations. Its name-based field count is not semantic identity inference.
 
 Closure remains REVIEW_REQUIRED until public API, this owner, implementation,
 goldens, compatibility and independent review agree. CLOSED requires explicit
