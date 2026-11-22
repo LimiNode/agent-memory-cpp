@@ -409,3 +409,69 @@ therefore prepare Conversation/Event Model while integration awaits permission.
 No ConversationStore/runtime, second identity layer, TypedMetadata, storage
 migration, lexical/exact-semantic implementation, PR #676--679/#683 changes,
 merge, release/tag or production activation is included.
+
+## 2026-11-22 — Conversation Core ownership and priority correction
+
+Context: documentation-only follow-up to Draft #688 at
+`6c919b5e092bebd80e4b8c6d2ee79a96aa3a7417`, still based on #685 at
+`7e35aa93beace51386c51086e9a61c08a586fb24`. Main was rechecked as
+`acd5ad5545386b3feeaa79f8a587855b60801b4d`. Earlier runtime, sanitizer and
+GitHub evidence above remains bound to its original source revisions.
+
+Question: can an early useful chat profile reuse existing knowledge,
+publication and storage owners without a competing provenance system or
+requiring all M2? This is architecture/document review, not an event runtime
+experiment or a performance claim.
+
+Inspected the six requested owners: linked-derived knowledge, derived
+representations/codecs, KnowledgeUnits, canonical content, the Conversation
+ADR and normative milestones; checked the actual AMXR, publication input,
+current-reader, projection and numeric-mapping headers in the prerequisite
+stack. The graph index returned insufficient current symbol coverage, so
+bounded direct source inspection supplied the implementation evidence.
+
+Result: the contract now separates canonical communication history from
+independent KnowledgeUnits and rebuildable projections, distinguishes journal
+changes from `KnowledgeUnitKind::Event`, requires exact graph-free direct and
+reverse provenance, and records a REUSE / EXTEND / NEW matrix. The source-edit
+example explicitly requires a message-state frontier: an immutable old Entry
+still existing cannot establish that an extracted assertion is current.
+Independent supporting evidence survives reassessment; historical manifests
+are not rewritten. No embedding or optional graph row becomes evidence truth.
+
+`milestones.md` now schedules a **Planned, opt-in Conversation Core** for chat
+import and Efi dialogue memory. The five proposed implementation PRs are
+values, event codec, reference history/import store, numeric MDBX persistence
+and end-to-end Core qualification. A sixth, separate follow-up supplies the
+event-derived publication/frontier and evidence/reverse-lookup bridge. Default
+M0 and advanced M2/M2+ scope are unchanged; no capability flag, DBI layout or
+runtime implementation is added by this correction.
+
+Local validation:
+
+- Relative links and heading anchors passed for all seven changed documents
+  (65 links, 12 anchors); code fences were excluded from Markdown-link parsing
+  to avoid treating existing C++ lambda syntax as a link.
+- Both C++ sketch fences are unchanged from reviewed #688 at `6c919b5e`.
+  No new syntax, library build, event runtime or benchmark execution is claimed.
+- `python tools/validate-historical-research-preservation.py` and `--self-test`
+  passed: 13 documents, 17 tool bindings, six invalid-manifest controls.
+- `python tools/validate-pca12-residual-preservation.py` and `--self-test`
+  passed: 34 divergent/14 absent records, 20 residual bindings and 14 negative
+  controls. Historical records were not relabelled or rewritten.
+- Independent read-only peer review approved Draft publication of the six-file
+  contract diff with no confirmed blocker. Two optional future-tense wording
+  clarifications were applied. This is not human architecture approval or
+  merge authorization.
+- `git diff --check` passed. The complete child PR remains Markdown-only;
+  `src`, tests, build/dependencies, physical manifest, legacy codecs and
+  production defaults have no delta relative to #685.
+
+Limitations / next gate: no Conversation Core capability is implemented or
+qualified. Existing B1/B2/B3 checks cover KnowledgeUnit/root Resource bindings,
+not Entry history or general transitive/reverse event dependencies. Review
+the proposed event/revision and allocation decisions after Identity integration,
+then authorize one implementation slice. Fresh exact-head CI/packaging for
+this corrective commit must be recorded in the PR handoff, not attributed to
+the earlier successful #688 runs. No merge, release/tag, migration or
+production activation is authorized here.
