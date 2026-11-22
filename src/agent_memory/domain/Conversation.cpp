@@ -1,5 +1,7 @@
 #include "Conversation.hpp"
+#include "ConversationEnvelope.hpp"
 
+#include <limits>
 #include <tuple>
 #include <utility>
 
@@ -36,6 +38,7 @@ bool same_occurrence(const EntryRef& a, const EntryRef& b) noexcept {
 
 class EntryValidator final {
 public:
+    explicit EntryValidator(const ConversationFieldLimits& limits) : m_limits(limits) {}
     std::vector<ConversationValidationIssue> issues;
 
     void issue(const std::string& field, ConversationValidationCode code) {
@@ -54,22 +57,22 @@ public:
     }
 
     void evidence(const std::string& field, const ConversationImportEvidence& value) {
-        bounded_bytes(field + ".artifact", value.artifact.value(), kMaxConversationBindingBytes);
-        text(field + ".record_locator", value.record_locator, kMaxConversationLocatorBytes, true);
+        bounded_bytes(field + ".artifact", value.artifact.value(), m_limits.max_binding_bytes);
+        text(field + ".record_locator", value.record_locator, m_limits.max_locator_bytes, true);
     }
 
     void content(const std::string& field, const ConversationContent& value) {
-        if(value.text) text(field + ".text", *value.text, kMaxConversationTextBytes, false);
+        if(value.text) text(field + ".text", *value.text, m_limits.max_text_bytes, false);
         if((!value.text || value.text->empty()) && value.attachments.empty()) {
             issue(field, ConversationValidationCode::EmptyContent);
         }
-        if(value.attachments.size() > kMaxConversationAttachments) {
+        if(value.attachments.size() > m_limits.max_attachments) {
             issue(field + ".attachments", ConversationValidationCode::LimitExceeded);
             return;
         }
         for(std::size_t i = 0; i < value.attachments.size(); ++i) {
             bounded_bytes(field + ".attachments[" + std::to_string(i) + "]",
-                value.attachments[i].value(), kMaxConversationBindingBytes);
+                value.attachments[i].value(), m_limits.max_binding_bytes);
         }
     }
 
@@ -81,8 +84,8 @@ public:
     }
 
     void source(const ConversationSourceBinding& value) {
-        bounded_bytes("source.revision", value.revision.value(), kMaxConversationBindingBytes);
-        text("source.adapter_recipe", value.adapter_recipe, kMaxConversationRecipeBytes, true);
+        bounded_bytes("source.revision", value.revision.value(), m_limits.max_binding_bytes);
+        text("source.adapter_recipe", value.adapter_recipe, m_limits.max_recipe_bytes, true);
         evidence("source.evidence", value.evidence);
         if(value.object && !is_valid_external_object_ref(*value.object)) {
             issue("source.object", ConversationValidationCode::InvalidReference);
@@ -92,7 +95,7 @@ public:
         }
         if(value.provider_revision_marker) {
             bounded_bytes("source.provider_revision_marker", *value.provider_revision_marker,
-                kMaxConversationBindingBytes);
+                m_limits.max_binding_bytes);
         }
         bool is_consistent = false;
         switch(value.identity) {
@@ -111,6 +114,97 @@ public:
         }
         if(!is_consistent) issue("source", ConversationValidationCode::InvalidSourceIdentity);
     }
+
+    template<typename Metadata>
+    void metadata(const Metadata& value) {
+        if(!is_valid_entry_ref(value.ref)) issue("ref", ConversationValidationCode::InvalidReference);
+        // Scope retains opaque bytes and has no independent domain length cap.
+        if(value.scope.empty()) issue("scope", ConversationValidationCode::MissingScope);
+        if(value.actor && !is_valid_actor_ref(*value.actor)) {
+            issue("actor", ConversationValidationCode::InvalidReference);
+        }
+        if(value.observer && !is_valid_actor_ref(*value.observer)) {
+            issue("observer", ConversationValidationCode::InvalidReference);
+        }
+        if(value.llm_role) {
+            switch(*value.llm_role) {
+            case ConversationLlmRole::System:
+            case ConversationLlmRole::Developer:
+            case ConversationLlmRole::User:
+            case ConversationLlmRole::Assistant:
+            case ConversationLlmRole::Tool:
+                break;
+            default:
+                issue("llm_role", ConversationValidationCode::InvalidEnum);
+            }
+        }
+        if(value.source) source(*value.source);
+    }
+
+    template<typename Metadata>
+    void legacy_payload(const ConversationPayload& payload, const Metadata& value) {
+        if(const auto* created = std::get_if<ConversationMessageCreated>(&payload)) {
+            content("payload.content", created->content);
+        } else if(const auto* snapshot = std::get_if<ConversationSnapshotObserved>(&payload)) {
+            content("payload.content", snapshot->content);
+            if(!value.source) issue("source", ConversationValidationCode::InvalidEvidence);
+        } else if(const auto* edit = std::get_if<ConversationEdited>(&payload)) {
+            target("payload.affected", edit->affected, value.ref, true);
+            content("payload.replacement", edit->replacement);
+        } else if(const auto* tombstone = std::get_if<ConversationTombstoned>(&payload)) {
+            target("payload.affected", tombstone->affected, value.ref, true);
+        } else if(const auto* restore = std::get_if<ConversationRestored>(&payload)) {
+            target("payload.affected", restore->affected, value.ref, true);
+            target("payload.retained_state", restore->retained_state, value.ref, true);
+        } else {
+            issue("payload", ConversationValidationCode::EmptyContent);
+        }
+    }
+
+    template<typename Metadata>
+    void links(const Metadata& value) {
+        if(value.links.size() > m_limits.max_links) {
+            issue("links", ConversationValidationCode::LimitExceeded);
+            return;
+        }
+        for(std::size_t i = 0; i < value.links.size(); ++i) {
+            const auto field = "links[" + std::to_string(i) + "]";
+            const auto& link = value.links[i];
+            bool same_conversation = false;
+            switch(link.kind) {
+            case ConversationLinkKind::Reply:
+            case ConversationLinkKind::Thread:
+                same_conversation = true;
+                break;
+            case ConversationLinkKind::Branch:
+            case ConversationLinkKind::Forward:
+            case ConversationLinkKind::Quote:
+                break;
+            default:
+                issue(field + ".kind", ConversationValidationCode::InvalidEnum);
+            }
+            if(const auto* resolved = std::get_if<EntryRef>(&link.target)) {
+                target(field + ".target", *resolved, value.ref, same_conversation);
+            } else if(const auto* unresolved = std::get_if<UnresolvedConversationTarget>(&link.target)) {
+                evidence(field + ".target.evidence", unresolved->evidence);
+                if(unresolved->external && !is_valid_external_object_ref(*unresolved->external)) {
+                    issue(field + ".target.external", ConversationValidationCode::InvalidReference);
+                }
+            } else {
+                issue(field + ".target", ConversationValidationCode::InvalidTarget);
+            }
+        }
+    }
+
+    void call_id(const ByteBuffer& bytes) {
+        if(bytes.empty()) issue("payload.call_id", ConversationValidationCode::MissingBinding);
+        else if(bytes.size() > m_limits.max_binding_bytes) {
+            issue("payload.call_id", ConversationValidationCode::LimitExceeded);
+        }
+    }
+
+private:
+    const ConversationFieldLimits& m_limits;
 };
 
 } // namespace
@@ -169,78 +263,65 @@ bool is_valid_actor_ref(const ActorRef& value) noexcept {
 }
 
 std::vector<ConversationValidationIssue> validate_conversation_entry(const ConversationEntry& entry) {
-    EntryValidator validator;
-    if(!is_valid_entry_ref(entry.ref)) validator.issue("ref", ConversationValidationCode::InvalidReference);
-    // ScopeId retains its existing opaque-byte semantics; do not impose namespace rules on it.
-    if(entry.scope.empty()) validator.issue("scope", ConversationValidationCode::MissingScope);
-    if(entry.actor && !is_valid_actor_ref(*entry.actor)) {
-        validator.issue("actor", ConversationValidationCode::InvalidReference);
-    }
-    if(entry.observer && !is_valid_actor_ref(*entry.observer)) {
-        validator.issue("observer", ConversationValidationCode::InvalidReference);
-    }
-    if(entry.llm_role) {
-        switch(*entry.llm_role) {
-        case ConversationLlmRole::System:
-        case ConversationLlmRole::Developer:
-        case ConversationLlmRole::User:
-        case ConversationLlmRole::Assistant:
-        case ConversationLlmRole::Tool:
+    return validate_conversation_entry_with_limits(entry, ConversationFieldLimits{});
+}
+
+bool is_supported_conversation_payload(std::uint32_t type_id, std::uint16_t schema_version) noexcept {
+    return schema_version == 1 && ((type_id >= 1 && type_id <= 5) || type_id == 256 || type_id == 257);
+}
+
+std::vector<ConversationValidationIssue> validate_conversation_entry_with_limits(
+    const ConversationEntry& entry, const ConversationFieldLimits& limits) {
+    EntryValidator validator(limits);
+    validator.metadata(entry);
+    validator.legacy_payload(entry.payload, entry);
+    validator.links(entry);
+    return std::move(validator.issues);
+}
+
+std::vector<ConversationValidationIssue> validate_conversation_envelope(
+    const ConversationEnvelope& envelope, const ConversationFieldLimits& limits) {
+    EntryValidator validator(limits);
+    const auto& metadata = envelope.metadata;
+    validator.metadata(metadata);
+    if(const auto* legacy = std::get_if<ConversationPayload>(&envelope.payload)) {
+        validator.legacy_payload(*legacy, metadata);
+    } else if(const auto* call = std::get_if<ConversationToolCallObserved>(&envelope.payload)) {
+        if(!metadata.source) validator.issue("source", ConversationValidationCode::InvalidEvidence);
+        validator.call_id(call->call_id);
+        validator.text("payload.tool_name", call->tool_name, limits.max_recipe_bytes, true);
+        validator.bounded_bytes("payload.request", call->request.value(), limits.max_binding_bytes);
+    } else if(const auto* result = std::get_if<ConversationToolResultObserved>(&envelope.payload)) {
+        if(!metadata.source) validator.issue("source", ConversationValidationCode::InvalidEvidence);
+        validator.target("payload.call", result->call, metadata.ref, true);
+        validator.call_id(result->call_id);
+        validator.bounded_bytes("payload.result", result->result.value(), limits.max_binding_bytes);
+        switch(result->outcome) {
+        case ConversationToolOutcome::Unknown:
+        case ConversationToolOutcome::Succeeded:
+        case ConversationToolOutcome::Failed:
+        case ConversationToolOutcome::Cancelled:
             break;
         default:
-            validator.issue("llm_role", ConversationValidationCode::InvalidEnum);
+            validator.issue("payload.outcome", ConversationValidationCode::InvalidEnum);
         }
-    }
-    if(entry.source) validator.source(*entry.source);
-
-    if(const auto* created = std::get_if<ConversationMessageCreated>(&entry.payload)) {
-        validator.content("payload.content", created->content);
-    } else if(const auto* snapshot = std::get_if<ConversationSnapshotObserved>(&entry.payload)) {
-        validator.content("payload.content", snapshot->content);
-        if(!entry.source) validator.issue("source", ConversationValidationCode::InvalidEvidence);
-    } else if(const auto* edit = std::get_if<ConversationEdited>(&entry.payload)) {
-        validator.target("payload.affected", edit->affected, entry.ref, true);
-        validator.content("payload.replacement", edit->replacement);
-    } else if(const auto* tombstone = std::get_if<ConversationTombstoned>(&entry.payload)) {
-        validator.target("payload.affected", tombstone->affected, entry.ref, true);
-    } else if(const auto* restore = std::get_if<ConversationRestored>(&entry.payload)) {
-        validator.target("payload.affected", restore->affected, entry.ref, true);
-        validator.target("payload.retained_state", restore->retained_state, entry.ref, true);
+    } else if(const auto* opaque = std::get_if<ConversationOpaquePayload>(&envelope.payload)) {
+        const bool known_pair = is_supported_conversation_payload(opaque->type_id, opaque->schema_version);
+        if(opaque->type_id == 0 || opaque->type_id == std::numeric_limits<std::uint32_t>::max() ||
+           opaque->schema_version == 0 || known_pair) {
+            validator.issue("payload", ConversationValidationCode::InvalidEnum);
+        }
     } else {
-        // A mutable C++17 variant may be valueless_by_exception; that is not a valid payload.
         validator.issue("payload", ConversationValidationCode::EmptyContent);
     }
-
-    if(entry.links.size() > kMaxConversationLinks) {
-        validator.issue("links", ConversationValidationCode::LimitExceeded);
-    } else {
-        for(std::size_t i = 0; i < entry.links.size(); ++i) {
-            const auto field = "links[" + std::to_string(i) + "]";
-            const auto& link = entry.links[i];
-            bool same_conversation = false;
-            switch(link.kind) {
-            case ConversationLinkKind::Reply:
-            case ConversationLinkKind::Thread:
-                same_conversation = true;
-                break;
-            case ConversationLinkKind::Branch:
-            case ConversationLinkKind::Forward:
-            case ConversationLinkKind::Quote:
-                break;
-            default:
-                validator.issue(field + ".kind", ConversationValidationCode::InvalidEnum);
-            }
-            if(const auto* target = std::get_if<EntryRef>(&link.target)) {
-                validator.target(field + ".target", *target, entry.ref, same_conversation);
-            } else if(const auto* unresolved = std::get_if<UnresolvedConversationTarget>(&link.target)) {
-                validator.evidence(field + ".target.evidence", unresolved->evidence);
-                if(unresolved->external && !is_valid_external_object_ref(*unresolved->external)) {
-                    validator.issue(field + ".target.external", ConversationValidationCode::InvalidReference);
-                }
-            } else {
-                validator.issue(field + ".target", ConversationValidationCode::InvalidTarget);
-            }
+    validator.links(metadata);
+    std::uint32_t previous = 0;
+    for(std::size_t i = 0; i < envelope.extensions.size(); ++i) {
+        const auto id = envelope.extensions[i].id;
+        if(id == 0 || id <= previous) {
+            validator.issue("extensions[" + std::to_string(i) + "].id", ConversationValidationCode::InvalidReference);
         }
+        previous = id;
     }
     return std::move(validator.issues);
 }

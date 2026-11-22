@@ -94,6 +94,18 @@ inline constexpr std::size_t kMaxConversationLocatorBytes = 4096;
 inline constexpr std::size_t kMaxConversationBindingBytes = 4096;
 inline constexpr std::size_t kMaxConversationRecipeBytes = 1024;
 
+/// \brief Explicit field budgets; defaults preserve the integrated Phase 1 validator.
+/// \note Zero forbids the corresponding resource, never unlimited. Namespace and AMXR
+/// identity rules are fixed. Codec implementation ceilings are checked by the codec.
+struct ConversationFieldLimits final {
+    std::size_t max_text_bytes = kMaxConversationTextBytes;
+    std::size_t max_attachments = kMaxConversationAttachments;
+    std::size_t max_links = kMaxConversationLinks;
+    std::size_t max_binding_bytes = kMaxConversationBindingBytes;
+    std::size_t max_locator_bytes = kMaxConversationLocatorBytes;
+    std::size_t max_recipe_bytes = kMaxConversationRecipeBytes;
+};
+
 struct ConversationRef final {
     /// Host-issued exact ASCII token: [a-z][a-z0-9._-]*, 1..128 bytes. Never normalized.
     std::string allocation_namespace;
@@ -232,6 +244,10 @@ struct ConversationValidationIssue final {
 /// Edit/delete/restore targets must be exact, same-conversation and a different Entry occurrence;
 /// restore retained_state obeys the same policy. No latest resolution or current-state fold occurs.
 [[nodiscard]] std::vector<ConversationValidationIssue> validate_conversation_entry(const ConversationEntry&);
+/// \brief Applies explicit field budgets without weakening semantic or identity checks.
+/// \note The one-argument validator retains its original limits and behavior.
+[[nodiscard]] std::vector<ConversationValidationIssue> validate_conversation_entry_with_limits(
+    const ConversationEntry&, const ConversationFieldLimits&);
 
 } // namespace agent_memory
 

@@ -86,7 +86,11 @@ in `main@386e26fe9176d268722894cd9f48df33f3b7bf72`. Standalone AMXR v1 passed it
 integration gate and is CLOSED within that scope. Phase 2 Event Codec v1 is
 implemented/reviewed in a separate Draft PR; canonical history, ID allocation,
 import and durable Conversation persistence remain Planned. Review and qualify
-each slice before advertising the complete profile.
+each slice before advertising the complete profile. The revised
+[AMCE envelope](conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)
+supports independently versioned payloads, bounded default/extended consumer
+profiles and lossless unsupported-data retention. Retention does not establish
+canonical semantic admission, and a frame/header read is not a validated event.
 
 Required gates **when this chat profile is selected** (full profile still `Planned`;
 implemented values/codec do not prove store/admission/recovery behavior):
@@ -108,8 +112,10 @@ frozen by this table, and no implementation is authorized by a roadmap edit.
 Automatic relation extraction, semantic graph reasoning, multi-aspect
 embeddings, intelligent dialogue compaction, arbitrary episode reconstruction,
 GraphRAG and bi-temporal logic remain later M2/M2+ work. The core journal and
-later technical provenance must work without a graph backend. Tools may be
-recorded as observations in later payload slices; their execution remains
+later technical provenance must work without a graph backend. The separate
+Phase 2 draft includes typed tool-call/result observations; future
+Patch/Compaction schemas remain reserved and their illustrative artifact-only
+fixtures prove no typed support or derived publication. Execution remains
 outside the library.
 
 ### M1a - Hybrid Retrieval

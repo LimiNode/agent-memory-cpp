@@ -72,7 +72,12 @@ logical identities, scoped external references, binary content digests and
 physical allocation keys. They also record feature-local type ownership and
 the retained compatibility status of legacy DTOs. Conversation Phase 1 values
 and validation are integrated; the Phase 2 event codec is implemented in a
-separate Draft PR. The full Conversation Core and typed-metadata ADR remain
+separate Draft PR. Its [AMCE envelope contract](conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)
+separates common metadata, versioned payload schemas and consumer resource
+budgets. Unsupported bytes are retained, not semantically admitted; tool
+observations do not execute tools. Wire framing, canonical history, rebuildable
+read projections and physical compression/storage remain separate boundaries.
+The full Conversation Core and typed-metadata ADR remain
 planned, not permission to change persisted identity, include paths or product
 defaults.
 

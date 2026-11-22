@@ -13,6 +13,8 @@
 #include "domain/Identifiers.hpp"
 #include "domain/ExternalObjectRef.hpp"
 #include "domain/Conversation.hpp"
+#include "domain/ByteView.hpp"
+#include "domain/ConversationEnvelope.hpp"
 #include "domain/conversation_codec.hpp"
 #include "domain/KnowledgeUnit.hpp"
 #include "domain/Metadata.hpp"

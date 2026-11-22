@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -21,28 +22,55 @@ void expect(bool value, const char* message) {
     if(!value) throw std::runtime_error(message);
 }
 
-std::string unhex(std::string_view text) {
+am::ByteView view(const am::ByteBuffer& bytes) {
+    return {bytes.data(), bytes.size()};
+}
+
+am::ByteBuffer unhex(std::string_view text) {
     const auto digit = [](char c) -> unsigned {
         if(c >= '0' && c <= '9') return static_cast<unsigned>(c - '0');
         if(c >= 'a' && c <= 'f') return static_cast<unsigned>(c - 'a' + 10);
         throw std::runtime_error("bad literal golden hex");
     };
     expect(text.size() % 2 == 0, "odd literal golden hex");
-    std::string result;
+    am::ByteBuffer result;
     result.reserve(text.size() / 2);
     for(std::size_t i = 0; i < text.size(); i += 2)
-        result.push_back(static_cast<char>(digit(text[i]) * 16 + digit(text[i + 1])));
+        result.push_back(static_cast<std::uint8_t>(digit(text[i]) * 16 + digit(text[i + 1])));
     return result;
 }
 
-std::string digest_hex(std::string_view bytes) {
+std::string opaque_string(std::string_view hex) {
+    const auto bytes = unhex(hex);
+    return {reinterpret_cast<const char*>(bytes.data()), bytes.size()};
+}
+
+std::string digest_hex(const am::ByteBuffer& bytes) {
     constexpr char digits[] = "0123456789abcdef";
     std::string result;
-    for(const auto byte : am::sha256(bytes)) {
+    // The existing standalone SHA API accepts a bounded binary string_view.
+    for(const auto byte : am::sha256({reinterpret_cast<const char*>(bytes.data()), bytes.size()})) {
         result.push_back(digits[byte >> 4]);
         result.push_back(digits[byte & 15]);
     }
     return result;
+}
+
+template<typename Action>
+void expect_code(Action action, am::ConversationCodecCode code) {
+    try { action(); }
+    catch(const am::ConversationCodecError& error) {
+        expect(error.code() == code, "codec refusal has wrong typed reason");
+        return;
+    }
+    throw std::runtime_error("expected typed codec refusal");
+}
+
+template<typename Action>
+void expect_rejected(Action action) {
+    try { action(); }
+    catch(const std::invalid_argument&) { return; }
+    throw std::runtime_error("invalid value or frame accepted");
 }
 
 am::EntryRef reference(std::uint64_t entry = 2, std::uint64_t revision = 3,
@@ -70,6 +98,10 @@ am::ConversationEntry message(std::string text = "t") {
     return result;
 }
 
+am::ConversationEnvelope envelope(std::string text = "t") {
+    return am::make_conversation_envelope(message(std::move(text)));
+}
+
 bool same_evidence(const am::ConversationImportEvidence& a, const am::ConversationImportEvidence& b) {
     return a.artifact == b.artifact && a.record_locator == b.record_locator;
 }
@@ -84,7 +116,7 @@ bool same_content(const am::ConversationContent& a, const am::ConversationConten
     return a.text == b.text && a.attachments == b.attachments;
 }
 
-bool same_payload(const am::ConversationPayload& a, const am::ConversationPayload& b) {
+bool same_legacy_payload(const am::ConversationPayload& a, const am::ConversationPayload& b) {
     return std::visit([&](const auto& value) {
         using T = std::decay_t<decltype(value)>;
         const auto* other = std::get_if<T>(&b);
@@ -102,52 +134,77 @@ bool same_payload(const am::ConversationPayload& a, const am::ConversationPayloa
     }, a);
 }
 
-void expect_entry(const am::ConversationEntry& a, const am::ConversationEntry& b) {
-    expect(am::validate_conversation_entry(a).empty(), "decoded entry is field-invalid");
-    expect(a.ref == b.ref && a.scope == b.scope && a.actor == b.actor && a.llm_role == b.llm_role &&
-        a.observer == b.observer && a.source_unix_us == b.source_unix_us &&
-        a.observed_unix_us == b.observed_unix_us, "entry identity or optional metadata changed");
-    expect(a.source.has_value() == b.source.has_value(), "source presence changed");
-    if(a.source) expect(same_source(*a.source, *b.source), "source evidence or identity changed");
-    expect(same_payload(a.payload, b.payload), "typed payload changed");
-    expect(a.links.size() == b.links.size(), "link count changed");
-    for(std::size_t i = 0; i < a.links.size(); ++i) {
-        const auto& left = a.links[i];
-        const auto& right = b.links[i];
-        expect(left.kind == right.kind, "link kind/order changed");
-        if(const auto* target = std::get_if<am::EntryRef>(&left.target)) {
-            const auto* other = std::get_if<am::EntryRef>(&right.target);
+void expect_envelope(const am::ConversationEnvelope& a, const am::ConversationEnvelope& b) {
+    const auto& left = a.metadata;
+    const auto& right = b.metadata;
+    expect(left.ref == right.ref && left.scope == right.scope && left.actor == right.actor &&
+        left.llm_role == right.llm_role && left.observer == right.observer &&
+        left.source_unix_us == right.source_unix_us && left.observed_unix_us == right.observed_unix_us,
+        "identity or optional metadata changed");
+    expect(left.source.has_value() == right.source.has_value(), "source presence changed");
+    if(left.source) expect(same_source(*left.source, *right.source), "source identity or evidence changed");
+    expect(left.links.size() == right.links.size(), "link count changed");
+    for(std::size_t i = 0; i < left.links.size(); ++i) {
+        const auto& x = left.links[i];
+        const auto& y = right.links[i];
+        expect(x.kind == y.kind, "link order/kind changed");
+        if(const auto* target = std::get_if<am::EntryRef>(&x.target)) {
+            const auto* other = std::get_if<am::EntryRef>(&y.target);
             expect(other && *target == *other, "resolved exact target changed");
         } else {
-            const auto& unresolved = std::get<am::UnresolvedConversationTarget>(left.target);
-            const auto* other = std::get_if<am::UnresolvedConversationTarget>(&right.target);
+            const auto& unresolved = std::get<am::UnresolvedConversationTarget>(x.target);
+            const auto* other = std::get_if<am::UnresolvedConversationTarget>(&y.target);
             expect(other && unresolved.external == other->external &&
-                same_evidence(unresolved.evidence, other->evidence), "unresolved target evidence changed");
+                same_evidence(unresolved.evidence, other->evidence), "unresolved evidence changed");
         }
     }
+    expect(a.extensions.size() == b.extensions.size(), "metadata extension count changed");
+    for(std::size_t i = 0; i < a.extensions.size(); ++i) {
+        expect(a.extensions[i].id == b.extensions[i].id &&
+            a.extensions[i].is_critical == b.extensions[i].is_critical &&
+            a.extensions[i].bytes == b.extensions[i].bytes, "unknown metadata bytes/flags/order changed");
+    }
+    expect(a.payload.index() == b.payload.index(), "payload interpretation changed");
+    std::visit([&](const auto& payload) {
+        using T = std::decay_t<decltype(payload)>;
+        const auto& other = std::get<T>(b.payload);
+        if constexpr(std::is_same_v<T, am::ConversationPayload>) {
+            expect(same_legacy_payload(payload, other), "Phase 1 payload changed");
+        } else if constexpr(std::is_same_v<T, am::ConversationToolCallObserved>) {
+            expect(payload.call_id == other.call_id && payload.tool_name == other.tool_name &&
+                payload.request == other.request, "tool request identity or artifact changed");
+        } else if constexpr(std::is_same_v<T, am::ConversationToolResultObserved>) {
+            expect(payload.call == other.call && payload.call_id == other.call_id &&
+                payload.outcome == other.outcome && payload.result == other.result,
+                "tool result target, outcome or artifact changed");
+        } else {
+            expect(payload.type_id == other.type_id && payload.schema_version == other.schema_version &&
+                payload.bytes == other.bytes, "opaque payload pair or bytes changed");
+        }
+    }, a.payload);
 }
 
-void round_trip(const am::ConversationEntry& entry) {
-    expect(am::validate_conversation_entry(entry).empty(), "round-trip fixture is field-invalid");
-    const auto bytes = am::serialize_conversation_entry(entry);
-    const auto decoded = am::deserialize_conversation_entry(bytes);
-    expect_entry(decoded, entry);
-    expect(am::serialize_conversation_entry(decoded) == bytes, "accepted bytes are noncanonical");
+void round_trip(const am::ConversationEnvelope& value, const am::ConversationCodecLimits& limits = {}) {
+    const auto bytes = am::serialize_conversation_envelope(value, limits);
+    am::ConversationDecodeOptions options;
+    options.limits = limits;
+    const auto decoded = am::deserialize_conversation_envelope(view(bytes), options);
+    expect_envelope(decoded, value);
+    expect(am::serialize_conversation_envelope(decoded, limits) == bytes, "noncanonical accepted frame");
 }
 
-struct Golden final {
-    const char* name;
-    am::ConversationEntry value;
-    const char* hex;
-    const char* sha256;
+struct Literal final { const char* name; const char* hex; const char* sha256; };
+const Literal kLiterals[] = {
+#include "fixtures/conversation_codec_goldens.inc"
 };
 
-std::vector<Golden> goldens() {
-    // Literal wire bytes and independent hashlib SHA-256, authored from section 4.2
-    // before inspecting the serializer. Offline reproduction: fixtures/conversation_codec_goldens.py.
+std::vector<am::ConversationEnvelope> golden_values() {
+    std::vector<am::ConversationEnvelope> values;
+    values.push_back(envelope());
     auto snapshot = message();
     snapshot.source = source();
     snapshot.payload = am::ConversationSnapshotObserved{{std::string{"snapshot"}, {am::ArtifactBindingId{"a"}}}};
+    values.push_back(am::make_conversation_envelope(std::move(snapshot)));
 
     auto event = message("external");
     event.source = source();
@@ -159,23 +216,28 @@ std::vector<Golden> goldens() {
     event.observer = am::ActorRef{"o", am::ActorId{std::uint64_t{8}}};
     event.source_unix_us = -1;
     event.observed_unix_us = 0;
+    values.push_back(am::make_conversation_envelope(event));
 
     auto revision = message("revision");
     revision.source = source();
     revision.source->identity = am::ConversationSourceIdentity::ObjectRevision;
     revision.source->object = external();
-    revision.source->revision = am::SourceRevisionId{unhex("ff0072")};
-    revision.source->provider_revision_marker = unhex("ff006d");
-    revision.source->evidence = {am::ArtifactBindingId{unhex("ff0062")}, unhex("6c00c3a9")};
+    revision.source->revision = am::SourceRevisionId{opaque_string("ff0072")};
+    revision.source->provider_revision_marker = opaque_string("ff006d");
+    revision.source->evidence = {am::ArtifactBindingId{opaque_string("ff0062")}, opaque_string("6c00c3a9")};
+    values.push_back(am::make_conversation_envelope(std::move(revision)));
 
     auto edited = message();
     edited.payload = am::ConversationEdited{reference(1, 9), {std::string{"edit"},
         {am::ArtifactBindingId{"x"}, am::ArtifactBindingId{"y"}, am::ArtifactBindingId{"x"}}}};
+    values.push_back(am::make_conversation_envelope(std::move(edited)));
     auto tombstone = message();
     tombstone.payload = am::ConversationTombstoned{reference(1, 9)};
     tombstone.llm_role = am::ConversationLlmRole::Tool;
+    values.push_back(am::make_conversation_envelope(std::move(tombstone)));
     auto restored = message();
     restored.payload = am::ConversationRestored{reference(1, 9), reference(1, 7)};
+    values.push_back(am::make_conversation_envelope(std::move(restored)));
 
     auto linked = message("links");
     linked.links = {
@@ -186,316 +248,483 @@ std::vector<Golden> goldens() {
         {am::ConversationLinkKind::Thread, reference(1, 2)},
         {am::ConversationLinkKind::Branch, reference(46, 10, 99, "z")}
     };
-
+    values.push_back(am::make_conversation_envelope(std::move(linked)));
     auto attached = message();
     attached.payload = am::ConversationMessageCreated{{std::nullopt,
-        {am::ArtifactBindingId{unhex("7800ff")}, am::ArtifactBindingId{"y"}}}};
+        {am::ArtifactBindingId{opaque_string("7800ff")}, am::ArtifactBindingId{"y"}}}};
     attached.actor = event.actor;
     attached.llm_role = am::ConversationLlmRole::System;
     attached.observer = event.observer;
     attached.source_unix_us = std::numeric_limits<std::int64_t>::min();
     attached.observed_unix_us = std::numeric_limits<std::int64_t>::max();
+    values.push_back(am::make_conversation_envelope(std::move(attached)));
 
     const auto maximum = std::numeric_limits<std::uint64_t>::max();
-    auto boundaries = message(unhex("d0af00c3a9"));
+    auto boundaries = message(opaque_string("d0af00c3a9"));
     boundaries.ref = reference(maximum, maximum, maximum);
-    boundaries.scope = am::ScopeId{unhex("00ff73")};
+    boundaries.scope = am::ScopeId{opaque_string("00ff73")};
     std::get<am::ConversationMessageCreated>(boundaries.payload).content.attachments =
-        {am::ArtifactBindingId{unhex("00ff")}};
+        {am::ArtifactBindingId{opaque_string("00ff")}};
     boundaries.actor = am::ActorRef{"a", am::ActorId{maximum}};
     boundaries.llm_role = am::ConversationLlmRole::Developer;
     boundaries.observer = am::ActorRef{"o", am::ActorId{maximum}};
     boundaries.source_unix_us = std::numeric_limits<std::int64_t>::max();
     boundaries.observed_unix_us = std::numeric_limits<std::int64_t>::min();
+    values.push_back(am::make_conversation_envelope(std::move(boundaries)));
     auto empty_text = message("");
     std::get<am::ConversationMessageCreated>(empty_text.payload).content.attachments = {am::ArtifactBindingId{"x"}};
+    values.push_back(am::make_conversation_envelope(std::move(empty_text)));
 
-    return {
-        {"minimal", message(),
-            "414d4345000101000000016100000000000000010000000000000002000000000000000302000000017303000400050006000700"
-            "0800090101000000017400000a0000",
-            "2f67653e50f37e00e3bd406925596c8f2c6ef40505220844967dfa2a258dc0c0"},
-        {"snapshot", std::move(snapshot),
-            "414d4345000101000000016100000000000000010000000000000002000000000000000302000000017303010300000000000172"
-            "0000000001760000000162000000016c0400050006000700080009020100000008736e617073686f74000100000001610a0000",
-            "3a11475ba700aee55ada78b5581af34a55c7e0e45191a49ad25a9fb5b4c08f2b"},
-        {"external_event", std::move(event),
-            "414d434500010100000001610000000000000001000000000000000200000000000000030200000001730301010100000035414d"
-            "58520001000000017000000001730000000164000000016b010100000008ffffffffffffffff0200000008000000000000002a01"
-            "00000035414d585200010000000170000000017300000001640000000165010100000008fffffffffffffffe0200000008000000"
-            "000000000d00000001720000000001760000000162000000016c0401000000016100000000000000070501040601000000016f00"
-            "000000000000080701ffffffffffffffff080100000000000000000901010000000865787465726e616c00000a0000",
-            "97cd8dfcd02dc9303c5a2e3015df3634708cfb838527fe56c877d1ca81db00be"},
-        {"object_revision", std::move(revision),
-            "414d434500010100000001610000000000000001000000000000000200000000000000030200000001730301020100000035414d"
-            "58520001000000017000000001730000000164000000016b010100000008ffffffffffffffff0200000008000000000000002a00"
-            "00000003ff00720100000003ff006d000000017600000003ff0062000000046c00c3a90400050006000700080009010100000008"
-            "7265766973696f6e00000a0000",
-            "6f92257c49a20a4958a2d300f9e6098da78c62db995495191e3ee4953e14f9c1"},
-        {"edit", std::move(edited),
-            "414d4345000101000000016100000000000000010000000000000002000000000000000302000000017303000400050006000700"
-            "080009030000000161000000000000000100000000000000010000000000000009010000000465646974000300000001780000"
-            "00017900000001780a0000",
-            "74cdb40606f6db1b061ba75a1c1a7a689479677ff2b788941197587af1016207"},
-        {"tombstone", std::move(tombstone),
-            "414d4345000101000000016100000000000000010000000000000002000000000000000302000000017303000400050105060007"
-            "000800090400000001610000000000000001000000000000000100000000000000090a0000",
-            "4847fc09921a293eb5117e92a07d21b343d060226309ab5fe66d0b270c0444bc"},
-        {"restore", std::move(restored),
-            "414d4345000101000000016100000000000000010000000000000002000000000000000302000000017303000400050006000700"
-            "080009050000000161000000000000000100000000000000010000000000000009000000016100000000000000010000000000"
-            "00000100000000000000070a0000",
-            "384dad921be55b8886c58d2da4cf8bbb38a10f2cc5f577577ffd2d885ffaa620"},
-        {"cross_links", std::move(linked),
-            "414d4345000101000000016100000000000000010000000000000002000000000000000302000000017303000400050006000700"
-            "0800090101000000056c696e6b7300000a00050401000000017a0000000000000063000000000000002c00000000000000080501"
-            "000000017a0000000000000063000000000000002d00000000000000090102000000000162000000016c02010000000161000000"
-            "0000000001000000000000000100000000000000020301000000017a0000000000000063000000000000002e000000000000000a",
-            "92f8b6aab1accbbbe7fe4223d169f32e4299ec9d60e478b206abb17901e0b4b3"},
-        {"attachment_only", std::move(attached),
-            "414d4345000101000000016100000000000000010000000000000002000000000000000302000000017303000401000000016100"
-            "000000000000070501010601000000016f00000000000000080701800000000000000008017fffffffffffffff09010000020000"
-            "00037800ff00000001790a0000",
-            "741dc13eddd3ff535a5b06d4b884ec043bbc34bc9d434396f4d25c53d6397fd6"},
-        {"boundaries", std::move(boundaries),
-            "414d43450001010000000161ffffffffffffffffffffffffffffffffffffffffffffffff020000000300ff730300040100000001"
-            "61ffffffffffffffff0501020601000000016fffffffffffffffff07017fffffffffffffff080180000000000000000901010000"
-            "0005d0af00c3a900010000000200ff0a0000",
-            "13b70d9c7720f5a50a037a16571848ea03e5348cef69ad80c9b236cb58e6dc28"},
-        {"present_empty", std::move(empty_text),
-            "414d4345000101000000016100000000000000010000000000000002000000000000000302000000017303000400050006000700"
-            "080009010100000000000100000001780a0000",
-            "b8e57348aba25f2662e652d4523354bad2825cd7c8e8635419501940effa2df1"}
-    };
+    auto call = envelope();
+    call.metadata.source = source();
+    call.payload = am::ConversationToolCallObserved{unhex("00ff63"), "shell", am::ArtifactBindingId{"request@1"}};
+    values.push_back(std::move(call));
+    auto result = envelope();
+    result.metadata.source = source();
+    result.payload = am::ConversationToolResultObserved{reference(1, 7), unhex("00ff63"),
+        am::ConversationToolOutcome::Failed, am::ArtifactBindingId{"result@1"}};
+    values.push_back(std::move(result));
+
+    auto unknown = envelope();
+    unknown.payload = am::ConversationOpaquePayload{70000, 5, unhex("00ff6f7061717565")};
+    values.push_back(std::move(unknown));
+    auto next_schema = envelope();
+    next_schema.payload = am::ConversationOpaquePayload{1, 2, unhex("ff006e657874")};
+    values.push_back(std::move(next_schema));
+    auto extensions = envelope();
+    extensions.extensions = {{7, false, unhex("00ff")}, {9, false, {}}};
+    values.push_back(std::move(extensions));
+    auto critical = envelope();
+    critical.extensions = {{7, true, unhex("00ff")}};
+    values.push_back(std::move(critical));
+    return values;
 }
 
-void literal_goldens(const std::vector<Golden>& values) {
-    for(const auto& golden : values) {
+void literal_goldens(const std::vector<am::ConversationEnvelope>& values) {
+    expect(values.size() == std::size(kLiterals), "literal and semantic fixtures differ");
+    for(std::size_t i = 0; i < values.size(); ++i) {
         try {
-            const auto expected = unhex(golden.hex);
-            expect(digest_hex(expected) == golden.sha256, "literal independent SHA-256 mismatch");
-            expect(am::validate_conversation_entry(golden.value).empty(), "golden DTO is field-invalid");
-            expect(am::serialize_conversation_entry(golden.value) == expected, "literal encoding mismatch");
-            const auto decoded = am::deserialize_conversation_entry(expected);
-            expect_entry(decoded, golden.value);
-            expect(am::serialize_conversation_entry(decoded) == expected, "literal re-encoding mismatch");
+            const auto expected = unhex(kLiterals[i].hex);
+            expect(digest_hex(expected) == kLiterals[i].sha256, "literal independent SHA-256 mismatch");
+            expect(am::serialize_conversation_envelope(values[i]) == expected, "independent literal encoding mismatch");
+            const auto decoded = am::deserialize_conversation_envelope(view(expected));
+            expect_envelope(decoded, values[i]);
+            expect(am::serialize_conversation_envelope(decoded) == expected, "literal re-encoding mismatch");
+            if(i < 11) {
+                const auto entry = am::to_conversation_entry(decoded);
+                expect(am::validate_conversation_entry(entry).empty(), "Phase 1 bridge produced invalid entry");
+                expect(am::serialize_conversation_entry(entry) == expected, "Phase 1 writer bridge changed bytes");
+                const auto entry_decoded = am::deserialize_conversation_entry(view(expected));
+                expect_envelope(am::make_conversation_envelope(entry_decoded), values[i]);
+            }
         } catch(const std::exception& error) {
-            throw std::runtime_error(std::string{"golden "} + golden.name + ": " + error.what());
+            throw std::runtime_error(std::string{"golden "} + kLiterals[i].name + ": " + error.what());
         }
     }
 }
 
-void rejected_bytes(std::string_view bytes) {
-    try { (void)am::deserialize_conversation_entry(bytes); }
-    catch(const std::invalid_argument&) { return; }
-    throw std::runtime_error("malformed event bytes decoded");
-}
-
-void rejected_value(const am::ConversationEntry& value) {
-    try { (void)am::serialize_conversation_entry(value); }
-    catch(const std::invalid_argument&) { return; }
-    throw std::runtime_error("invalid/oversized event DTO encoded");
-}
-
-void set_uint(std::string& bytes, std::size_t offset, std::uint64_t value, unsigned width) {
+void set_uint(am::ByteBuffer& bytes, std::size_t offset, std::uint64_t value, unsigned width) {
     expect(offset <= bytes.size() && width <= bytes.size() - offset, "bad mutation offset");
     for(unsigned i = 0; i < width; ++i)
-        bytes[offset + i] = static_cast<char>((value >> (8U * (width - i - 1U))) & 0xffU);
+        bytes[offset + i] = static_cast<std::uint8_t>((value >> (8U * (width - i - 1U))) & 0xffU);
 }
 
-void malformed_controls(const std::vector<Golden>& values) {
-    const auto minimal = unhex(values[0].hex);
-    expect(minimal.size() == 67, "minimal fixture offsets changed");
+std::size_t find_bytes(const am::ByteBuffer& bytes, const am::ByteBuffer& pattern) {
+    const auto it = std::search(bytes.begin(), bytes.end(), pattern.begin(), pattern.end());
+    expect(it != bytes.end(), "mutation marker missing");
+    return static_cast<std::size_t>(it - bytes.begin());
+}
+
+void rejected_bytes(const am::ByteBuffer& bytes) {
+    expect_rejected([&] { (void)am::deserialize_conversation_envelope(view(bytes)); });
+}
+
+void malformed_controls() {
+    const auto minimal = unhex(kLiterals[0].hex);
+    expect(minimal.size() == 87, "minimal mutation offsets changed");
     auto changed = minimal;
-    changed[0] = 'X';
-    rejected_bytes(changed);
+    changed[0] = 'X'; rejected_bytes(changed);
     for(const auto version : {std::uint64_t{0}, std::uint64_t{2}, std::uint64_t{65535}}) {
-        changed = minimal; set_uint(changed, 4, version, 2); rejected_bytes(changed);
+        changed = minimal; set_uint(changed, 4, version, 2);
+        expect_code([&] { (void)am::deserialize_conversation_envelope(view(changed)); },
+            am::ConversationCodecCode::UnsupportedEnvelope);
     }
-    for(const auto offset : {6U, 36U, 42U, 44U, 46U, 48U, 50U, 52U, 54U, 64U}) {
+    for(const auto offset : {6U, 7U}) {
+        changed = minimal; changed[offset] = 1; rejected_bytes(changed);
+    }
+    for(const auto offset : {8U, 12U, 22U}) {
+        for(const auto value : {std::uint64_t{0}, std::uint64_t{1}, std::uint64_t{0xffffffffU}}) {
+            changed = minimal; set_uint(changed, offset, value, 4); rejected_bytes(changed);
+        }
+    }
+    for(const auto type : {std::uint64_t{0}, std::uint64_t{0xffffffffU}}) {
+        changed = minimal; set_uint(changed, 16, type, 4); rejected_bytes(changed);
+    }
+    changed = minimal; set_uint(changed, 20, 0, 2); rejected_bytes(changed);
+    for(const auto offset : {26U, 56U, 62U, 64U, 66U, 68U, 70U, 72U, 74U}) {
         for(const auto byte : {0U, 255U}) {
-            changed = minimal; changed[offset] = static_cast<char>(byte); rejected_bytes(changed);
+            changed = minimal; changed[offset] = static_cast<std::uint8_t>(byte); rejected_bytes(changed);
         }
     }
-    changed = minimal; changed[46] = '\4'; rejected_bytes(changed); // Duplicate actor tag.
-    changed = minimal; std::swap(changed[44], changed[46]); rejected_bytes(changed);
-    changed = minimal; changed.insert(46, unhex("0400")); rejected_bytes(changed);
-    changed = minimal; changed.erase(44, 2); rejected_bytes(changed);
-    for(const auto offset : {43U, 45U, 47U, 49U, 51U, 53U, 56U}) {
-        for(const auto marker : {2U, 255U}) {
-            changed = minimal; changed[offset] = static_cast<char>(marker); rejected_bytes(changed);
+    changed = minimal; changed[66] = 4; rejected_bytes(changed); // Duplicate common field.
+    changed = minimal; std::swap(changed[64], changed[66]); rejected_bytes(changed);
+    for(const auto offset : {63U, 65U, 67U, 69U, 71U, 73U, 79U}) {
+        for(const auto byte : {2U, 255U}) {
+            changed = minimal; changed[offset] = static_cast<std::uint8_t>(byte); rejected_bytes(changed);
         }
     }
-    for(const auto tag : {0U, 6U, 255U}) {
-        changed = minimal; changed[55] = static_cast<char>(tag); rejected_bytes(changed);
-    }
-    for(const auto offset : {7U, 37U, 57U}) {
+    for(const auto offset : {27U, 57U, 80U}) {
         changed = minimal; set_uint(changed, offset, 0xffffffffU, 4); rejected_bytes(changed);
     }
-    changed = minimal; set_uint(changed, 7, 129, 4); rejected_bytes(changed);
-    changed = minimal; set_uint(changed, 37, 65537, 4); rejected_bytes(changed);
-    changed = minimal; set_uint(changed, 57, 1048577, 4); rejected_bytes(changed);
-    for(const auto offset : {62U, 65U}) {
-        for(const auto count : {std::uint64_t{256}, std::uint64_t{257}, std::uint64_t{65535}}) {
-            changed = minimal; set_uint(changed, offset, count, 2); rejected_bytes(changed);
-        }
+    for(const auto offset : {75U, 77U, 85U}) {
+        changed = minimal; set_uint(changed, offset, 65535, 2); rejected_bytes(changed);
     }
-    changed = minimal; changed[11] = 'A'; rejected_bytes(changed);
-    changed = minimal; changed[61] = static_cast<char>(0xff); rejected_bytes(changed);
-    changed = minimal; set_uint(changed, 12, 0, 8); rejected_bytes(changed);
-    changed = minimal; changed.push_back('\0'); rejected_bytes(changed);
-    changed = minimal; changed += minimal; rejected_bytes(changed);
+    changed = minimal; changed[31] = 'A'; rejected_bytes(changed);
+    changed = minimal; changed[84] = 255; rejected_bytes(changed);
+    // Header-only inspection explicitly does not claim typed UTF-8 validation.
+    expect(am::inspect_conversation_frame(view(changed)).payload_type_id == 1, "header inspection decoded payload");
+    changed = minimal; set_uint(changed, 32, 0, 8); rejected_bytes(changed);
+    changed = minimal; changed.push_back(0); rejected_bytes(changed);
+    changed = minimal; changed.insert(changed.end(), minimal.begin(), minimal.end()); rejected_bytes(changed);
 
-    const auto event = unhex(values[2].hex);
-    const auto nested = event.find("AMXR");
-    expect(nested != std::string::npos && nested >= 4, "nested AMXR fixture missing");
+    const auto event = unhex(kLiterals[2].hex);
+    const auto nested = find_bytes(event, unhex("414d5852"));
     changed = event; set_uint(changed, nested - 4, 65537, 4); rejected_bytes(changed);
     changed = event; set_uint(changed, nested - 4, 0xffffffffU, 4); rejected_bytes(changed);
-    changed = event; changed[nested + 5] = '\2'; rejected_bytes(changed);
-    changed = event; changed[nested + 27] = static_cast<char>(255); rejected_bytes(changed);
-    changed = event; changed[44] = '\2'; rejected_bytes(changed); // ObjectRevision cannot carry event.
-    auto snapshot = unhex(values[1].hex);
-    snapshot[44] = '\1'; rejected_bytes(snapshot); // ExternalEvent without event key.
-    snapshot[44] = '\2'; rejected_bytes(snapshot); // ObjectRevision without object/marker.
-    const auto local_snapshot = unhex(values[1].hex);
-    for(const auto offset : {45U, 46U, 52U}) {
-        changed = local_snapshot; changed[offset] = '\2'; rejected_bytes(changed);
-    }
-    for(const auto tag : {0U, 4U, 255U}) {
-        changed = local_snapshot; changed[44] = static_cast<char>(tag); rejected_bytes(changed);
-    }
-    for(const auto offset : {47U, 58U, 63U}) {
-        changed = local_snapshot; set_uint(changed, offset, 4097, 4); rejected_bytes(changed);
-    }
-    changed = local_snapshot; set_uint(changed, 53, 1025, 4); rejected_bytes(changed);
-    for(const auto offset : {57U, 67U}) {
-        changed = local_snapshot; changed[offset] = static_cast<char>(255); rejected_bytes(changed);
-    }
-    const auto object_revision = unhex(values[3].hex);
-    const auto marker = object_revision.find(unhex("0100000003ff006d"));
-    expect(marker != std::string::npos, "provider marker fixture missing");
-    changed = object_revision; changed[marker] = '\2'; rejected_bytes(changed);
-    changed = object_revision; set_uint(changed, marker + 1, 4097, 4); rejected_bytes(changed);
-    const auto present_empty = unhex(values[10].hex);
-    changed = present_empty; set_uint(changed, 63, 4097, 4); rejected_bytes(changed);
+    changed = event; changed[nested + 5] = 2; rejected_bytes(changed);
+    changed = event; changed[nested + 27] = 255; rejected_bytes(changed);
+    // Common field validity still applies to opaque retention.
+    changed = unhex(kLiterals[13].hex); changed[31] = 'A'; rejected_bytes(changed);
+    changed = unhex(kLiterals[13].hex); set_uint(changed, 40, 0, 8); rejected_bytes(changed);
 
-    const auto links = unhex(values[7].hex);
-    const auto link_start = links.find(unhex("0a00050401"));
-    expect(link_start != std::string::npos, "link fixture marker missing");
-    changed = links; changed[link_start + 3] = static_cast<char>(255); rejected_bytes(changed);
-    changed = links; changed[link_start + 4] = '\3'; rejected_bytes(changed);
-    const auto unresolved = links.find(unhex("0102000000000162000000016c"));
-    expect(unresolved != std::string::npos, "unresolved evidence fixture missing");
-    changed = links; changed[unresolved + 2] = '\2'; rejected_bytes(changed);
-    changed = unhex(values[4].hex); set_uint(changed, 69, 2, 8); rejected_bytes(changed); // Self edit.
-    const auto attached = unhex(values[8].hex);
-    const auto role_start = attached.find(unhex("0501010601"));
-    expect(role_start != std::string::npos, "role fixture marker missing");
-    changed = attached; changed[role_start + 2] = '\0'; rejected_bytes(changed);
-    rejected_bytes(std::string(33554433U, '\0'));
+    const auto extensions = unhex(kLiterals[15].hex);
+    changed = extensions; set_uint(changed, 90, 7, 4); rejected_bytes(changed); // Duplicate extension.
+    changed = extensions; set_uint(changed, 79, 10, 4); rejected_bytes(changed); // Descending order.
+    changed = extensions; set_uint(changed, 79, 0, 4); rejected_bytes(changed);
+    changed = extensions; changed[83] = 2; rejected_bytes(changed); // Reserved flag bits.
+    changed = extensions; set_uint(changed, 84, 0xffffffffU, 4); rejected_bytes(changed);
+    changed = extensions; set_uint(changed, 77, 65535, 2); rejected_bytes(changed);
+    changed = extensions; set_uint(changed, 16, 70000, 4); changed[83] = 2; rejected_bytes(changed);
+
+    // Registered schema1 must parse as typed; malformed known bytes cannot downgrade to opaque.
+    changed = unhex(kLiterals[14].hex); set_uint(changed, 20, 1, 2); rejected_bytes(changed);
+    // Invalid source-mode values, recipes and locators are not bypassed by frame canonicality.
+    const auto snapshot = unhex(kLiterals[1].hex);
+    for(const auto mode : {0U, 1U, 2U, 4U, 255U}) {
+        changed = snapshot; changed[64] = static_cast<std::uint8_t>(mode); rejected_bytes(changed);
+    }
+    for(const auto marker : {unhex("0000000176"), unhex("000000016c")}) {
+        changed = snapshot;
+        changed[find_bytes(changed, marker) + 4] = 255;
+        rejected_bytes(changed);
+    }
+    am::ByteBuffer oversized(am::kMaxConversationEntryBytes + 1, 0);
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(oversized)); },
+        am::ConversationCodecCode::ResourceLimit);
 }
 
-void semantic_and_presence_controls(const std::vector<Golden>& values) {
+void unknown_and_lifetime_controls(const std::vector<am::ConversationEnvelope>& values) {
+    for(const auto index : {13U, 14U}) {
+        const auto bytes = am::serialize_conversation_envelope(values[index]);
+        auto retained = am::deserialize_conversation_envelope(view(bytes));
+        expect_code([&] { (void)am::require_typed_conversation_payload(retained); },
+            am::ConversationCodecCode::UnsupportedPayload);
+        am::ConversationDecodeOptions typed;
+        typed.require_typed_payload = true;
+        expect_code([&] { (void)am::deserialize_conversation_envelope(view(bytes), typed); },
+            am::ConversationCodecCode::UnsupportedPayload);
+        expect_code([&] { (void)am::deserialize_conversation_entry(view(bytes)); },
+            am::ConversationCodecCode::UnsupportedPayload);
+        const auto saved = std::get<am::ConversationOpaquePayload>(retained.payload).bytes;
+        retained.metadata.observed_unix_us = 42;
+        const auto modified = am::serialize_conversation_envelope(retained);
+        expect(modified != bytes, "metadata modification not encoded");
+        const auto decoded = am::deserialize_conversation_envelope(view(modified));
+        expect(std::get<am::ConversationOpaquePayload>(decoded.payload).bytes == saved,
+            "read-modify-write lost opaque payload");
+    }
+    auto advisory = values[15];
+    (void)am::require_typed_conversation_payload(advisory);
+    expect_code([&] { (void)am::to_conversation_entry(advisory); }, am::ConversationCodecCode::UnsupportedMetadata);
+    advisory.metadata.observed_unix_us = 4;
+    auto& legacy = std::get<am::ConversationPayload>(advisory.payload);
+    std::get<am::ConversationMessageCreated>(legacy).content.text = "changed";
+    const auto advisory_bytes = am::serialize_conversation_envelope(advisory);
+    expect_envelope(am::deserialize_conversation_envelope(view(advisory_bytes)), advisory);
+    expect_code([&] { (void)am::require_typed_conversation_payload(values[16]); },
+        am::ConversationCodecCode::UnsupportedMetadata);
+    const auto critical = am::serialize_conversation_envelope(values[16]);
+    am::ConversationDecodeOptions typed;
+    typed.require_typed_payload = true;
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(critical), typed); },
+        am::ConversationCodecCode::UnsupportedMetadata);
+
+    // Decoding borrows only during the call. Reuse and destroy the source buffer afterwards.
+    std::optional<am::ConversationEnvelope> detached;
+    {
+        auto input = am::serialize_conversation_envelope(values[13]);
+        const auto borrowed = view(input);
+        detached = am::deserialize_conversation_envelope(borrowed);
+        std::fill(input.begin(), input.end(), 0);
+    }
+    expect_envelope(*detached, values[13]);
+    expect_rejected([] { (void)am::deserialize_conversation_envelope(am::ByteView{nullptr, 0}); });
+    expect_rejected([] { (void)am::deserialize_conversation_envelope(am::ByteView{nullptr, 9}); });
+    auto empty = envelope();
+    empty.payload = am::ConversationOpaquePayload{70000, 1, {}};
+    round_trip(empty);
+    auto shadow = envelope();
+    shadow.payload = am::ConversationOpaquePayload{1, 1, unhex("00ff")};
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(shadow); });
+    shadow.payload = am::ConversationOpaquePayload{256, 1, {}};
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(shadow); });
+}
+
+void semantic_and_profile_controls(const std::vector<am::ConversationEnvelope>& values) {
+    const auto reject = [](const am::ConversationEntry& entry) {
+        expect_rejected([&] { (void)am::serialize_conversation_entry(entry); });
+    };
     auto entry = message();
     entry.scope = am::ScopeId{std::string(65537, '\0')};
-    expect(am::validate_conversation_entry(entry).empty(), "codec scope cap leaked into Phase 1");
-    rejected_value(entry);
-    entry = message(); entry.ref.entry = am::EntryId{}; rejected_value(entry);
-    entry = message(); entry.scope = am::ScopeId{}; rejected_value(entry);
-    entry = message(); entry.llm_role = static_cast<am::ConversationLlmRole>(255); rejected_value(entry);
-    entry = message(); entry.payload = am::ConversationSnapshotObserved{{std::string{"state"}, {}}};
-    rejected_value(entry);
+    expect(am::validate_conversation_entry(entry).empty(), "scope policy leaked into Phase 1");
+    round_trip(am::make_conversation_envelope(entry)); // Scope is charged, not arbitrarily identity-capped.
+    entry = message(); entry.ref.entry = am::EntryId{}; reject(entry);
+    entry = message(); entry.scope = am::ScopeId{}; reject(entry);
+    entry = message(); entry.llm_role = static_cast<am::ConversationLlmRole>(255); reject(entry);
+    entry = message(); entry.payload = am::ConversationSnapshotObserved{{std::string{"state"}, {}}}; reject(entry);
     entry = message(); entry.source = source(); entry.source->identity = am::ConversationSourceIdentity::ExternalEvent;
-    rejected_value(entry);
-    entry = message(); entry.source = source(); entry.source->provider_revision_marker = "invented";
-    rejected_value(entry);
-    entry = message(); entry.source = source(); entry.source->adapter_recipe.assign(1025, 'r');
-    rejected_value(entry);
+    reject(entry);
+    entry = message(); entry.source = source(); entry.source->provider_revision_marker = "invented"; reject(entry);
+    entry = message(); entry.source = source(); entry.source->adapter_recipe.assign(1025, 'r'); reject(entry);
     entry = message(); entry.source = source(); entry.source->revision = am::SourceRevisionId{std::string(4097, 'r')};
-    rejected_value(entry);
-    entry = message(); entry.source = source(); entry.source->evidence.record_locator.assign(4097, 'l');
-    rejected_value(entry);
+    reject(entry);
+    entry = message(); entry.source = source(); entry.source->evidence.record_locator.assign(4097, 'l'); reject(entry);
     entry = message(); entry.source = source();
-    entry.source->evidence.artifact = am::ArtifactBindingId{std::string(4097, 'b')}; rejected_value(entry);
-    entry = message(); entry.payload = am::ConversationEdited{entry.ref, {std::string{"edit"}, {}}};
-    rejected_value(entry);
-    entry = message(); entry.links = {{am::ConversationLinkKind::Reply, reference(1, 1, 2)}};
-    rejected_value(entry);
-    entry = message(); entry.links.resize(257); rejected_value(entry);
+    entry.source->evidence.artifact = am::ArtifactBindingId{std::string(4097, 'b')}; reject(entry);
+    entry = message(); entry.payload = am::ConversationEdited{entry.ref, {std::string{"edit"}, {}}}; reject(entry);
+    entry = message(); entry.links = {{am::ConversationLinkKind::Reply, reference(1, 1, 2)}}; reject(entry);
+    entry = message(); entry.links.resize(257); reject(entry);
     entry = message();
     std::get<am::ConversationMessageCreated>(entry.payload).content.attachments.resize(257, am::ArtifactBindingId{"a"});
-    rejected_value(entry);
-    entry = message(std::string(1048577, 'x')); rejected_value(entry);
-    entry = message(std::string("\xc0\x80", 2)); rejected_value(entry);
+    reject(entry);
+    entry = message(std::string(1048577, 'x')); reject(entry);
+    entry = message(std::string("\xc0\x80", 2)); reject(entry);
 
-    auto empty = values[10].value;
+    auto empty = values[10];
     auto absent = empty;
-    std::get<am::ConversationMessageCreated>(absent.payload).content.text.reset();
-    expect(am::serialize_conversation_entry(empty) != am::serialize_conversation_entry(absent),
+    auto& absent_payload = std::get<am::ConversationPayload>(absent.payload);
+    std::get<am::ConversationMessageCreated>(absent_payload).content.text.reset();
+    expect(am::serialize_conversation_envelope(empty) != am::serialize_conversation_envelope(absent),
         "absent and present empty text collided");
     round_trip(empty); round_trip(absent);
     for(const auto role : {am::ConversationLlmRole::System, am::ConversationLlmRole::Developer,
                           am::ConversationLlmRole::User, am::ConversationLlmRole::Assistant,
                           am::ConversationLlmRole::Tool}) {
-        entry = message(); entry.llm_role = role; round_trip(entry);
+        auto value = envelope(); value.metadata.llm_role = role; round_trip(value);
     }
-    // A snapshot may legitimately have reliable ObjectRevision or ExternalEvent evidence.
-    for(const auto index : {2U, 3U}) {
-        entry = values[index].value;
-        entry.payload = am::ConversationSnapshotObserved{{std::string{"state"}, {}}};
-        round_trip(entry);
+
+    const auto base_bytes = am::serialize_conversation_envelope(values[0]);
+    am::ConversationCodecLimits tight;
+    tight.max_frame_bytes = base_bytes.size() - 1;
+    expect_code([&] { (void)am::serialize_conversation_envelope(values[0], tight); },
+        am::ConversationCodecCode::ResourceLimit);
+    am::ConversationDecodeOptions options;
+    options.limits = tight;
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(base_bytes), options); },
+        am::ConversationCodecCode::ResourceLimit);
+    tight.max_frame_bytes = base_bytes.size();
+    round_trip(values[0], tight);
+    for(const bool owned : {false, true}) {
+        tight = {};
+        if(owned) tight.max_owned_bytes = 2;
+        else tight.max_objects = 2;
+        expect_code([&] { (void)am::serialize_conversation_envelope(values[0], tight); },
+            am::ConversationCodecCode::ResourceLimit);
+        options.limits = tight;
+        expect_code([&] { (void)am::deserialize_conversation_envelope(view(base_bytes), options); },
+            am::ConversationCodecCode::ResourceLimit);
+        if(owned) tight.max_owned_bytes = 3;
+        else tight.max_objects = 3;
+        round_trip(values[0], tight);
     }
-    entry = values[7].value;
-    entry.links.push_back(entry.links.front());
-    round_trip(entry); // Ordered duplicate links are retained, not canonicalized away.
-    entry.links.back().target = am::UnresolvedConversationTarget{external(), source().evidence};
-    round_trip(entry);
+    // Every field/count dimension participates independently in reader/writer compatibility.
+    auto constrained = values[1];
+    constrained.metadata.links = {{am::ConversationLinkKind::Reply, reference(1, 1)}};
+    const auto constrained_bytes = am::serialize_conversation_envelope(constrained);
+    for(const auto dimension : {0, 1, 2, 3, 4}) {
+        tight = {};
+        switch(dimension) {
+        case 0: tight.fields.max_attachments = 0; break;
+        case 1: tight.fields.max_links = 0; break;
+        case 2: tight.fields.max_binding_bytes = 0; break;
+        case 3: tight.fields.max_locator_bytes = 0; break;
+        default: tight.fields.max_recipe_bytes = 0;
+        }
+        expect(!am::conversation_codec_limits_cover(tight, {}), "stricter reader incorrectly covers base writer");
+        expect_code([&] { (void)am::serialize_conversation_envelope(constrained, tight); },
+            am::ConversationCodecCode::ResourceLimit);
+        options.limits = tight;
+        expect_code([&] { (void)am::deserialize_conversation_envelope(view(constrained_bytes), options); },
+            am::ConversationCodecCode::ResourceLimit);
+    }
+    tight = {}; tight.fields.max_text_bytes = 0;
+    expect_code([&] { (void)am::serialize_conversation_envelope(values[0], tight); },
+        am::ConversationCodecCode::ResourceLimit);
+    options.limits = tight;
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(base_bytes), options); },
+        am::ConversationCodecCode::ResourceLimit);
+    tight = {}; tight.max_extensions = 0;
+    const auto extension_bytes = am::serialize_conversation_envelope(values[15]);
+    expect_code([&] { (void)am::serialize_conversation_envelope(values[15], tight); },
+        am::ConversationCodecCode::ResourceLimit);
+    options.limits = tight;
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(extension_bytes), options); },
+        am::ConversationCodecCode::ResourceLimit);
+    tight = {}; tight.max_extension_bytes = 1;
+    options.limits = tight;
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(extension_bytes), options); },
+        am::ConversationCodecCode::ResourceLimit);
+
+    const auto extended = am::extended_conversation_codec_limits();
+    expect(am::conversation_codec_limits_cover(extended, {}), "extended reader does not cover base writer");
+    expect(!am::conversation_codec_limits_cover({}, extended), "base reader incorrectly covers extended writer");
+    auto wider = message(std::string(extended.fields.max_text_bytes, 'w'));
+    auto& content = std::get<am::ConversationMessageCreated>(wider.payload).content;
+    content.attachments.assign(extended.fields.max_attachments, am::ArtifactBindingId{"a"});
+    wider.links.assign(extended.fields.max_links, {am::ConversationLinkKind::Reply, reference(1, 1)});
+    expect(!am::validate_conversation_entry(wider).empty(), "legacy Phase 1 validator silently widened");
+    expect(am::validate_conversation_entry_with_limits(wider, extended.fields).empty(),
+        "explicit extended field validator did not widen resource policy");
+    const auto wider_envelope = am::make_conversation_envelope(wider);
+    round_trip(wider_envelope, extended);
+    const auto wider_bytes = am::serialize_conversation_envelope(wider_envelope, extended);
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(wider_bytes)); },
+        am::ConversationCodecCode::ResourceLimit);
+    auto extended_extensions = envelope();
+    for(std::size_t i = 0; i < extended.max_extensions; ++i)
+        extended_extensions.extensions.push_back({static_cast<std::uint32_t>(i + 1), false, {}});
+    extended_extensions.extensions.front().bytes.assign(extended.max_extension_bytes, 255);
+    round_trip(extended_extensions, extended);
+    const auto extended_extension_bytes = am::serialize_conversation_envelope(extended_extensions, extended);
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(extended_extension_bytes)); },
+        am::ConversationCodecCode::ResourceLimit);
+    wider.ref.entry = am::EntryId{};
+    expect(!am::validate_conversation_entry_with_limits(wider, extended.fields).empty(),
+        "resource extension weakened semantic ID invariant");
+
+    for(const auto kind : {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}) {
+        auto invalid = am::ConversationCodecLimits{};
+        const auto huge = std::numeric_limits<std::size_t>::max();
+        switch(kind) {
+        case 0: invalid.max_frame_bytes = huge; break;
+        case 1: invalid.max_owned_bytes = huge; break;
+        case 2: invalid.max_objects = huge; break;
+        case 3: invalid.max_extensions = huge; break;
+        case 4: invalid.max_extension_bytes = huge; break;
+        case 5: invalid.fields.max_text_bytes = huge; break;
+        case 6: invalid.fields.max_attachments = huge; break;
+        case 7: invalid.fields.max_links = huge; break;
+        case 8: invalid.fields.max_binding_bytes = huge; break;
+        case 9: invalid.fields.max_locator_bytes = huge; break;
+        default: invalid.fields.max_recipe_bytes = huge;
+        }
+        expect_code([&] { (void)am::serialize_conversation_envelope(values[0], invalid); },
+            am::ConversationCodecCode::InvalidLimits);
+        options.limits = invalid;
+        expect_code([&] { (void)am::deserialize_conversation_envelope(view(base_bytes), options); },
+            am::ConversationCodecCode::InvalidLimits);
+        expect_code([&] { (void)am::conversation_codec_limits_cover(invalid, {}); },
+            am::ConversationCodecCode::InvalidLimits);
+    }
 }
 
-void truncation_controls(const std::vector<Golden>& values) {
-    for(const auto& golden : values) {
-        const auto bytes = unhex(golden.hex);
-        for(std::size_t length = 0; length < bytes.size(); ++length)
-            rejected_bytes(std::string_view{bytes.data(), length});
+void agent_session_controls(const std::vector<am::ConversationEnvelope>& values) {
+    // Ordinary chat: an edit references one exact earlier revision, not latest.
+    round_trip(values[4]);
+    // Efi observation: source evidence and observer stay independent from participant/role.
+    round_trip(values[2]);
+    // Maschinenwerk: recording a request or outcome has no execution side effect.
+    auto retained_call = values[11];
+    retained_call.metadata.ref = reference(1, 7);
+    round_trip(retained_call);
+    const auto call_id = std::get<am::ConversationToolCallObserved>(retained_call.payload).call_id;
+    auto result = values[12];
+    expect(std::get<am::ConversationToolResultObserved>(result.payload).call_id == call_id &&
+        std::get<am::ConversationToolResultObserved>(result.payload).call == retained_call.metadata.ref,
+        "tool identity or exact call revision fixture does not match");
+    for(const auto outcome : {am::ConversationToolOutcome::Unknown, am::ConversationToolOutcome::Succeeded,
+                             am::ConversationToolOutcome::Failed, am::ConversationToolOutcome::Cancelled}) {
+        std::get<am::ConversationToolResultObserved>(result.payload).outcome = outcome;
+        const auto bytes = am::serialize_conversation_envelope(result);
+        const auto decoded = am::deserialize_conversation_envelope(view(bytes));
+        expect(std::get<am::ConversationToolResultObserved>(decoded.payload).outcome == outcome,
+            "tool outcome inferred or collapsed");
+        round_trip(result);
+    }
+    auto call = values[11];
+    call.metadata.source.reset();
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(call); });
+    call = values[11]; std::get<am::ConversationToolCallObserved>(call.payload).call_id.clear();
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(call); });
+    call = values[11]; std::get<am::ConversationToolCallObserved>(call.payload).tool_name = "\xff";
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(call); });
+    result = values[12]; std::get<am::ConversationToolResultObserved>(result.payload).call = result.metadata.ref;
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(result); });
+    result = values[12]; std::get<am::ConversationToolResultObserved>(result.payload).call = reference(1, 1, 9);
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(result); });
+    result = values[12];
+    std::get<am::ConversationToolResultObserved>(result.payload).outcome = static_cast<am::ConversationToolOutcome>(255);
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(result); });
+    // Patch/compaction are reserved registry pairs, not implemented typed semantics.
+    // Their bytes may be transported, but callers cannot consume them as understood events.
+    for(const auto type : {258U, 259U}) {
+        auto observation = envelope();
+        observation.metadata.source = source();
+        observation.payload = am::ConversationOpaquePayload{type, 1, unhex("00ff")};
+        round_trip(observation);
+        expect_code([&] { (void)am::require_typed_conversation_payload(observation); },
+            am::ConversationCodecCode::UnsupportedPayload);
     }
 }
 
-std::size_t mutation_controls(const std::vector<Golden>& values) {
+std::size_t truncation_and_mutation_controls() {
+    std::size_t truncations = 0;
     std::size_t accepted = 0;
     std::size_t rejected = 0;
-    const auto exercise = [&](const std::string& bytes) {
-        std::optional<am::ConversationEntry> decoded;
-        try {
-            decoded = am::deserialize_conversation_entry(bytes);
-        } catch(const std::invalid_argument&) { ++rejected; return; }
-        expect(am::validate_conversation_entry(*decoded).empty(), "mutation decoded field-invalid DTO");
-        expect(am::serialize_conversation_entry(*decoded) == bytes, "mutation accepted noncanonical bytes");
+    const auto exercise = [&](const am::ByteBuffer& bytes) {
+        std::optional<am::ConversationEnvelope> decoded;
+        try { decoded = am::deserialize_conversation_envelope(view(bytes)); }
+        catch(const std::invalid_argument&) { ++rejected; return; }
+        expect(am::serialize_conversation_envelope(*decoded) == bytes, "mutation accepted noncanonical bytes");
         ++accepted;
     };
-    for(const auto& golden : values) {
-        const auto bytes = unhex(golden.hex);
+    for(const auto& literal : kLiterals) {
+        const auto bytes = unhex(literal.hex);
+        for(std::size_t length = 0; length < bytes.size(); ++length) {
+            expect_rejected([&] { (void)am::deserialize_conversation_envelope(am::ByteView{bytes.data(), length}); });
+            ++truncations;
+        }
         for(std::size_t i = 0; i < bytes.size(); ++i) {
             for(const auto byte : {0U, 1U, 2U, 127U, 128U, 255U}) {
                 auto changed = bytes;
-                changed[i] = static_cast<char>(byte);
+                changed[i] = static_cast<std::uint8_t>(byte);
                 exercise(changed);
             }
         }
     }
     std::uint32_t state = 0x63776d31U;
-    const auto random = [&]() {
-        state ^= state << 13; state ^= state >> 17; state ^= state << 5;
-        return state;
-    };
+    const auto random = [&]() { state ^= state << 13; state ^= state >> 17; state ^= state << 5; return state; };
     for(std::size_t i = 0; i < 4096; ++i) {
-        auto bytes = unhex(values[random() % values.size()].hex);
+        auto bytes = unhex(kLiterals[random() % std::size(kLiterals)].hex);
         const auto offset = static_cast<std::size_t>(random()) % bytes.size();
-        if(i % 3 == 0) bytes.erase(offset, 1);
-        else if(i % 3 == 1) bytes.insert(offset, 1, static_cast<char>(random() & 255U));
-        else bytes[offset] = static_cast<char>(random() & 255U);
+        if(i % 3 == 0) bytes.erase(bytes.begin() + static_cast<std::ptrdiff_t>(offset));
+        else if(i % 3 == 1) bytes.insert(bytes.begin() + static_cast<std::ptrdiff_t>(offset),
+            static_cast<std::uint8_t>(random() & 255U));
+        else bytes[offset] = static_cast<std::uint8_t>(random() & 255U);
         exercise(bytes);
     }
-    expect(accepted > 0 && rejected > 0, "mutation corpus did not exercise both dispositions");
+    expect(accepted > 0 && rejected > 0 && truncations > 2000, "negative corpus did not exercise dispositions");
+    std::cout << truncations << " truncations, " << accepted + rejected << " bounded mutations, ";
     return accepted + rejected;
 }
 
@@ -513,15 +742,15 @@ am::ExternalObjectRef maximal_external() {
         parts.push_back({name, std::string(4096, 'x')});
     }
     auto& tail = std::get<std::string>(parts.back().value);
-    expect(bytes > 65536 && bytes - 65536 < tail.size(), "bad maximal AMXR size calculation");
+    expect(bytes > 65536 && bytes - 65536 < tail.size(), "bad maximal AMXR calculation");
     tail.resize(tail.size() - (bytes - 65536));
     result.object_key = am::ExternalObjectKey{std::move(parts)};
-    expect(am::is_valid_external_object_ref(result), "maximal AMXR fixture is invalid");
-    expect(am::serialize_external_object_ref(result).size() == 65536, "maximal AMXR frame size changed");
+    expect(am::is_valid_external_object_ref(result), "maximal AMXR fixture invalid");
+    expect(am::serialize_external_object_ref(result).size() == 65536, "maximal AMXR size changed");
     return result;
 }
 
-void combined_maxima() {
+void maximum_controls() {
     const auto maximum = std::numeric_limits<std::uint64_t>::max();
     const auto identity = maximal_external();
     auto entry = message();
@@ -533,8 +762,7 @@ void combined_maxima() {
     entry.source->event = identity;
     entry.source->revision = am::SourceRevisionId{std::string(4096, static_cast<char>(255))};
     entry.source->adapter_recipe = std::string(1024, 'r');
-    entry.source->evidence = {am::ArtifactBindingId{std::string(4096, static_cast<char>(255))},
-        std::string(4096, 'l')};
+    entry.source->evidence = {am::ArtifactBindingId{std::string(4096, static_cast<char>(255))}, std::string(4096, 'l')};
     entry.actor = am::ActorRef{std::string(128, 'a'), am::ActorId{maximum}};
     entry.observer = am::ActorRef{std::string(128, 'o'), am::ActorId{maximum}};
     entry.llm_role = am::ConversationLlmRole::Tool;
@@ -547,27 +775,155 @@ void combined_maxima() {
         std::move(replacement)};
     entry.links.assign(256, {am::ConversationLinkKind::Reply,
         am::UnresolvedConversationTarget{identity, entry.source->evidence}});
-    expect(am::validate_conversation_entry(entry).empty(), "combined maxima are not Phase 1-valid");
-    const auto bytes = am::serialize_conversation_entry(entry);
-    expect(bytes.size() == 21186977, "combined exact maximum-size calculation changed");
-    const auto decoded = am::deserialize_conversation_entry(bytes);
-    expect_entry(decoded, entry);
-    expect(am::serialize_conversation_entry(decoded) == bytes, "combined maxima not canonical");
+    expect(am::validate_conversation_entry(entry).empty(), "combined Phase 1 maxima invalid");
+    auto value = am::make_conversation_envelope(std::move(entry));
+    const auto bytes = am::serialize_conversation_envelope(value);
+    expect(bytes.size() == 21186997, "combined maximum exact-size calculation changed");
+    const auto decoded = am::deserialize_conversation_envelope(view(bytes));
+    expect_envelope(decoded, value);
+    expect(am::serialize_conversation_envelope(decoded) == bytes, "combined maxima not canonical");
+
+    // Reach the absolute frame ceiling with a legal unsupported pair, then exceed it by one.
+    auto largest = envelope();
+    largest.payload = am::ConversationOpaquePayload{70000, 1,
+        am::ByteBuffer(am::kMaxConversationEntryBytes - 79, 255)};
+    const auto frame = am::serialize_conversation_envelope(largest);
+    expect(frame.size() == am::kMaxConversationEntryBytes, "absolute maximum frame not reached");
+    const auto restored = am::deserialize_conversation_envelope(view(frame));
+    expect_envelope(restored, largest);
+    auto tighter = am::ConversationDecodeOptions{};
+    tighter.limits.max_frame_bytes = frame.size() - 1;
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(frame), tighter); },
+        am::ConversationCodecCode::ResourceLimit);
+    std::get<am::ConversationOpaquePayload>(largest.payload).bytes.push_back(0);
+    expect_code([&] { (void)am::serialize_conversation_envelope(largest); },
+        am::ConversationCodecCode::ResourceLimit);
+    std::cout << "combined maximum21186997 and absolute frame33554432 bytes passed\n";
+}
+
+void implementation_cap_controls() {
+    constexpr std::size_t eight_mib = 8U * 1024U * 1024U;
+    am::ConversationCodecLimits caps;
+    caps.fields.max_text_bytes = eight_mib;
+    caps.fields.max_attachments = 4096;
+    caps.fields.max_links = 4096;
+    caps.fields.max_binding_bytes = 65536;
+    caps.fields.max_locator_bytes = 65536;
+    caps.fields.max_recipe_bytes = 4096;
+    caps.max_extensions = 1024;
+    caps.max_extension_bytes = eight_mib;
+    caps.max_objects = 32768;
+    expect(am::conversation_codec_limits_cover(caps, am::extended_conversation_codec_limits()),
+        "implementation-cap reader does not cover extended writer");
+
+    // All independent scalar/count ceilings coexist below the aggregate frame ceiling.
+    auto value = envelope(std::string(eight_mib, 't'));
+    value.metadata.source = source();
+    value.metadata.source->revision = am::SourceRevisionId{std::string(65536, static_cast<char>(255))};
+    value.metadata.source->adapter_recipe.assign(4096, 'r');
+    value.metadata.source->evidence = {
+        am::ArtifactBindingId{std::string(65536, static_cast<char>(255))}, std::string(65536, 'l')};
+    value.metadata.links.assign(4096, {am::ConversationLinkKind::Reply, reference(1, 1)});
+    auto& legacy = std::get<am::ConversationPayload>(value.payload);
+    auto& content = std::get<am::ConversationMessageCreated>(legacy).content;
+    content.attachments.assign(4096, am::ArtifactBindingId{"a"});
+    content.attachments.front() = am::ArtifactBindingId{std::string(65536, static_cast<char>(255))};
+    value.extensions.reserve(1024);
+    for(std::uint32_t id = 1; id <= 1024; ++id) value.extensions.push_back({id, false, {}});
+    value.extensions.front().bytes.assign(eight_mib, 255);
+    expect(am::validate_conversation_envelope(value, caps.fields).empty(), "cap-profile fixture field-invalid");
+    round_trip(value, caps);
+
+    const auto reject_value = [&] {
+        expect_code([&] { (void)am::serialize_conversation_envelope(value, caps); },
+            am::ConversationCodecCode::ResourceLimit);
+    };
+    content.text->push_back('t'); reject_value(); content.text->pop_back();
+    content.attachments.push_back(am::ArtifactBindingId{"a"}); reject_value(); content.attachments.pop_back();
+    value.metadata.links.push_back(value.metadata.links.front()); reject_value(); value.metadata.links.pop_back();
+    content.attachments.front() = am::ArtifactBindingId{std::string(65537, 'a')}; reject_value();
+    content.attachments.front() = am::ArtifactBindingId{std::string(65536, static_cast<char>(255))};
+    value.metadata.source->evidence.record_locator.push_back('l'); reject_value();
+    value.metadata.source->evidence.record_locator.pop_back();
+    value.metadata.source->adapter_recipe.push_back('r'); reject_value();
+    value.metadata.source->adapter_recipe.pop_back();
+    value.extensions.front().bytes.push_back(255); reject_value(); value.extensions.front().bytes.pop_back();
+    value.extensions.push_back({1025, false, {}}); reject_value(); value.extensions.pop_back();
+
+    am::ConversationDecodeOptions options;
+    options.limits = caps;
+    const auto unpadded = am::serialize_conversation_envelope(value, caps);
+    // 6 metadata B values + 4096 link elements/B values + 1024 extension
+    // elements/B values + one text B + 4096 attachment elements/B values.
+    constexpr std::size_t charged_objects = 6 + 2 * 4096 + 2 * 1024 + 1 + 2 * 4096;
+    auto exact_object_budget = caps;
+    exact_object_budget.max_objects = charged_objects;
+    round_trip(value, exact_object_budget);
+    --exact_object_budget.max_objects;
+    expect_code([&] { (void)am::serialize_conversation_envelope(value, exact_object_budget); },
+        am::ConversationCodecCode::ResourceLimit);
+    options.limits = exact_object_budget;
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(unpadded), options); },
+        am::ConversationCodecCode::ResourceLimit);
+    options.limits = caps;
+    expect(unpadded.size() < am::kMaxConversationEntryBytes, "conjunctive caps do not fit frame");
+    // Scope has no artificial field cap: use it to fill the remaining legal frame bytes.
+    value.metadata.scope = am::ScopeId{std::string(1 + am::kMaxConversationEntryBytes - unpadded.size(), '\0')};
+    const auto exact = am::serialize_conversation_envelope(value, caps);
+    expect(exact.size() == am::kMaxConversationEntryBytes, "cap-profile exact32MiB fixture missed ceiling");
+    {
+        const auto decoded = am::deserialize_conversation_envelope(view(exact), options);
+        expect_envelope(decoded, value);
+        expect(am::serialize_conversation_envelope(decoded, caps) == exact, "cap-profile frame not canonical");
+    }
+    auto scope_plus_one = value.metadata.scope.value();
+    scope_plus_one.push_back('\0');
+    value.metadata.scope = am::ScopeId{std::move(scope_plus_one)};
+    reject_value();
+
+    // A supported resource ceiling is finite, not an implied next supported profile.
+    for(const auto dimension : {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}) {
+        auto invalid = caps;
+        switch(dimension) {
+        case 0: ++invalid.max_frame_bytes; break;
+        case 1: ++invalid.max_owned_bytes; break;
+        case 2: ++invalid.max_objects; break;
+        case 3: ++invalid.max_extensions; break;
+        case 4: ++invalid.max_extension_bytes; break;
+        case 5: ++invalid.fields.max_text_bytes; break;
+        case 6: ++invalid.fields.max_attachments; break;
+        case 7: ++invalid.fields.max_links; break;
+        case 8: ++invalid.fields.max_binding_bytes; break;
+        case 9: ++invalid.fields.max_locator_bytes; break;
+        default: ++invalid.fields.max_recipe_bytes;
+        }
+        expect_code([&] { (void)am::serialize_conversation_envelope(value, invalid); },
+            am::ConversationCodecCode::InvalidLimits);
+        options.limits = invalid;
+        expect_code([&] { (void)am::deserialize_conversation_envelope(view(exact), options); },
+            am::ConversationCodecCode::InvalidLimits);
+    }
+    std::cout << "implementation caps: text8MiB, attachment/link4096, binding/locator65536, recipe4096, "
+        "extension1024/8MiB, object-budget32768 and exact32MiB frame passed\n";
 }
 
 } // namespace
 
 int main() {
+    static_assert(std::is_same_v<decltype(am::serialize_conversation_entry(
+        std::declval<const am::ConversationEntry&>())), am::ByteBuffer>, "owning output must be bytes");
+    static_assert(!std::is_convertible_v<am::ByteBuffer, am::ByteView>, "temporary buffers must not create views");
     try {
-        const auto values = goldens();
+        const auto values = golden_values();
         literal_goldens(values);
-        malformed_controls(values);
-        semantic_and_presence_controls(values);
-        truncation_controls(values);
-        const auto mutations = mutation_controls(values);
-        combined_maxima();
-        std::cout << "AMCE v1: " << values.size() << " literal goldens, all compact truncations, "
-                  << mutations << " bounded mutations, combined maximum 21186977 bytes passed\n";
+        malformed_controls();
+        unknown_and_lifetime_controls(values);
+        semantic_and_profile_controls(values);
+        agent_session_controls(values);
+        (void)truncation_and_mutation_controls();
+        maximum_controls();
+        implementation_cap_controls();
+        std::cout << "AMCE envelope v1: " << values.size() << " independent literal goldens passed\n";
         return 0;
     } catch(const std::exception& error) {
         std::cerr << error.what() << '\n';

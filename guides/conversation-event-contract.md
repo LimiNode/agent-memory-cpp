@@ -430,61 +430,129 @@ separate compatibility controls.
 
 ### 4.2. Event Codec v1 (Phase 2 review contract)
 
-This section is the sole wire owner for the existing Phase 1 `ConversationEntry`,
-not the broader sketch. It is a new standalone encoding, not a DBI layout,
-allocator, journal, import key, admission proof or current-message view.
-Public API: `serialize_conversation_entry(const ConversationEntry&)` and
-`deserialize_conversation_entry(std::string_view)` in
-`<agent_memory/domain/conversation_codec.hpp>` and the domain umbrella.
-Malformed, noncanonical, field-invalid or codec-limit-exceeding inputs throw
-`std::invalid_argument`; allocation failures propagate. No partial result is
-returned, no identifier/time is normalized and no latest revision is resolved.
+This section is the sole wire owner of the extensible **AMCE envelope v1**,
+separate from each payload's schema version. It replaces the closed, unmerged
+Phase 2 candidate in PR #690 before integration. That candidate's source-bound
+goldens remain historical evidence, not another accepted v1 dialect. There is
+no automatic format detection or migration reader for those old candidate
+bytes. AMXR v1, integrated Phase 1 values and legacy chat APIs are unchanged.
+
+One envelope represents one occurrence/representation revision, not a complete
+conversation. It is neither a DBI layout, allocator, journal, import key,
+admission proof, current-message view nor an execution command. Retaining an
+unsupported payload preserves bytes; it does not validate that payload's
+semantics or authorize canonical semantic admission.
+
+The additive `ConversationEnvelope` owns `ConversationMetadata`, a payload
+variant and metadata extensions. Metadata contains the same exact reference,
+scope, source, actors/role, timestamps and links as `ConversationEntry`.
+The payload variant holds the unchanged five-alternative `ConversationPayload`,
+typed tool observations or `ConversationOpaquePayload`. The integrated
+`ConversationEntry` aggregate/layout and one-argument validator retain their
+existing behavior; `validate_conversation_entry_with_limits` is a separately
+named, explicit resource-profile entry point. Resource limits never disable
+semantic checks.
+
+The public binary API in `<agent_memory/domain/conversation_codec.hpp>` and
+the domain umbrella uses `ByteBuffer` (`std::vector<std::uint8_t>`) and a
+borrowed C++17 `ByteView`, not text. A view is borrowed only during a call;
+decoded envelopes own their retained bytes. Null with zero length is a valid
+empty view, not a valid frame; null with nonzero length rejects. There is no
+implicit view construction from a temporary buffer and no public textual
+event syntax or event digest-identity recipe.
+
+| API | Boundary |
+| --- | --- |
+| `serialize_conversation_envelope` | Validate and exact-size preflight, then emit one bounded owning buffer |
+| `deserialize_conversation_envelope` | Decode and validate common metadata and supported payload schemas; retain unsupported pairs losslessly |
+| `require_typed_conversation_payload` | Refuse opaque payloads and unknown critical metadata; advisory extensions remain in the envelope |
+| `make_conversation_envelope(ConversationEntry)` | Explicit move-friendly Phase 1 bridge |
+| `to_conversation_entry(ConversationEnvelope)` | Refuse every metadata extension and non-Phase-1 payload, rather than silently discarding bytes |
+| `serialize_conversation_entry` / `deserialize_conversation_entry` | Phase-1-only conveniences over the same envelope format; not a separate dialect |
+| `inspect_conversation_frame` | Check framing and finite frame budget only; not full metadata/payload validity or admission |
+
+`ConversationDecodeOptions::require_typed_payload` defaults to `false`, the
+explicit retention/transport behavior. Setting it to `true` applies the typed
+consumption gate after bounded decoding. After validation, typed support proves
+only field validity, not authorization, source authenticity or committed store
+admission. Calling the gate directly on a mutable DTO is not a substitute for
+field validation.
 
 #### Primitives and canonical framing
 
 All integers are fixed width, most-significant byte first: `u8`, `u16be`,
 `u32be`, `u64be`. `i64be` is exactly eight two's-complement bytes, preserving
 `INT64_MIN..INT64_MAX`; it is never converted through floating point.
-`B(max)` means `u32be(byte_count) + byte_count exact bytes`, bounded by `max`.
-Zero length is represented, not silently omitted; Phase 1 determines whether
-an empty value is valid at that position. `O(T)` means exactly `u8(0)` for
-absence or `u8(1) + T` for presence. All other presence bytes reject.
-`V(max,T)` means `u16be(count) + count ordered T`, with count at most `max`.
+`B` means `u32be(byte_count) + byte_count exact bytes`, subject to the selected
+resource profile. Zero length is represented, not silently omitted; field
+semantics determine whether it is valid at that position. `O(T)` means exactly
+`u8(0)` for absence or `u8(1) + T` for presence. All other presence bytes reject.
+`V(T)` means `u16be(count) + count ordered T`, subject to its count budget.
 Order and duplicates are retained; no sorting/deduplication occurs.
 
-One frame is ASCII `AMCE` + `u16be(1)` + the following **ten tagged fields in
-exact order**, including absent optionals and empty sequences. The input view
-is the frame boundary; all bytes must be consumed. Tags are explicit wire
-constants, unrelated to C++ enum representations or `std::variant::index()`.
-There is no padding, raw object layout, generic TLV map or extension area.
-Unknown/duplicate/omitted/out-of-order tags, unknown versions, invalid lengths,
-malformed nested values and trailing bytes reject; they are not skipped.
+The fixed header is exactly **26 bytes**:
+
+```text
+"AMCE" + u16be(envelope_version=1) + u16be(flags=0)
+       + u32be(total_bytes) + u32be(metadata_bytes)
+       + u32be(payload_type_id) + u16be(payload_schema_version)
+       + u32be(payload_bytes)
+```
+
+Require `total_bytes == input.size() == 26 + metadata_bytes + payload_bytes`,
+using checked arithmetic. Header flags must be zero; type IDs `0` and
+`UINT32_MAX`, and schema version `0`, are invalid. Unknown envelope versions
+reject. The metadata and payload subreaders must each consume their exact
+declared length; trailing bytes cannot be hidden inside either section.
+There is no padding or serialization of raw object layout, platform enum
+representation or `std::variant::index()`.
+
+Metadata has these **nine tagged fields in exact order**, including absent
+optionals and empty sequences, followed by the extension sequence below.
+Unknown/duplicate/omitted/out-of-order common-field tags, invalid presence
+bytes and malformed nested values reject; they are not skipped.
 
 | Field tag | Value, in wire order |
 | --- | --- |
 | `01` | `ref: EntryRef` |
-| `02` | `scope: B(65536)` (opaque bytes) |
+| `02` | `scope: B` (nonempty opaque bytes) |
 | `03` | `source: O(SourceBinding)` |
 | `04` | `actor: O(ActorRef)` |
 | `05` | `llm_role: O(u8 role_tag)` |
 | `06` | `observer: O(ActorRef)` |
 | `07` | `source_unix_us: O(i64be)` |
 | `08` | `observed_unix_us: O(i64be)` |
-| `09` | `payload: u8 payload_tag + its record below` |
-| `0a` | `links: V(256, Link)` |
+| `09` | `links: V(Link)` |
+
+After tag `09` and its links:
+
+```text
+u16be(extension_count)
+repeat extension_count times: u32be(extension_id) + u8(critical) + B(bytes)
+```
+
+Extension IDs are nonzero, strictly increasing and unique. The writer rejects
+unsorted or duplicate input rather than silently sorting it. `critical` is
+exactly `0` or `1`; all other values reject. Empty extension bytes remain
+present bytes, not absence. No extension semantics are registered in this
+slice: all extension values are retained exactly, all critical ones refuse
+typed consumption, and advisory ones must survive read-modify-write. An
+extension never implicitly replaces scope, evidence or another common field.
+Future interpretation-sensitive metadata requires a reviewed critical
+extension or a new envelope version, not an advisory escape from old checks.
 
 Nested records have fixed positional fields, **without additional field tags**:
 
 ```text
-EntryRef = B(128 allocation_namespace) + u64be(ConversationId)
+EntryRef = B(allocation_namespace) + u64be(ConversationId)
          + u64be(EntryId) + u64be(EventRevision)
-ActorRef = B(128 allocation_namespace) + u64be(ActorId)
-AMXR = B(65536 complete existing AMXR v1 frame)
-Evidence = B(4096 artifact_binding) + B(4096 record_locator)
+ActorRef = B(allocation_namespace) + u64be(ActorId)
+AMXR = B(complete existing AMXR v1 frame)
+Evidence = B(artifact_binding) + B(record_locator)
 SourceBinding = u8 identity_tag + O(AMXR object) + O(AMXR event)
-              + B(4096 source_revision) + O(B(4096 provider_revision_marker))
-              + B(1024 adapter_recipe) + Evidence
-Content = O(B(1048576 text)) + V(256, B(4096 artifact_binding))
+              + B(source_revision) + O(B(provider_revision_marker))
+              + B(adapter_recipe) + Evidence
+Content = O(B(text)) + V(B(artifact_binding))
 Link = u8 link_kind + u8 target_tag + target_record
 target_record[1] = EntryRef
 target_record[2] = O(AMXR external) + Evidence
@@ -496,63 +564,215 @@ target_record[2] = O(AMXR external) + Evidence
 | LLM role | `1 System`, `2 Developer`, `3 User`, `4 Assistant`, `5 Tool` |
 | Link kind | `1 Reply`, `2 Thread`, `3 Branch`, `4 Forward`, `5 Quote` |
 | Target | `1 resolved EntryRef`, `2 unresolved external/evidence` |
-| Payload | `1 MessageCreated: Content`; `2 SnapshotObserved: Content`; `3 Edited: EntryRef affected + Content replacement`; `4 Tombstoned: EntryRef affected`; `5 Restored: EntryRef affected + EntryRef retained_state` |
 
-All other tags reject. Every exact reference includes its own namespace,
-conversation, entry and revision; no contextual shortening is permitted.
+All other values in these common tag families reject. Every exact reference
+includes its own namespace, conversation, entry and revision; no contextual
+shortening is permitted.
 Nested AMXR uses the unchanged v1 grammar/limits, including typed signed parent
 keys, byte identity and component ordering. Absent text differs from present
 empty text. Actor/observer/role and the two timestamps remain independent.
 Scope, source revisions, artifact bindings and provider markers remain opaque:
 NUL and invalid UTF-8 bytes are preserved where Phase 1 permits them.
-Text, recipe and locator remain strict shortest-form UTF-8 without normalization
-(including NUL where permitted). Allocation namespaces retain Phase 1 ASCII.
+Text, tool name, recipe and locator remain strict shortest-form UTF-8 without
+normalization (including NUL where permitted). Allocation namespaces retain
+Phase 1 ASCII.
 Source-mode shape, snapshot evidence, mutation targets and resolved-link policy
 are exactly section 4.1, not new provider/authenticity/chronology checks.
 
-#### Exact limits and bounded admission
+#### Payload schemas and append-only registration
 
-The complete encoded event is at most **33,554,432 bytes (32 MiB)**. Maximum
-inline text is 1,048,576 bytes; attachments and links are at most 256 each;
-nested AMXR is at most 65,536 bytes each; namespaces 128; bindings, markers and
-locators 4,096; recipe 1,024. **Scope at most 65,536 opaque bytes is an additional
-codec admission limit**: Phase 1 only requires nonempty scope and is unchanged.
-A Phase 1-valid DTO beyond that scope bound is explicitly not codec-admissible.
+The conversation domain owns this append-only registry. Each registered
+`(type_id, schema_version)` has one grammar and meaning; IDs and schema pairs
+are never reassigned. Addition requires a reviewed owner change and independent
+goldens, not a runtime registration callback. Typed alternatives derive their
+pair; they do not carry independently mutable duplicate header fields.
 
-With these primitives the field records' conservative maximum is 21,186,961
-bytes before the six-byte header and ten top-level tags (21,186,977 total).
-This combines 1 MiB text, 256 maximal attachments, 256 unresolved links each
-with maximal AMXR/evidence, maximal ExternalEvent source with both AMXR refs,
-and maximal scope/metadata. Thus the 32 MiB aggregate cap does not silently
-exclude combinations of the bounded Phase 1 fields. The fixture exercises the
-combined maxima, not merely each limit in isolation.
+| Type ID | Schema | Registered payload body |
+| --- | --- | --- |
+| `1` | `1` | `MessageCreated: Content` |
+| `2` | `1` | `SnapshotObserved: Content` |
+| `3` | `1` | `Edited: EntryRef affected + Content replacement` |
+| `4` | `1` | `Tombstoned: EntryRef affected` |
+| `5` | `1` | `Restored: EntryRef affected + EntryRef retained_state` |
+| `256` | `1` | `ToolCallObserved: B(call_id) + B(tool_name) + B(request_artifact_binding)` |
+| `257` | `1` | `ToolResultObserved: EntryRef call + B(call_id) + u8(outcome) + B(result_artifact_binding)` |
+| `258` | none | Reserved for a future Patch observation schema; retention-only today |
+| `259` | none | Reserved for a future Compaction observation schema; retention-only today |
 
-Serialization validates fields, counts the exact complete wire size with
-checked arithmetic, then reserves once and writes; a size mismatch is an
-internal error. Decoding rejects excessive total input before parsing, checks
-lengths against both field bounds and remaining bytes before copying strings,
-and checks counts/bounded minimum element bytes before reserving vectors.
-There is no recursive event decoding; nested identity depth is AMXR v1's
-existing flat bound. A failed parse never returns a partially accepted DTO.
+Tool call IDs are nonempty opaque bytes, not globally unique identities or
+execution tokens. A tool name is a nonempty UTF-8 observation, not a dispatch
+instruction. Request/result bindings are nonempty exact immutable artifact
+bindings. Both typed tool observations require `source` with retained
+observation evidence. A result's call reference is exact, in the same
+conversation, and a different Entry occurrence; field validation does not
+prove that the target exists, is a call, has matching call ID, or is accessible.
+Those are later admission checks. Outcome wire tags are `1 Unknown`,
+`2 Succeeded`, `3 Failed`, `4 Cancelled`; all others reject. Timeout, missing
+result or an observed request must not infer an execution outcome.
 
-#### Evolution, verification and later store boundary
+Every otherwise header-valid pair not listed as a supported schema above is
+unsupported and may be retained as opaque bytes; an unknown schema of a registered type is also
+unsupported, not interpreted as its known schema. The payload bytes remain
+byte-identical through decoding, metadata edits and re-encoding. A known
+supported schema with malformed bytes rejects: it cannot downgrade to opaque.
+Constructing an opaque value for a supported pair also rejects. An envelope
+can have canonical framing while its opaque payload's semantic validity and
+logical canonicality remain unknown.
 
-Changing/adding fields, field order, tag meanings, primitive encodings, limits
-or validation rules requires a separately reviewed **new wire version**.
-Unknown values cannot be introduced as "compatible" v1 extensions. New exact
-opaque identifier/text values under the existing rules and declared provider
-recipes need no new wire tag; they do not authorize reinterpreting old values.
-V1 defines binary interchange only, no public textual event syntax or digest
-identity recipe. Test SHA-256 values identify literal fixtures, not event IDs.
+Public allocations use the repository registry below `0x80000000`. Private
+IDs `0x80000000..0xfffffffe` require an explicit out-of-band issuer/profile;
+they have no portable registered meaning and this implementation only retains
+them. Numeric coincidence never supplies a schema, access grant or authority.
+Metadata extension IDs have the same repository-owned, no-reuse registration
+discipline; none has typed semantics in this slice.
 
-Independent literal goldens cover all five payloads, all three source modes,
-exact targets, unresolved links, optional presence, UTF-8/opaque bytes and signed
-boundaries. Bounded deterministic mutation and truncation controls must either
-reject or decode a field-valid value whose re-encoding exactly matches input.
-The codec does not allocate domain IDs, deduplicate imports, access artifacts,
-authenticate evidence or choose event order. Those remain Phase 3 history/store
-contracts; existence, expected-revision conflicts, replay, no-reuse and crash
-recovery are not proven by a successful codec round-trip.
+Changing envelope framing, common-field tags/order, integer encodings or
+extension framing requires a new envelope version. Adding a registered payload
+type or a new schema version does not. Changing an existing payload's grammar
+requires a new schema version; its old pair remains immutable. An advisory
+extension must remain safely ignorable; required interpretation changes cannot
+silently be reclassified as advisory.
+
+#### Resource policy, implementation ceiling and compatibility
+
+Wire widths describe representation ranges, not permission to allocate u32
+bytes or u16 objects. `ConversationCodecLimits` is a conjunction of finite
+consumer budgets; zero forbids that resource and never means unlimited.
+Profiles above the implementation ceilings reject before work. The default
+profile retains Phase 1 field limits; the extended profile is explicit opt-in.
+
+| Budget | Default | Extended profile | Implementation ceiling |
+| --- | --- | --- | --- |
+| Complete frame | 33,554,432 bytes | 33,554,432 bytes | 33,554,432 bytes (32 MiB) |
+| Inline text | 1,048,576 bytes | 4,194,304 bytes | 8,388,608 bytes |
+| Attachments / links, each | 256 | 512 | 4,096 |
+| Artifact binding / source revision / provider marker | 4,096 bytes | 16,384 bytes | 65,536 bytes |
+| Tool call ID (uses binding budget) | 4,096 bytes | 16,384 bytes | 65,536 bytes |
+| Evidence locator | 4,096 bytes | 16,384 bytes | 65,536 bytes |
+| Adapter recipe | 1,024 bytes | 4,096 bytes | 4,096 bytes |
+| Tool name (uses recipe budget) | 1,024 bytes | 4,096 bytes | 4,096 bytes |
+| Metadata extensions | 64 | 256 | 1,024 |
+| Bytes in one metadata extension | 65,536 | 1,048,576 | 8,388,608 |
+| Charged owned bytes | 33,554,432 | 33,554,432 | 33,554,432 |
+| Charged objects | 4,096 | 16,384 | 32,768 |
+
+Allocation namespaces retain their fixed 1..128-byte ASCII semantic contract.
+Nested AMXR retains its fixed 65,536-byte frame and every existing component
+limit; an event profile cannot widen it. Scope has no independent 64 KiB cap:
+its nonempty opaque bytes are bounded by frame and owned-byte budgets, not
+reclassified as an allocation namespace. Frame, metadata and payload bounds
+apply together, so separately maximal fields need not fit as one event.
+
+Owned-byte charge is the sum of every `B` byte count, including complete nested
+AMXR frames, plus an opaque payload's bytes. Object charge counts every `B`
+value and every sequence element. AMXR is charged as its framed `B`, not
+recursively charged a second time. These are deterministic logical budgets,
+not allocator call counts, actual heap peaks or process RSS guarantees. Writer
+and reader use identical accounting, including empty values, extension bytes
+and opaque payloads. Performance/peak-allocation qualification reports actual
+measurements separately.
+
+Serialization validates, prepares bounded nested AMXR frames, and counts the
+exact complete size with overflow-safe arithmetic before allocating its output
+buffer. Retained preparation is incrementally charged, not an unbounded cache.
+The output is reserved once; an actual/estimated size mismatch is an internal
+error. Decoding checks whole-frame bounds first, then each length against
+remaining bytes and applicable budgets before copying, and sequence counts
+against limits and feasible minimum bytes before reserving. No recursive
+event decoding is introduced; AMXR's existing flat bound remains. No partially
+accepted value escapes a failed operation.
+
+`conversation_codec_limits_cover(reader, writer)` checks pointwise resource
+dominance after validating both profiles. Actual writer/reader compatibility
+additionally requires payload-schema and critical-extension support. A record
+accepted by a wider writer can legitimately receive `ResourceLimit` from a
+stricter reader; it is not thereby corrupt. A future store must record its
+required reader/write profile and qualify reopen against it or report explicit
+resource refusal. No capability DBI or store policy is implemented here.
+
+`ConversationCodecError` derives from `std::invalid_argument` and exposes
+`ConversationCodecCode`: `Malformed`, `InvalidValue`, `ResourceLimit`,
+`InvalidLimits`, `UnsupportedEnvelope`, `UnsupportedPayload`,
+`UnsupportedMetadata`. Framing/encoding damage, semantic field invalidity,
+budget refusal, unsupported profiles and unsupported interpretation are
+distinct. A bounded refusal does not certify unexamined bytes as otherwise
+valid, and the decoder need not keep parsing to discover a deeper error.
+Allocation failures propagate as allocation failures; diagnostics do not echo
+untrusted source text or identifiers. No normalization or latest resolution
+occurs on either successful or failed paths.
+
+#### Agent-session proof and later admission boundary
+
+Ordinary chat, Efi dialogue and Maschinenwerk development-session fixtures use
+the same envelope. Typed ToolCall/ToolResult demonstrate new-schema support;
+unsupported Patch/Compaction samples demonstrate only artifact retention and
+interpretation refusal. They are not additional installed typed schemas:
+
+| Future observation | Reference-only fixture invariant | Must not imply |
+| --- | --- | --- |
+| Patch, reserved type `258` | Immutable patch artifact plus exact source/file context and input/output revisions when known; retain unknown application outcome and observation evidence | Applying a patch, fabricating an output revision, or granting a typed schema to illustrative opaque bytes |
+| Compaction, reserved type `259` | Exact input Entry revisions, output artifact, recipe and provenance receipt stay in retained evidence; a fixture without a receipt cannot claim published derived knowledge | Replacing canonical inputs, treating a summary as independent evidence, or automatic KnowledgeUnit publication |
+
+The illustrative artifact content has no public AMCE payload interchange
+grammar. Opaque preservation tests alone cannot establish those inner semantic
+invariants; normalized fixture assertions and evidence checks must be separate
+from the codec's retention/unsupported assertions. Tool result existence/type,
+call-ID matching, artifact availability, access and source authenticity also
+remain admission responsibilities, not consequences of successful decoding.
+
+Reference-only design examples (not registered payload grammars):
+
+- A patch observation names immutable `patch@1`, exact source/file context and
+  input `file@4`; output is absent and action is `Observed`. It claims neither
+  patch creation nor an application attempt. `Created` is a distinct observation
+  with its creation evidence. `ApplicationAttempted` names its attempt receipt;
+  a failed/unknown attempt cannot supply a fabricated successful output.
+  Confirmed application names both `file@4` and `file@5`, the immutable patch,
+  and an application receipt establishing that outcome. Multiple files require
+  their complete exact revision set in the retained manifest, not one guessed
+  aggregate revision. Artifact availability and receipt authenticity are checked
+  separately when consumed.
+- A compaction observation names exact input Entry revisions and any immutable
+  input artifacts, output `summary@1`, the versioned derivation recipe and
+  retained derivation evidence. Its input set/frontier is not inferred from a
+  time interval. A publication receipt, when present, selects the existing
+  publication contract; its absence means no published derived-knowledge claim.
+  Reading the output never upgrades it into independent primary evidence or
+  discards the original input references. Recompaction names the previous
+  derived input and its original lineage rather than flattening away provenance.
+
+Opaque transport of either reserved type establishes none of these assertions;
+the later schema must encode these distinctions before typed admission is
+implemented. This is deliberate proof of retention versus interpretation, not
+an executor or an unbounded body embedded in AMCE.
+
+New independent literal goldens and malformed/mutation controls qualify only
+the revised bytes and advertised profiles. The archived closed-candidate
+vectors and its 21,186,977-byte fixture remain identified by their original
+commit and do not prove revised-envelope maxima. Qualification must include
+unsupported type/schema and extension retention through read-modify-write,
+critical-extension refusal, known-invalid-schema rejection, strict/extended
+profile behavior and measured maximum inputs. Test SHA-256 values identify
+fixtures, not event IDs.
+
+The codec allocates no domain IDs, deduplicates no imports, reads no artifact
+bodies, authenticates no evidence and chooses no journal order. History,
+expected-revision conflicts, replay, no-reuse, storage indexes and crash/reopen
+recovery remain later store contracts. Encoding, compression and physical
+storage are separate: future zstd/page tuning must not redefine logical
+identity or provenance. A small metadata/header inspection is not a validated
+event, and wire framing is not authorization to implement a new storage engine.
+
+| Read strategy | Work and validity boundary | Physical owner |
+| --- | --- | --- |
+| Full decode | Traverses and owns all selected fields; validates supported schemas, retains unsupported bodies | Implemented AMCE codec; memory/latency measured separately |
+| Fixed header inspection | Reads 26 bytes plus checks declared lengths against the complete borrowed view; no body allocations, metadata/payload validity is unproven | Implemented codec framing API; not a source/scope lookup |
+| Covering secondary index | Avoids materializing bodies for selected metadata predicates; needs transactionally consistent index and authorization checks | Future ConversationStore; no MDBX schema or performance claim in this PR |
+| Separate read projection | May serve compact query-specific fields; needs exact event/revision binding and freshness policy | Future projection/store boundary; never independent primary evidence |
+
+Compression, dictionaries and MDBX pages belong below these logical contracts.
+Artifact storage owns large request/result/file/patch bodies. A binding neither
+loads those bodies nor grants access to them.
 
 ## 5. Bounded reads and retrieval projections
 
@@ -691,7 +911,7 @@ need not implement every tool/development-session payload.
 | Sequential PR | Minimum implementation and acceptance gate | Principal risk |
 | --- | --- | --- |
 | 1. Values / validation | Use the approved event/revision baseline; add C++17 Conversation/Entry/Actor values, exact references, message/change and reply/thread values, optional AMXR bindings, evidence-qualified snapshot observations, textless example, invalid-input and unchanged legacy tests | Ambiguous identity/target, invented source history or field validation mistaken for admission |
-| 2. Event codec | Separately approve versioned framing, tags, limits and source-anchor mapping; exact goldens and malformed/oversized controls. AMXR is nested external identity, not the event format | Prematurely freezing a persistent format |
+| 2. Event codec | Separately approve envelope framing, payload schemas/registry, metadata extensions, resource profiles and source-anchor mapping; exact goldens and malformed/oversized/unsupported-retention controls. AMXR is nested external identity, not the event format | Prematurely freezing a persistent format or treating opaque retention as semantic admission |
 | 3. Reference store / import | Backend-neutral exact/current history, actor/role observations, message/change fold, expected-revision conflict/NoChange, deterministic idempotent import and bounded stable-frontier paging | Losing history, replay collisions or mixing snapshots |
 | 4. Numeric MDBX history | Reuse backend context; review physical manifest/DBI budget and event-specific mappings, atomic history/dedupe/sequence writes, rollback/no-reuse, admission order, prefix/scope isolation and fresh-process reopen/crash recovery | Publishing mappings or current views without their canonical history |
 | 5. Core vertical qualification | Import normalized chat/session fixtures, replay, edit/delete/restore, reopen and read bounded history/reply/thread views with exact source refs; verify no graph/embedder requirement and all Core gates below | A value/codec test mistaken for a usable chat profile |
@@ -720,8 +940,10 @@ and their transactional persistence still need the store reviews below.
 The first proposed consumers are a chat importer and Efi dialogue memory. Core
 qualification uses bounded normalized import/session fixtures, not a live provider SDK: message
 creation, attachment-only content, edit, tombstone/restore, replay and unresolved
-reply. The broader development-session follow-up adds tool call/result and
-patch evidence. Neither proves Telegram/Discord/forum API compatibility or
+reply. Phase 2 adds codec-only typed tool-call/result observations; the broader
+development-session/store follow-up adds their history and patch evidence.
+Reserved Patch/Compaction artifact-only codec fixtures are not implemented
+typed schemas. None proves Telegram/Discord/forum API compatibility or
 installs an agent runtime.
 
 Before store work, separately settle actor/alias history, retention/erase policy,

@@ -3,6 +3,7 @@
 - Status: **Phase 1 values integrated; Phase 2 Event Codec v1 under review in
   a separate Draft PR**; broader event model and Conversation Core store remain planned.
 - Date: 2026-11-21.
+- Updated: 2026-11-22 for the pre-merge AMCE envelope correction.
 - Integrated baseline: `386e26fe9176d268722894cd9f48df33f3b7bf72`.
 - Scheduling: planned early opt-in Conversation Core under
   [milestones](../milestones.md#early-opt-in-conversation-core-planned);
@@ -21,6 +22,16 @@ and staged implementation gates. Its section 4.1 owns the implemented Phase 1
 values/field policy and executable example. That narrow implementation does not
 authorize a ConversationStore or later runtime work. A separate Phase 2 task
 authorizes the standalone codec specified in section 4.2, without storage.
+Its revised [AMCE envelope contract](../conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)
+separates envelope version, append-only payload/schema registration and
+consumer resource profiles. Additive envelopes preserve unsupported payload
+and metadata bytes; retention is not semantic admission. The unmerged closed
+candidate is superseded before integration, not an alternative v1 dialect.
+Integrated Phase 1 aggregates and their default validator remain compatible;
+explicit adapters refuse lossy down-conversion. Tool-call/result schemas
+record observations only. Patch/Compaction IDs are reserved, with illustrative
+artifact-only proof rather than implemented typed schemas. The section owns
+exact wire/API/error/limit rules; this ADR does not duplicate them.
 The proposal's ownership/reuse matrix and evidence/reverse-dependency contract
 reuse the existing KnowledgeUnit, publication and projection owners. Journal
 entries/changes are distinct from `KnowledgeUnitKind::Event`; conversation
@@ -170,7 +181,9 @@ after their product storage and store/transaction/recovery owners are agreed.
 Only advanced conversation memory waits for M2/M2+. No provider SDK is required in
 core. Phase 1 values/field validation are integrated in main; the separately
 reviewed Phase 2 codec retains those values without implementing canonical
-event history or a store.
+event history or a store. Resource-profile support, opaque transport and typed
+interpretation are separate gates; none establishes artifact availability,
+authorization or an executed tool outcome.
 
 The following acceptance matrix is **required future work, not tests run by this
 documentation PR**:
