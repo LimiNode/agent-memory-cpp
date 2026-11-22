@@ -3,6 +3,7 @@
 #if AGENT_MEMORY_HAS_MDBX
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <stdexcept>
 #include <utility>
@@ -80,13 +81,30 @@ MdbxPersistentLexicalCandidateAdapter::MdbxPersistentLexicalCandidateAdapter(
        m_options.max_query_terms == 0) {
         throw std::invalid_argument("persistent candidate limits must be non-zero");
     }
+    if(m_options.scoring != PersistentLexicalScoring::TermFrequency &&
+       m_options.scoring != PersistentLexicalScoring::Bm25) {
+        throw std::invalid_argument("unknown persistent lexical scoring policy");
+    }
+    if(m_options.scoring == PersistentLexicalScoring::Bm25 && !is_valid(m_options.bm25)) {
+        throw std::invalid_argument("invalid persistent lexical BM25 options");
+    }
 }
 
 PersistentLexicalCandidateResponse
 MdbxPersistentLexicalCandidateAdapter::generate(const RetrievalQuery& query) const {
+    return generate_impl(query, true);
+}
+
+PersistentLexicalCandidateResponse
+MdbxPersistentLexicalCandidateAdapter::generate_window(const RetrievalQuery& query) const {
+    return generate_impl(query, false);
+}
+
+PersistentLexicalCandidateResponse
+MdbxPersistentLexicalCandidateAdapter::generate_impl(
+    const RetrievalQuery& query, const bool apply_query_limit
+) const {
     PersistentLexicalCandidateResponse response;
-    const auto snapshot = m_index->read_snapshot();
-    response.frontier = snapshot.frontier;
     if(query.limit == 0 || !query.has_text() || !query.metadata_filters.empty()) {
         response.completeness = PersistentLexicalCandidateCompleteness::UnsupportedQuery;
         response.diagnostic = query.metadata_filters.empty()
@@ -101,6 +119,17 @@ MdbxPersistentLexicalCandidateAdapter::generate(const RetrievalQuery& query) con
         response.diagnostic = tokens.tokens.empty()
             ? "query produced no normalized terms"
             : "query term count exceeds persistent candidate budget";
+        return response;
+    }
+
+    const auto snapshot = m_index->read_snapshot();
+    response.frontier = snapshot.frontier;
+    const auto collection = snapshot.index.collection_stats();
+    if(m_options.scoring == PersistentLexicalScoring::Bm25 &&
+       (collection.unit_count != snapshot.index.size() ||
+        collection.total_token_count < collection.unit_count)) {
+        response.completeness = PersistentLexicalCandidateCompleteness::InconsistentSnapshot;
+        response.diagnostic = "persistent lexical collection statistics are inconsistent";
         return response;
     }
 
@@ -191,12 +220,37 @@ MdbxPersistentLexicalCandidateAdapter::generate(const RetrievalQuery& query) con
                     "persistent lexical postings disagree for one knowledge unit";
                 return response;
             }
-            found->second.score += static_cast<float>(posting.term_frequency);
+            float contribution = static_cast<float>(posting.term_frequency);
+            if(m_options.scoring == PersistentLexicalScoring::Bm25) {
+                const auto stats = snapshot.index.find_unit_stats(posting.unit_id);
+                if(!stats || stats->resource_id != posting.resource_id ||
+                   stats->resource_generation != posting.resource_generation ||
+                   stats->unit_revision != posting.projection_version.unit_revision_at_build ||
+                   !same_projection_version(stats->projection_version, posting.projection_version)) {
+                    response.completeness = PersistentLexicalCandidateCompleteness::InconsistentSnapshot;
+                    response.diagnostic = "persistent lexical posting/unit statistics disagree";
+                    return response;
+                }
+                try {
+                    contribution = bm25_term_score(
+                        posting.term_frequency, posting_count, stats->token_count,
+                        collection.unit_count, collection.total_token_count, m_options.bm25);
+                } catch(const std::invalid_argument&) {
+                    response.completeness = PersistentLexicalCandidateCompleteness::InconsistentSnapshot;
+                    response.diagnostic = "persistent lexical BM25 statistics are inconsistent";
+                    return response;
+                }
+            }
+            found->second.score += contribution;
+            if(!std::isfinite(found->second.score)) {
+                throw std::overflow_error("persistent lexical score accumulation overflow");
+            }
         }
     }
 
     response.candidates.reserve(accumulated.size());
     for(auto& entry : accumulated) {
+        if(entry.second.score <= 0.0F) continue;
         entry.second.candidate.identity.score = entry.second.score;
         response.candidates.push_back(std::move(entry.second.candidate));
     }
@@ -210,7 +264,7 @@ MdbxPersistentLexicalCandidateAdapter::generate(const RetrievalQuery& query) con
                 rhs.identity.knowledge_unit_id.value();
         }
     );
-    if(response.candidates.size() > query.limit) {
+    if(apply_query_limit && response.candidates.size() > query.limit) {
         response.candidates.resize(query.limit);
     }
     return response;

@@ -127,6 +127,26 @@ namespace agent_memory {
     /// \brief Returns true when BM25 options are within the supported range.
     [[nodiscard]] bool is_valid(const Bm25Options& options) noexcept;
 
+    /// \brief Scores one query-term occurrence using the exact index's float BM25 convention.
+    ///
+    /// Uses log(1 + (N - df + 0.5) / (df + 0.5)) and average length total_token_count / N.
+    /// All counts must describe the same active snapshot; this helper does not establish that snapshot.
+    /// Repeated query terms are scored separately by the caller. The numerical contract is owned by
+    /// guides/persistent-lexical-index-foundation.md, "Opt-in flat BM25 candidate window".
+    /// \return A finite non-negative term contribution; zero for an absent term or an all-zero collection.
+    /// \throws std::invalid_argument For invalid options, df > N, tf > document_length,
+    /// document_length > total_token_count, total_token_count < N, positive tf with zero df,
+    /// or a zero document count with any nonzero statistic.
+    /// \throws std::overflow_error When the float calculation is not finite.
+    [[nodiscard]] float bm25_term_score(
+        std::uint64_t term_frequency,
+        std::uint64_t document_frequency,
+        std::uint64_t document_length,
+        std::uint64_t document_count,
+        std::uint64_t total_token_count,
+        const Bm25Options& options
+    );
+
     /// \brief Returns true when a posting is well-formed (non-default token id
     ///         and term_frequency matches positions size).
     [[nodiscard]] bool is_valid(const LexicalPosting& posting) noexcept;

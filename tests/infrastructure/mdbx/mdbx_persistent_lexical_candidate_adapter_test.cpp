@@ -1,5 +1,6 @@
 #include <agent_memory/infrastructure/mdbx/MdbxPersistentLexicalCandidateAdapter.hpp>
 #include <agent_memory/lexical/FlatLexicalIndex.hpp>
+#include <agent_memory/lexical/ExactLexicalIndex.hpp>
 #include <agent_memory/lexical/StandardTokenizer.hpp>
 #include <agent_memory/retrieval/OriginalProjection.hpp>
 
@@ -9,6 +10,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -258,6 +260,279 @@ ResourceManifest admitted_manifest(
     return value;
 }
 
+void test_bm25_window(const std::filesystem::path& path) {
+    const ScopeId scope{"bm25-window"};
+    StandardTokenizer tokenizer;
+    const std::vector<std::string> bodies{
+        "alpha alpha", "alpha alpha alpha filler filler filler",
+        "alpha alpha", "beta filler filler filler"};
+    {
+        auto context = MdbxStorageContext::open(path.string());
+        auto config = options(path, context, scope);
+        config.table_prefix = "bm25_window_test";
+        MdbxPersistentLexicalIndex index{config};
+        ExactLexicalIndex oracle;
+        TestUnits units;
+        TestProjections projections;
+        TestManifests manifests;
+        for(std::size_t i = 0; i < bodies.size(); ++i) {
+            const auto id = static_cast<std::uint64_t>(i + 1);
+            const auto resource = "bm25-resource-" + std::to_string(id);
+            const auto tokens = tokenizer.tokenize(bodies[i]).tokens;
+            std::vector<std::string> normalized;
+            for(const auto& token : tokens) normalized.push_back(token.text);
+            index.upsert(unit(scope, id, 1, resource.c_str(), normalized));
+            oracle.upsert(LexicalDocumentRecord{
+                ChunkId{"oracle-" + std::to_string(id)},
+                ResourceRevision{ResourceId{resource}, 1}, tokens, {}});
+            const auto canonical = admitted_unit(
+                scope, KnowledgeUnitId{id}, ResourceId{resource}, bodies[i]);
+            units.upsert(canonical);
+            projections.put(make_original_projection(canonical, 1));
+            manifests.upsert_manifest(admitted_manifest(ResourceId{resource}, canonical.id));
+        }
+        PersistentLexicalCandidateOptions bm25;
+        bm25.scoring = PersistentLexicalScoring::Bm25;
+        MdbxPersistentLexicalCandidateAdapter adapter{index, tokenizer, bm25};
+        MdbxPersistentLexicalCandidateAdapter legacy{index, tokenizer};
+        RetrievalQuery query;
+        query.text = "alpha";
+        query.limit = 1;
+        const auto window = adapter.generate_window(query);
+        require(window.completeness == PersistentLexicalCandidateCompleteness::Complete &&
+                    window.candidates.size() == 3 && window.examined_postings == 3,
+                "BM25 window was prematurely limited to query.limit");
+        require(window.candidates[0].identity.knowledge_unit_id == KnowledgeUnitId{1} &&
+                    window.candidates[1].identity.knowledge_unit_id == KnowledgeUnitId{3} &&
+                    window.candidates[2].identity.knowledge_unit_id == KnowledgeUnitId{2},
+                "BM25 length normalization or deterministic tie order failed");
+        // Independently computed double-precision formula, frozen as literals.
+        require(std::fabs(window.candidates[0].identity.score - 0.5909407355197933) < 1e-6 &&
+                    std::fabs(window.candidates[2].identity.score - 0.5043888096103286) < 1e-6,
+                "persistent BM25 scores disagree with independent numeric goldens");
+        const auto complete = admit_persistent_lexical_candidates(
+            scope, window, units, projections, manifests, tokenizer);
+        require(complete.completeness == RevisionBoundCompleteness::Complete &&
+                    complete.candidate_count == window.candidates.size() &&
+                    complete.results.size() == window.candidates.size() &&
+                    complete.admitted_count == 3 && complete.stale_count == 0 &&
+                    complete.unavailable_count == 0,
+                "complete generated BM25 window was not fully admitted");
+        for(std::size_t i = 0; i < window.candidates.size(); ++i) {
+            const auto& identity = window.candidates[i].identity;
+            const auto& result = complete.results[i];
+            require(result.knowledge_unit_id == identity.knowledge_unit_id &&
+                        result.score == identity.score &&
+                        result.freshness == RevisionBoundFreshness::Current &&
+                        result.materialization == RevisionBoundMaterialization::SummaryOnly &&
+                        result.text == bodies[identity.knowledge_unit_id.value() - 1],
+                    "complete admission changed candidate order, score or canonical text");
+        }
+        require(legacy.generate(query).candidates.front().identity.knowledge_unit_id ==
+                    KnowledgeUnitId{2},
+                "opt-in BM25 changed the default TF ranking");
+        require(adapter.generate(query).candidates.size() == 1,
+                "legacy generate limiting semantics changed");
+        LexicalSearchQuery exact_query;
+        exact_query.terms = {"alpha"};
+        exact_query.limit = 8;
+        const auto exact = oracle.search(exact_query);
+        require(exact.size() == window.candidates.size(), "BM25 oracle membership count differs");
+        for(std::size_t i = 0; i < exact.size(); ++i) {
+            require(exact[i].chunk_id == ChunkId{"oracle-" + std::to_string(
+                        window.candidates[i].identity.knowledge_unit_id.value())} &&
+                        std::fabs(exact[i].score - window.candidates[i].identity.score) < 1e-5F,
+                    "persistent BM25 membership/score parity failed");
+        }
+        query.text = "alpha alpha";
+        const auto repeated = adapter.generate_window(query);
+        require(repeated.examined_postings == 6 && repeated.candidates.size() == 3 &&
+                    std::fabs(repeated.candidates[0].identity.score -
+                        2.0F * window.candidates[0].identity.score) < 1e-6F,
+                "repeated query terms did not contribute repeatedly");
+        auto no_normalization = bm25;
+        no_normalization.bm25.b = 0.0F;
+        MdbxPersistentLexicalCandidateAdapter unnormalized{index, tokenizer, no_normalization};
+        query.text = "alpha";
+        require(unnormalized.generate_window(query).candidates[0].identity.knowledge_unit_id ==
+                    KnowledgeUnitId{2}, "explicit BM25 parameter override was ignored");
+        auto invalid_options = bm25;
+        invalid_options.bm25.k1 = 0.0F;
+        auto invalid_policy = bm25;
+        invalid_policy.scoring = static_cast<PersistentLexicalScoring>(255);
+        for(const auto& invalid : {invalid_options, invalid_policy}) {
+            bool rejected = false;
+            try {
+                MdbxPersistentLexicalCandidateAdapter bad{index, tokenizer, invalid};
+            } catch(const std::invalid_argument&) {
+                rejected = true;
+            }
+            require(rejected, "invalid BM25 adapter configuration was accepted");
+        }
+        query.text = "unmatched";
+        require(adapter.generate_window(query).candidates.empty(),
+                "zero-score candidates leaked into BM25 window");
+
+        query.text = "alpha";
+        auto bounded_options = bm25;
+        bounded_options.max_candidates = 1;
+        MdbxPersistentLexicalCandidateAdapter bounded{index, tokenizer, bounded_options};
+        const auto bounded_result = bounded.generate_window(query);
+        require(bounded_result.completeness ==
+                    PersistentLexicalCandidateCompleteness::Truncated &&
+                    bounded_result.candidates.size() == 1,
+                "candidate cap masqueraded as complete BM25 top-K");
+        const auto bounded_admission = admit_persistent_lexical_candidates(
+            scope, bounded_result, units, projections, manifests, tokenizer);
+        require(bounded_admission.completeness == RevisionBoundCompleteness::BudgetExceeded &&
+                    bounded_admission.candidate_count == 1 &&
+                    bounded_admission.results.size() == 1 &&
+                    bounded_admission.admitted_count == 1 &&
+                    bounded_admission.results[0].knowledge_unit_id ==
+                        bounded_result.candidates[0].identity.knowledge_unit_id &&
+                    bounded_admission.results[0].freshness == RevisionBoundFreshness::Current &&
+                    bounded_admission.results[0].materialization ==
+                        RevisionBoundMaterialization::SummaryOnly &&
+                    !bounded_admission.results[0].text.empty(),
+                "generated candidate truncation lost its budget outcome during admission");
+        bounded_options = bm25;
+        bounded_options.max_postings_per_term = 1;
+        MdbxPersistentLexicalCandidateAdapter prefix{index, tokenizer, bounded_options};
+        const auto prefix_result = prefix.generate_window(query);
+        require(prefix_result.completeness == PersistentLexicalCandidateCompleteness::Truncated &&
+                    prefix_result.examined_postings == 1 && prefix_result.candidates.size() == 1,
+                "posting cap did not bound work and report truncation");
+        const auto prefix_admission = admit_persistent_lexical_candidates(
+            scope, prefix_result, units, projections, manifests, tokenizer);
+        require(prefix_admission.completeness == RevisionBoundCompleteness::BudgetExceeded &&
+                    prefix_admission.candidate_count == 1 &&
+                    prefix_admission.results.size() == 1 &&
+                    prefix_admission.admitted_count == 1 &&
+                    prefix_admission.results[0].knowledge_unit_id ==
+                        prefix_result.candidates[0].identity.knowledge_unit_id &&
+                    prefix_admission.results[0].freshness == RevisionBoundFreshness::Current &&
+                    prefix_admission.results[0].materialization ==
+                        RevisionBoundMaterialization::SummaryOnly &&
+                    !prefix_admission.results[0].text.empty(),
+                "generated posting truncation lost its budget outcome during admission");
+
+        // Reject a stale top hit and an out-of-scope tie before final top-K.
+        auto stale = units.find(KnowledgeUnitId{1}).value();
+        ++stale.revision;
+        units.upsert(stale);
+        auto foreign = units.find(KnowledgeUnitId{3}).value();
+        foreign.scope_id = ScopeId{"foreign"};
+        units.upsert(foreign);
+        const auto admitted = admit_persistent_lexical_candidates(
+            scope, window, units, projections, manifests, tokenizer);
+        require(admitted.completeness == RevisionBoundCompleteness::Complete &&
+                    admitted.candidate_count == window.candidates.size() &&
+                    admitted.results.size() == window.candidates.size() &&
+                    admitted.admitted_count == 1 && admitted.stale_count == 2 &&
+                    admitted.unavailable_count == 0,
+                "canonical rejection changed complete-window outcome or accounting");
+        for(std::size_t i = 0; i < window.candidates.size(); ++i) {
+            require(admitted.results[i].knowledge_unit_id ==
+                        window.candidates[i].identity.knowledge_unit_id &&
+                        admitted.results[i].score == window.candidates[i].identity.score,
+                    "canonical rejection reordered or rescored candidate observations");
+        }
+        require(admitted.results[0].freshness == RevisionBoundFreshness::Stale &&
+                    admitted.results[1].freshness == RevisionBoundFreshness::Stale &&
+                    admitted.results[2].freshness == RevisionBoundFreshness::Current,
+                "stale and out-of-scope observations did not precede the current result");
+        std::vector<RevisionBoundRetrievalResult> current;
+        for(const auto& result : admitted.results) {
+            if(result.freshness == RevisionBoundFreshness::Current &&
+               result.materialization == RevisionBoundMaterialization::SummaryOnly) {
+                current.push_back(result);
+            } else {
+                require(result.materialization == RevisionBoundMaterialization::Unavailable &&
+                            result.text.empty(),
+                        "rejected candidate exposed canonical text");
+            }
+        }
+        if(current.size() > query.limit) current.resize(query.limit);
+        require(admitted.stale_count == 2 && current.size() == 1 &&
+                    current.front().knowledge_unit_id == KnowledgeUnitId{2},
+                "full-window admission failed to retain a lower ranked current hit");
+
+        const auto alpha_id = index.read_snapshot().index.find_token_id("alpha").value();
+        for(const auto fault : {FlatLexicalStatisticsFaultPoint::RemoveTokenStatistics,
+                               FlatLexicalStatisticsFaultPoint::DocumentFrequencyTooHigh,
+                               FlatLexicalStatisticsFaultPoint::DocumentFrequencyTooLow}) {
+            index.set_statistics_fault_for_testing(alpha_id, fault);
+            const auto corrupt = adapter.generate_window(query);
+            require(corrupt.completeness ==
+                        PersistentLexicalCandidateCompleteness::InconsistentSnapshot &&
+                        corrupt.candidates.empty(),
+                    "BM25 accepted corrupt statistics");
+            const auto corrupt_admission = admit_persistent_lexical_candidates(
+                scope, corrupt, units, projections, manifests, tokenizer);
+            require(corrupt_admission.completeness ==
+                        RevisionBoundCompleteness::InconsistentSnapshot &&
+                        corrupt_admission.results.empty() &&
+                        corrupt_admission.candidate_count == 0 &&
+                        corrupt_admission.admitted_count == 0 &&
+                        !corrupt_admission.diagnostic.empty(),
+                    "generated corrupt-statistics outcome did not fail closed during admission");
+        }
+        index.set_statistics_fault_for_testing(
+            alpha_id, FlatLexicalStatisticsFaultPoint::RemoveTokenStatistics);
+        query.metadata_filters = {{"tag", "restricted"}};
+        const auto unsupported = adapter.generate_window(query);
+        require(unsupported.completeness ==
+                    PersistentLexicalCandidateCompleteness::UnsupportedQuery &&
+                    unsupported.candidates.empty() &&
+                    unsupported.frontier.publication_sequence.empty(),
+                "unsupported filters read the lexical snapshot or returned hits");
+        const auto unsupported_admission = admit_persistent_lexical_candidates(
+            scope, unsupported, units, projections, manifests, tokenizer);
+        require(unsupported_admission.completeness == RevisionBoundCompleteness::UnsupportedQuery &&
+                    unsupported_admission.results.empty() &&
+                    unsupported_admission.candidate_count == 0 &&
+                    unsupported_admission.admitted_count == 0 &&
+                    !unsupported_admission.diagnostic.empty(),
+                "generated unsupported-filter outcome did not fail closed during admission");
+        query.metadata_filters.clear();
+        require(adapter.generate_window(query).completeness ==
+                    PersistentLexicalCandidateCompleteness::InconsistentSnapshot,
+                "unsupported-query preflight consumed the snapshot fault hook");
+
+        // Update and erase must change N/DF/avgdl, not only candidate identity.
+        index.upsert(unit(scope, 1, 2, "bm25-resource-1", {"updated"}),
+            FlatLexicalExpectedState{KnowledgeUnitId{1}, 1, 1,
+                ProjectionVersionRef{1, 1, 1, "m0.original.primary_text.v1"}});
+        require(index.erase(KnowledgeUnitId{3}), "BM25 fixture erase failed");
+        query.text = "alpha";
+        const auto after = adapter.generate_window(query);
+        // N=3, total=11, df=1, dl=6, tf=3 (independent formula below).
+        const double expected = std::log(1.0 + 2.5 / 1.5) *
+            (3.0 * 2.5 / (3.0 + 1.5 * (0.25 + 0.75 * 6.0 / (11.0 / 3.0))));
+        require(after.candidates.size() == 1 &&
+                    after.candidates[0].identity.knowledge_unit_id == KnowledgeUnitId{2} &&
+                    std::fabs(after.candidates[0].identity.score - expected) < 1e-6,
+                "BM25 update/erase left stale N/DF/length statistics");
+    }
+    {
+        auto context = MdbxStorageContext::open(path.string());
+        auto config = options(path, context, scope);
+        config.table_prefix = "bm25_window_test";
+        MdbxPersistentLexicalIndex reopened{config};
+        PersistentLexicalCandidateOptions bm25;
+        bm25.scoring = PersistentLexicalScoring::Bm25;
+        MdbxPersistentLexicalCandidateAdapter adapter{reopened, tokenizer, bm25};
+        RetrievalQuery query;
+        query.text = "updated";
+        query.limit = 1;
+        const auto result = adapter.generate_window(query);
+        require(result.candidates.size() == 1 &&
+                    result.candidates[0].identity.unit_revision == 2 &&
+                    result.candidates[0].identity.score > 0.0F,
+                "reopen lost BM25 revision/scoring");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -271,6 +546,7 @@ int main() {
                 foreign << "foreign-sentinel-v1";
             }
             const auto path = workspace.database_path();
+            test_bm25_window(path);
             const ScopeId scope{"candidate-scope"};
             {
                 auto context = MdbxStorageContext::open(path.string());
