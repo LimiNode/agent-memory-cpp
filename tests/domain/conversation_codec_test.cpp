@@ -106,6 +106,17 @@ bool same_evidence(const am::ConversationImportEvidence& a, const am::Conversati
     return a.artifact == b.artifact && a.record_locator == b.record_locator;
 }
 
+bool same_target(const am::ConversationLinkTarget& a, const am::ConversationLinkTarget& b) {
+    if(const auto* resolved = std::get_if<am::EntryRef>(&a)) {
+        const auto* other = std::get_if<am::EntryRef>(&b);
+        return other && *resolved == *other;
+    }
+    const auto* unresolved = std::get_if<am::UnresolvedConversationTarget>(&a);
+    const auto* other = std::get_if<am::UnresolvedConversationTarget>(&b);
+    return unresolved && other && unresolved->external == other->external &&
+        same_evidence(unresolved->evidence, other->evidence);
+}
+
 bool same_source(const am::ConversationSourceBinding& a, const am::ConversationSourceBinding& b) {
     return a.identity == b.identity && a.object == b.object && a.event == b.event && a.revision == b.revision &&
         a.provider_revision_marker == b.provider_revision_marker && a.adapter_recipe == b.adapter_recipe &&
@@ -148,15 +159,7 @@ void expect_envelope(const am::ConversationEnvelope& a, const am::ConversationEn
         const auto& x = left.links[i];
         const auto& y = right.links[i];
         expect(x.kind == y.kind, "link order/kind changed");
-        if(const auto* target = std::get_if<am::EntryRef>(&x.target)) {
-            const auto* other = std::get_if<am::EntryRef>(&y.target);
-            expect(other && *target == *other, "resolved exact target changed");
-        } else {
-            const auto& unresolved = std::get<am::UnresolvedConversationTarget>(x.target);
-            const auto* other = std::get_if<am::UnresolvedConversationTarget>(&y.target);
-            expect(other && unresolved.external == other->external &&
-                same_evidence(unresolved.evidence, other->evidence), "unresolved evidence changed");
-        }
+        expect(same_target(x.target, y.target), "resolved reference or unresolved evidence changed");
     }
     expect(a.extensions.size() == b.extensions.size(), "metadata extension count changed");
     for(std::size_t i = 0; i < a.extensions.size(); ++i) {
@@ -174,7 +177,7 @@ void expect_envelope(const am::ConversationEnvelope& a, const am::ConversationEn
             expect(payload.call_id == other.call_id && payload.tool_name == other.tool_name &&
                 payload.request == other.request, "tool request identity or artifact changed");
         } else if constexpr(std::is_same_v<T, am::ConversationToolResultObserved>) {
-            expect(payload.call == other.call && payload.call_id == other.call_id &&
+            expect(same_target(payload.call, other.call) && payload.call_id == other.call_id &&
                 payload.outcome == other.outcome && payload.result == other.result,
                 "tool result target, outcome or artifact changed");
         } else {
@@ -297,6 +300,22 @@ std::vector<am::ConversationEnvelope> golden_values() {
     auto critical = envelope();
     critical.extensions = {{7, true, unhex("00ff")}};
     values.push_back(std::move(critical));
+
+    auto partial = values[12];
+    auto& partial_result = std::get<am::ConversationToolResultObserved>(partial.payload);
+    partial_result.call = am::UnresolvedConversationTarget{std::nullopt,
+        {am::ArtifactBindingId{"orphan@1"}, "record/3"}};
+    partial_result.result.reset();
+    partial_result.outcome = am::ConversationToolOutcome::Cancelled;
+    values.push_back(partial);
+    std::get<am::UnresolvedConversationTarget>(partial_result.call).external = external();
+    partial_result.outcome = am::ConversationToolOutcome::Unknown;
+    partial_result.result = am::ArtifactBindingId{opaque_string("00ff")};
+    values.push_back(partial);
+    partial_result.call = reference(1, 7);
+    partial_result.result.reset();
+    partial_result.outcome = am::ConversationToolOutcome::Succeeded;
+    values.push_back(partial);
     return values;
 }
 
@@ -413,7 +432,7 @@ void malformed_controls() {
     for(const auto mode : {0U, 1U, 2U, 4U, 255U}) {
         changed = snapshot; changed[64] = static_cast<std::uint8_t>(mode); rejected_bytes(changed);
     }
-    for(const auto marker : {unhex("0000000176"), unhex("000000016c")}) {
+    for(const auto& marker : {unhex("0000000176"), unhex("000000016c")}) {
         changed = snapshot;
         changed[find_bytes(changed, marker) + 4] = 255;
         rejected_bytes(changed);
@@ -650,7 +669,8 @@ void agent_session_controls(const std::vector<am::ConversationEnvelope>& values)
     const auto call_id = std::get<am::ConversationToolCallObserved>(retained_call.payload).call_id;
     auto result = values[12];
     expect(std::get<am::ConversationToolResultObserved>(result.payload).call_id == call_id &&
-        std::get<am::ConversationToolResultObserved>(result.payload).call == retained_call.metadata.ref,
+        same_target(std::get<am::ConversationToolResultObserved>(result.payload).call,
+            am::ConversationLinkTarget{retained_call.metadata.ref}),
         "tool identity or exact call revision fixture does not match");
     for(const auto outcome : {am::ConversationToolOutcome::Unknown, am::ConversationToolOutcome::Succeeded,
                              am::ConversationToolOutcome::Failed, am::ConversationToolOutcome::Cancelled}) {
@@ -675,6 +695,93 @@ void agent_session_controls(const std::vector<am::ConversationEnvelope>& values)
     result = values[12];
     std::get<am::ConversationToolResultObserved>(result.payload).outcome = static_cast<am::ConversationToolOutcome>(255);
     expect_rejected([&] { (void)am::serialize_conversation_envelope(result); });
+
+    // Partial observations require evidence, not a fabricated call or result artifact.
+    for(const auto& target : {values[12], values[17], values[18]}) {
+        for(const auto outcome : {am::ConversationToolOutcome::Unknown, am::ConversationToolOutcome::Succeeded,
+                                 am::ConversationToolOutcome::Failed, am::ConversationToolOutcome::Cancelled}) {
+            for(const bool has_artifact : {false, true}) {
+                auto observed = target;
+                auto& payload = std::get<am::ConversationToolResultObserved>(observed.payload);
+                payload.outcome = outcome;
+                payload.result = has_artifact ? std::optional<am::ArtifactBindingId>{am::ArtifactBindingId{"body@1"}} :
+                    std::nullopt;
+                round_trip(observed);
+                observed.metadata.source.reset();
+                expect_rejected([&] { (void)am::serialize_conversation_envelope(observed); });
+            }
+        }
+    }
+    result = values[17];
+    std::get<am::UnresolvedConversationTarget>(std::get<am::ConversationToolResultObserved>(result.payload).call)
+        .evidence.artifact = am::ArtifactBindingId{};
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(result); });
+    result = values[17];
+    std::get<am::UnresolvedConversationTarget>(std::get<am::ConversationToolResultObserved>(result.payload).call)
+        .evidence.record_locator.clear();
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(result); });
+    result = values[18];
+    std::get<am::UnresolvedConversationTarget>(std::get<am::ConversationToolResultObserved>(result.payload).call)
+        .external->provider.clear();
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(result); });
+    result = values[17];
+    std::get<am::ConversationToolResultObserved>(result.payload).call_id.clear();
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(result); });
+    result = values[17];
+    std::get<am::ConversationToolResultObserved>(result.payload).result = am::ArtifactBindingId{};
+    expect_rejected([&] { (void)am::serialize_conversation_envelope(result); });
+
+    // The known schema rejects malformed target/presence/outcome rather than retaining opaque.
+    const auto complete_bytes = am::serialize_conversation_envelope(values[12]);
+    const auto complete_header = am::inspect_conversation_frame(view(complete_bytes));
+    const auto payload_start = am::kConversationEnvelopeHeaderBytes + complete_header.metadata_bytes;
+    for(const auto tag : {0U, 3U, 255U}) {
+        auto malformed = complete_bytes;
+        malformed[payload_start] = static_cast<std::uint8_t>(tag);
+        expect_code([&] { (void)am::deserialize_conversation_envelope(view(malformed)); },
+            am::ConversationCodecCode::Malformed);
+    }
+    auto malformed = am::serialize_conversation_envelope(values[17]);
+    malformed.back() = 2; // Optional artifact presence is exactly 0 or 1.
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(malformed)); },
+        am::ConversationCodecCode::Malformed);
+    malformed = am::serialize_conversation_envelope(values[17]);
+    malformed[malformed.size() - 2] = 0;
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(malformed)); },
+        am::ConversationCodecCode::Malformed);
+    malformed = am::serialize_conversation_envelope(values[17]);
+    malformed[payload_start + 1] = 2; // Unresolved external presence is also strict.
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(malformed)); },
+        am::ConversationCodecCode::Malformed);
+
+    auto strict = am::ConversationCodecLimits{};
+    strict.fields.max_binding_bytes = 7; // orphan@1 evidence has eight bytes.
+    expect_code([&] { (void)am::serialize_conversation_envelope(values[17], strict); },
+        am::ConversationCodecCode::ResourceLimit);
+    am::ConversationDecodeOptions strict_read;
+    strict_read.limits = strict;
+    const auto orphan_bytes = am::serialize_conversation_envelope(values[17]);
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(orphan_bytes), strict_read); },
+        am::ConversationCodecCode::ResourceLimit);
+
+    auto missing_source = values[17];
+    missing_source.metadata.source.reset();
+    missing_source.payload = am::ConversationOpaquePayload{70000, 1,
+        am::ByteBuffer(orphan_bytes.begin() + static_cast<std::ptrdiff_t>(payload_start), orphan_bytes.end())};
+    auto forged = am::serialize_conversation_envelope(missing_source);
+    set_uint(forged, 16, 257, 4);
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(forged)); },
+        am::ConversationCodecCode::Malformed);
+
+    auto unresolved_bytes = orphan_bytes;
+    const auto evidence_marker = unhex("000000086f727068616e4031");
+    unresolved_bytes[find_bytes(unresolved_bytes, evidence_marker) + 4] = 0xff; // Binary artifact remains valid.
+    round_trip(am::deserialize_conversation_envelope(view(unresolved_bytes)));
+    unresolved_bytes = orphan_bytes;
+    const auto locator_marker = unhex("000000087265636f72642f33");
+    unresolved_bytes[find_bytes(unresolved_bytes, locator_marker) + 4] = 0xff;
+    expect_code([&] { (void)am::deserialize_conversation_envelope(view(unresolved_bytes)); },
+        am::ConversationCodecCode::Malformed);
     // Patch/compaction are reserved registry pairs, not implemented typed semantics.
     // Their bytes may be transported, but callers cannot consume them as understood events.
     for(const auto type : {258U, 259U}) {

@@ -252,7 +252,7 @@ the view. Sizes use subtraction-based bounds before pointer arithmetic/copying.
 | Allocation namespace | Exact ASCII token string, fixed identity grammar |
 | Existing ScopeId, ArtifactBindingId, SourceRevisionId, provider marker | Integrated opaque identifier carriers backed by string; retain their public value types and byte identity, including non-UTF-8; not converted through text encodings |
 | AMXR string scalar | Existing AMXR textual wire contract and validator, unchanged |
-| Nested complete AMXR frame | Explicit bounded adapter borrows its existing string frame as bytes; prepared once per occurrence and reused during emission |
+| Nested complete AMXR frame | Explicit bounded adapter borrows its existing string frame as bytes; one bounded temporary per occurrence/pass, with no retained aggregate cache after the 2026-11-23 same-grammar comparison |
 
 The integrated opaque identifier carriers are not new arbitrary-body APIs.
 Changing their storage types would break independent integrated interfaces;

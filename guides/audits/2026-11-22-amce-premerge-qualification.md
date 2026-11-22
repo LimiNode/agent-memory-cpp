@@ -8,6 +8,13 @@
   The PR publication receipt supplies the exact corrective SHA and exact-head
   CI results; earlier successful CI on the closed candidate is not corrective evidence.
 
+The 2026-11-22 results below qualify the initial corrected envelope, not all
+later source changes. The [2026-11-23 final review](2026-11-23-amce-final-integration-review.md)
+owns the subsequent ToolResult pre-freeze correction and integration gate.
+The dated same-grammar experiment appendix selects repeated bounded AMXR
+serialization instead of retaining prepared frames. The final PR receipt binds
+the assembled schema/strategy to its new HEAD and CI/Packaging evidence.
+
 ## Contract and implementation
 
 The sole wire owner is [contract section 4.2](../conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract).
@@ -70,9 +77,11 @@ from operation timing; exact preflight is included in encoding, not falsely
 reported as an isolated measurement. Old/new full codecs have different wire
 contracts; identical-byte string/vector copies are the separate container control.
 
-AMXR preparation happens once per occurrence and is charged before retention.
-Its reduced repeated encoding/allocation work trades against a larger peak
-because prepared frames and output coexist. Neither a frame budget nor the
+In the original 2026-11-22 measurements, AMXR preparation happened once per
+occurrence and was charged before retention. That now-superseded strategy
+traded reduced repeated work against a larger peak because prepared frames
+and output coexisted. The 2026-11-23 matched-grammar comparison below the same
+experiment selects one bounded temporary per occurrence/pass. Neither a frame budget nor the
 logical object/owned-byte charges promise a process-RSS bound. Header inspection
 does not allocate bodies or certify their validity. No MDBX/index/projection
 throughput is claimed without an implemented store.
@@ -91,7 +100,7 @@ throughput is claimed without an implemented store.
   no access and performs no execution.
 - Performance is directional single-host, allocation-instrumented evidence;
   separate standalone preflight timing and allocator-reserved memory are not
-  measured. AMXR cache peak memory is a recorded trade-off, not hidden savings.
+  measured. The AMXR strategy comparison records both peak memory and cumulative allocation volume.
 - The old experimental bytes were never an integrated persisted contract;
   no migration reader/backward-compatibility promise is made for them.
 

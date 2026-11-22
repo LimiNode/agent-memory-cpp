@@ -237,3 +237,152 @@ Other compilers/allocators, CPU isolation, longer repeat campaigns and separate
 malloc-reserved/commit measurements remain follow-ups. No journal throughput,
 MDBX/zstd tuning, import behavior, production activation or storage maturity
 claim follows from this experiment.
+
+## 2026-11-23: same-envelope retained versus repeated AMXR
+
+This follow-up closes the earlier comparison's format confound. Both variants
+use the corrected envelope grammar, validation and resource budgets from
+integration commit `ce92f0892a0c182e2989daf007cae8c760a8a431`, whose parents are
+corrective HEAD `994b0d7c9ed4534a08586c3dd30c8cb0165e7b80` and integrated main
+`aea7d89f657c04b7b6388353530d9418a6a6ad81`. The retained source is that commit;
+the repeated source is an isolated working-tree patch, not falsely attributed
+to that commit. Concurrent ToolResult schema review is outside these two
+Phase-1 payload fixtures and is not qualified by this experiment.
+
+Question: should the codec retain every prepared AMXR until emission, or
+serialize one bounded AMXR temporary in each of the two passes? The expected
+trade-off was lower peak memory at the cost of repeated serialization and
+more cumulative allocation. No numerical performance threshold was
+preregistered. Selection below considers the observed costs and implementation
+state, not an invented production SLA.
+
+### Matched setup and correctness control
+
+The host/compiler/probe boundaries are those above: Windows 11, Xeon E5-2696 v3,
+GNU 15.2, strict C++17, Release `-O3 -DNDEBUG`, JSON/MDBX OFF. Both static
+libraries were built from separate detached worktrees at the same integration
+commit; both executables use the same runner source and static GNU runtimes.
+The sole production difference removes `ExternalFrames`, its vector/cursor,
+and its emission-reuse branch. `Writer::external` instead calls the unchanged
+bounded standalone AMXR serializer in preflight and emission, charging the same
+blob and object budgets in each pass. The exact total is still checked before
+reserving one output buffer, and the emitted size is checked afterward.
+
+Each strategy/case has three fresh process repetitions, 101 timed samples and
+five warmups per operation. All twelve processes ran sequentially; strategy
+order alternated by case/repetition. The parent was asked to defer heavy local
+builds during the campaign, but the host was not pinned, isolated or power-state
+controlled. Per-process p95/p99 variation remains visible below. Operations
+include field validation, complete encode including preflight, decode and
+framing-only inspection. Fixture generation, qualification and destruction are
+outside operation timing. Whole-process memory includes those phases and is
+not an operation-only allocation counter.
+
+An additive runner `--wire-output` option writes the qualification frame before
+timing. Four separate one-sample proof processes emitted both cases; Windows
+`fc /b` reported no differences for either pair. Exact wire controls:
+
+| Fixture | Both wire sizes | Both SHA-256 values |
+| --- | --- | --- |
+| `nested_amxr` | 16,924,594 | `d29064cf3e1c9f7b00871047e0b79faef580931b6de2d780bac097326a1d166c` |
+| `combined_phase1_max` | 21,186,997 | `af338b876678f8961b3502eba793ddbe27005606edc132d8afeec048474c67cb` |
+
+Both variants also passed `agent_memory_conversation_codec_test`, including
+the existing independent literals, malformed inputs, resource profiles and
+exact-size implementation-cap fixtures. These controls establish matched
+codec behavior for the exercised corpus, not exhaustive equivalence of every
+possible input or allocation-failure point.
+
+### Results
+
+The campaign completed **12 measured process outputs, 48 operation measurements
+and 4,848 timed samples**, all PASS. The four wire-proof processes are separate
+and do not inflate these counts. Raw allocation columns were constant across
+all 101 samples of every process, and source/library/runner/executable hashes
+were checked unchanged before and after the campaign.
+
+Ranges below are three per-process nearest-rank quantiles in milliseconds,
+not pooled quantiles or confidence intervals:
+
+| Fixture | Strategy | Encode median ms | p95 ms | p99 ms |
+| --- | --- | --- | --- | --- |
+| 258 maximal AMXR refs | Retained | 43.777-44.556 | 47.233-53.244 | 58.762-64.402 |
+| 258 maximal AMXR refs | Repeated | 49.774-51.069 | 52.826-53.267 | 54.442-57.441 |
+| Combined Phase 1 maxima | Retained | 45.853-47.032 | 48.108-49.780 | 50.911-55.353 |
+| Combined Phase 1 maxima | Repeated | 52.496-53.139 | 56.239-57.278 | 58.511-71.757 |
+
+| Fixture / strategy | Encode new calls | Cumulative requested bytes | Encode peak live requested bytes | Retained at return |
+| --- | --- | --- | --- | --- |
+| Nested / retained | 1,041 | 33,893,675 | 33,849,524 | 16,924,594 |
+| Nested / repeated | 1,289 | 50,769,485 | 16,990,131 | 16,924,594 |
+| Combined / retained | 1,555 | 38,181,203 | 38,111,927 | 21,186,997 |
+| Combined / repeated | 1,803 | 55,057,013 | 21,252,534 | 21,186,997 |
+
+| Fixture / strategy | Whole-process Windows peak working set bytes |
+| --- | --- |
+| Nested / retained | 92,819,456 |
+| Nested / repeated | 75,931,648-75,935,744 |
+| Combined / retained | 110,448,640-110,456,832 |
+| Combined / repeated | 93,593,600-93,597,696 |
+
+Repeated encoding has 516 nested AMXR serialization calls instead of 258.
+Its paired median times are approximately 13-16% higher, while encode peak
+live requested bytes fall approximately 50% for nested references and 44%
+for combined maxima. Cumulative allocation increases: peak and volume are
+different costs. Working-set values are absolute process observations, not
+subtracted per-operation allocation measurements. None measures native
+allocator-reserved memory.
+
+### Decision
+
+Prefer **repeated bounded serialization** for the embedded library default.
+The measured additional 6-7 ms per large encode is accepted in exchange for
+removing approximately 16.9 MB of simultaneous requested storage in these
+reference-heavy cases and deleting the aggregate cache/cursor invariant.
+Multiple concurrent encodes make the peak cost relevant; no concurrent
+throughput or multiplied RSS measurement is claimed. No policy framework,
+runtime strategy flag, standalone AMXR change or new mandatory dependency is
+needed. A future latency-critical caller can motivate a separately measured
+strategy only if a concrete requirement justifies the extra state.
+
+The retained measurements remain valid historical observations; the earlier
+old-format comparison is not silently replaced or presented as this control.
+This experiment qualifies the memory-strategy mechanism at its frozen source;
+final integration tests/CI must qualify the selected strategy together with
+any later schema corrections.
+
+### Source, binary and raw-output bindings
+
+| Artifact | Retained SHA-256 | Repeated SHA-256 |
+| --- | --- | --- |
+| `conversation_codec.cpp` | `35149a1e4ef2483d203079e67bf4b61c4dd84f8095d4329ca149c56769972873` | `9a61d543bdc4108242cca70896f6c740ecbb4b06ad719b4f9c9ec78fee27fc3d` |
+| `libagent_memory.a` | `f9cc41d560457a66a26df99b730eb94eef7a52c5f301f09e6c4c67c26f27e6ef` | `1d9136e112bbe1ce36866004eb0abcaf0a76a46b00356356d0b0892562bd003b` |
+| Runner executable | `b09c7946d7d37cedfe1b0fbed2e7b48e16a9e1e266b9fe871eefe6a9f6e2feb1` | `839a28d70711ef92297696c2d35da89922217a97cb89ce7962e8e3299059d717` |
+
+Both runner sources have SHA-256
+`04c48b5e67ab0cdc41b85832ce71bbcdfb45ec6d75b903c86842c65a3a46cf78`;
+the unchanged `Conversation.cpp` is
+`284b01e3c0afcb35607b894587c7f485da9f69c38999b6a2d25059c99f3282b2`;
+unchanged standalone `ExternalObjectRef.cpp` is
+`6ae6a8163e9e12e7590910f1840180712409bf02dfad7ce097cb2f9419012580`.
+
+Raw artifacts are under
+`E:/_repoz/agent-memory-cpp/.artifacts/amce-690-final-review/`:
+`same-wire-<strategy>-<case>-r<1..3>.jsonl`, `same-wire-summary.json`,
+`same-wire-bindings.json`, the four `.bin` wire controls and proof logs.
+The twelve-file manifest `same-wire-raw-sha256.json` has SHA-256
+`4490d4cd6582e9d4111d24905568b0f489dc85bf6054f1b31205b09553685c4f`.
+Generated raw outputs/binaries stay untracked. The exact minimal production
+patch is retained as `same-wire-repeated-amxr.patch`, SHA-256
+`774cd347f87eb8fe4c1df599af444928fcfe900e934e3dd4cbebeb644a0553ae`;
+`same-wire-runner.patch` contains the identical wire-output control addition.
+
+Reproduction builds use the corresponding detached worktree with CMake Ninja,
+the options above and `--target agent_memory agent_memory_conversation_codec_test`.
+Build outputs are respectively `.build/amce-690-memory-retained` and
+`.build/amce-690-memory-repeated`. Link each runner as above with
+`-static-libstdc++ -static-libgcc -static -lpsapi`, against its own library.
+For each strategy/case run the resulting executable with
+`--case nested_amxr --samples 101 --warmups 5` (or `combined_phase1_max`).
+The proof invocation additionally passes `--wire-output <artifact.bin>` and
+uses one sample/one warmup, followed by `fc /b` on the two outputs.

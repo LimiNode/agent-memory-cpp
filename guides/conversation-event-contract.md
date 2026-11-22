@@ -595,20 +595,37 @@ pair; they do not carry independently mutable duplicate header fields.
 | `4` | `1` | `Tombstoned: EntryRef affected` |
 | `5` | `1` | `Restored: EntryRef affected + EntryRef retained_state` |
 | `256` | `1` | `ToolCallObserved: B(call_id) + B(tool_name) + B(request_artifact_binding)` |
-| `257` | `1` | `ToolResultObserved: EntryRef call + B(call_id) + u8(outcome) + B(result_artifact_binding)` |
+| `257` | `1` | `ToolResultObserved: u8 target_tag + target_record call + B(call_id) + u8(outcome) + O(B(result_artifact_binding))` |
 | `258` | none | Reserved for a future Patch observation schema; retention-only today |
 | `259` | none | Reserved for a future Compaction observation schema; retention-only today |
 
 Tool call IDs are nonempty opaque bytes, not globally unique identities or
 execution tokens. A tool name is a nonempty UTF-8 observation, not a dispatch
-instruction. Request/result bindings are nonempty exact immutable artifact
-bindings. Both typed tool observations require `source` with retained
-observation evidence. A result's call reference is exact, in the same
-conversation, and a different Entry occurrence; field validation does not
-prove that the target exists, is a call, has matching call ID, or is accessible.
-Those are later admission checks. Outcome wire tags are `1 Unknown`,
+instruction. Request bindings and any present result bindings are nonempty
+exact immutable artifact bindings. Both typed tool observations require
+`source` with retained observation evidence, even when a result artifact is absent.
+A result uses the same target tags/records as a link: an exact local call
+reference or an unresolved target with mandatory retained evidence and optional
+external AMXR. A resolved reference is in the same conversation and names a
+different Entry occurrence. An unresolved target asserts neither a local
+identity nor an accessible same-conversation call. Later resolution must check
+the resolved policy again; a call ID alone never fabricates an EntryRef.
+Field validation does not prove target existence, type, matching call ID or
+accessibility. Those are later admission checks. Outcome wire tags are `1 Unknown`,
 `2 Succeeded`, `3 Failed`, `4 Cancelled`; all others reject. Timeout, missing
-result or an observed request must not infer an execution outcome.
+result or an observed request must not infer an execution outcome. Outcome and
+result-artifact presence are independent: even a reported success may have no
+retained body, while a cancellation may have a diagnostic artifact. Absence is
+not an empty binding and does not mean success, failure or cancellation.
+
+The 2026-11-23 pre-freeze review considered keeping the narrower typed schema
+and retaining incomplete imports as unsupported private payloads. That would
+require another import-only grammar and deny typed handling of observations
+already supported by the domain's unresolved-evidence contract. Reusing that
+contract plus an optional artifact is the smaller consistent model. The earlier
+`257/1` bytes at `994b0d7c` were pre-merge experiments, not a persisted contract;
+they are historical only. There is no second dialect or ambiguous fallback
+decoder for them. Envelope version and other payload schemas are unchanged.
 
 Every otherwise header-valid pair not listed as a supported schema above is
 unsupported and may be retained as opaque bytes; an unknown schema of a registered type is also
@@ -672,9 +689,11 @@ and reader use identical accounting, including empty values, extension bytes
 and opaque payloads. Performance/peak-allocation qualification reports actual
 measurements separately.
 
-Serialization validates, prepares bounded nested AMXR frames, and counts the
+Serialization validates and counts the
 exact complete size with overflow-safe arithmetic before allocating its output
-buffer. Retained preparation is incrementally charged, not an unbounded cache.
+buffer. Nested AMXR is serialized through one bounded temporary per occurrence
+in each pass, with identical accounting; no aggregate prepared-frame cache is
+retained. The matched-grammar experiment records the time/peak-memory decision.
 The output is reserved once; an actual/estimated size mismatch is an internal
 error. Decoding checks whole-frame bounds first, then each length against
 remaining bytes and applicable budgets before copying, and sequence counts

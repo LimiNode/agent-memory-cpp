@@ -34,13 +34,15 @@ struct ConversationToolCallObserved final {
 enum class ConversationToolOutcome { Unknown, Succeeded, Failed, Cancelled };
 
 /// \brief An observed result, including error, cancellation or an unknown outcome.
-/// \note The exact same-conversation call target must be a different occurrence. Matching
-/// call_id to its retained ToolCall requires later admission, not local field validation.
+/// \note A resolved call is an exact same-conversation, different occurrence; an unresolved
+/// call retains evidence without fabricating a local identity. Source evidence is always
+/// required. Artifact presence and outcome are independent; absence means no retained body.
+/// Matching call_id to a retained ToolCall requires later admission, not field validation.
 struct ConversationToolResultObserved final {
-    EntryRef call;
+    ConversationLinkTarget call;
     ByteBuffer call_id;
     ConversationToolOutcome outcome = ConversationToolOutcome::Unknown;
-    ArtifactBindingId result;
+    std::optional<ArtifactBindingId> result;
 };
 
 /// \brief Uninterpreted bytes for an unsupported type/schema pair; not canonical admission.

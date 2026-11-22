@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -349,12 +350,14 @@ std::size_t count_argument(const char* value) {
 int main(int argc, char** argv) {
     try {
         std::string name = "minimal";
+        std::string wire_path;
         std::size_t samples = 101;
         std::size_t warmups = 5;
         for(int i = 1; i < argc; i += 2) {
             expect(i + 1 < argc, "options require values");
             const std::string_view key = argv[i];
             if(key == "--case") name = argv[i + 1];
+            else if(key == "--wire-output") wire_path = argv[i + 1];
             else if(key == "--samples") samples = count_argument(argv[i + 1]);
             else if(key == "--warmups") warmups = count_argument(argv[i + 1]);
             else throw std::runtime_error("unknown option");
@@ -396,6 +399,11 @@ int main(int argc, char** argv) {
                 << ",\"peak_live_new_requested_bytes\":" << generation_counts.peak_requested << "}\n";
             expect(validate(fixture).empty(), "fixture is field-invalid");
             const auto encoded = encode(fixture);
+            if(!wire_path.empty()) {
+                std::ofstream wire(wire_path, std::ios::binary);
+                wire.write(reinterpret_cast<const char*>(encoded.data()), static_cast<std::streamsize>(encoded.size()));
+                expect(static_cast<bool>(wire), "wire output failed");
+            }
             if(name == "frame_32m" || name == "extended_frame_32m" || name == "implementation_caps_32m")
                 expect(encoded.size() == 33554432, "maximum fixture must reach exactly32MiB");
             {

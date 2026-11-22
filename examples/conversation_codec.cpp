@@ -41,8 +41,21 @@ int main() {
     const auto result_bytes = agent_memory::serialize_conversation_envelope(result);
     const auto result_read = agent_memory::deserialize_conversation_envelope({result_bytes.data(), result_bytes.size()});
     const auto* observation = std::get_if<agent_memory::ConversationToolResultObserved>(&result_read.payload);
-    if(!observation || observation->call != call.metadata.ref ||
+    if(!observation || !std::holds_alternative<agent_memory::EntryRef>(observation->call) ||
+       std::get<agent_memory::EntryRef>(observation->call) != call.metadata.ref ||
        observation->outcome != agent_memory::ConversationToolOutcome::Unknown) return 1;
+
+    // A partial import retains unresolved call evidence, not a fabricated local EntryRef.
+    result.payload = agent_memory::ConversationToolResultObserved{
+        agent_memory::UnresolvedConversationTarget{std::nullopt, entry.source->evidence},
+        {0x00, 0xff, 0x01}, agent_memory::ConversationToolOutcome::Cancelled, std::nullopt};
+    const auto partial_bytes = agent_memory::serialize_conversation_envelope(result);
+    const auto partial_read = agent_memory::deserialize_conversation_envelope(
+        {partial_bytes.data(), partial_bytes.size()});
+    const auto& partial = std::get<agent_memory::ConversationToolResultObserved>(partial_read.payload);
+    if(!std::holds_alternative<agent_memory::UnresolvedConversationTarget>(partial.call) ||
+       partial.result || partial.outcome != agent_memory::ConversationToolOutcome::Cancelled ||
+       agent_memory::serialize_conversation_envelope(partial_read) != partial_bytes) return 1;
 
     // No request is executed, and result presence does not imply successful execution.
     std::cout << "Conversation event codec preserved an evidence-qualified snapshot\n";

@@ -35,11 +35,6 @@ private:
     std::size_t m_objects = 0;
 };
 
-struct ExternalFrames final {
-    std::vector<std::string> frames;
-    std::size_t position = 0;
-};
-
 ByteView view(std::string_view text) {
     return {reinterpret_cast<const std::uint8_t*>(text.data()), text.size()};
 }
@@ -52,9 +47,9 @@ std::string_view text_view(ByteView bytes) {
 // The same local writer counts first, then writes to one exactly reserved buffer.
 class Writer final {
 public:
-    Writer(const ConversationCodecLimits& limits, Budget& budget, ExternalFrames& external,
+    Writer(const ConversationCodecLimits& limits, Budget& budget,
         ByteBuffer* output = nullptr) : fields(limits.fields), m_limits(limits), m_budget(budget),
-        m_external(external), m_output(output) {}
+        m_output(output) {}
     const ConversationFieldLimits& fields;
     std::size_t size() const noexcept { return m_size; }
     void integer(std::uint64_t value, unsigned width) {
@@ -83,14 +78,9 @@ public:
     }
     void opaque(ByteView bytes) { m_budget.charge(bytes.size, 0); raw(bytes); }
     void external(const ExternalObjectRef& ref) {
-        if(m_output) {
-            blob(m_external.frames.at(m_external.position++), kMaxExternalObjectRefBytes);
-        } else {
-            auto bytes = serialize_external_object_ref(ref);
-            // Charge before retaining preparation; rejected events cannot accumulate an oversized cache.
-            blob(bytes, kMaxExternalObjectRefBytes);
-            m_external.frames.push_back(std::move(bytes));
-        }
+        // One bounded AMXR temporary at a time in both preflight and emission.
+        const auto bytes = serialize_external_object_ref(ref);
+        blob(bytes, kMaxExternalObjectRefBytes);
     }
     void presence(bool present) { integer(present ? 1 : 0, 1); }
 private:
@@ -100,7 +90,6 @@ private:
     }
     const ConversationCodecLimits& m_limits;
     Budget& m_budget;
-    ExternalFrames& m_external;
     ByteBuffer* m_output;
     std::size_t m_size = 0;
 };
@@ -306,6 +295,26 @@ ConversationPayload read_legacy_payload(Reader& in, std::uint32_t type) {
     }
 }
 
+void write_target(Writer& out, const ConversationLinkTarget& target) {
+    if(const auto* resolved = std::get_if<EntryRef>(&target)) {
+        out.integer(1, 1); write_ref(out, *resolved);
+    } else if(const auto* unresolved = std::get_if<UnresolvedConversationTarget>(&target)) {
+        out.integer(2, 1); write_external(out, unresolved->external); write_evidence(out, unresolved->evidence);
+    } else reject();
+}
+
+ConversationLinkTarget read_target(Reader& in) {
+    switch(in.integer(1)) {
+    case 1: return read_ref(in);
+    case 2: {
+        auto external = read_external(in);
+        auto evidence = read_evidence(in);
+        return UnresolvedConversationTarget{std::move(external), std::move(evidence)};
+    }
+    default: reject();
+    }
+}
+
 void write_links(Writer& out, const std::vector<ConversationLink>& links) {
     out.count(links.size(), out.fields.max_links);
     for(const auto& link : links) {
@@ -317,11 +326,7 @@ void write_links(Writer& out, const std::vector<ConversationLink>& links) {
         case ConversationLinkKind::Quote: out.integer(5, 1); break;
         default: reject();
         }
-        if(const auto* target = std::get_if<EntryRef>(&link.target)) {
-            out.integer(1, 1); write_ref(out, *target);
-        } else if(const auto* unresolved = std::get_if<UnresolvedConversationTarget>(&link.target)) {
-            out.integer(2, 1); write_external(out, unresolved->external); write_evidence(out, unresolved->evidence);
-        } else reject();
+        write_target(out, link.target);
     }
 }
 
@@ -340,16 +345,7 @@ std::vector<ConversationLink> read_links(Reader& in) {
         case 5: link.kind = ConversationLinkKind::Quote; break;
         default: reject();
         }
-        switch(in.integer(1)) {
-        case 1: link.target = read_ref(in); break;
-        case 2: {
-            auto external = read_external(in);
-            auto evidence = read_evidence(in);
-            link.target = UnresolvedConversationTarget{std::move(external), std::move(evidence)};
-            break;
-        }
-        default: reject();
-        }
+        link.target = read_target(in);
         links.push_back(std::move(link));
     }
     return links;
@@ -469,7 +465,7 @@ void write_payload(Writer& out, const ConversationEnvelopePayload& payload) {
         out.blob(call->tool_name, out.fields.max_recipe_bytes);
         out.blob(call->request.value(), out.fields.max_binding_bytes);
     } else if(const auto* result = std::get_if<ConversationToolResultObserved>(&payload)) {
-        write_ref(out, result->call);
+        write_target(out, result->call);
         out.blob(ByteView{result->call_id.data(), result->call_id.size()}, out.fields.max_binding_bytes);
         switch(result->outcome) {
         case ConversationToolOutcome::Unknown: out.integer(1, 1); break;
@@ -478,7 +474,8 @@ void write_payload(Writer& out, const ConversationEnvelopePayload& payload) {
         case ConversationToolOutcome::Cancelled: out.integer(4, 1); break;
         default: reject(ConversationCodecCode::InvalidValue);
         }
-        out.blob(result->result.value(), out.fields.max_binding_bytes);
+        out.presence(result->result.has_value());
+        if(result->result) out.blob(result->result->value(), out.fields.max_binding_bytes);
     } else if(const auto* opaque = std::get_if<ConversationOpaquePayload>(&payload)) {
         out.opaque(ByteView{opaque->bytes.data(), opaque->bytes.size()});
     } else reject(ConversationCodecCode::InvalidValue);
@@ -494,7 +491,7 @@ ConversationEnvelopePayload read_payload(Reader& in, const ConversationFrameHead
         auto request = in.blob(in.fields.max_binding_bytes);
         return ConversationToolCallObserved{std::move(id), std::move(name), ArtifactBindingId{std::move(request)}};
     }
-    auto call = read_ref(in);
+    auto call = read_target(in);
     auto id = in.binary(in.fields.max_binding_bytes);
     ConversationToolOutcome outcome;
     switch(in.integer(1)) {
@@ -504,8 +501,9 @@ ConversationEnvelopePayload read_payload(Reader& in, const ConversationFrameHead
     case 4: outcome = ConversationToolOutcome::Cancelled; break;
     default: reject();
     }
-    auto result = in.blob(in.fields.max_binding_bytes);
-    return ConversationToolResultObserved{std::move(call), std::move(id), outcome, ArtifactBindingId{std::move(result)}};
+    std::optional<ArtifactBindingId> result;
+    if(in.presence()) result = ArtifactBindingId{in.blob(in.fields.max_binding_bytes)};
+    return ConversationToolResultObserved{std::move(call), std::move(id), outcome, std::move(result)};
 }
 
 void check_issues(const std::vector<ConversationValidationIssue>& issues, bool decoding) {
@@ -519,11 +517,10 @@ template<typename Metadata, typename Payload>
 ByteBuffer serialize_value(const Metadata& metadata, const Payload& payload,
     const std::vector<ConversationMetadataExtension>& extensions, const ConversationCodecLimits& limits) {
     const auto identity = payload_identity(payload);
-    ExternalFrames prepared;
     Budget preflight_budget(limits);
-    Writer metadata_counter(limits, preflight_budget, prepared);
+    Writer metadata_counter(limits, preflight_budget);
     write_metadata(metadata_counter, metadata, extensions, limits);
-    Writer payload_counter(limits, preflight_budget, prepared);
+    Writer payload_counter(limits, preflight_budget);
     write_payload(payload_counter, payload);
     const auto body_bytes = metadata_counter.size() + payload_counter.size();
     if(limits.max_frame_bytes < kConversationEnvelopeHeaderBytes ||
@@ -533,13 +530,13 @@ ByteBuffer serialize_value(const Metadata& metadata, const Payload& payload,
     ByteBuffer bytes;
     bytes.reserve(total_bytes);
     Budget output_budget(limits);
-    Writer out(limits, output_budget, prepared, &bytes);
+    Writer out(limits, output_budget, &bytes);
     out.raw("AMCE"); out.integer(1, 2); out.integer(0, 2);
     out.integer(total_bytes, 4); out.integer(metadata_counter.size(), 4);
     out.integer(identity.first, 4); out.integer(identity.second, 2); out.integer(payload_counter.size(), 4);
     write_metadata(out, metadata, extensions, limits);
     write_payload(out, payload);
-    if(bytes.size() != total_bytes || prepared.position != prepared.frames.size())
+    if(bytes.size() != total_bytes)
         throw std::logic_error("conversation envelope size preflight mismatch");
     return bytes;
 }

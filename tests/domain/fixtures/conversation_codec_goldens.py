@@ -111,12 +111,21 @@ def vectors():
         "tool_call": record(payload_type=256,
             payload=blob(b"\0\xffc") + blob("shell") + blob(b"request@1"), binding=source()),
         "tool_result": record(payload_type=257,
-            payload=reference(entry=1, revision=7) + blob(b"\0\xffc")
-                    + b"\3" + blob(b"result@1"), binding=source()),
+            payload=b"\1" + reference(entry=1, revision=7) + blob(b"\0\xffc")
+                    + b"\3" + optional(blob(b"result@1")), binding=source()),
         "unknown_type": record(payload_type=70000, schema=5, payload=b"\0\xffopaque"),
         "unknown_schema": record(payload_type=1, schema=2, payload=b"\xff\0next"),
         "extensions": record(extensions=((7, 0, b"\0\xff"), (9, 0, b""))),
         "critical_extension": record(extensions=((7, 1, b"\0\xff"),)),
+        "tool_result_unresolved_cancelled": record(payload_type=257,
+            payload=b"\2\0" + evidence(b"orphan@1", "record/3")
+                    + blob(b"\0\xffc") + b"\4\0", binding=source()),
+        "tool_result_unresolved_external": record(payload_type=257,
+            payload=b"\2" + optional(blob(external())) + evidence(b"orphan@1", "record/3")
+                    + blob(b"\0\xffc") + b"\1" + optional(blob(b"\0\xff")), binding=source()),
+        "tool_result_resolved_no_body": record(payload_type=257,
+            payload=b"\1" + reference(entry=1, revision=7) + blob(b"\0\xffc")
+                    + b"\2\0", binding=source()),
     }
 
 

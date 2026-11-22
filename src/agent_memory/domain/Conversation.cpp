@@ -83,6 +83,20 @@ public:
         }
     }
 
+    void target(const std::string& field, const ConversationLinkTarget& value,
+        const EntryRef& self, bool same_conversation) {
+        if(const auto* resolved = std::get_if<EntryRef>(&value)) {
+            target(field, *resolved, self, same_conversation);
+        } else if(const auto* unresolved = std::get_if<UnresolvedConversationTarget>(&value)) {
+            evidence(field + ".evidence", unresolved->evidence);
+            if(unresolved->external && !is_valid_external_object_ref(*unresolved->external)) {
+                issue(field + ".external", ConversationValidationCode::InvalidReference);
+            }
+        } else {
+            issue(field, ConversationValidationCode::InvalidTarget);
+        }
+    }
+
     void source(const ConversationSourceBinding& value) {
         bounded_bytes("source.revision", value.revision.value(), m_limits.max_binding_bytes);
         text("source.adapter_recipe", value.adapter_recipe, m_limits.max_recipe_bytes, true);
@@ -183,16 +197,7 @@ public:
             default:
                 issue(field + ".kind", ConversationValidationCode::InvalidEnum);
             }
-            if(const auto* resolved = std::get_if<EntryRef>(&link.target)) {
-                target(field + ".target", *resolved, value.ref, same_conversation);
-            } else if(const auto* unresolved = std::get_if<UnresolvedConversationTarget>(&link.target)) {
-                evidence(field + ".target.evidence", unresolved->evidence);
-                if(unresolved->external && !is_valid_external_object_ref(*unresolved->external)) {
-                    issue(field + ".target.external", ConversationValidationCode::InvalidReference);
-                }
-            } else {
-                issue(field + ".target", ConversationValidationCode::InvalidTarget);
-            }
+            target(field + ".target", link.target, value.ref, same_conversation);
         }
     }
 
@@ -295,7 +300,9 @@ std::vector<ConversationValidationIssue> validate_conversation_envelope(
         if(!metadata.source) validator.issue("source", ConversationValidationCode::InvalidEvidence);
         validator.target("payload.call", result->call, metadata.ref, true);
         validator.call_id(result->call_id);
-        validator.bounded_bytes("payload.result", result->result.value(), limits.max_binding_bytes);
+        if(result->result) {
+            validator.bounded_bytes("payload.result", result->result->value(), limits.max_binding_bytes);
+        }
         switch(result->outcome) {
         case ConversationToolOutcome::Unknown:
         case ConversationToolOutcome::Succeeded:
