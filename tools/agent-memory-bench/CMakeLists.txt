@@ -1144,3 +1144,63 @@ target_link_libraries(agent-memory-exact-lexical-topk-decision
         agent_memory::agent_memory
         agent_memory::json
 )
+
+if(AGENT_MEMORY_ENABLE_MDBX)
+    add_executable(agent-memory-persistent-lexical-candidate-qualification
+        persistent_lexical_candidate_qualification.cpp)
+    target_link_libraries(agent-memory-persistent-lexical-candidate-qualification
+        PRIVATE agent_memory::agent_memory agent_memory::json)
+    set(_candidate_source_list "${PROJECT_SOURCE_DIR}/tools/lexical-research/persistent_candidate_sources.txt")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_candidate_source_list}")
+    file(STRINGS "${_candidate_source_list}" _candidate_relative_sources)
+    execute_process(COMMAND git -C "${PROJECT_SOURCE_DIR}" ls-files -- src cmake
+        OUTPUT_VARIABLE _candidate_library_sources OUTPUT_STRIP_TRAILING_WHITESPACE
+        COMMAND_ERROR_IS_FATAL ANY)
+    string(REPLACE "\n" ";" _candidate_library_sources "${_candidate_library_sources}")
+    list(APPEND _candidate_relative_sources ${_candidate_library_sources})
+    list(REMOVE_DUPLICATES _candidate_relative_sources)
+    list(SORT _candidate_relative_sources)
+    set(_candidate_sources)
+    foreach(_candidate_source IN LISTS _candidate_relative_sources)
+        list(APPEND _candidate_sources "${PROJECT_SOURCE_DIR}/${_candidate_source}")
+    endforeach()
+    agent_memory_set_evaluator_source_manifest(
+        agent-memory-persistent-lexical-candidate-qualification ${_candidate_sources})
+    agent_memory_set_evaluator_build_environment(
+        agent-memory-persistent-lexical-candidate-qualification)
+    set(AGENT_MEMORY_CANDIDATE_EXPECTED_HEAD
+        "${agent_memory_lexical_topk_source_commit}" CACHE STRING
+        "Expected PR HEAD for persistent candidate qualification")
+    file(REAL_PATH "${PROJECT_SOURCE_DIR}/external/mdbx-containers" _candidate_pinned_containers)
+    get_target_property(_candidate_actual_containers mdbx_containers::mdbx_containers SOURCE_DIR)
+    file(REAL_PATH "${_candidate_actual_containers}" _candidate_actual_containers)
+    file(REAL_PATH "${PROJECT_SOURCE_DIR}/external/libmdbx" _candidate_pinned_mdbx)
+    set(_candidate_actual_mdbx "UNAVAILABLE")
+    if(TARGET mdbx-static)
+        get_target_property(_candidate_actual_mdbx mdbx-static SOURCE_DIR)
+        file(REAL_PATH "${_candidate_actual_mdbx}" _candidate_actual_mdbx)
+    endif()
+    foreach(_candidate_dependency IN ITEMS libmdbx mdbx-containers)
+        set(_candidate_dependency_revision "UNQUALIFIED_DEPENDENCY_MODE")
+        # Do not label SYSTEM/AUTO or an alternate checkout with external/'s SHA.
+        # The validator rejects these unqualified modes; other benchmark targets
+        # remain buildable with their existing dependency choices.
+        if(AGENT_MEMORY_MDBX_DEPS_MODE STREQUAL "BUNDLED"
+           AND _candidate_actual_containers STREQUAL _candidate_pinned_containers
+           AND _candidate_actual_mdbx STREQUAL _candidate_pinned_mdbx)
+            execute_process(COMMAND git -C "${PROJECT_SOURCE_DIR}/external/${_candidate_dependency}" rev-parse HEAD
+                OUTPUT_VARIABLE _candidate_dependency_revision OUTPUT_STRIP_TRAILING_WHITESPACE
+                COMMAND_ERROR_IS_FATAL ANY)
+        endif()
+        if(_candidate_dependency STREQUAL "libmdbx")
+            set(_candidate_libmdbx_revision "${_candidate_dependency_revision}")
+        else()
+            set(_candidate_containers_revision "${_candidate_dependency_revision}")
+        endif()
+    endforeach()
+    target_compile_definitions(agent-memory-persistent-lexical-candidate-qualification PRIVATE
+        AGENT_MEMORY_CANDIDATE_SOURCE_COMMIT="${agent_memory_lexical_topk_source_commit}"
+        AGENT_MEMORY_CANDIDATE_EXPECTED_HEAD="${AGENT_MEMORY_CANDIDATE_EXPECTED_HEAD}"
+        AGENT_MEMORY_CANDIDATE_LIBMDBX_REVISION="${_candidate_libmdbx_revision}"
+        AGENT_MEMORY_CANDIDATE_MDBX_CONTAINERS_REVISION="${_candidate_containers_revision}")
+endif()
