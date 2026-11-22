@@ -2,6 +2,13 @@
 
 **Status:** Normative design contract; implementation is not complete.
 
+The central [identity policy](identity-policy.md) separates logical/source,
+external, content and physical identities and owns the standalone AMXR codec.
+This guide retains document/block/entry scope, no-rebinding, revision and edit
+semantics. A document keeps its logical identity over ordinary edits; an exact
+historical read additionally selects its revision. New external references do
+not change C1/flat bytes, public IDs, numeric mapping or publication rules.
+
 This guide defines the durable content substrate used by three different domain
 forms:
 
