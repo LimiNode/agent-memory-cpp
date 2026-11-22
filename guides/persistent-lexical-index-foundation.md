@@ -399,6 +399,41 @@ Golden parity must compare the persistent reader with the dependency-free
 scores within a declared tolerance, tie ordering, stale filtering, and empty
 or budget-exceeded outcomes—not only wall-clock time.
 
+## Opt-in flat BM25 candidate window
+
+The bounded flat candidate adapter retains its legacy TF accumulation mode by
+default. An explicit `PersistentLexicalScoring::Bm25` option uses the same
+`bm25_term_score` primitive as `ExactLexicalIndex`, with scope-local active
+unit count, total token count, per-unit length and per-token DF from one lexical
+snapshot. Repeated query terms contribute repeatedly, as in the exact oracle;
+only positive finite scores are candidates. Equal scores sort by increasing
+`KnowledgeUnitId` (there is one active revision per unit).
+
+The primitive uses the existing float BM25 convention: positive Robertson IDF
+`log(1 + (N - df + 0.5) / (df + 0.5))`, `k1=1.5`, `b=0.75` unless explicitly
+overridden. Invalid options or impossible count relationships are rejected;
+non-finite arithmetic is an error, not a sortable score. Numeric goldens use
+absolute tolerance `1e-6`; comparisons with the exact index use `1e-5`.
+
+The added scoring members retain source compatibility with existing
+three-member `PersistentLexicalCandidateOptions` aggregate initializers: omitted
+members select legacy TF. They change the public C++ object layout, however;
+this is not a binary drop-in replacement. Rebuild the static library and all
+consumer translation units together rather than mixing old option objects
+with new library code. No persisted layout or DBI changes are involved.
+
+`generate()` preserves the legacy pre-admission `query.limit` cap.
+`generate_window()` instead retains the complete bounded candidate window,
+up to `max_candidates`, for canonical admission before a caller selects final
+top-K. A candidate/posting budget overflow remains `Truncated`; it is never
+an exact top-K certificate. Unsupported queries are rejected before snapshot
+reconstruction. Neither entry point supplies authorization, metadata-filter
+authority, source-byte hydration or a shared lexical/canonical snapshot.
+
+This is an implemented candidate-source increment, not completion of production
+lexical retrieval. The remaining integration gates and owner interface requests
+are recorded in [Search integration](search-integration.md).
+
 ## Implementation sequence
 
 1. Freeze dependency-free identity/value contracts and a read-frontier test

@@ -189,3 +189,112 @@ Authorization callbacks run inside the query's read transaction and must not
 reenter this context or perform canonical writes. The store and test hook are
 not concurrently mutable. Independent queries use their own thread-owned read
 transactions. Generation snapshots own no live MDBX transaction.
+
+## Opt-in Exact Semantic integration slice (2026-11-22)
+
+This slice reuses `MdbxExactIndexGenerationStore` directly. It adds no vector
+DBI, generation manager, router, canonical contract or automatic embedding
+backend. `ExactVectorIndex`/`IVectorIndex` still use `ChunkId`; the durable API
+uses explicit canonical `KnowledgeUnitId`. A vector position is not either ID,
+and the integration performs no numeric conversion between them.
+
+The host first publishes canonical units, Original projections and manifests
+using the existing ingestion/storage APIs. It supplies FP32 values for a fixed
+model/recipe descriptor, then uses the existing bounded lifecycle:
+
+```cpp
+store.begin(generation, descriptor, inputs.size());
+store.append(generation, inputs); // At most 32 inputs in one batch.
+store.complete(generation);
+store.activate(generation, descriptor);
+const auto pinned = store.pin(descriptor);
+const auto hits = store.query(pinned, descriptor.scope_id, query_embedding, k,
+    authorize); // A required application-owned predicate, before scoring/top-K.
+```
+
+For larger generations the caller divides inputs into bounded batches. The
+source-bound installed consumer is the executable usage example; deterministic
+FP32 fixture values exercise retrieval mechanics, not natural-language
+embedding quality. Model/recipe labels are host assertions, not attestations
+that an external model generated those values.
+
+The numerical contract is FP32 inputs with scalar double accumulation. Dot
+product and negative squared L2 are distinct descriptor metrics; neither is
+silently treated as cosine similarity. Zero vectors are valid, non-finite
+input coordinates are `InvalidInput`, and non-finite retained coordinates are
+`Corrupt`. Missing retained rows after declared completion are also `Corrupt`.
+Equal scores use ascending canonical unit ID. A zero limit still
+validates policy, descriptor/scope and vector shape, but does not scan rows or
+invoke authorization.
+
+The existing row codec decodes canonical bindings up to 65536 bytes. Append
+must reject a larger encoded binding before commit instead of persisting an
+unreadable row. This derived-row limit includes source/projection provenance;
+it does not impose a new URI or canonical-storage schema. Failure of a later
+input in a batch must leave neither earlier rows nor progress published.
+No persisted layout or migration is introduced by these checks.
+
+Pinning freezes generation data, not canonical truth or external policy. Each
+query reads current KU/projection/manifest evidence within its own MDBX
+transaction; stale or erased evidence is excluded before top-K. A changed
+host predicate applies to the next call. That callback does not make an
+external policy store transactionally consistent with MDBX. Results are
+admitted envelopes, not verified source-byte hydration.
+
+Current-to-current reopen/interruption evidence is separate from the historical
+OLD-to-NEW replay above. It cannot prove old-layout migration, model quality,
+production R4 activation, a stable p99, or capacity. Metadata/access/shared
+lexical-frontier interface requests remain with the canonical/domain owner;
+this exact slice does not implement competing authorities or interrupt
+Identity/AMXR work. Release/tag, migration, default activation and merge remain
+outside this slice's authority.
+
+### Executed slice evidence
+
+Draft PR #687 uses `main@acd5ad5545386b3feeaa79f8a587855b60801b4d`.
+The clean executed source is `392adb8c361302470188333896164a2c192bf74e`;
+later documentation commits are not substituted for that execution. GNU 15.2
+and MSVC 19.44 Release each passed eight focused CTests: exact generation,
+exact vector index, vector contracts/similarity, canonical KU/manifest stores,
+Raw Markdown ingestion and public-header self-sufficiency. Nineteen new typed
+rejection controls cover non-finite inputs/retained values, missing rows and
+oversized later-input rollback. Relinking the final GNU test with the unchanged
+pre-fix generation implementation failed as expected: it accepted an oversized
+binding. MDBX OFF GNU public-header CTest and the basic example also passed.
+
+Both GNU and MSVC installed C++17 consumers linked only installed packages and
+executed three separate processes, with exit codes `0 / 24 / 0` and all twelve
+receipt gates passing. Their fixed three-row, two-coordinate fixtures have
+independent analytic goldens: dot `{6,2,2}`, negative squared L2 `{-1,-5,-5}`.
+The test-only MDBX provider resolves its native archive filename; MSVC uses
+`mdbx.lib`, not a manually renamed GNU filename. Public API and DBI layout are
+unchanged. The production implementation and consumer received separate
+read-only source reviews with no blocking findings; those reviews are not
+independent runtime replays.
+
+Build `packaging/consumers/mdbx-installed` with `find_package` prefixes for the
+installed library, `mdbx_containers` and MDBX. From a fresh output directory:
+
+```text
+agent_memory_exact_semantic_installed_consumer create current.mdbx cas create.json
+agent_memory_exact_semantic_installed_consumer interrupt current.mdbx cas interrupt.json
+agent_memory_exact_semantic_installed_consumer verify current.mdbx cas receipt.json
+```
+
+The middle command must exit **24**, not zero. Packaging runs this exact
+sequence and retains `exact-semantic-installed-consumer`, including source,
+compiler, dependencies and receipt/executable/installed-archive hashes.
+Local raw receipts and metadata remain under
+`.build/search-exact-semantic-installed-{gnu,msvc}/evidence-392adb8c/`.
+The `verify.json` SHA-256 values are
+`9dcade3743def5e4fa814fb40617de80651843039a905b417d8f51c14007ae48`
+(GNU) and `e122b17eb4bb52bc7357085a66bf901185ca0b9b76e872b1c3ad9fc92db149e5`
+(MSVC).
+
+Each receipt includes seven repeated query-lifetime samples per metric,
+including canonical admission and response destruction but excluding pinning
+and embedding generation. They come from one query vector per metric in one
+verification process after correctness calls, not seven independent queries.
+The shared Windows/Xeon E5-2696 v3 host was uncontrolled; our builds stopped
+before sequential consumer executions. These are diagnostic observations,
+not comparative performance, semantic quality, p99, RSS or capacity evidence.

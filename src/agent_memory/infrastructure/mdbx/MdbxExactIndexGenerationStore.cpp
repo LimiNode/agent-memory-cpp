@@ -18,6 +18,7 @@
 namespace agent_memory {
 namespace {
 using Failure = IndexGenerationFailure;
+constexpr std::size_t max_binding_bytes = 65536;
 [[noreturn]] void fail(Failure code, const char* message) { throw IndexGenerationError(code, message); }
 
 // This small fixed-width codec is private to schema v1. Every variable field
@@ -40,7 +41,7 @@ public:
             result |= std::uint64_t(static_cast<unsigned char>(m_value[m_position++])) << (8U * i);
         return result;
     }
-    std::string field(std::size_t maximum = 65536) {
+    std::string field(std::size_t maximum = max_binding_bytes) {
         const auto size = number();
         if(size > maximum || size > m_value.size() - m_position)
             fail(Failure::Corrupt, "invalid generation field length");
@@ -54,7 +55,9 @@ public:
         std::uint32_t bits = 0;
         for(unsigned i = 0; i < 4; ++i)
             bits |= std::uint32_t(static_cast<unsigned char>(m_value[m_position++])) << (8U * i);
-        float result = 0; std::memcpy(&result, &bits, 4); return result;
+        float result = 0; std::memcpy(&result, &bits, 4);
+        if(!std::isfinite(result)) fail(Failure::Corrupt, "nonfinite persisted exact vector");
+        return result;
     }
 private:
     const std::string& m_value;
@@ -104,6 +107,8 @@ struct Row final {
 };
 std::string encode_row(const Row& row) {
     static_assert(sizeof(float) == 4 && std::numeric_limits<float>::is_iec559, "IEEE FP32 required");
+    if(row.binding.size() > max_binding_bytes)
+        fail(Failure::InvalidInput, "oversized exact canonical binding");
     std::string out;
     number(out, row.input.unit_id.value()); number(out, row.input.unit_revision);
     field(out, row.binding); number(out, row.input.values.size());
@@ -125,7 +130,7 @@ Row decode_row(const std::string& value, const ExactIndexSpaceDescriptor& d) {
     r.end();
     if(row.input.unit_id.empty() || row.input.unit_revision == 0 || row.binding.empty())
         fail(Failure::Corrupt, "incomplete canonical candidate identity");
-    validate_vector(row.input.values, d); return row;
+    return row;
 }
 
 // Canonical values come from existing authorities. The binding records exact
@@ -262,7 +267,9 @@ public:
         rows_hash.update(encoded);
         std::set<KnowledgeUnitId> seen;
         for(std::size_t i = 0; i < count.first; ++i) {
-            const auto payload = required(key(generation, 'r', i), txn);
+            const auto retained = table.find(key(generation, 'r', i), txn);
+            if(!retained) fail(Failure::Corrupt, "missing retained exact vector row");
+            const auto& payload = *retained;
             auto row = decode_row(payload, data->descriptor);
             if(!seen.insert(row.input.unit_id).second) fail(Failure::Corrupt, "duplicate candidate identity");
             rows_hash.update(payload); frontier.update(row.binding);

@@ -1,7 +1,6 @@
 #include "ExactLexicalIndex.hpp"
 
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <map>
@@ -290,6 +289,9 @@ namespace agent_memory {
         float score = 0.0F;
         for(const auto& term : query.terms) {
             score += score_term(record, term, bm25);
+            if(!std::isfinite(score)) {
+                throw std::overflow_error("BM25 document score overflow");
+            }
         }
         return score;
     }
@@ -305,41 +307,17 @@ namespace agent_memory {
         }
 
         const auto* entry = find_token_entry(term);
-        if(entry == nullptr || entry->document_frequency == 0 || m_records.empty()) {
-            return 0.0F;
+        if(entry == nullptr) {
+            throw std::invalid_argument("missing lexical term statistics");
         }
-
-        const auto document_count = static_cast<float>(m_records.size());
-        const auto document_frequency = static_cast<float>(entry->document_frequency);
-        const auto idf = std::log(
-            1.0F + ((document_count - document_frequency + 0.5F) /
-                (document_frequency + 0.5F))
+        return bm25_term_score(
+            positions_it->second.size(),
+            entry->document_frequency,
+            record.record.tokens.size(),
+            m_records.size(),
+            m_total_token_count,
+            options
         );
-
-        const auto term_frequency = static_cast<float>(positions_it->second.size());
-        const auto document_length = static_cast<float>(record.record.tokens.size());
-        const auto average_length = average_document_length();
-        const auto length_ratio = average_length > 0.0F
-            ? document_length / average_length
-            : 1.0F;
-        const auto denominator = term_frequency +
-            options.k1 * (1.0F - options.b + options.b * length_ratio);
-
-        // Denominator is mathematically >= tf >= 1 given k1 > 0,
-        // b in [0, 1] and length_ratio >= 0 (validated by is_valid(Bm25Options)
-        // and the avgdl > 0 fallback). The guard is dead; assert it instead.
-        assert(denominator > 0.0F);
-
-        return idf * ((term_frequency * (options.k1 + 1.0F)) / denominator);
-    }
-
-    float ExactLexicalIndex::average_document_length() const noexcept {
-        if(m_records.empty()) {
-            return 0.0F;
-        }
-
-        return static_cast<float>(m_total_token_count) /
-            static_cast<float>(m_records.size());
     }
 
     void ExactLexicalIndex::remove_record_stats(const StoredRecord& record) {

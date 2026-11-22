@@ -101,6 +101,8 @@ public:
     void begin(const std::string& generation, const ExactIndexSpaceDescriptor& descriptor,
                std::size_t expected_count);
     /// Appends 1..32 unique units; binds current canonical evidence in one txn.
+    /// The encoded canonical binding is bounded at 65536 bytes. Oversized
+    /// bindings or non-finite input values fail before batch commit.
     void append(const std::string& generation, const std::vector<ExactIndexVectorInput>& inputs);
     /// Validates exact cardinality/bindings and persists an immutable manifest.
     void complete(const std::string& generation);
