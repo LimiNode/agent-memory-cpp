@@ -1108,6 +1108,12 @@ struct EventPayload {
 
 ### 5.5. ConversationEpisodePayload
 
+The [Conversation/Event contract proposal](conversation-event-contract.md)
+separates canonical source events from this retrieval payload. Future episode
+adapters must bind exact source entries/revisions and derivation provenance;
+the proposal does not implement an event store or alter this payload's fields,
+capabilities or DBIs.
+
 Payload для `KnowledgeUnitKind::ConversationEpisode`. Используется в SpeakerAwareChatStack и FullResearch stack.
 
 ```cpp

@@ -12,6 +12,11 @@ and exact AMXR v1 grammar. It supersedes this ADR's initial codec candidate,
 not its still-proposed conversation/event model. The companion identity value
 implementation does not implement ConversationId, EntryId, actors or a store.
 
+The separate [Conversation/Event contract proposal](../conversation-event-contract.md)
+develops the next value surface, event-versus-revision baseline, bounded reads
+and staged implementation gates. It remains Draft / contract-only; neither
+this ADR nor that proposal authorizes runtime or ConversationStore work.
+
 ## Context and owner
 
 [Canonical content storage, section 2.2](../canonical-content-storage-roadmap.md)

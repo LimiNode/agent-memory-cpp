@@ -201,6 +201,11 @@ profiles of this event model. An individual message is normally a canonical
 small record in the domain store. Retrieval episodes or thread windows are
 versioned derived segment sets.
 
+The [Conversation/Event contract proposal](conversation-event-contract.md)
+refines this future domain's entities, exact event/revision references, typed
+payloads and bounded reads. It is Draft / not implemented and does not change
+this guide's document edit/publication rules or existing C1/flat formats.
+
 For coding sessions, file content must carry input/output revision identities
 and patch provenance. Short hash anchors may help a UI or tool protocol detect a
 stale edit, but the durable record keeps the full file/revision digest.
