@@ -100,6 +100,11 @@ add_executable(agent_memory_external_object_ref_test domain/external_object_ref_
 target_link_libraries(agent_memory_external_object_ref_test PRIVATE agent_memory::agent_memory)
 add_test(NAME agent_memory_external_object_ref_test COMMAND agent_memory_external_object_ref_test)
 
+add_executable(agent_memory_conversation_test domain/conversation_test.cpp)
+target_link_libraries(agent_memory_conversation_test PRIVATE agent_memory::agent_memory)
+add_test(NAME agent_memory_conversation_test COMMAND agent_memory_conversation_test)
+set_tests_properties(agent_memory_conversation_test PROPERTIES TIMEOUT 30)
+
 add_executable(agent_memory_canonical_content_test
     domain/canonical_content_test.cpp
 )

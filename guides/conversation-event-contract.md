@@ -1,6 +1,7 @@
 # Conversation/Event Model: proposed domain contract
 
-- Status: **Draft / proposal, no public C++ API or event store implemented**.
+- Status: **Draft: Phase 1 C++17 values/field validation implemented on the
+  dependent branch; event codec/store and Conversation Core remain Planned**.
 - Date: 2026-11-22. Scheduling: planned early opt-in Conversation Core;
   advanced conversation memory remains M2/M2+ under [milestones](milestones.md).
 - Baseline inspected: `main@acd5ad5545386b3feeaa79f8a587855b60801b4d`.
@@ -8,11 +9,11 @@
 - Owner: conversation/session domain; rationale:
   [conversation/event ADR](adr/2026-11-conversation-event-identity.md).
 
-This proposes the next contract after the Identity integration gate. It does
-not approve a runtime implementation, change legacy chat values, or add another
-identity codec. AMXR is implemented in the prerequisite stack; **the event
-model below is not**. A separate assignment and review must authorize each
-implementation slice. The event-versus-representation-revision baseline in
+This owns the next domain contract after the Identity integration gate. Phase 1
+implements only the value subset in section 4.1; the broader model below is
+still proposed. It does not change legacy chat values or add another identity
+codec. AMXR is implemented in the prerequisite stack. A separate assignment
+and review must authorize each later implementation slice. The event-versus-representation-revision baseline in
 section 2 is approved as the basis of Phase 1 domain values; that approval
 does not freeze an event codec, import/store schema or allocation protocol.
 
@@ -324,6 +325,108 @@ grammar here; codec/store review must settle its bounds and resolution rules.
 creation/change event or complete history. Local validation can check these
 fields, but cannot prove the adapter's identity guarantees or global dedupe.
 
+### 4.1. Implemented Phase 1 values and field policy
+
+The installed public surface is
+[`domain/Conversation.hpp`](../src/agent_memory/domain/Conversation.hpp), also
+available through `<agent_memory/domain.hpp>` and backed by the static library.
+The broader sketch above is not the implemented API: Phase 1 supplies
+`ConversationEntry`, exact `EntryRef`, message creation, snapshot observation,
+edit, tombstone and restore only. Tool/command/patch/moderation/derived payloads
+remain future work. The executable C++17
+[`conversation` example](../examples/conversation.cpp) uses an attachment-only
+snapshot without claiming to have observed its creation or edits.
+
+`ConversationId`, `EntryId`, `ActorId` and `EventRevision` are separate strong
+u64 types. Construct with an explicit `std::uint64_t`, for example
+`ConversationId{std::uint64_t{7}}`; implicit conversions, signed/floating/bool
+construction and cross-domain construction/comparison are rejected. Default
+zero is unassigned. `UINT64_MAX` is representable; these values have no parser,
+increment, allocator, persistent hash or storage-key conversion. Overflow and
+committed no-reuse require the later allocator/store, not a value constructor.
+
+`ConversationRef` compares `(allocation_namespace, id)`; `EntryRef` compares
+`(conversation, entry, revision)`; `ActorRef` compares
+`(allocation_namespace, id)`. Equality and lexicographic ordering retain every
+component, including exact revision. Ordering invalid DTOs does not make them
+admissible, and reference ordering is not proof of source chronology.
+
+The **new allocation-namespace field policy** is exact ASCII
+`[a-z][a-z0-9._-]*`, 1..128 bytes, issued by the host/store. No trimming,
+case folding or Unicode normalization is performed. Issuers must coordinate
+uniqueness; a valid token does not prove issuer ownership or an allocation.
+This grammar is not AMXR namespace issuance, a portable ID format or a new rule
+for legacy `ScopeId`. Scope retains its opaque bytes and must be nonempty.
+
+Phase 1 validates already-constructed DTOs with these field bounds, not a
+frozen event wire/schema or an untrusted-input decoder:
+
+| Field | Limit / policy |
+| --- | --- |
+| Inline text | At most 1,048,576 bytes; strict shortest-form UTF-8 Unicode scalars; NUL and whitespace retained |
+| Attachments / links | At most 256 each; oversized vectors are rejected without traversing their elements |
+| Artifact/source binding and provider revision marker | Nonempty exact opaque bytes, at most 4,096 each; no new UTF-8 restriction on existing ID types |
+| Evidence record locator | Nonempty strict UTF-8, at most 4,096 bytes; adapter-defined, with no interchange grammar |
+| Adapter recipe | Nonempty strict UTF-8, at most 1,024 bytes |
+| Optional external refs | Existing AMXR validator and bounds, unchanged |
+
+Absent or empty text is valid with a valid attachment; both absent/empty text
+and no attachments is invalid. Tombstone/restore need no fabricated body.
+The validator rejects malformed UTF-8, invalid refs/enums, missing required
+bindings and invalid/valueless variants. Diagnostics contain structural paths
+and typed codes, not source text or identifiers. Allocation failures propagate;
+there is no catch-all converting failure to a successful empty diagnostic list.
+
+Every supplied `ConversationSourceBinding` requires the exact retained
+`SourceRevisionId`, evidence artifact/record locator and adapter recipe. Modes
+are declared, never inferred from a message ID or time:
+
+| Identity declaration | Required / forbidden identity fields |
+| --- | --- |
+| `ExternalEvent` | Provider event ref required; object ref optional; upstream revision marker absent |
+| `ObjectRevision` | Object ref and nonempty provider revision marker required; event ref absent |
+| `LocalObservation` | Object ref optional; event ref and provider revision marker absent |
+
+The retained source revision is not necessarily an upstream revision marker.
+The validator can check declared shape, not provider key/marker reliability.
+`ConversationSnapshotObserved` requires a source binding; native creation and
+change values can omit it. Import admission must require the applicable source
+change evidence and may not promote a local snapshot into a fabricated edit.
+Evidence can be a retained normalized record rather than a whole archive.
+Limited same-observation replay and representation corrections follow section 3;
+no dedupe operation or durable observation-key recipe is implemented here.
+
+Resolved target policy is explicit:
+
+| Reference position | Cross-conversation / allocation namespace |
+| --- | --- |
+| Edit/tombstone affected; restore affected and retained state | Forbidden; same full ConversationRef required |
+| Reply / Thread | Forbidden; same full ConversationRef required |
+| Branch / Forward / Quote | Allowed; never grants access to the target |
+
+All resolved targets require nonzero exact revisions and a different Entry
+occurrence from the containing record, even when its revision differs. This
+rejects direct self-links, not all multi-entry cycles. Restore can identify
+different exact revisions of the same affected occurrence; whether the retained
+state belongs to that message's chain requires admission. Unresolved links
+require exact evidence and may carry an AMXR ref. They remain unresolved and
+cannot claim that same-conversation or access policy has already been proved.
+Resolving them later must reapply the relevant target policy.
+
+Actor, optional LLM role and optional observer are independent. Optional signed
+UTC Unix microseconds retain the full i64 range and unknown absence. No time
+comparison, inference, parsing or lossy conversion is performed by this layer.
+
+`validate_conversation_entry` performs no I/O and proves **field validity only**.
+Existence/retention, scope access, committed allocation/no-reuse, authenticity,
+revision monotonicity, mutation-chain membership, chronology/cycles, replay
+conflict, publication and current freshness require future transactional
+admission/read checks. No store, importer, codec, graph or retrieval activation
+is supplied. The
+[`conversation_test`](../tests/domain/conversation_test.cpp) fixture exercises
+these positive/negative field contracts; legacy chat and knowledge tests remain
+separate compatibility controls.
+
 ## 5. Bounded reads and retrieval projections
 
 Proposed readers select exact revisions or explicitly request a current view.
@@ -480,7 +583,7 @@ together. MDBX remains the first-party canonical backend; any later SQLite
 profile must pass the same domain conformance. No backend/default activation,
 TypedMetadata or storage migration is included here.
 
-## 7. Decisions and fixtures required before runtime
+## 7. Decisions and fixtures required before codec/store work
 
 The event-versus-representation-revision baseline is approved for Phase 1;
 per-conversation Entry allocation, source-event/local-observation key recipes
@@ -508,7 +611,8 @@ events; bounded/cyclic navigation; wrong-scope/expired-frontier continuation;
 and stale projection hydration without latest-revision substitution. If an
 optimization is proposed, compare against a row-oriented exact baseline under
 matched bytes/record limits, context fidelity, p50/p95/p99 and update/reopen
-cost. This document reports **no runtime or benchmark execution** for events.
+cost. Phase 1 field tests are not evidence of these history/store behaviors or
+of any event performance improvement.
 
 The later derived bridge additionally needs a graph-off fixture from Entry
 183@1 to a Relation/Summary/ConversationEpisode and back; an edit while reverse

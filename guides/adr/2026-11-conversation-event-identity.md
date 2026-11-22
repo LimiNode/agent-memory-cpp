@@ -1,6 +1,7 @@
 # ADR proposal: conversation events and external identity
 
-- Status: **Proposed / review pending**, not an implemented public contract.
+- Status: **Phase 1 values implemented on dependent branch / review pending**;
+  broader event model and Conversation Core remain proposed/planned.
 - Date: 2026-11-21.
 - Source inspected: `acd5ad5545386b3feeaa79f8a587855b60801b4d`.
 - Scheduling: planned early opt-in Conversation Core under
@@ -16,8 +17,9 @@ implementation does not implement ConversationId, EntryId, actors or a store.
 
 The separate [Conversation/Event contract proposal](../conversation-event-contract.md)
 develops the next value surface, event-versus-revision baseline, bounded reads
-and staged implementation gates. It remains Draft / contract-only; neither
-this ADR nor that proposal authorizes runtime or ConversationStore work.
+and staged implementation gates. Its section 4.1 owns the implemented Phase 1
+values/field policy and executable example. That narrow implementation does not
+authorize an event codec, ConversationStore or later runtime work.
 The proposal's ownership/reuse matrix and evidence/reverse-dependency contract
 reuse the existing KnowledgeUnit, publication and projection owners. Journal
 entries/changes are distinct from `KnowledgeUnitKind::Event`; conversation
@@ -165,7 +167,8 @@ external-reference value/codec and its qualification. A canonical event model
 and event store remain separately reviewed slices of planned Conversation Core
 after their product storage and store/transaction/recovery owners are agreed.
 Only advanced conversation memory waits for M2/M2+. No provider SDK is required in
-core, and no conversation implementation is included here.
+core. Only Phase 1 values/field validation are implemented on this branch;
+no canonical event history, codec or store is included.
 
 The following acceptance matrix is **required future work, not tests run by this
 documentation PR**:

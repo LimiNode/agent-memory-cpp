@@ -23,6 +23,13 @@ add_executable(agent_memory_external_identity_consumer
 target_link_libraries(agent_memory_external_identity_consumer PRIVATE agent_memory::agent_memory)
 set_target_properties(agent_memory_external_identity_consumer PROPERTIES
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+
+add_executable(agent_memory_conversation_consumer
+    "${CMAKE_CURRENT_LIST_DIR}/../../../examples/conversation.cpp")
+target_link_libraries(agent_memory_conversation_consumer PRIVATE agent_memory::agent_memory)
+set_target_properties(agent_memory_conversation_consumer PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+
 target_compile_definitions(agent_memory_installed_consumer PRIVATE
     AGENT_MEMORY_EXPECTED_VERSION_MAJOR=${_agent_memory_version_major}
     AGENT_MEMORY_EXPECTED_VERSION_MINOR=${_agent_memory_version_minor}
