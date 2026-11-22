@@ -36,6 +36,11 @@ M1a/M1b/M1c -> M2
 M2 -> M2+
 ```
 
+The early opt-in Conversation Core profile below is a bounded exception to
+waiting for the full M2 ladder. It depends on qualified identity, canonical
+storage and backend composition, not completion of every M1 profile. It does
+not add requirements to the default M0 document profile.
+
 ### M0 - Lexical Document Memory
 
 Goal: ship a small, deterministic, local document memory that can ingest raw
@@ -63,6 +68,45 @@ M0 is text-only: it does not natively ingest PDF/DOCX/image/audio/video, run
 OCR/ASR, or claim original page/frame/media citations. An externally extracted
 UTF-8 text may be imported only as explicitly derived text. Non-text connectors
 must use the M2 artifact provenance profile.
+
+### Early opt-in Conversation Core (Planned)
+
+Priority: the first practically useful **chat profile** for chat importers and
+Efi dialogue memory must retain real conversations before expanding
+experimental search algorithms. This is a planned, separately selected profile
+over the minimal canonical-storage substrate; it is **not implemented**. This
+adds no factory/capability flag, release authorization or declaration that M2
+is complete. M0 remains the default lexical document profile. The Conversation
+Core name assigns no persistent capability number or DBI schema.
+
+The [Conversation/Event proposal](conversation-event-contract.md) owns the
+proposed domain invariants and small-PR plan; its
+[ADR](adr/2026-11-conversation-event-identity.md) remains review pending.
+Identity Architecture must first pass its separate integration gate. Review
+and qualify each implementation slice before advertising this profile.
+
+Required gates **when this chat profile is selected** (all `Planned`):
+
+| Capability | Required surface / profile delta | Required evidence | Owner |
+| --- | --- | --- | --- |
+| Stable Conversation/Entry identity | Domain-qualified local numeric values, exact Entry revisions and existing AMXR external refs; no legacy ID conversion | Namespace/parent collisions, typed keys, no-rebinding, source-reference remap/reopen | `identity-policy.md`, `conversation-event-contract.md` |
+| Canonical message/change history | Domain store for messages, edits/deletes/restores, actors/roles and explicit reply/thread links; not a second knowledge store | Exact history, current fold, source/observed-time distinction, unresolved parents, textless content | `conversation-event-contract.md`, `canonical-content-storage-roadmap.md` |
+| Idempotent bounded import/read | Explicit event key/revision recipe, conflict/NoChange, stable-frontier pagination and source anchors for later KnowledgeUnits | Identical replay versus conflicting duplicate, byte/record/depth/fanout limits, wrong-scope/access/frontier rejection | `conversation-event-contract.md`, `artifact-provenance-roadmap.md` |
+| Numeric MDBX persistence | Reviewed event-specific mapping/history/index delta in the physical manifest; reuse backend context/transactions, not document IDs | Atomic history/mapping/dedupe/order, rollback/no-reuse, prefix isolation, fresh-process reopen and crash/recovery | `mdbx-containers-extension-tz.md`, `storage-backend-integration-roadmap.md` |
+| First consumer vertical slice | Normalized chat/session import through durable store to bounded exact-source history reads | Replay, change, reopen and recover without graph or embedder; unchanged default/legacy profile tests | `conversation-event-contract.md` |
+
+These gates are additive to this selected profile's storage/access/identity
+prerequisites, not to every M0 installation. Exact source references prepare
+the existing provenance/publication bridge; they do not claim that its event
+frontier or derived admission already works. No new public wire/schema is
+frozen by this table, and no implementation is authorized by a roadmap edit.
+
+Automatic relation extraction, semantic graph reasoning, multi-aspect
+embeddings, intelligent dialogue compaction, arbitrary episode reconstruction,
+GraphRAG and bi-temporal logic remain later M2/M2+ work. The core journal and
+later technical provenance must work without a graph backend. Tools may be
+recorded as observations in later payload slices; their execution remains
+outside the library.
 
 ### M1a - Hybrid Retrieval
 
@@ -125,9 +169,10 @@ construction and routing remain later research until benchmark-gated.
 
 The canonical-content contract is shared across domain forms, but this M1b row
 covers only the normalized-text `Document` vertical slice. Conversation /
-`SessionEventStream` integration is a later M2 profile, and
-perspective/epistemic-rich `AgentMemory` integration remains governed by the
-later M2/A-lane milestones. M1b retention semantics and reprocessing-frontier
+`SessionEventStream` starts with the separately planned opt-in Conversation
+Core above; advanced conversation memory remains M2/M2+. This does not expand
+the M1b document row. Perspective/epistemic-rich `AgentMemory` integration remains
+governed by the later M2/A-lane milestones. M1b retention semantics and reprocessing-frontier
 types are part of the contract; non-text artifact retention and adapters are
 implementation work deferred to the artifact/multimodal profile.
 
@@ -164,6 +209,10 @@ golden datasets. An artifact provenance profile adds stable Source/Revision
 identity, source/artifact retention policy, canonical normalized representations,
 typed evidence locators and segment-to-Chunk materialization. It is optional for M2, but a
 public non-text source connector must not bypass this contract.
+
+Advanced speaker-aware retrieval and episode reasoning remain here; the early
+Conversation Core exception covers only qualified canonical history/import and
+bounded reading, not those advanced capabilities.
 
 Graph expansion may enter M2 only after its Relation-owned graph substrate
 passes atomic two-orientation write/reopen, endpoint remap, edge/global-ID

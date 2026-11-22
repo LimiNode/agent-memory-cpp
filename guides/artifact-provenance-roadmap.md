@@ -1,5 +1,13 @@
 # Artifact And Provenance Roadmap
 
+Cross-cutting identity categories, provider namespace issuance and the new
+standalone ExternalObjectRef codec are owned by [identity policy](identity-policy.md).
+This guide continues to own SourceRevisionId, ArtifactId/bindings, representation
+and anchor semantics, digest recipes and retention. An external object reference
+does not select a source revision, authenticate an issuer or replace an existing
+artifact/locator encoding. The binary ArtifactId lookup candidate is not a
+change to the existing textual public identity.
+
 ## 1. Purpose
 
 This roadmap defines the media and provenance layer for source material that is

@@ -1,5 +1,12 @@
 # Opt-in Numeric Storage Identities
 
+[Identity policy](identity-policy.md) owns the cross-cutting distinction between
+logical occurrence/source identity, external reference, digest and physical key.
+This guide remains the owner of numeric mapping allocation/retirement and AMSI
+bytes. AMXR does not enter existing DBIs, change comparator domains or authorize
+OLD-to-numeric migration. Import can remap physical keys only while preserving
+the complete logical/external identity and exact selected revision.
+
 `DocumentId` and `ContentBlockId` are public, textual domain identities.  The
 optional `DocumentStorageId` and `BlockStorageId` values in
 `storage/StorageIdentityMapping.hpp` are a separate physical-key optimization;

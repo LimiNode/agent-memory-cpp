@@ -40,6 +40,10 @@ not by itself reserve a production DBI or select a posting codec.
 
 ## Core Rules
 
+- Follow [identity policy](identity-policy.md) for occurrence/source/external/
+  physical identity separation. This guide retains TokenId dictionary/epoch,
+  resource-local SectionId, posting and generation semantics. AMXR is not a
+  replacement posting key, tokenizer normalization rule or numeric comparator.
 - Keep source and chunk text as canonical UTF-8.
 - Do not store source text as UTF-32 by default, even when compression is
   enabled.
