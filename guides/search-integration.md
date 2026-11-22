@@ -1,7 +1,7 @@
 # Search integration
 
 Status: staged implementation; no release/default activation.
-Baseline: `acd5ad5545386b3feeaa79f8a587855b60801b4d`.
+Initial implementation baseline: `acd5ad5545386b3feeaa79f8a587855b60801b4d`.
 
 This work reuses existing algorithms in the product path. It does not promote
 research conclusions to production readiness or replace the normative
@@ -13,6 +13,23 @@ the exact-semantic slice; it does not close lexical Phase 1. PRR/PR-IVF + THQ
 follows exact semantic, then explicit search composition.
 PRR means Prototype–Representative Routing; PR-IVF means
 Prototype–Representative Inverted File. Historical R4 is evidence, not a backend.
+
+## Product lexical path: contract review
+
+#683, #686 and #687 are integrated in
+`main@aea7d89f657c04b7b6388353530d9418a6a6ad81`. Final-main
+[CI 45063175376](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45063175376)
+and [Packaging 45063175374](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45063175374)
+succeeded. This qualifies the integrated component subset, not lexical Phase 1
+closure, authorization, source-backed product top-K or representative quality.
+
+The next slice is the [Product Lexical Path proposal](product-lexical-path-proposal.md):
+an interface audit, three canonical-owner requests, a minimal proposed API delta
+and fail-closed acceptance scenarios. Its status is **proposal only**. Shared
+generation/admission evidence is mandatory, not an optional performance feature.
+The first PR adds no production interfaces; implementation follows owner approval
+and independent review. The proposal also separates the existing bounded
+Markdown byte-hydration proof from the missing whole-query frontier.
 
 ## R6 disposition (2026-11-21)
 
@@ -115,7 +132,7 @@ not process/crash recovery or proof of canonical admission.
 
 These are requests for the first agent's decision, not new competing APIs.
 They remain deferred dependencies, not a request to interrupt the first agent's
-Identity Architecture / AMXR work. Do not implement dependent authority paths
+current canonical/Conversation work. Do not implement dependent authority paths
 until their owner approves the contracts.
 
 1. **Metadata authority.** `KnowledgeUnitEnvelope` has no metadata map and the
@@ -135,6 +152,14 @@ until their owner approves the contracts.
    generic admission performs independent reads. The flat snapshot's opaque
    transaction owner cannot establish this join by itself. Do not claim Exact,
    pinned hydration or linearizability from this increment.
+
+The [detailed owner requests](product-lexical-path-proposal.md#canonical-owner-decisions)
+refine these three questions using the existing planned `RetrievalAccessContext`,
+exact-equality AND filter contract, and typed Markdown artifact binding. They
+also cover policy changes, trace redaction, source opening and snapshot lifetime.
+Scope membership and `Current` freshness are not authorization; `SummaryOnly`
+is not a hydrated product hit. The existing KB-0 completion semantics remain
+unchanged while the stricter product composition is under review.
 
 BM25F remains deferred: `FlatLexicalUnitStats` and postings lack per-field
 lengths/TF. Implementing title/heading/body today would require a reviewed
