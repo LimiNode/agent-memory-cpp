@@ -195,6 +195,68 @@ jobs:
           & (Join-Path $hydrationBuild 'agent_memory_mdbx_raw_markdown_product_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'MDBX Raw Markdown product consumer failed' }
 
+      - name: Verify current exact semantic consumer in separate processes
+        shell: pwsh
+        env:
+          EXPECTED_PR_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+          $artifact = Join-Path $repo '.artifacts/exact-semantic'
+          New-Item -ItemType Directory -Path $artifact -ErrorAction Stop | Out-Null
+          $consumer = Join-Path $repo '.build/packaging-consumer-mdbx/agent_memory_exact_semantic_installed_consumer'
+          $database = Join-Path $artifact 'current.mdbx'
+          $cas = Join-Path $artifact 'cas'
+          & $consumer create $database $cas (Join-Path $artifact 'create.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Exact semantic create failed' }
+          & $consumer interrupt $database $cas (Join-Path $artifact 'interrupt.json')
+          if ($LASTEXITCODE -ne 24) { throw 'Exact semantic interruption control did not execute' }
+          & $consumer verify $database $cas (Join-Path $artifact 'receipt.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Exact semantic fresh-process verification failed' }
+
+          $archives = @(Get-ChildItem (Join-Path $repo '.build/packaging-prefix-mdbx') -Recurse -File -Filter 'libagent_memory.a')
+          if ($archives.Count -ne 1) { throw 'Expected one installed static library archive' }
+          function File-Evidence($path) {
+            return [ordered]@{
+              sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+              size_bytes = (Get-Item -LiteralPath $path).Length
+            }
+          }
+          $trackedChanges = @(git status --porcelain --untracked-files=no)
+          if ($LASTEXITCODE -ne 0 -or $trackedChanges.Count -ne 0) { throw 'Tracked sources are not clean' }
+          $compilerEntry = Select-String -LiteralPath (Join-Path $repo '.build/packaging-mdbx/CMakeCache.txt') -Pattern '^CMAKE_CXX_COMPILER:FILEPATH=(.+)$'
+          if ($compilerEntry.Count -ne 1) { throw 'Could not resolve the actual package compiler' }
+          $compilerPath = $compilerEntry.Matches[0].Groups[1].Value
+          $compilerVersion = (& $compilerPath --version) -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not identify the package compiler' }
+          $metadata = [ordered]@{
+            schema_version = 1
+            actual_checkout = (git rev-parse HEAD).Trim()
+            expected_pr_head = $env:EXPECTED_PR_HEAD
+            clean_tracked_sources = $true
+            compiler_path = $compilerPath
+            compiler = $compilerVersion
+            configuration = 'Release'
+            cxx_standard = 17
+            libmdbx_revision = (git -C external/libmdbx rev-parse HEAD).Trim()
+            mdbx_containers_revision = (git -C external/mdbx-containers rev-parse HEAD).Trim()
+            receipt = (File-Evidence (Join-Path $artifact 'receipt.json'))
+            executable = (File-Evidence $consumer)
+            installed_archive = (File-Evidence $archives[0].FullName)
+          }
+          $metadata | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $artifact 'build-metadata.json') -Encoding utf8
+
+      - name: Upload exact semantic installed-consumer evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-semantic-installed-consumer
+          path: |
+            .artifacts/exact-semantic/create.json
+            .artifacts/exact-semantic/interrupt.json
+            .artifacts/exact-semantic/receipt.json
+            .artifacts/exact-semantic/build-metadata.json
+          if-no-files-found: error
+
   json-installed-consumer:
     name: JSON installed consumer (ubuntu-latest)
     runs-on: ubuntu-latest

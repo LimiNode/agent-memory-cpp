@@ -26,6 +26,8 @@ install(FILES
 )
 
 set(_MDBX_PACKAGE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/mdbx")
+get_target_property(_MDBX_ARCHIVE_NAME mdbx-static OUTPUT_NAME)
+set(_MDBX_ARCHIVE_FILE "${CMAKE_STATIC_LIBRARY_PREFIX}${_MDBX_ARCHIVE_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/mdbxConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/mdbxConfig.cmake"
