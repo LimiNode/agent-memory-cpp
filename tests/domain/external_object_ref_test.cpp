@@ -270,6 +270,13 @@ void encoder_validation_and_bounds() {
     ref = minimal({components});
     expect(am::serialize_external_object_ref(ref).size() == am::kMaxExternalObjectRefBytes, "total-size boundary fixture wrong");
     round_trip(ref);
+    auto oversized_wire = am::serialize_external_object_ref(ref);
+    expect(static_cast<unsigned char>(oversized_wire[31]) == 0xe0 &&
+        static_cast<unsigned char>(oversized_wire[61601]) == 0x5e, "oversized wire fixture offsets drifted");
+    oversized_wire[31] = static_cast<char>(0xe1); // Composite payload: 65,504 -> 65,505 bytes.
+    oversized_wire[61601] = static_cast<char>(0x5f); // Last string: 3,934 -> 3,935 bytes.
+    oversized_wire.push_back('x');
+    rejected_bytes(oversized_wire); // Every frame/field is legal; only the whole-reference limit is exceeded.
     std::get<std::string>(components.back().value).push_back('x');
     rejected_value(minimal({components}));
     components.push_back({"q", std::uint64_t{0}});
@@ -298,6 +305,48 @@ void decoder_controls() {
     rejected_bytes(prefix + unhex("040000001c00020001610200000008000000000000000100016203000000017800")); // Tuple trailing byte.
 }
 
+void deterministic_decoder_mutations() {
+    // Literal seeds cover text, UTF-8 upper boundary, composite and present numeric parent.
+    const auto prefix = unhex("414d58520001000000017000000001730000000164000000016b");
+    const std::vector<std::string> seeds{
+        prefix + unhex("00030000000178"),
+        prefix + unhex("000300000004f48fbfbf"),
+        prefix + unhex("00040000001b000200016102000000080000000000000001000162030000000178"),
+        prefix + unhex("010100000008ffffffffffffffff0200000008000000000000002a")};
+    std::size_t accepted = 0;
+    std::size_t rejected = 0;
+    std::size_t truncations = 0;
+    for(const auto& seed : seeds) {
+        const auto decoded_seed = am::deserialize_external_object_ref(seed);
+        expect(am::serialize_external_object_ref(decoded_seed) == seed, "mutation seed is not canonical");
+        for(std::size_t size = 0; size < seed.size(); ++size) {
+            rejected_bytes(std::string_view(seed).substr(0, size));
+            ++truncations;
+        }
+        for(const auto& suffix : {std::string(1, '\0'), std::string{"x"}, std::string{"AMXR"}})
+            rejected_bytes(seed + suffix);
+        for(std::size_t offset = 0; offset < seed.size(); ++offset) {
+            for(unsigned bit = 0; bit < 8; ++bit) {
+                auto mutated = seed;
+                mutated[offset] = static_cast<char>(static_cast<unsigned char>(mutated[offset]) ^ (1U << bit));
+                std::optional<am::ExternalObjectRef> decoded;
+                try { decoded = am::deserialize_external_object_ref(mutated); }
+                catch(const std::invalid_argument&) { ++rejected; }
+                if(decoded) {
+                    // A mutation can legally change identity: do not demand rejection of valid data.
+                    expect(am::is_valid_external_object_ref(*decoded), "decoder admitted an invalid mutation");
+                    expect(am::serialize_external_object_ref(*decoded) == mutated, "decoder repaired a noncanonical mutation");
+                    ++accepted;
+                }
+            }
+        }
+    }
+    expect(accepted != 0 && rejected != 0, "mutation matrix missed an outcome class");
+    std::cout << "AMXR deterministic mutations: " << accepted + rejected << " bit flips ("
+              << accepted << " accepted, " << rejected << " rejected), " << truncations
+              << " truncations, 12 trailing-byte cases\n";
+}
+
 void legacy_source_compatibility() {
     const am::MessageId message{"00123"};
     const am::ThreadId thread{"-100123"};
@@ -323,6 +372,7 @@ int main() {
         identity_consistency_matrix();
         isolated_component_count_boundary();
         decoder_controls();
+        deterministic_decoder_mutations();
         legacy_source_compatibility();
         std::cout << "external identity goldens, domains, remapping, bounds, corruption and compatibility: PASS\n";
         return 0;

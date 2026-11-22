@@ -1,7 +1,8 @@
-# ADR proposal: standalone AMXR v1 external identity
+# ADR: standalone AMXR v1 external identity
 
-- Status: **Proposed / architecture review required**, implemented in Draft
-  #684; no merge or default activation authorized.
+- Status: **Architecture APPROVED for standalone binary interchange;
+  integration REVIEW_REQUIRED, not CLOSED.** Implemented in Draft #684;
+  no merge or default activation authorized.
 - Date: 2026-11-22.
 - Owner: domain identity; normative contract: [identity policy](../identity-policy.md).
 - Scope: bounded ExternalObjectRef values and binary codec only.
@@ -18,7 +19,7 @@ The [conversation/event ADR](2026-11-conversation-event-identity.md) proposed
 external references alongside a larger future model. The reusable identity
 slice needs its own review boundary, without approving that event model.
 
-## Proposed decision and rationale
+## Approved decision and rationale
 
 The policy's sections 2–4 are the single exact specification, including field
 order, namespace issuance, framing, tags, limits, equality, order and digest.
@@ -58,10 +59,13 @@ case/whitespace/Unicode bytes, scalar tags and composite ordering. Malformed
 controls exercise strict decoding, not only encoder/decoder agreement.
 
 The [qualification record](../experiments/2026-11-21-identity-architecture-qualification.md)
-owns exact revisions, executed checks and limitations. Code and vectors are
-review candidates, **not an accepted permanent interchange standard merely
-because they were implemented**. Architecture review must agree on this ADR,
-the policy and independent vectors before integration. Revisit the decision
+owns exact revisions, executed checks and limitations. Independent architecture
+review supplied by the user on 2026-11-22 approved the policy, codec and vectors
+at #682 `95262b9d`, #684 `a27e0c05` and #685 `7024b088`, limited to standalone
+binary interchange. The approval does not cover arbitrary provider adapters,
+issuer authentication or universal decoder security, and is **not permission
+to merge**. Final mutation/sanitizer qualification and exact-head integration
+checks remain distinct gates. Revisit the decision
 for any wire/namespace-rule change or newly required provider shape; never
 quietly extend version 1.
 

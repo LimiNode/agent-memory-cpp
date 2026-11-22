@@ -1,8 +1,9 @@
 # Identity policy and decision register
 
-**Status: normative specification for Identity Architecture; REVIEW_REQUIRED for
-integration, not CLOSED.** Existing implementation observations below are bound
-to `main@acd5ad5545386b3feeaa79f8a587855b60801b4d`. The new ExternalObjectRef /
+**Status: normative specification for Identity Architecture; standalone AMXR v1
+architecture APPROVED, integration REVIEW_REQUIRED, not CLOSED.** Existing
+implementation observations below are bound to
+`main@acd5ad5545386b3feeaa79f8a587855b60801b4d`. The new ExternalObjectRef /
 AMXR value-and-codec implementation is a separate review-required change; this
 policy was first published in documentation PR #682. Companion implementation
 [#684](https://github.com/LimiNode/agent-memory-cpp/pull/684) supplies the opt-in

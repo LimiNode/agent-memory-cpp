@@ -272,3 +272,140 @@ as dated above. In particular TSan remains NOT_QUALIFIED. Updated exact-head
 GitHub CI and packaging observations belong to the PR handoff, not to the old
 docs-only run. AMXR PRs remain Draft; no merge, release, migration, production
 activation or Conversation/Event Model/ConversationStore work is included.
+
+## 2026-11-22: Final Identity Integration Gate
+
+**Verdict: standalone AMXR v1 architecture APPROVED; integration prepared,
+REVIEW_REQUIRED, not CLOSED. No merge authorization.** The user supplied the
+independent approval of #682 `95262b9d`, #684 `a27e0c05` and #685 `7024b088`.
+The dedicated AMXR ADR now records that bounded decision; it does not approve
+the Conversation/Event Model or authenticate any real provider namespace.
+No grammar, tag, limit, normalization rule, digest recipe or production code
+was changed during this final gate.
+
+### Final decoder qualification
+
+The existing harness now deterministically flips each bit of four independently
+specified valid inputs: scalar text, maximum UTF-8 scalar, ordered composite,
+and signed parent/unsigned object. It performs **1,448 mutations: 320 valid
+canonical inputs accepted, 1,128 rejected**, plus **181 truncations** and
+**12 trailing-byte cases**. Accepted changes must validate and re-encode to
+the exact input, rather than being silently repaired. Only decoder
+`std::invalid_argument` counts as rejection; a later validation/serialization
+failure or another exception fails the test. Existing explicit version/tag/
+presence/length/nesting/duplicate/UTF-8 controls and literal goldens remain.
+An additional 65,537-byte wire retains otherwise-legal fields and internally
+consistent lengths, isolating the whole-reference bound. Authored offset
+assertions guard the two length patches against fixture drift.
+
+Local executions used the working patch over `7024b088`, with test-file
+SHA-256 `2419fcf119357e225c0125948744420a0772ecdeb7e5b56b67c6b0d04ff4ce33`:
+
+| Profile / actual execution | Result |
+| --- | --- |
+| GNU/MinGW 15.2, C++17 Release, JSON/MDBX OFF | Focused rebuilt test PASS; configured full suite 55/55 PASS |
+| MSVC 19.44, C++17 Release, JSON/MDBX ON | Focused rebuilt test PASS; affected suite 8/8 PASS |
+| WSL Ubuntu, GNU 15.2, C++17, JSON/MDBX OFF, ASan + UBSan | Instrumented library and focused test rebuilt; 1/1 PASS, external 30-second CTest timeout |
+
+Sanitizer configure used `CMAKE_BUILD_TYPE=Debug`,
+`CMAKE_CXX_FLAGS=-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer`
+and `CMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined`. Cache and linked
+`libasan.so.8` / `libubsan.so.1` were checked. Reproduction after building the
+focused target in that profile:
+
+```bash
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+ctest --test-dir <sanitizer-build> \
+  -R '^agent_memory_external_object_ref_test$' --verbose --timeout 30
+```
+
+No ASan/UBSan/leak diagnostic occurred on this corpus. This is focused executed
+evidence, not universal decoder safety, arbitrary-provider qualification or
+resolution of the unrelated storage TSan finding, which stays NOT_QUALIFIED.
+The build remains on C: under the existing build root, avoiding limited E:
+space. Existing unrelated compiler warnings were not suppressed or repaired.
+Independent read-only review of the final four-file gate diff approved the
+mutation/oversize fixtures, source preservation, recorded JUnit hashes and
+merge guards with no confirmed blocker. It is not a formal GitHub review or
+merge authorization. Delta verification, relative links, historical/PCA12
+preservation validators and `git diff --check` also passed.
+
+| New retained artifact under the existing local build root | SHA-256 |
+| --- | --- |
+| final-gate-gnu-all.xml | `5cbed1b2ca3a8e2c88a339ff82b17f46c776e50286e76ed69030d677097bad6a` |
+| final-gate-msvc-affected.xml | `c78bcf7e7b71521dc51e8c8a3af37d6bf57bd4266386a48d70faea481d2c120f` |
+| final-gate-asan-ubsan.xml | `b8117c522f96209ff21bbc7bbb6695ae6d69bbbc1b32485916db2f8f71a9157c` |
+
+### Ancestry, full-chain preservation and check currency
+
+Actual main was rechecked as `acd5ad5545386b3feeaa79f8a587855b60801b4d`.
+Each pair in `main -> 95262b9d -> a27e0c05 -> 7024b088` passes
+`git merge-base --is-ancestor`; these are not merely similarly named branches.
+The published chain at those reviewed heads differs from main by 28 files,
++3,870/-2 lines. The two deleted lines are the superseded DocumentId comment,
+not constructor/code/codec behavior. #684 carries the actual C++ implementation,
+CMake registration, example and installed/relocated consumer wiring. #685's
+delta is documentation/catalogue qualification and tests, never a replacement
+implementation. The final gate adds only tests and architecture-status/evidence
+documentation to that child.
+
+The `src` tree remains `213eb5fad08b5e16cde6ef2583c2d19366a0577c` and
+ExternalObjectRef.cpp SHA-256 remains
+`6ae6a8163e9e12e7590910f1840180712409bf02dfad7ce097cb2f9419012580`.
+Original audit/catalogue/extractor blobs are preserved, including catalogue
+source `acd5ad55`; the separate four-type delta still binds `a27e0c05`.
+Source-bound evidence is not relabelled to the final qualification HEAD.
+
+| PR / reviewed HEAD / base | Observed exact-head CI | Packaging |
+| --- | --- | --- |
+| #682 / `95262b9d` / main | 44945826577: 3 passed, 22 skipped | 44945826614: 6/6 PASS |
+| #684 / `a27e0c05` / #682 | 44947460498: 32 passed, 2 skipped | 44947460558: 6/6 PASS |
+| #685 / `7024b088` / #684 | 44957907999: 7 passed, 20 skipped; each OS 60/60 | 44957908012: 6/6 PASS |
+
+All are OPEN Draft and were mergeable at observation; no readiness flag or base
+was changed. These last-row results predate the final mutation patch: its new
+HEAD needs fresh CI/packaging, recorded in the PR handoff. Installed/relocated
+AMXR consumers ran on all three OSes at the reviewed head; their 90 canonical
+bytes are a consumer check, not a throughput measurement.
+
+### Guarded integration plan -- not executed
+
+1. Freeze the final #685 qualification HEAD, review its bounded diff and require
+   fresh exact-head CI/packaging. Before each operation recheck actual main,
+   HEAD, mergeability, unresolved threads and protection/rulesets. Obtain
+   separate merge authorization; this report is not that authorization.
+2. Integrate #682 first, preserving its branch while #684 targets it. For a
+   squash, record actual new main `M1`, then restack **only** the suffix
+   `95262b9d..a27e0c05` onto `M1` before qualifying #684. Recheck the full new
+   diff and all deleted lines, policy presence, codec/source hashes, installed
+   consumer and fresh CI/packaging. Retarget only our #684, with no unrelated
+   workstream base changes. Any published history rewrite requires explicit
+   authority and an exact lease; do not infer that permission from this plan.
+3. Integrate #684 without deleting its branch. Record `M2`, then restack only
+   `a27e0c05..final-qualification-head` onto `M2` for #685. Verify that the
+   resulting child diff contains qualification, not lost or duplicated C++
+   implementation. Retarget our child and repeat exact-head checks. Preserve
+   any later docs/contract child until it can be safely retargeted as well.
+4. Integrate #685, then require successful CI, packaging and installed/relocated
+   consumers on **the exact resulting main**, plus unchanged codec/legacy DBI
+   and defaults. Create a new source-bound closure receipt on that main.
+   Never rewrite old receipts to pretend they ran at squashed/rebased hashes.
+5. Only then mark Identity Architecture CLOSED: approved owner/API/codec/
+   goldens/compatibility and final-main evidence agree. A pending workflow,
+   conflict, changed HEAD, missing review or unapproved rewrite stops the queue.
+
+Merge commits are also supported by the repository and can preserve existing
+ancestry without restacking; changing merge strategy remains an explicit
+integration choice, not an operation performed here. Auto branch deletion is
+currently disabled. Classic branch-protection returns 404, but active ruleset
+`24881787` protects the default branch, prohibits deletion/non-fast-forward,
+requires PRs/resolved threads and strict current-base `CI gate`. Do not infer
+an unprotected main from that 404. Packaging and architectural approval remain
+explicit operator checks, not assumptions about that one required status.
+
+No identity gate blocker was found. A separate docs/contract-only Draft may
+therefore prepare Conversation/Event Model while integration awaits permission.
+No ConversationStore/runtime, second identity layer, TypedMetadata, storage
+migration, lexical/exact-semantic implementation, PR #676--679/#683 changes,
+merge, release/tag or production activation is included.
