@@ -2,6 +2,9 @@ add_executable(agent_memory_basic_usage
     basic_usage.cpp
 )
 
+add_executable(agent_memory_external_identity external_identity.cpp)
+target_link_libraries(agent_memory_external_identity PRIVATE agent_memory::agent_memory)
+
 target_link_libraries(agent_memory_basic_usage
     PRIVATE
         agent_memory::agent_memory

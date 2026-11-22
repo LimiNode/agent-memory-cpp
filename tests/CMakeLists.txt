@@ -96,6 +96,10 @@ target_link_libraries(agent_memory_artifact_identity_test
 
 add_test(NAME agent_memory_artifact_identity_test COMMAND agent_memory_artifact_identity_test)
 
+add_executable(agent_memory_external_object_ref_test domain/external_object_ref_test.cpp)
+target_link_libraries(agent_memory_external_object_ref_test PRIVATE agent_memory::agent_memory)
+add_test(NAME agent_memory_external_object_ref_test COMMAND agent_memory_external_object_ref_test)
+
 add_executable(agent_memory_canonical_content_test
     domain/canonical_content_test.cpp
 )
