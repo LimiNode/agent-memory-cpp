@@ -12,7 +12,9 @@ This proposes the next contract after the Identity integration gate. It does
 not approve a runtime implementation, change legacy chat values, or add another
 identity codec. AMXR is implemented in the prerequisite stack; **the event
 model below is not**. A separate assignment and review must authorize each
-implementation slice.
+implementation slice. The event-versus-representation-revision baseline in
+section 2 is approved as the basis of Phase 1 domain values; that approval
+does not freeze an event codec, import/store schema or allocation protocol.
 
 ## 1. Ownership and canonical entities
 
@@ -56,7 +58,7 @@ canonical history or technical lineage.
 | Entity | Proposed invariant |
 | --- | --- |
 | Conversation | Stable conversation/session identity; not a display name, channel label, import run or branch |
-| Entry | One canonical source-event occurrence within a conversation; identity survives corrections to its recorded representation |
+| Entry | One registered source-event occurrence or evidence-qualified local observation within a conversation; identity survives corrections to its recorded representation |
 | Event revision | Immutable exact representation of one Entry; `(allocation namespace, conversation, entry, revision)` is the full reference |
 | Actor | Participant/source of an action; independent of display aliases, LLM role, observer and authorization |
 | Relationship | Explicit reply, branch, topic, forward, quote or causal link; exact target revision or explicit unresolved evidence |
@@ -76,23 +78,28 @@ are not interchangeable permission tokens.
 
 ## 2. Proposed event/revision decision
 
-**Baseline submitted for review:** a message creation, upstream edit, deletion,
-restore or moderation action is a distinct Entry when it is a distinct source
-event. An edit/delete/restore event targets the exact prior event/state it
-affects; it does not overwrite or erase the creation event. A current-message
-view is a deterministic fold/projection over these canonical facts.
+**Baseline approved for Phase 1 domain values:** a message creation, upstream
+edit, deletion, restore or moderation action is a distinct Entry when it is a
+distinct source event. An edit/delete/restore event targets the exact prior
+event/state it affects; it does not overwrite or erase the creation event. A
+current-message view is a deterministic fold/projection over these canonical
+facts.
 
 An Event revision instead corrects the stored representation of the **same**
-source-event occurrence, for example an explicitly reviewed normalization
-correction. Such a correction records its old/new adapter recipe, evidence
-and reason, uses an expected revision and publishes a new immutable revision.
+source-event occurrence or local observation, for example an explicitly
+reviewed normalization correction. Such a correction records its old/new
+adapter recipe, evidence and reason, uses an expected revision and publishes
+a new immutable revision.
 Replaying unchanged evidence is `NoChange`; silently rewriting a revision is forbidden.
-This proposed distinction needs human approval before event APIs or a durable
-schema are implemented. It does not change document-edit semantics.
+This distinction does not change document-edit semantics. Snapshot-only
+observations follow section 3: observing a current message state is not proof
+of its creation or of an intervening edit, deletion or restore. A complete
+upstream event journal is not a requirement for importing such evidence.
 
 | Typed event | Minimum validity / provenance |
 | --- | --- |
 | Message creation | Text, attachment or both; empty text is valid when the typed content is otherwise meaningful |
+| Message snapshot observation | Exact retained import evidence for the observed message state; no assertion that creation or any unknown change event was observed |
 | Edit | Exact affected event/state plus replacement content and source edit evidence |
 | Delete / tombstone | Exact affected event/state and deletion evidence; not physical erasure of history |
 | Restore / moderation | Exact affected event/state, explicit action and source evidence; restore identifies the retained state being restored |
@@ -126,23 +133,53 @@ local occurrence IDs explicitly but preserves complete external identity,
 selected source revision, artifact bindings and provenance. Physical table
 keys are separate. Neither text nor timestamps are automatic IDs.
 
-An adapter declares an immutable source-event key recipe and exact revision
-rule before idempotent import. Full namespace-qualified external event identity
-plus selected source revision identifies the source fact; the normalization
-recipe additionally identifies the representation. An external message/object
-ID alone need not identify its individual edit events. AMXR parent/type/domain
-rules are reused, never inferred from a numeric value.
+Keep four identities separate:
+
+| Identity | Meaning and limit |
+| --- | --- |
+| External message/object | Provider-qualified message identity, expressed by existing AMXR; it may survive many source changes and does not identify each change |
+| Observed source change | A distinct upstream occurrence, identified only when an explicit event key or a reliable revision marker and its reviewed adapter recipe establish that identity |
+| Local journal Entry | Allocation-qualified local occurrence/observation; a local Entry ID is not a portable provider event ID |
+| EventRevision | Exact representation revision of that same local Entry; neither a new upstream occurrence nor a fabricated provider revision marker |
+
+An adapter declares its source-event or local-observation key recipe, revision
+rule and deduplication boundary before idempotent import. Where a reliable
+source-change identity exists, the full namespace-qualified key and selected
+source revision identify the source fact; the normalization recipe additionally
+identifies the representation. AMXR parent/type/domain rules are reused, never
+inferred from a numeric value. An external message ID alone is insufficient
+to distinguish its creation and individual edits.
 A changed normalization recipe does not allocate a competing source Entry; it
 requires an explicit representation correction with an expected revision.
+
+A snapshot-only provider may expose a message ID and mutable current content
+but no independent event ID or reliable revision marker. Record an explicitly
+local observation of that state, bound to an exact retained import artifact
+and stable record locator under the adapter recipe. Its observed message ref
+may be known while its source-change identity is absent. `SourceRevisionId`
+selects exact retained evidence; it must not be presented as a provider-issued
+change/revision token when none exists.
+Retained evidence may be a normalized record artifact under the existing
+artifact/provenance contract; this does not require retaining a whole provider
+archive or reconstructing a complete upstream journal.
+
+Such a key can deduplicate a replay of the **same retained observation**, not
+prove global event equivalence across archives, observers or polls. State the
+limited boundary; separate observations with matching text/time are not proof
+of one upstream event. Do not synthesize a portable event identity from text,
+content digests, source/observation timestamps or an observer account. Do not
+infer unobserved creation, edit, delete or restore events from snapshots; keep
+unknown history explicit rather than inventing a complete source journal.
 
 - Same source event/revision, recipe and canonical content: idempotent replay,
   no new Entry/revision; a new observation receipt may be recorded separately.
 - Same declared key/revision/recipe but conflicting payload or target: explicit
   conflict/quarantine with both evidence records, not last-writer-wins.
-- Missing external event identity: a local occurrence with exact archive/import
-  artifact and record locator may support a declared **local import** key. It
-  is not a fabricated globally portable external ID. Without a stable key,
-  report deduplication as unresolved instead of merging on text or time.
+- Missing external event identity: a local observation with exact archive/import
+  artifact and record locator may support the declared **local import** key
+  above. Without a stable evidence-qualified key, report deduplication as
+  unresolved instead of merging on text or time. No Entry need represent a
+  source change that the available evidence does not establish.
 - Incomplete archives and unresolved parents remain explicit. Later resolution
   is a recorded reconciliation; it cannot silently alter historical source
   evidence or substitute the latest target revision.
@@ -196,6 +233,7 @@ struct Content {
     std::vector<agent_memory::ArtifactBindingId> attachments;
 };
 struct MessageCreated { Content content; };
+struct MessageSnapshotObserved { Content content; };
 struct Edited { EventRef affected; Content replacement; };
 struct Tombstoned { EventRef affected; };
 struct Restored { EventRef affected; EventRef retained_state; };
@@ -216,12 +254,16 @@ struct DerivedObserved {
     agent_memory::ArtifactBindingId output;
     agent_memory::ArtifactBindingId publication_receipt;
 };
-using Payload = std::variant<MessageCreated, Edited, Tombstoned, Restored,
-    Moderated, AttachmentObserved, ToolCallObserved, ToolResultObserved,
-    CommandObserved, PatchObserved, ConfigurationChanged, DerivedObserved>;
+using Payload = std::variant<MessageCreated, MessageSnapshotObserved, Edited,
+    Tombstoned, Restored, Moderated, AttachmentObserved, ToolCallObserved,
+    ToolResultObserved, CommandObserved, PatchObserved, ConfigurationChanged,
+    DerivedObserved>;
 struct SourceBinding {
-    agent_memory::ExternalObjectRef event;
+    std::optional<agent_memory::ExternalObjectRef> message;
+    std::optional<agent_memory::ExternalObjectRef> event;
     agent_memory::SourceRevisionId revision;
+    agent_memory::ArtifactBindingId evidence;
+    std::string record_locator;
     std::string adapter_recipe;
 };
 struct EventRecord {
@@ -255,8 +297,8 @@ const auto issues = validate(event); // Future API; requires the value-types sli
 
 Validation rejects zero/unqualified IDs, an unspecified scope, invalid external
 references, empty required artifact bindings, invalid UTF-8 text, invalid/empty
-source-binding fields and payload/target mismatches. A local field validator cannot prove
-that an artifact, actor or exact target exists, is authorized, belongs to the
+required source-binding fields and payload/target mismatches. A local field
+validator cannot prove that an artifact, actor or exact target exists, is authorized, belongs to the
 selected revision/frontier, or that an allocation committed. The later
 admission/read boundary performs those checks; validation is not authority.
 Conflicting duplicates are also an admission/import check, not a property a
@@ -273,6 +315,14 @@ EventRefs. An incomplete import missing that state remains unresolved import
 evidence, not an admitted typed mutation with a zero or guessed target. Later
 reconciliation records an exact revision rather than substituting latest.
 No new wire grammar, digest recipe or JSON format is assigned by this sketch.
+`SourceBinding::message` and `event` are independent optional references: the
+former never fills in the latter by default. The required evidence/revision
+and recipe-qualified record locator retain the exact observation when no
+source-change identity is available. The locator has no public interchange
+grammar here; codec/store review must settle its bounds and resolution rules.
+`MessageSnapshotObserved` records available state without claiming a source
+creation/change event or complete history. Local validation can check these
+fields, but cannot prove the adapter's identity guarantees or global dedupe.
 
 ## 5. Bounded reads and retrieval projections
 
@@ -409,7 +459,7 @@ need not implement every tool/development-session payload.
 
 | Sequential PR | Minimum implementation and acceptance gate | Principal risk |
 | --- | --- | --- |
-| 1. Values / validation | Approve sections 2–3; add C++17 Conversation/Entry/Actor values, exact references, message/change and reply/thread values, AMXR bindings, textless example, invalid-input and unchanged legacy tests | Ambiguous identity/target or field validation mistaken for admission |
+| 1. Values / validation | Use the approved event/revision baseline; add C++17 Conversation/Entry/Actor values, exact references, message/change and reply/thread values, optional AMXR bindings, evidence-qualified snapshot observations, textless example, invalid-input and unchanged legacy tests | Ambiguous identity/target, invented source history or field validation mistaken for admission |
 | 2. Event codec | Separately approve versioned framing, tags, limits and source-anchor mapping; exact goldens and malformed/oversized controls. AMXR is nested external identity, not the event format | Prematurely freezing a persistent format |
 | 3. Reference store / import | Backend-neutral exact/current history, actor/role observations, message/change fold, expected-revision conflict/NoChange, deterministic idempotent import and bounded stable-frontier paging | Losing history, replay collisions or mixing snapshots |
 | 4. Numeric MDBX history | Reuse backend context; review physical manifest/DBI budget and event-specific mappings, atomic history/dedupe/sequence writes, rollback/no-reuse, admission order, prefix/scope isolation and fresh-process reopen/crash recovery | Publishing mappings or current views without their canonical history |
@@ -432,11 +482,11 @@ TypedMetadata or storage migration is included here.
 
 ## 7. Decisions and fixtures required before runtime
 
-Human review must approve or revise the concrete baseline in sections 2–3,
-especially new source events versus representation corrections, per-conversation
-Entry allocation and source-event deduplication recipes. The first proposed
-consumers are a chat importer and Efi dialogue memory. Core qualification uses
-bounded normalized import/session fixtures, not a live provider SDK: message
+The event-versus-representation-revision baseline is approved for Phase 1;
+per-conversation Entry allocation, source-event/local-observation key recipes
+and their durable representation still need the codec/store reviews below.
+The first proposed consumers are a chat importer and Efi dialogue memory. Core
+qualification uses bounded normalized import/session fixtures, not a live provider SDK: message
 creation, attachment-only content, edit, tombstone/restore, replay and unresolved
 reply. The broader development-session follow-up adds tool call/result and
 patch evidence. Neither proves Telegram/Discord/forum API compatibility or
@@ -450,7 +500,9 @@ silently supplied by AMXR or by the shape of this C++ sketch.
 
 Required future fixtures: exact historical edits/deletes/restores; no-op and
 stale expected-revision conflict; no-reuse after reopen/rollback; two observers
-of one shared event; missing source IDs and orphan replies; identical replay
+of one shared event; snapshot-only evidence without an event/revision key,
+limited same-observation replay without invented change history; missing source
+IDs and orphan replies; identical replay
 versus conflicting duplicate; textless/admin and tool/patch unknown-outcome
 events; bounded/cyclic navigation; wrong-scope/expired-frontier continuation;
 and stale projection hydration without latest-revision substitution. If an
