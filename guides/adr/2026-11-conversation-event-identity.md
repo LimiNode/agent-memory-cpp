@@ -3,7 +3,9 @@
 - Status: **Proposed / review pending**, not an implemented public contract.
 - Date: 2026-11-21.
 - Source inspected: `acd5ad5545386b3feeaa79f8a587855b60801b4d`.
-- Milestone: later M2 conversation/session integration, not M1b text storage.
+- Scheduling: planned early opt-in Conversation Core under
+  [milestones](../milestones.md#early-opt-in-conversation-core-planned);
+  advanced conversation memory remains M2/M2+, not the M1b document row.
 - Scope: domain identity, source events, compatibility and implementation gates.
 
 Identity Architecture addendum: [identity policy](../identity-policy.md) is now
@@ -16,6 +18,10 @@ The separate [Conversation/Event contract proposal](../conversation-event-contra
 develops the next value surface, event-versus-revision baseline, bounded reads
 and staged implementation gates. It remains Draft / contract-only; neither
 this ADR nor that proposal authorizes runtime or ConversationStore work.
+The proposal's ownership/reuse matrix and evidence/reverse-dependency contract
+reuse the existing KnowledgeUnit, publication and projection owners. Journal
+entries/changes are distinct from `KnowledgeUnitKind::Event`; conversation
+links do not automatically become semantic Relation units.
 
 ## Context and owner
 
@@ -156,8 +162,9 @@ validity remain distinct, as in the linked-derived-knowledge contract.
 
 The current Identity Architecture workstream supplies the separate reusable
 external-reference value/codec and its qualification. A canonical event model
-and event store remain separate M2 slices after their product storage and
-store/transaction/recovery owners are agreed. No provider SDK is required in
+and event store remain separately reviewed slices of planned Conversation Core
+after their product storage and store/transaction/recovery owners are agreed.
+Only advanced conversation memory waits for M2/M2+. No provider SDK is required in
 core, and no conversation implementation is included here.
 
 The following acceptance matrix is **required future work, not tests run by this

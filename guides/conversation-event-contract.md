@@ -1,7 +1,8 @@
 # Conversation/Event Model: proposed domain contract
 
 - Status: **Draft / proposal, no public C++ API or event store implemented**.
-- Date: 2026-11-22. Milestone: later M2 conversation/session integration.
+- Date: 2026-11-22. Scheduling: planned early opt-in Conversation Core;
+  advanced conversation memory remains M2/M2+ under [milestones](milestones.md).
 - Baseline inspected: `main@acd5ad5545386b3feeaa79f8a587855b60801b4d`.
 - Prerequisite: approved standalone AMXR v1, with integration still pending.
 - Owner: conversation/session domain; rationale:
@@ -18,6 +19,39 @@ implementation slice.
 Keep domain stores separate, as required by [canonical content, section 2.2](canonical-content-storage-roadmap.md#22-conversation--session).
 Do not flatten a conversation into a mandatory document/string or make
 `ConversationEpisodePayload` its source of truth.
+
+This is a domain-specific canonical source model, **not a second universal
+memory system**. Reuse identity, exact revisions, provenance/publication,
+access and storage composition under their existing owners:
+
+| Boundary | Owns | Must not become |
+| --- | --- | --- |
+| Conversation / Entry history | Communication occurrences, revisions, edits, replies, branches, actors, ordering and observed tool events | A replacement knowledge envelope, execution engine or generic graph store |
+| `KnowledgeUnit` | Independently retained notes, assertions, facts, semantic relations and derived knowledge | An obligatory copy of every message or reply link |
+| Publication / provenance | Exact inputs, recipe, frontier, generation and admission of a derived output | A second conversation-only lineage system or an adjacency row |
+| `SearchProjection` / indexes | Rebuildable lexical, dense, multi-aspect and optional graph navigation views | Canonical evidence, source identity or relation truth |
+
+One source occurrence has one authoritative canonical history. Many derived
+knowledge objects and indexes may depend on it; none becomes an independent
+source merely by copying or summarizing its content. Artifact retention does
+not create a competing conversation journal.
+
+Terminology is by responsibility: **Entry** is a journal occurrence; a
+conversation change is a typed edit/delete/restore occurrence. The sketch's
+`EventRecord` and `EventRevision` name that journal surface only.
+`KnowledgeUnitKind::Event` instead describes an assertion about a domain event
+(for example, somebody's arrival); it is neither a journal change nor its ID.
+`KnowledgeUnitKind::Relation` owns a semantic assertion, not every `reply_to`,
+`edit_of`, `branch_of` or `tool_result_of` link. Existing enum values and legacy
+chat types remain unchanged; final public naming is reviewed with slice 1.
+
+Keep three logical graphs distinct: provenance is an acyclic graph of exact
+derivations; semantic relations may contain cycles; an execution graph records
+operations of an external runtime such as ADELIA. Conversation stores observed
+calls/results and causal evidence, never orchestration or execution policy.
+Low-level relation machinery may be reused where its invariants match, but
+neither semantic GraphEdge materialization nor a graph backend is mandatory for
+canonical history or technical lineage.
 
 | Entity | Proposed invariant |
 | --- | --- |
@@ -258,11 +292,14 @@ changed access cannot silently resume at latest. Pagination/reopen support and
 cursor encoding require the store slice's separate conformance tests. Denied
 records and target identities do not leak through normal pages, counts or trace.
 
-ConversationEpisode, window, summary and search projections retain exact
+ConversationEpisode, window, summary and search representations retain exact
 source Entry/revision inputs, selected frontier, scope, derivation recipe and
 publication receipt. [Knowledge-unit episodes](knowledge-units-roadmap.md#55-conversationepisodepayload)
-remain retrieval projections, including their existing utterance/participant
-fields; this proposal does not rewrite that payload or its DBIs. Any future
+remain derived retrieval views, never canonical conversation history. An
+independently retained Summary, Relation or ConversationEpisode is a derived
+`KnowledgeUnit` with its own lifecycle; its `SearchProjection` is a separate
+rebuildable view, as defined by [derived representations](derived-representations-and-codecs.md#generic-representation-model).
+This proposal does not rewrite the existing episode fields or DBIs. Any future
 adapter must resolve those locators to exact canonical event revisions before
 claiming source-backed completeness. A summary is not a second canonical store.
 
@@ -271,6 +308,57 @@ binding remains valid. Missing retained evidence, historical validity,
 freshness and publication state are distinct, as in
 [linked-derived knowledge](linked-derived-knowledge.md). Technical lineage and
 navigation can operate without a graph backend.
+
+### 5.1. Evidence and reverse dependency contract
+
+Reuse the [canonical manifest binding](linked-derived-knowledge.md#authoritative-revision-binding),
+not a second list of truth in conversation rows. The event-source adapter must
+bind a complete allocation-qualified Entry/revision reference to an exact
+`SourceRevisionId` and evidence anchor, retaining source identity and recipe.
+It must resolve that binding after reopen/remapping without a numeric-ID cast,
+latest-revision substitution or fabricated Resource revision. The existing
+publication API does not yet accept Entry references: that extension and its
+trusted event frontier need review before event-derived admission is claimed.
+
+Two bounded operations are required for the later derived-knowledge bridge:
+
+- **Evidence drill-down:** from an output revision/publication, open its exact
+  Entry/source revisions and anchors, recursively for derived inputs.
+- **Reverse dependencies:** from an exact Entry/source revision, find dependent
+  publications and their output units/projections; an explicit current-source
+  query also identifies affected active generations. Results are deterministic,
+  reopen-stable and scope/access checked before identities or text are exposed.
+
+Both operations use the same canonical manifest. An optional reverse index is
+a rebuildable acceleration, not a second provenance authority; graph-off must
+work. Bound records, bytes, depth, fanout and time; an incomplete index or
+exhausted budget reports `Partial`/`Unavailable`, not a complete empty result.
+Reverse invalidation can schedule affected work, but current freshness still
+requires the authoritative read-time frontier/witness check. An interrupted
+reverse walk must never admit stale output as `Current`.
+
+Example: Entry 183@1 says "Petya is Valentina's grandson". A derived Relation
+unit may assert `grandchild_of(Petya, Valentina)` with exact participant
+identities, direction, extraction recipe and a publication binding to that
+Entry revision. The source proves **that somebody asserted kinship**, not that
+kinship is true. Preserve the existing epistemic/trust contract rather than
+promoting extraction confidence to fact. Search may nominate this unit, but a
+kinship answer checks typed roles and hydrates permitted evidence.
+
+An edit affecting Entry 183@1 advances the affected message-state frontier even
+when the old Entry revision itself is unchanged. A publication presenting that
+assertion as current support is then stale; an explicit historical account
+remains inspectable under retention/access policy. The bridge must distinguish
+those requests rather than checking only whether Entry 183@1 still exists.
+Independent supporting sources and contradictions remain separately visible.
+Do not delete a whole claim merely because one support changed, or silently
+drop that input from its old manifest: reassessment publishes a new revision
+with an explicitly selected support set.
+
+Aspect vectors such as `actor`, `relationships` or `goal-analysis` follow the
+existing descriptor/recipe/model contract. They are rebuildable search
+projections, never a relation type, participant identity or evidence of truth.
+Multiple aspects do not allocate multiple canonical source occurrences.
 
 ## 6. Integration boundaries and staged implementation
 
@@ -293,13 +381,49 @@ that bridge with its owner; do not solve it by a side-channel event store or
 TypedMetadata implementation. No changes to research PRs #676–679 or search
 integration PR #683 are part of this proposal.
 
-| Future slice | Minimum implementation and acceptance gate | Principal risk |
+### 6.1. REUSE / EXTEND / NEW
+
+This matrix distinguishes available code in the prerequisite stack from
+contract-only reuse. It does not claim those branches are integrated into main.
+
+| Action | Types / storage / indexes | Status and boundary |
 | --- | --- | --- |
-| 1. Value types / validation | Approve the proposed event-versus-revision and allocation rules; add C++17 values, textless example, typed invalid-input tests and unchanged legacy tests | Ambiguous target/identity or mistaken admission claims |
-| 2. Event serialization | Separately reviewed versioned schema, exact golden vectors, bounds and strict malformed-input tests; AMXR remains nested external identity, not the event format | Prematurely freezing a persistent format |
-| 3. Canonical event store | Domain-oriented exact/current reads, expected-revision conflict/NoChange, idempotent import, bounded paging and publication/source-frontier conformance | Losing history or mixing snapshots |
-| 4. MDBX persistence | Reuse existing backend context/composition; reviewed DBI profile, allocation rollback/no-reuse, prefix/isolation, fresh-process reopen and crash/recovery matrix | Transaction/lifecycle and recovery mismatch |
-| 5. Projections / adapters | Exact episode/window/summary hydration, source update/delete invalidation, authority/access/shared-frontier bridge and deterministic import fixtures | Treating derived rows as canonical evidence |
+| REUSE | `ExternalObjectRef` / AMXR, `ScopeId`, source/artifact bindings | Value/codec code exists in the prerequisite stack; source/anchor/retention semantics stay with artifact provenance. No new external ID grammar or implicit legacy conversion |
+| REUSE | `KnowledgeUnit`, `SearchProjection`, access and representation contracts | Existing envelope/projection code is narrower than the complete roadmap. No new universal memory envelope, aspect registry or embedding system here |
+| REUSE | `MdbxStorageContext`, transaction provenance and numeric-mapping patterns | Backend code exists; document/block mapping APIs are not Conversation/Entry APIs and cannot be reused by casting their IDs |
+| EXTEND | Canonical publication/provenance and trusted frontier adapters | B1/B2/B3 code validates KnowledgeUnit/root Resource bindings, not event history. Add exact Entry/source binding and bounded direct/reverse lookup with their owners; do not claim arbitrary transitive/event support already works |
+| EXTEND | Numeric mapping and allocation composition | New conversation/entry/actor domains need reviewed mapping/sequence/profile deltas. Do not alter AMSI document/block records, DBIs, key comparators or old bytes in place |
+| NEW | Conversation/Entry/Actor values, typed changes and event codec | Domain-specific invariants and a separately approved bounded format, not another generic identity layer |
+| NEW | Canonical history/import store and required lookup indexes | Exact/current history, AMXR source-event dedupe, order and reply/thread access; numeric MDBX persistence under the existing physical manifest owner, not a new generic GraphEngine |
+| EXTEND | Episode/window/summary and optional semantic/index adapters | Existing knowledge/projection contracts; implement only after exact-source admission. Semantic Relation views follow their own graph capability, never a prerequisite for the core journal |
+
+### 6.2. Small-PR implementation order
+
+Conversation Core is a **planned opt-in chat profile** for chat importing and
+Efi dialogue memory, ahead of further experimental search expansion. It needs
+the qualified identity/canonical-storage/backend prerequisites, not all of
+M1a/M1b/M1c or the whole M2 feature set. Its normative scheduling and release
+gates are in [milestones](milestones.md#early-opt-in-conversation-core-planned).
+The sketch above describes a broader event vocabulary; the first Core path
+need not implement every tool/development-session payload.
+
+| Sequential PR | Minimum implementation and acceptance gate | Principal risk |
+| --- | --- | --- |
+| 1. Values / validation | Approve sections 2–3; add C++17 Conversation/Entry/Actor values, exact references, message/change and reply/thread values, AMXR bindings, textless example, invalid-input and unchanged legacy tests | Ambiguous identity/target or field validation mistaken for admission |
+| 2. Event codec | Separately approve versioned framing, tags, limits and source-anchor mapping; exact goldens and malformed/oversized controls. AMXR is nested external identity, not the event format | Prematurely freezing a persistent format |
+| 3. Reference store / import | Backend-neutral exact/current history, actor/role observations, message/change fold, expected-revision conflict/NoChange, deterministic idempotent import and bounded stable-frontier paging | Losing history, replay collisions or mixing snapshots |
+| 4. Numeric MDBX history | Reuse backend context; review physical manifest/DBI budget and event-specific mappings, atomic history/dedupe/sequence writes, rollback/no-reuse, admission order, prefix/scope isolation and fresh-process reopen/crash recovery | Publishing mappings or current views without their canonical history |
+| 5. Core vertical qualification | Import normalized chat/session fixtures, replay, edit/delete/restore, reopen and read bounded history/reply/thread views with exact source refs; verify no graph/embedder requirement and all Core gates below | A value/codec test mistaken for a usable chat profile |
+| 6. Derived-knowledge bridge (separate follow-up) | Exact Entry/source publication/frontier adapter, graph-off direct/reverse provenance, multi-support/stale/denied evidence tests; only then episode/summary/semantic-relation and retrieval adapters | Derived rows treated as original evidence or unsupported freshness |
+
+The first vertical slice is complete only after PRs 1–5 jointly qualify:
+stable Conversation/Entry identities, AMXR external references, canonical
+message/change history, actors/roles, reply/thread links, numeric mappings,
+idempotent import, exact revisions/source references, bounded reads and
+reopen/recovery. Source references must be usable for the later KnowledgeUnit
+bridge, but neither automatic extraction nor derived retrieval is a Core gate.
+Advanced graph reasoning, multi-aspect embeddings, intelligent compaction,
+arbitrary episode reconstruction and bi-temporal logic remain M2/M2+ work.
 
 These are reviewable sequential slices, not authorization to implement them
 together. MDBX remains the first-party canonical backend; any later SQLite
@@ -311,9 +435,12 @@ TypedMetadata or storage migration is included here.
 Human review must approve or revise the concrete baseline in sections 2–3,
 especially new source events versus representation corrections, per-conversation
 Entry allocation and source-event deduplication recipes. The first proposed
-consumer is a bounded imported development-session fixture, not a live provider
-SDK: creation, attachment-only event, tool call/result, edit, tombstone and
-unresolved reply. It proves no Telegram/Discord/forum API compatibility.
+consumers are a chat importer and Efi dialogue memory. Core qualification uses
+bounded normalized import/session fixtures, not a live provider SDK: message
+creation, attachment-only content, edit, tombstone/restore, replay and unresolved
+reply. The broader development-session follow-up adds tool call/result and
+patch evidence. Neither proves Telegram/Discord/forum API compatibility or
+installs an agent runtime.
 
 Before serialization/store work, separately settle event schema and size limits,
 timestamp precision/error handling, actor/alias history, retention/erase policy,
@@ -330,3 +457,10 @@ and stale projection hydration without latest-revision substitution. If an
 optimization is proposed, compare against a row-oriented exact baseline under
 matched bytes/record limits, context fidelity, p50/p95/p99 and update/reopen
 cost. This document reports **no runtime or benchmark execution** for events.
+
+The later derived bridge additionally needs a graph-off fixture from Entry
+183@1 to a Relation/Summary/ConversationEpisode and back; an edit while reverse
+invalidation is interrupted; retained historical evidence; two independent
+supports with one changed; shared-root outputs not counted as independent;
+and denied/missing evidence with no body or locator leakage. These extend the
+existing linked-knowledge gates, not a second provenance test framework.
