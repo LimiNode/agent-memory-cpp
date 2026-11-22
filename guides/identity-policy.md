@@ -319,8 +319,10 @@ header AST at `a27e0c0558314d3760b41217ca37b29ab71c3bff`: 149 headers, 565
 declarations, exactly four added types and unchanged hashes for the 561 old
 declarations. Its name-based field count is not semantic identity inference.
 
-Closure remains REVIEW_REQUIRED until public API, this owner, implementation,
-goldens, compatibility and independent review agree. CLOSED requires explicit
-merge authorization, approved integration and qualification on the exact final
-main. No release/tag, existing database migration, numeric/default activation,
+The standalone closure gate required agreement between public API, this owner,
+implementation, goldens, compatibility and independent review, followed by
+explicit merge authorization, approved integration and exact-final-main
+qualification. That gate is CLOSED at the integrated baseline named above;
+the source-bound historical records are unchanged. No release/tag, existing
+database migration, numeric/default activation,
 ConversationStore, TypedMetadata or publication coordinator is authorized here.
