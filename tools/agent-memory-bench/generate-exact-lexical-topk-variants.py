@@ -9,8 +9,10 @@ import json
 from pathlib import Path
 
 
-CPP_SHA256 = "97d50c06acc17724adc37afe24dd3d1664f05471314309da9a29038d07b28971"
-HPP_SHA256 = "81f6cad5048f1a502536e6b99cf4253bb8f582ee0297fc3fa261754eaf20b471"
+# Normalized production sources after the shared BM25 primitive extraction.
+# Lexical.cpp/.hpp remain bound by the evaluator source manifest in CMake.
+CPP_SHA256 = "513ae103829f5cfcc3dd80fe859aeadb8eebf2fb15b1a5132d6b340890dd9d54"
+HPP_SHA256 = "d71907d104dca46bf82c50b912eb49dd92e5fc43e9dba981df4a9ab36f25d469"
 VARIANTS = {
     "partial_sort": "ResearchPartialSortExactLexicalIndex",
     "nth_element_then_sort": "ResearchNthElementExactLexicalIndex",

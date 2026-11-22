@@ -1,7 +1,10 @@
 #include <agent_memory/core/LibraryInfo.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxArtifactCatalog.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxPersistentLexicalCandidateAdapter.hpp>
 #include <agent_memory/infrastructure/mdbx/MdbxStorageContext.hpp>
+#include <agent_memory/lexical/StandardTokenizer.hpp>
 
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -56,12 +59,54 @@ std::filesystem::path cas_path_for(
     return root / "sha256" / digest.substr(0, 2) / (digest + ".raw");
 }
 
+void verify_bm25_reopen(const std::filesystem::path& database_path) {
+    const agent_memory::ScopeId scope{"installed-lexical"};
+    std::array<std::uint8_t, 16> epoch{};
+    epoch[0] = 1;
+    agent_memory::MdbxPersistentLexicalIndexOptions options;
+    options.path = database_path.string();
+    options.table_prefix = "installed_lexical";
+    options.descriptor = {
+        {scope, agent_memory::ProjectionKind::Original,
+         agent_memory::LexicalStatisticsEpoch{epoch}},
+        "original", 1, "standard-v1", "lowercase-v1", {1}};
+    {
+        agent_memory::MdbxPersistentLexicalIndex index{options};
+        index.upsert({scope, agent_memory::KnowledgeUnitId{1},
+            agent_memory::ProjectionKind::Original, agent_memory::ResourceId{"short"}, 1, 1,
+            {1, 1, 1, "m0.original.primary_text.v1"}, {"alpha", "alpha"}});
+        index.upsert({scope, agent_memory::KnowledgeUnitId{2},
+            agent_memory::ProjectionKind::Original, agent_memory::ResourceId{"long"}, 1, 1,
+            {1, 1, 1, "m0.original.primary_text.v1"},
+            {"alpha", "alpha", "alpha", "filler", "filler", "filler"}});
+    }
+    {
+        agent_memory::MdbxPersistentLexicalIndex reopened{options};
+        agent_memory::StandardTokenizer tokenizer;
+        agent_memory::PersistentLexicalCandidateOptions ranking;
+        ranking.scoring = agent_memory::PersistentLexicalScoring::Bm25;
+        agent_memory::MdbxPersistentLexicalCandidateAdapter adapter{reopened, tokenizer, ranking};
+        agent_memory::RetrievalQuery query;
+        query.text = "alpha";
+        query.limit = 1;
+        const auto window = adapter.generate_window(query);
+        require(window.completeness ==
+                    agent_memory::PersistentLexicalCandidateCompleteness::Complete &&
+                    window.candidates.size() == 2 &&
+                    window.candidates[0].identity.knowledge_unit_id == agent_memory::KnowledgeUnitId{1} &&
+                    window.candidates[0].identity.score > window.candidates[1].identity.score,
+                "installed BM25 reopen or full candidate window failed");
+        // Candidates are not product results: canonical admission is still required.
+    }
+}
+
 } // namespace
 
 int main() {
     try {
         const TemporaryDirectory temporary_directory;
         const auto database_path = temporary_directory.path() / "database.mdbx";
+        verify_bm25_reopen(temporary_directory.path() / "lexical.mdbx");
         agent_memory::MdbxArtifactCatalogOptions options;
         options.path = database_path.string();
         options.table_prefix = "installed_consumer";

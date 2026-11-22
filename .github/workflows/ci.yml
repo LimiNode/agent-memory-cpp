@@ -92,7 +92,7 @@ jobs:
                 core=true
                 storage=true
                 ;;
-              src/agent_memory/embedding/*|src/agent_memory/index/*|src/agent_memory/retrieval/*|src/agent_memory/eval/*|tests/embedding/*|tests/index/*|tests/retrieval/*|tests/eval/*)
+              src/agent_memory/embedding/*|src/agent_memory/index/*|src/agent_memory/lexical/*|src/agent_memory/retrieval/*|src/agent_memory/eval/*|tests/embedding/*|tests/index/*|tests/lexical/*|tests/retrieval/*|tests/eval/*)
                 core=true
                 research=true
                 ;;
@@ -171,6 +171,8 @@ jobs:
           assert_route "CMakeLists.txt" true true true true true
           assert_route "cmake/AgentMemoryOptions.cmake" true true true true true
           assert_route "src/agent_memory/index/FlatBinarySignatureIndex.cpp" true false true false false
+          assert_route "src/agent_memory/lexical/Lexical.cpp" true false true false false
+          assert_route "tests/lexical/lexical_value_types_test.cpp" true false true false false
           assert_route "tests/index/binary_signature_test.cpp" true false true false false
           assert_route "tools/agent-memory-bench/run-native-mdbx-batch-sweep.py" false false true false false
           assert_route "tools/lexical-research/run_cpp_lexical_parity.py" false false true false false
@@ -530,7 +532,7 @@ jobs:
           --output-on-failure
 
   mdbx-benchmark:
-    if: needs.changes.outputs.research == 'true'
+    if: needs.changes.outputs.research == 'true' || needs.changes.outputs.storage == 'true'
     needs: changes
     name: MDBX benchmark harness
     runs-on: ubuntu-latest
@@ -560,6 +562,7 @@ jobs:
           -DAGENT_MEMORY_BUILD_TESTS=ON
           -DAGENT_MEMORY_BUILD_RESEARCH_TESTS=ON
           -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DAGENT_MEMORY_CANDIDATE_EXPECTED_HEAD=${{ github.event.pull_request.head.sha || github.sha }}
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build storage benchmark harness
@@ -570,19 +573,29 @@ jobs:
           agent-memory-mdbx-finalist-harness
           agent_memory_segmented_lexical_benchmark
           agent_memory_lexical_retrieval_qualification_r2
+          agent-memory-persistent-lexical-candidate-qualification
 
       - name: Test storage benchmark harness
         run: >
           ctest --test-dir build-mdbx-benchmark --build-config Release
           --output-on-failure
           -R
-          "agent_memory_mih_storage|agent_memory_native_thq_mdbx_serving_(lifecycle|integer_key)|agent_memory_native_mdbx_(serving_audit|layout_sweep)(_audit)?_self_test|agent_memory_mdbx_finalist_harness_self_test|agent_memory_segmented_lexical_(benchmark_contract|qualification_(validator_self_test|corpus_self_test|receipt_replay|timeout_self_test))|agent_memory_lexical_retrieval_qualification_r2_(smoke|receipt|validator_self_test|parallel|parallel_self_test)"
+          "agent_memory_mih_storage|agent_memory_native_thq_mdbx_serving_(lifecycle|integer_key)|agent_memory_native_mdbx_(serving_audit|layout_sweep)(_audit)?_self_test|agent_memory_mdbx_finalist_harness_self_test|agent_memory_segmented_lexical_(benchmark_contract|qualification_(validator_self_test|corpus_self_test|receipt_replay|timeout_self_test))|agent_memory_lexical_retrieval_qualification_r2_(smoke|receipt|validator_self_test|parallel|parallel_self_test)|agent_memory_persistent_candidate_qualification_(native_self_test|validator_self_test|smoke)"
 
       - name: Upload lexical retrieval R2 receipt
         uses: actions/upload-artifact@v4
         with:
           name: lexical-retrieval-qualification-r2-receipt
           path: build-mdbx-benchmark/lexical-retrieval-r2-receipt.json
+
+      - name: Upload persistent lexical candidate qualification receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: persistent-lexical-candidate-qualification-receipt
+          path: |
+            build-mdbx-benchmark/persistent-candidate-qualification.json
+            build-mdbx-benchmark/persistent-candidate-qualification.json.sha256
+          if-no-files-found: error
 
       - name: Replay segmented qualification evidence
         run: |
@@ -1827,6 +1840,7 @@ jobs:
           check_required "$STORAGE_REQUIRED" "$STORAGE_RESULT" "MDBX storage"
           check_required "$STORAGE_REQUIRED" "$MSVC_STORAGE_RESULT" "MDBX MSVC storage"
           check_required "$RESEARCH_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX benchmark"
+          check_required "$STORAGE_REQUIRED" "$MDBX_BENCHMARK_RESULT" "MDBX candidate/storage qualification"
           check_required "$RESEARCH_REQUIRED" "$MIH_RESULT" "native MIH"
           check_required "$RESEARCH_REQUIRED" "$NUMERICAL_FRONTIER_RESULT" "exact-vector numerical frontier"
           check_required "$RESEARCH_REQUIRED" "$PRODUCTION_RERANKER_RESULT" "production-shaped reranker admission"

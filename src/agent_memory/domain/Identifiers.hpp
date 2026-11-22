@@ -26,8 +26,8 @@ namespace agent_memory {
     };
 
     /// \brief Stable globally unique identifier of an ingested source document.
-    /// \note A document identifier must never be reused for a different resource
-    /// revision within one storage backend.
+    /// \note Never rebind an identifier to a different logical document. Ordinary
+    /// revisions retain document identity; the selected revision is a separate value.
     class DocumentId final {
     public:
         DocumentId() = default;

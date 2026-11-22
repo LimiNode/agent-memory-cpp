@@ -45,6 +45,7 @@ namespace agent_memory {
         ) const override;
 
         /// \brief Searches all indexed chunks with Okapi BM25.
+        /// \throws std::overflow_error if term or accumulated score arithmetic is not finite.
         [[nodiscard]] std::vector<LexicalSearchResult> search(
             const LexicalSearchQuery& query
         ) const override;
@@ -73,8 +74,6 @@ namespace agent_memory {
             const std::string& term,
             const Bm25Options& options
         ) const;
-        [[nodiscard]] float average_document_length() const noexcept;
-
         void remove_record_stats(const StoredRecord& record);
 
         ExactLexicalIndexOptions m_options;

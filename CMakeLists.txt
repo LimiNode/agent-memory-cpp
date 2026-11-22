@@ -29,6 +29,8 @@ add_library(agent_memory STATIC
     src/agent_memory/chat/Message.cpp
     src/agent_memory/core/LibraryInfo.cpp
     src/agent_memory/domain/Document.cpp
+    src/agent_memory/domain/ExternalObjectRef.cpp
+    src/agent_memory/domain/Conversation.cpp
     src/agent_memory/domain/CanonicalContent.cpp
     src/agent_memory/domain/PromptComposition.cpp
     src/agent_memory/domain/CanonicalNavigation.cpp
@@ -351,6 +353,22 @@ endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
+    if(AGENT_MEMORY_BUILD_RESEARCH_TESTS AND TARGET agent-memory-persistent-lexical-candidate-qualification)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME agent_memory_persistent_candidate_qualification_native_self_test
+            COMMAND agent-memory-persistent-lexical-candidate-qualification --self-test)
+        add_test(NAME agent_memory_persistent_candidate_qualification_validator_self_test
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tools/lexical-research/validate_persistent_candidate_qualification.py"
+                --self-test)
+        add_test(NAME agent_memory_persistent_candidate_qualification_smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tools/lexical-research/validate_persistent_candidate_qualification.py"
+                --source-root "${PROJECT_SOURCE_DIR}"
+                --binary $<TARGET_FILE:agent-memory-persistent-lexical-candidate-qualification>
+                --output "${CMAKE_BINARY_DIR}/persistent-candidate-qualification.json"
+                --expected-head "${AGENT_MEMORY_CANDIDATE_EXPECTED_HEAD}" --smoke)
+    endif()
     if(AGENT_MEMORY_BUILD_RESEARCH_TESTS AND TARGET agent-memory-production-reranker-admission)
         find_package(Python3 REQUIRED COMPONENTS Interpreter)
         add_test(NAME agent_memory_production_reranker_admission_self_test

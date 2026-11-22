@@ -294,3 +294,18 @@ The observed regime changes support the existing conditional decision. A faster
 selector cannot remove scanning, filtering or metadata construction costs, and
 the same heap is not uniformly best even at small K. This shared-host synthetic
 pilot does not establish a production threshold or stable tail latency.
+
+## 2026-11-21 integration maintenance
+
+Search integration extracts the existing float BM25 formula into
+`bm25_term_score()` in `Lexical.cpp`, adds explicit arithmetic validation and
+removes the private duplicate average-length helper. The generator pins now
+track those production sources. Selection, class renames and explicit stage
+transforms are unchanged; their reversal and rejection controls remain required.
+The evaluator source manifest already includes `Lexical.cpp` and `Lexical.hpp`,
+so the shared scorer remains source-bound.
+
+This is instrument compatibility maintenance, not a new performance result.
+Historical raw receipts, generated-source hashes and measured revisions above
+remain unchanged and must be replayed from their historical checkout. New CI
+receipts belong only to their actual checkout and expected PR HEAD.

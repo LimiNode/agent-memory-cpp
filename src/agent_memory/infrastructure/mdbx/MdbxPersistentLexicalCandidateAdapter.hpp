@@ -61,10 +61,18 @@ struct PersistentLexicalCandidate final {
     ProjectionVersionRef projection_version;
 };
 
+/// \brief Explicit ranking policy; legacy callers retain TF accumulation.
+enum class PersistentLexicalScoring : std::uint8_t {
+    TermFrequency,
+    Bm25
+};
+
 struct PersistentLexicalCandidateOptions final {
     std::size_t max_candidates = 256;
     std::size_t max_postings_per_term = 4096;
     std::size_t max_query_terms = 32;
+    PersistentLexicalScoring scoring = PersistentLexicalScoring::TermFrequency;
+    Bm25Options bm25;
 };
 
 struct PersistentLexicalCandidateResponse final {
@@ -95,11 +103,30 @@ public:
         PersistentLexicalCandidateOptions options = {}
     );
 
+    /// \brief Legacy candidate API, capped by query.limit before admission.
+    /// \throws std::overflow_error if scoring arithmetic is not finite.
+    /// \note Use generate_window() when selecting top-K after canonical admission.
     [[nodiscard]] PersistentLexicalCandidateResponse generate(
         const RetrievalQuery& query
     ) const;
 
+    /// \brief Returns the entire bounded ranked window, ignoring query.limit as a cap.
+    ///
+    /// A positive limit is still required. Candidate/posting limits report
+    /// Truncated; Complete describes lexical membership only, not canonical
+    /// freshness or authorized top-K. The caller must admit the window before
+    /// final limiting. See guides/persistent-lexical-index-foundation.md,
+    /// "Opt-in flat BM25 candidate window".
+    /// \throws std::overflow_error if scoring arithmetic is not finite.
+    [[nodiscard]] PersistentLexicalCandidateResponse generate_window(
+        const RetrievalQuery& query
+    ) const;
+
 private:
+    [[nodiscard]] PersistentLexicalCandidateResponse generate_impl(
+        const RetrievalQuery& query, bool apply_query_limit
+    ) const;
+
     MdbxPersistentLexicalIndex* m_index;
     ITokenizer* m_tokenizer;
     PersistentLexicalCandidateOptions m_options;
