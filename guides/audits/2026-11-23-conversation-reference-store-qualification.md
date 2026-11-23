@@ -75,3 +75,45 @@ qualified by allocator fault injection.
 - No MDBX DBI/schema, graph/search/embedding activation, derived-knowledge
   publication adapter or tool/runtime execution. Those retain their separate
   Phase 4/5/6 owners. This is not a complete chat-memory product profile.
+
+## 2026-11-24 final targeted qualification
+
+The earlier allocation-failure limitation above describes the original review
+baseline. The new isolated `conversation_store_failure_test` uses standard
+replaceable C++ allocation functions in one single-threaded executable, not
+runtime allocator detours or a production test seam. Fixtures/arguments and
+verification allocate outside its gate. Each successful operation's allocation
+count is measured, every ordinal is failed once, and the next ordinal must
+succeed with the same count. Injection disarms before unwinding/verification.
+
+GNU 15.2 Debug exercised **197 actual bad_alloc failures**: create 3, append 12,
+correction 47, exact read 18, history/continuation 22, Current/continuation 95.
+Every failure preserved canonical history/receipts, current content, generation,
+unused conversation/Entry/revision IDs, exact remaining byte capacity and old
+pinned cursors; the same operation then retried successfully. Coverage is
+limited to replaceable ordinary/aligned/nothrow C++ allocations in those
+fixtures, not malloc/OS/host/asynchronous faults or arbitrary inputs. MSVC
+checked STL may allocate inside noexcept constructors; that configuration
+explicitly skips this test with code 77, not a passing fault-injection claim.
+
+`conversation_store_revision_test` additionally checks correction after a
+descendant, multiple retained revisions with differently targeted siblings,
+occurrence-head advancement through an old representation, pre/post-correction
+frontiers, exact historical restore, and nonexistent/cross-conversation/denied
+targets. The fold intentionally compares occurrence identity for head
+advancement; exact target revision remains immutable in history. Different
+revision targets do not turn siblings into a linear chain. No revision-sensitive
+branching model or store/codec implementation change was needed.
+
+The [pagination experiment](../experiments/2026-11-24-conversation-current-pagination.md)
+records nine executed full-versus-paged cases, API decode/byte counters, elapsed
+time and process peak memory. Current repeats the fold per page; the tested
+reference subset is bounded, not a scalable serving/SLA qualification.
+
+GNU Debug and MSVC Release targeted CTest: **3/3 passed each** (original store,
+revisions, allocation failure). Exact-head hosted results are recorded in the updated PR
+receipt when observed; the earlier-head CI is not qualification of these new
+tests. No confirmed blocking implementation defect was found by these cases.
+Verdict: **READY for owner review within the declared reference subset**;
+Phase 4/5 persistence, crash/reopen and scalable projection qualification remain
+explicitly open.

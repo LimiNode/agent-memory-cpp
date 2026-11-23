@@ -120,6 +120,12 @@ before exposing any state as current: exhausted input budgets return no
 unqualified current content, even if some prefix was examined. Output paging
 may then return a complete prefix plus a fixed-frontier continuation.
 
+The reference implementation repeats the complete selected-input fold for each
+Current output page; a page limit is not an incremental-work or peak-memory
+limit. See the [pagination screen](experiments/2026-11-24-conversation-current-pagination.md)
+for measured decode amplification and the bounded reference-profile trade-off.
+This is not a long-dialogue serving-performance claim or a mandate for a cache.
+
 ## Qualification and remaining boundaries
 
 The [Phase 3A qualification report](audits/2026-11-23-conversation-reference-store-qualification.md)
