@@ -1,6 +1,7 @@
 # Conversation source import: bounded Phase 3B qualification
 
-- Date: 2026-11-24. Status: locally qualified reference slice; hosted checks pending.
+- Date: 2026-11-24. Status: **HOLD** after hosted Linux allocation-failure abort;
+  local Windows qualification does not close this finding.
 - Branch: `feat/conversation-source-import`, dependent Draft PR over Phase 3A
   `feat/conversation-reference-store@cd6d5dffc8c2c3684330c2fcfea46aa5042cdcee`.
 - Normative owner: [source import contract](../conversation-source-import.md).
@@ -82,7 +83,8 @@ tests/examples ON. No required dependency was added.
 | Strict C++17 installed find_package consumer, MSVC Release | Built and executed successfully |
 | Copied/relocated-prefix C++17 import consumer, MSVC Release | Built and executed successfully |
 | New contract/report relative Markdown links and diff whitespace | 8 links valid; git diff --check passed |
-| Exact-head hosted CI/Packaging | Pending publication/observation; not counted as passed |
+| Initial hosted CI 45287868236, implementation HEAD 22ec139a | Failed: Linux core and Linux MDBX wiring abort in import allocation-failure test; semantic import tests pass |
+| Initial hosted Packaging 45287868013, same HEAD | Passed 6/6 |
 
 `conversation_import_failure_test` uses isolated standard replaceable
 ordinary/aligned/nothrow C++ allocation functions in a single-threaded executable.
@@ -123,10 +125,82 @@ separately qualifies its correction fixture.
 
 The implementation review checked ownership, fail-closed lookup before replay,
 full input witness versus normalized bytes, frozen target resolution, bounded
-copies/charges and all post-append operations. No confirmed blocking production
-defect was found in this subset. READY for review is conditional on observing
-exact-head hosted checks; full Core and upstream provider conformance remain
-open. The publication receipt names the exact final SHA and hosted runs.
+copies/charges and all post-append operations. The hosted Linux finding below
+blocks a READY verdict despite the successful Windows checks. Full Core and
+upstream provider conformance remain open. The publication receipt names the
+exact final SHA and hosted runs; diagnostic/report commits do not change the
+implementation's failed qualification status.
+
+## Confirmed hosted finding: throwing standard variant copy
+
+On implementation HEAD `22ec139a39a59144dae28b2c99ebb0ade91eacc3`, hosted
+CI [45287868236](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45287868236)
+finished with failure. Linux core job 138088880169 passed 66/67 tests; Linux
+MDBX wiring job 138088880324 passed 104/105. Both failures are the new import
+allocation-failure test with `double free or corruption (out)`. Windows and
+macOS core succeeded. Packaging
+[45287868013](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45287868013)
+passed 6/6; packaging success is not exception-safety qualification.
+
+A narrow Linux reproducer compiled the import failure test, importer, store and
+required domain implementation files using Ubuntu GNU/libstdc++ 15.2.0,
+`-std=c++17 -O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer`.
+The first four matrices passed (6/44/13/58 injected failures). ExternalEvent
+ordinal 5/54 reached UBSan `variant:1916`, "execution reached an unreachable
+program point". Its stack is:
+
+```text
+std::variant<...string, vector<ExternalIdentityComponent>>::copy constructor
+  -> ExternalObjectKey / ExternalObjectRef copy constructor
+  -> optional<ExternalObjectRef> / ConversationSourceBinding copy constructor
+  -> source_status: probe.source = source
+  -> import_observation
+```
+
+This happens before tentative source-map insertion or canonical append.
+It is not evidence of a double erase in importer rollback.
+
+The [standalone diagnostic](../../tests/ingestion/fixtures/variant_copy_bad_alloc_probe.cpp)
+uses only standard headers and standard replaceable allocation functions; no
+project code, map or store is linked. It compares a throwing copy constructor
+of `std::variant<int64_t, uint64_t, string, vector<int>>` with direct construction of its string
+alternative. Both should propagate `bad_alloc` and preserve the source.
+With the same Linux standard library, the copy reproduces UBSan `variant:1916`
+at O0 and an invalid free at O3 without sanitizers; the direct-alternative
+control catches `bad_alloc` and validates the unchanged source. The installed
+header's never-valueless destruction path visits an incompletely constructed
+variant after its string copy throws. This establishes a standard-library
+failure on this setup, not a generic compiler-miscompilation claim.
+
+Reproduce from the source root on Linux (the diagnostic is deliberately not
+registered as a passing CTest or used to skip the real import failure test):
+
+```sh
+g++ -std=c++17 -O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
+    tests/ingestion/fixtures/variant_copy_bad_alloc_probe.cpp -o /tmp/am-variant-copy-probe
+UBSAN_OPTIONS=print_stacktrace=1 /tmp/am-variant-copy-probe control
+UBSAN_OPTIONS=print_stacktrace=1 /tmp/am-variant-copy-probe
+g++ -std=c++17 -O3 tests/ingestion/fixtures/variant_copy_bad_alloc_probe.cpp \
+    -o /tmp/am-variant-copy-release
+/tmp/am-variant-copy-release control
+/tmp/am-variant-copy-release
+```
+
+The optional `AGENT_MEMORY_TRACE_ALLOCATIONS=1` environment variable on the
+import failure executable prints operation/ordinal before each injection,
+outside the allocation gate. No injection, assertion or fixture is disabled.
+
+**Open finding / decision boundary:** failure-safe external-identity copying
+is not qualified on the affected Linux standard library. A workaround must
+cover composite-key scalar variants and nested/optional references, not just
+the first failing assignment. Importer-only cloning also leaves reference-store
+copy paths in `correct` and Current origin metadata; these have not been swept
+with external-key OOM fixtures. Do not silently change the integrated AMXR
+value-type interface, pin away the failure, disable the test or declare Linux
+atomicity from the successful Windows matrices. Next work must choose and
+review either complete portable copy hardening (including the Phase 3A paths)
+or a demonstrably fixed toolchain, then rerun external/composite-key fault
+fixtures and exact-head CI/Packaging. No such correction is included here.
 
 ## Open boundaries for Phase 4/5
 

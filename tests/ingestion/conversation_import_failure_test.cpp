@@ -172,6 +172,7 @@ struct Fixture final {
 };
 std::size_t run_matrix(Operation operation) {
     std::size_t count = 0;
+    const bool is_trace_enabled = std::getenv("AGENT_MEMORY_TRACE_ALLOCATIONS") != nullptr;
     {
         Fixture probe(operation);
         { ScopedGate gate(0); probe.attempt(operation); }
@@ -183,6 +184,8 @@ std::size_t run_matrix(Operation operation) {
     }
     for(std::size_t ordinal = 1; ordinal <= count; ++ordinal) {
         Fixture fixture(operation);
+        if(is_trace_enabled) std::fprintf(stderr, "operation %d ordinal %zu/%zu\n",
+            static_cast<int>(operation), ordinal, count);
         bool has_thrown = false;
         try { ScopedGate gate(ordinal); fixture.attempt(operation); } catch(const std::bad_alloc&) { has_thrown = true; }
         expect(has_thrown && g_gate.has_failed && g_gate.calls == ordinal, "each ordinal injects actual bad_alloc");
@@ -193,6 +196,7 @@ std::size_t run_matrix(Operation operation) {
     expect(!g_gate.has_failed && g_gate.calls == count, "allocation count repeatable");
     final_probe.verify_success(operation);
     std::printf("PASS import operation %d: %zu actual bad_alloc failures\n", static_cast<int>(operation), count);
+    std::fflush(stdout);
     return count;
 }
 } // namespace
