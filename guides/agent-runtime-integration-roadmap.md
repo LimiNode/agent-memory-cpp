@@ -608,6 +608,11 @@ struct PerspectiveComponent {
 `character` and `observer` are intentionally independent. Two partitions can
 both represent the same character while remaining different observers.
 
+Observer, perspective and access scope remain independent. Partial or
+disconnected histories and incompatible interpretations may coexist without a
+central observer; a reconciliation or schema upgrade cannot retroactively
+grant another observer knowledge, endorsement or earlier visibility.
+
 ### EpistemicStatusComponent
 
 ```cpp
@@ -662,6 +667,16 @@ must not leak through gap diagnostics. Known/unknown quadrants are analysis
 vocabulary, not new `KnowledgeUnitKind` values or implemented components.
 First test reuse of existing units, evidence and relations before proposing a
 new representation. Live cognition and autonomous questioning remain external.
+
+For optional domain schemas, distinguish an absent assertion, a declared
+unknown value, explicit negation and an unsupported type/schema. In epistemic
+notation, `not K_subject(P)` differs from `K_subject(not P)`; a retrieval miss
+establishes neither. Open-world absence does not generate a negated fact, and
+the system must not enumerate all possible negations. Reuse the
+[typed-decision outcome separation](structured-data-retrieval-roadmap.md#optional-typed-ai-operators)
+where applicable without coercing provider `Unsupported`/`Abstained` into
+semantic false/unknown. These are future validation cases, not new enum values
+or an implemented general epistemic reasoner.
 
 ### BiTemporalComponent
 

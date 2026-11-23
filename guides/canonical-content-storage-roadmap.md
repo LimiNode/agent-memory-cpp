@@ -272,6 +272,14 @@ A physical encoding descriptor must never be included in the digest or identity
 of a semantic document, conversation entry, memory or segment when decoded
 canonical content is byte-identical.
 
+These four layers describe stored knowledge, not proof of physical-world
+entity identity. One person may have several state/observation representations;
+new source revisions, photos or encodings do not by themselves create a new
+person, and similar names or content do not merge two people. Reuse AM-19
+[entity resolution](memory-lifecycle-governance-roadmap.md#10-am-19-deterministic-first-entity-resolution)
+and the [representation interpretation boundary](derived-representations-and-codecs.md#representation-objects-and-interpretation-boundaries)
+for such claims. This clarification adds no identity type or canonical codec.
+
 ## 4. Canonical Content And Stable Blocks
 
 `CanonicalContentRevision` is a durable, normalized representation selected by a

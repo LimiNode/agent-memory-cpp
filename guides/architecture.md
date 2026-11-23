@@ -66,6 +66,12 @@ it does not activate a conversation model, schema migration or production path.
 - Avoid speculative plugin systems before at least two real implementations
   require the same extension point.
 
+Keep the infrastructure metamodel separate from optional domain ontologies.
+The [structured representation contract](derived-representations-and-codecs.md#ontology-neutral-structured-representations)
+permits versioned alternative schemas without requiring binary relations,
+actants or a universal event model. This is a future extension boundary, not
+an implemented generic schema SPI or permission to change existing wire types.
+
 The source-bound [domain identity and public API audit](audits/2026-11-domain-identity-public-api-audit.md)
 and [type catalogue](audits/2026-11-public-type-catalogue.json) distinguish
 logical identities, scoped external references, binary content digests and

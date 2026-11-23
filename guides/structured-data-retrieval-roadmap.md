@@ -54,6 +54,46 @@ The initial relational operators are `Scan`, `Project`, `Filter`, `Join`,
 operator boundaries, row/byte/time limits and the source revision/frontier
 used for each result.
 
+## Composite local and role-aware retrieval
+
+Status: **Specified future contract / Roadmap only**. Extend `RetrievalPlan`
+and the existing typed/structured route for
+[composite derived representations](derived-representations-and-codecs.md#ontology-neutral-structured-representations),
+not a second query API. Illustrative addressing policies are container-only
+(hydrate through its parent), local (search a supplied structure), global
+(participate in general discovery) and global-typed (require declared schema,
+role or type constraints). These names do not freeze an enum or public API.
+
+Search locality is independent of `ScopeId` and authorization. Excluding a
+field from a global index does not make it secret; every route, parent and
+element hydration still requires ordinary access and publication admission.
+Neither a local index nor a role filter may widen the eligible candidate pool.
+No automatic field-by-field global embedding/index expansion is required.
+
+A role-aware result must preserve the exact parent representation/event and
+revision, matched element/role, typed value and source evidence anchors.
+Parent/schema/role/typed-value filters belong to the logical plan. Multiple
+matching roles of one event must not become unrelated events or independent
+evidence. Hydration validates the same frontier and schema as candidate
+selection; stale Current results fail closed rather than falling back to
+unqualified historical bytes. Historical access is explicit and authorized.
+
+The discriminating fixture asks for events where **OBJECT=furnace**: building,
+heating or repairing the furnace may qualify when that role is asserted by
+the selected schema. “The furnace heated the room” does not qualify merely
+because furnace appears as Actor/Instrument while room is Object. Swapping
+Actor/Object changes the structural result; identical words or high embedding
+similarity cannot override it. Schema-specific role mappings remain explicit.
+
+Compare structural indices and exact typed filters with lexical and optional
+role-conditioned dense projections, plus bounded combinations. Measure
+role precision/recall, parent/anchor fidelity, bytes, memory, latency, index
+fan-out and update cost against container hydration and ordinary lexical
+baselines. Same-source projections are retrieval votes, not independent
+evidence; similarity never automatically publishes a canonical `Relation`.
+The [proposed experiment matrix](experiments/2026-10-29-derived-representation-evaluation.md#2026-11-23-ontology-neutral-structure-and-activation-follow-up-proposed)
+is NOT RUN. Physical keys and new indices require a separate measured design.
+
 ## Tabular source profile (TSV/CSV)
 
 Delimited text is a structured source, not merely a long text file to split

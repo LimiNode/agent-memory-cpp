@@ -73,6 +73,13 @@ application stage. The canonical axes are independent:
 These axes are domain-level metadata in `agent-memory-cpp`; concrete
 application taxonomies own the actual string/id vocabularies.
 
+Optional ontologies belong to declared versioned schemas/profiles, not a new
+taxonomy baked into the core. Reuse the
+[ontology-neutral representation boundary](derived-representations-and-codecs.md#ontology-neutral-structured-representations)
+for role/element semantics and the existing typed-registry/allowlist contracts
+for admission. A generated domain label does not allocate a DBI or change a
+canonical kind.
+
 `KnowledgeUnitKind` remains the storage/payload discriminator (`Chunk`,
 `Playbook`, `DomainMap`, `CapabilityMap`, and so on). `semantic_class` must not
 repeat or override it: a `KnowledgeUnitKind::Playbook` may be semantically a
@@ -589,6 +596,38 @@ include a useful two-hop path, a wrong seed, a cycle, a high-degree hub, a
 stale/inaccessible endpoint, a disconnected relevant item and an exhausted
 shared budget. Acceptance is a measured relevance/cost/provenance trade-off;
 there is no default adaptive policy until a matched comparison supports one.
+
+#### Optional cross-query residual activation
+
+Status: **Research candidate**, not AR0 implementation or a default ranking
+policy. Distinguish ordinary per-query ranking, AR0's search-local adaptive
+trace, recent-query history, result cache, working context and residual
+activation carried between queries. None is automatically a substitute for
+another. A recent-query cache is the first low-complexity control.
+
+Existing usage counters, `DecayPolicy` and anti-loop cooldown are separate
+policies, not evidence of an implemented cross-query activation mechanism.
+
+If investigated, the host/runtime owns activation state with explicit observer,
+task/session and authorized-space bindings. It must be optional, bounded in
+entries/bytes/lifetime/work, resettable and isolated on task/observer changes.
+Decay (for example exponential), propagation and restart are experimental
+policies, not mandatory equations or durable truth. Recheck current policy,
+frontier and lifecycle before using activated candidates; do not expose denied
+identities through state diagnostics. Stale state cannot admit stale knowledge.
+
+Activation is a retrieval cue only. It cannot raise authority, confidence,
+source trust, evidence independence or tool-execution permission, and must not
+write canonical relations or epistemic claims. Do not infer independent
+corroboration from repeated routes, modalities or embeddings of one source.
+Preserve ordinary retrieval with all optional profiles disabled.
+
+The [structure/activation comparison](experiments/2026-10-29-derived-representation-evaluation.md#2026-11-23-ontology-neutral-structure-and-activation-follow-up-proposed)
+must compare stateless retrieval, recent-query cache and residual activation
+under matched full cost, including task switches, drift, cycles, stale/denied
+inputs and reset. Defer the mechanism if measured held-out utility does not
+justify its state and interference cost. It neither blocks Conversation Core
+Phases 3A–6 nor requires a new storage subsystem.
 
 ## 10. Milestone Placement
 

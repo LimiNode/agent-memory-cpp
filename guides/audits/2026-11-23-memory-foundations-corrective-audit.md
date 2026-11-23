@@ -6,7 +6,8 @@
   Implementation statements below are source/fixture inspection, not fresh
   execution or production qualification.
 - Scope: temporal semantics, epistemic awareness, prompt/keyed memory, extensible
-  knowledge processing/presentation and maintained views. Revisit before freezing
+  knowledge processing/presentation, ontology-neutral structures and maintained
+  views. Revisit before freezing
   their new public interfaces or persistent representations, or when a
   counterexample invalidates the proposed reuse boundary.
 - This document owns the audit questions, acceptance work and disposition, not
@@ -29,6 +30,7 @@ contracts and genuine gaps. The following distinctions constrain the follow-up:
 | Perspective and epistemic layers | [runtime owner](../agent-runtime-integration-roadmap.md#components) | Perspective, evidence/contradiction and epistemic validation are roadmap contracts; an awareness/open-question service is not established |
 | Search aspects and publication API | [SearchProjection](../../src/agent_memory/domain/SearchProjection.hpp), [IDerivedPublicationStore](../../src/agent_memory/storage/IDerivedPublicationStore.hpp); [representation owner](../derived-representations-and-codecs.md) | Fixed `ProjectionKind`, text body and single-scope/backend-local publication identity are implemented; named aspect/schema/recipe registration is a broader contract, not a universal publisher or an installed registry |
 | Fenced MDBX publication subset | [B2 writer](../../src/agent_memory/infrastructure/mdbx/MdbxDerivedPublicationStore.hpp), [B3 reader](../../src/agent_memory/infrastructure/mdbx/MdbxCurrentDerivedPublicationReader.hpp), [fixture](../../tests/infrastructure/mdbx/mdbx_derived_publication_store_test.cpp); [frontier owner](../root-resource-frontier-conformance.md) | `publish_fenced` and one-snapshot current/historical reads exist for the bounded direct-unit/root binding path; not generic transitive lineage, federated publication or host authorization |
+| Typed representation/locator values | [TypedRepresentation](../../src/agent_memory/domain/TypedRepresentation.hpp), [fixture](../../tests/domain/typed_representation_locator_test.cpp), [preview boundary](../typed-representation-locators.md) | Table/row/cell and media representation values, validators and bounded TL1 locator codec are implemented; this value-only preview does not supply a general catalog, parser, structured persistence or artifact hydration |
 | Processing and presentation | [artifact/provenance owner](../artifact-provenance-roadmap.md#341-document-extraction-provider-boundary), [knowledge owner](../knowledge-units-roadmap.md), [linked-publication integration map](../linked-derived-knowledge.md), representation owner | Recipe/producer identity and runtime-neutral provider contracts exist; canonical Markdown materialization, [CanonicalNavigation](../../src/agent_memory/domain/CanonicalNavigation.hpp) and prompt compilation are implemented subsets, not a general processor/presenter composition |
 | Question-conditioned aspects | [aspect/recipe owner](../derived-representations-and-codecs.md#aspect-representation-and-recipe-identity), [activation research](../knowledge-activation-roadmap.md#ar0-bounded-adaptive-associative-recall), [evidence owner](../source-trust-roadmap.md#epistemic-non-laundering) | Research candidate over arbitrary-aspect contracts; question/context parameterization, comparable functional views and an end-to-end affordance retrieval path are not implemented capabilities |
 | Maintained knowledge views | [ContentChangeSet](../../src/agent_memory/domain/CanonicalContent.hpp), [compaction owner](../compaction-roadmap.md), [offline owner](../offline-consolidation-roadmap.md) | Canonical net block changes are implemented; compaction/offline contracts do not establish an installed `CompactionWorker` or a complete maintained-view service. Offline consolidation remains Docs/tests only |
@@ -537,3 +539,110 @@ Completion now is recording these constraints/questions and linking their
 owners. Full comparative audit, new executable fixtures, implementation and
 persistent-format decisions remain open. No codec freeze, migration or runtime
 activation is approved by this document.
+
+## 7. Ontology-neutral derived knowledge: differential audit
+
+2026-11-23 follow-up at the same source baseline and the prior audit commit
+`ac16c58fa9ed7984b273b54525aa9a6be107d9a2`. Documentation only: no C++, DBI,
+wire/schema encoding, migration or production behavior changes. Sections 1–6
+remain applicable. PR #690 and dependent #694 are separate Draft work; this
+audit neither merges them nor changes their acceptance or exact HEADs.
+
+### 7.1. Existing mechanisms and genuine gaps
+
+The [representation owner](../derived-representations-and-codecs.md#ontology-neutral-structured-representations)
+separates infrastructure invariants from optional domain ontologies. A
+represented object can be a physical thing, state, relation or distinction;
+distinctions may be inputs to later distinctions. Rested-Peter and tired-Peter
+are distinguishable state representations, not necessarily two people. This
+permits recursive derived knowledge without proving that every experience or
+relationship is inherently binary. Binary encoding, relation arity and semantic
+equivalence are independent questions. No mandatory binary/actant/SPO ontology,
+`Distinction` kind or new foundation is adopted.
+
+Evidence labels below have the meaning in §1.1. **SPECIFIED** includes the
+explicit future-contract refinements in this change; it never means implemented.
+REUSE/EXTEND describe design disposition, not an implementation authorization.
+
+| Requirement | Differential evidence and actual gap | Disposition / normative owner |
+| --- | --- | --- |
+| Optional schemas and alternative ontologies | SPECIFIED aspect/schema/recipe identities and [optional N-ary facts](../knowledge-base-roadmap.md#optional-typed-relational-facts) predate this audit; MISSING general installed registry/SPI. Binary `Relation` is one graph projection, not a universal arity limit | REUSE identity/recipes; EXTEND [representation owner](../derived-representations-and-codecs.md#ontology-neutral-structured-representations); DEFER API freeze |
+| Typed nested elements and stable references | IMPLEMENTED text blocks/IDs/revisions and revision-qualified navigation; also bounded [table/media values, validators and TL1 locators](../../src/agent_memory/domain/TypedRepresentation.hpp). SPECIFIED broader artifact/table anchor contracts; MISSING generic schema-typed element bodies, edit/provenance rules, structured persistence and general hydration | REUSE stable-block/typed-locator principles; EXTEND composite contract, not current block wire format |
+| Internal element versus independent unit | SPECIFIED canonical-body/lifecycle/access/citation criteria; MISSING governed promotion workflow | EXTEND [composite element criteria](../derived-representations-and-codecs.md#composite-elements-and-independent-units); no unit per field |
+| Containment, semantics, identity, similarity, derivation | SPECIFIED distinct channels and acyclic technical lineage; semantic links may cycle. No automatic mapping between these meanings is implemented | REUSE [linked channels](../linked-derived-knowledge.md#relation-classes-and-traversal-channels); EXTEND explicit interpretation boundaries |
+| Several related outputs from one processor | IMPLEMENTED one text body+manifest+marker in [B1 API](../../src/agent_memory/storage/IDerivedPublicationStore.hpp); bounded direct-unit/root B2/B3 fences. SPECIFIED many-input/single-output; MISSING output-set publication and shared atomic visibility | EXTEND [multi-output owner](../linked-derived-knowledge.md#multi-output-structured-publication-future); DEFER physical coordinator design |
+| Local/global/role-aware retrieval | IMPLEMENTED unit/text-projection identity, not generic element/role/parent results; SPECIFIED structured route and row/cell anchors. MISSING composite route/index/hydration | EXTEND [structured owner](../structured-data-retrieval-roadmap.md#composite-local-and-role-aware-retrieval); locality is not access scope |
+| Historical schemas and incompatible interpretations | SPECIFIED recipe/schema identity, immutable historical generations and Current admission; MISSING general structured schema evolution/conformance fixtures | REUSE publication/history; EXTEND explicit separate interpretation/index identities; no reinterpretation of old bytes |
+| Missing, unknown, negated, unsupported | SPECIFIED runtime epistemic and typed-provider outcome distinctions; MISSING general schema-level epistemic validation | REUSE [runtime owner](../agent-runtime-integration-roadmap.md#awareness-and-open-question-audit-m2); EXTEND future negative cases, not a closed-world reasoner |
+| Relative time, claimed cause, intended purpose | IMPLEMENTED timestamps do not resolve expressions; SPECIFIED AM-13/T0 and causal evidence. MISSING relative-expression interpretation path | EXTEND [AM-13](../memory-lifecycle-governance-roadmap.md#relative-expressions-and-interpretation-m2) and AM-15; retain unresolved/uncertain evidence |
+| Entity/state identity, modality and observer | SPECIFIED AM-19, artifact representations and perspective/scope separation; MISSING generic verified entity-resolution behavior. Matching labels or modalities is not identity | REUSE [artifact/provenance](../artifact-provenance-roadmap.md#34-representation), [perspective](../agent-runtime-integration-roadmap.md#perspectivecomponent) and canonical identity layers; DEFER a separate Symbol Grounding subsystem |
+| Question-conditioned knowledge | RESEARCH existing §5.5; MISSING demonstrated functional/affordance route. Same question/embedding is not equivalence or independent evidence | REUSE aspect/recipe/provenance; EXTEND context/criteria/perspective identity; DEFER default questions or automatic Relation creation |
+| Cross-query residual activation | RESEARCH, MISSING implementation and measured utility; AR0 remains search-local and is not proof of this capability | EXTEND [activation research boundary](../knowledge-activation-roadmap.md#optional-cross-query-residual-activation); DEFER adoption pending cache-controlled evidence |
+
+Source caveat: the legacy `MdbxKnowledgeUnitStore` is Chunk-oriented, but the
+opt-in [typed envelope store](../../src/agent_memory/infrastructure/mdbx/MdbxKnowledgeUnitTypedStore.cpp)
+also persists non-Chunk envelopes (the
+[fixture](../../tests/infrastructure/mdbx/mdbx_knowledge_unit_typed_store_test.cpp)
+includes Fact). Do not generalize the legacy limitation into “no non-Chunk
+persistence”. Neither envelope persistence nor the guarded experimental `Custom`
+contract demonstrates general typed semantic payloads, schema validation or a
+production registry. Likewise, `SearchProjection`'s fixed `ProjectionKind` and
+text fields do not implement arbitrary typed nested elements.
+
+### 7.2. Bounded demonstration profiles, not delivered implementations
+
+These are future opt-in examples over the same contracts, not five new core
+kinds, APIs or implemented plugins. They must leave ordinary memory and
+retrieval working when disabled.
+
+| Profile | Minimum future example and discriminating invariant |
+| --- | --- |
+| Binary distinction/opposition | Compare rested/tired states of Peter under a declared criterion; distinguish person/state identity, contextual/incomparable outcomes and explicit negation from unknown; a later distinction may cite the first at an exact revision |
+| N-ary frame / actant roles | Two giving events retain separate occurrence IDs and Actor/Object/Recipient bindings; role swaps change the match without mixing participants across events. Reuse the existing N-ary proposal |
+| Question-conditioned affordance/risk | Derive uses, risks, value or criterion-fit for an actor/task/environment; retain exact question, criteria, perspective, source, recipe/model/schema and context, with hypotheses separate from validated support |
+| Structured event / relative time | Preserve “last week”, its source and optional anchor/timezone/calendar/quoted context; no absolute interval is invented when the anchor is missing; intended heating and observed outcome remain distinct |
+| Alternative ontologies for one source | Frame, distinction and another schema coexist with independent projections and pinned versions; schema v2 cannot change v1 history or duplicate source evidence into corroboration |
+
+The demonstration obligation is extensibility **without core enum, canonical
+wire or mandatory backend changes**, not proof of absolute universality.
+Before claiming that obligation satisfied, a later implementation must add a
+new schema through a documented bounded capability seam and run independent
+schema fixtures. The [SPI checklist](../derived-representations-and-codecs.md#extension-seam-before-api-stabilization)
+names only the minimum unresolved capabilities; no interface is frozen here.
+
+### 7.3. Acceptance, dependencies and implementation order
+
+The [proposed study matrix](../experiments/2026-10-29-derived-representation-evaluation.md#2026-11-23-ontology-neutral-structure-and-activation-follow-up-proposed)
+owns BASELINE/variant/metrics/limitations and NOT RUN status. Minimum future
+acceptance includes role swap; one parent's multiple role matches; exclusion
+of local-only elements from global discovery; exact role-aware parent and
+anchor hydration; independent parallel ontology indices; immutable historical
+schemas; stale Current rejection; explicit partial/missing inputs without
+fabrication; no duplicate evidence from embeddings/modalities; unresolved
+relative time; and unchanged ordinary retrieval with profiles disabled.
+Interrupted multi-output publication, element reordering and identity retention,
+unknown schemas and observer/task reset require additional negative fixtures.
+These are documentary scenarios, **not passing executable tests**.
+
+| Order / milestone | Dependency and minimum later slice | Acceptance / cost gate and risk |
+| --- | --- | --- |
+| Decisions before derived-schema/SPI stabilization (M2+ extension) | Resolve element namespace/edit/reference rules, promotion, schema/version/unknown behavior, role mapping, output-set atomicity and policy/freshness bindings with existing owners | Independent semantic fixtures for at least two materially different schemas; reject any need to silently reinterpret a historical record. Risk: freezing semantics behind an opaque payload |
+| Opt-in structured publication and retrieval (later M2+ profile) | Implement one bounded structure and declared output set over existing publication/admission, then role-aware local/global read/hydration; new public types only with a concrete compatibility gap | Crash/reopen/retry and stale/access/partial tests; compare container reads, exact structural indices, lexical and optional role-conditioned dense routes for index bytes, peak memory, latency, update/fan-out cost. Risk: combinatorial indexing and false freshness |
+| Optional schema demonstrations and richer interpretations (later M2+) | Qualify the five examples, schema evolution and independent indices, using artifact/AM-13/runtime owners | Same-source evidence deduplication, historical interpretation and unresolved-time fixtures; provenance and cost before semantic quality claims. Risk: conflating storage with understanding |
+| Stateful activation research (M2+, separately opt-in) | Stateless baseline and recent-query cache before residual state; host owns observer/task binding and reset | Held-out matched-budget benefit, drift/interference, task-switch isolation, stale/denied inputs, bytes/lifetime bounds; DEFER if benefit is absent. Risk: query drift and authority laundering |
+
+This decision sequence does **not** block Conversation Core Phases 3A–6.
+Phases 3A–5 retain their existing storage/Core gates; Phase 6's Derived Knowledge
+Bridge uses exact primary/derived bindings and freshness without requiring a
+universal schema system or residual activation. No immediate kernel rewrite,
+graph backend, new source of truth or DBI is justified by this audit.
+
+Disposition summary: **REUSE** identity, canonical blocks, artifact anchors,
+recipes, admission/publication, AM-13/T0 and perspective; **EXTEND** the owner
+contracts for composite elements, optional ontologies, output sets and role-aware
+retrieval; **NEW** only a later minimal type/index/SPI backed by a counterexample
+and compatibility evidence (none introduced now); **DEFER** API/physical format
+freeze, universal ontological claims and stateful activation adoption.
+External monograph/linguistic claims in the supplied discussion have not been
+verified and are not used as evidence. Completion here is the documented audit,
+not implementation, schema qualification or a claim of philosophical proof.
