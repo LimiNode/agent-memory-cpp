@@ -110,6 +110,11 @@ target_link_libraries(agent_memory_conversation_codec_test PRIVATE agent_memory:
 add_test(NAME agent_memory_conversation_codec_test COMMAND agent_memory_conversation_codec_test)
 set_tests_properties(agent_memory_conversation_codec_test PROPERTIES TIMEOUT 120)
 
+add_executable(agent_memory_conversation_store_test storage/conversation_store_test.cpp)
+target_link_libraries(agent_memory_conversation_store_test PRIVATE agent_memory::agent_memory)
+add_test(NAME agent_memory_conversation_store_test COMMAND agent_memory_conversation_store_test)
+set_tests_properties(agent_memory_conversation_store_test PROPERTIES TIMEOUT 60)
+
 add_executable(agent_memory_canonical_content_test
     domain/canonical_content_test.cpp
 )
