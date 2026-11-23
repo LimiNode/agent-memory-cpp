@@ -86,8 +86,11 @@ verification allocate outside its gate. Each successful operation's allocation
 count is measured, every ordinal is failed once, and the next ordinal must
 succeed with the same count. Injection disarms before unwinding/verification.
 
-GNU 15.2 Debug exercised **197 actual bad_alloc failures**: create 3, append 12,
-correction 47, exact read 18, history/continuation 22, Current/continuation 95.
+GNU 15.2 Debug exercised **199 actual bad_alloc failures**: create 3, append 12,
+correction 47, exact read 19, history/continuation 23, Current/continuation 95.
+Read fixtures include an already committed long correction receipt, so result
+and receipt copying are both inside the injection boundary. A subsequent append
+also checks that failed reads consumed neither the next Entry nor remaining bytes.
 Every failure preserved canonical history/receipts, current content, generation,
 unused conversation/Entry/revision IDs, exact remaining byte capacity and old
 pinned cursors; the same operation then retried successfully. Coverage is

@@ -178,6 +178,10 @@ void expect_same_result(const am::ConversationReadResult& actual, const am::Conv
 
 enum class Operation { Create, Append, Correct, Exact, History, Current };
 
+bool is_read(Operation operation) {
+    return operation == Operation::Exact || operation == Operation::History || operation == Operation::Current;
+}
+
 const char* operation_name(Operation operation) {
     switch(operation) {
     case Operation::Create: return "create_conversation";
@@ -199,6 +203,8 @@ am::ConversationStoreOptions options(Operation operation) {
     value.max_storage_bytes = access().scope.value().size();
     for(std::uint64_t entry = 1; entry <= 3; ++entry)
         value.max_storage_bytes += am::serialize_conversation_envelope(message(entry)).size();
+    if(is_read(operation))
+        value.max_storage_bytes += am::serialize_conversation_envelope(message(1, true)).size() + 80;
     if(operation == Operation::Create) value.max_storage_bytes += access().scope.value().size();
     else if(operation == Operation::Correct)
         value.max_storage_bytes += am::serialize_conversation_envelope(message(1, true)).size() + 80;
@@ -207,11 +213,13 @@ am::ConversationStoreOptions options(Operation operation) {
 }
 
 struct Fixture final {
-    explicit Fixture(Operation operation) : store(options(operation)), candidate(message(operation == Operation::Correct ? 1 : 4,
-        operation == Operation::Correct)) {
+    explicit Fixture(Operation operation) : store(options(operation)), exact_ref(ref(1, is_read(operation) ? 2 : 1)),
+        candidate(message(operation == Operation::Correct ? 1 : 4, operation == Operation::Correct)) {
         expect(store.create_conversation(authority, stream).status == am::ConversationWriteStatus::Applied, "fixture create");
         for(std::uint64_t entry = 1; entry <= 3; ++entry)
             expect(store.append(authority, message(entry)).status == am::ConversationWriteStatus::Applied, "fixture append");
+        if(is_read(operation)) expect(store.correct(authority, message(1, true), ref(1).revision, reason).status ==
+            am::ConversationWriteStatus::Applied, "fixture receipt before read-result injection");
         one.max_items = 1;
         history = store.read_history(authority, stream);
         current = store.read_current(authority, stream);
@@ -243,13 +251,26 @@ struct Fixture final {
         expect_same_result(store.read_history(authority, stream, {}, history_first.continuation), history_tail);
         expect_same_result(store.read_current(authority, stream, {}, current_first.continuation), current_tail);
         expect(store.read_exact(authority, ref(4)).status == am::ConversationReadStatus::NotFound &&
-            store.read_exact(authority, ref(1, 2)).status == am::ConversationReadStatus::NotFound &&
+            store.read_exact(authority, ref(1, exact_ref.revision.value() + 1)).status == am::ConversationReadStatus::NotFound &&
             store.read_history(authority, new_stream).status == am::ConversationReadStatus::NotFound,
             "failure published a new identity or revision");
     }
 
-    void verify_success(Operation operation) const {
-        if(operation == Operation::Exact) { expect_same_result(read, exact); return; }
+    void verify_read_capacity() {
+        const auto result = store.append(authority, candidate);
+        expect(result.status == am::ConversationWriteStatus::Applied && result.ref == candidate.metadata.ref &&
+            result.commit_generation == history.commit_generation + 1, "failed reads must not consume entry or byte capacity");
+        expect_same_result(store.read_history(authority, stream, {}, history_first.continuation), history_tail);
+        expect_same_result(store.read_current(authority, stream, {}, current_first.continuation), current_tail);
+    }
+
+    void verify_success(Operation operation) {
+        if(operation == Operation::Exact) {
+            expect_same_result(read, exact);
+            verify_unchanged();
+            verify_read_capacity();
+            return;
+        }
         if(operation == Operation::History || operation == Operation::Current) {
             const bool is_history = operation == Operation::History;
             const auto& expected = is_history ? history_second : current_second;
@@ -261,6 +282,7 @@ struct Fixture final {
                 store.read_current(authority, stream, {}, expected.continuation);
             expect_same_result(actual_last, expected_last);
             verify_unchanged();
+            verify_read_capacity();
             return;
         }
         expect(write.status == am::ConversationWriteStatus::Applied &&
@@ -291,7 +313,7 @@ struct Fixture final {
     const am::ConversationStoreAccess authority = access();
     const am::ConversationRef stream = conversation();
     const am::ConversationRef new_stream = conversation(2);
-    const am::EntryRef exact_ref = ref(1);
+    const am::EntryRef exact_ref;
     const std::string reason = std::string(80, 'r');
     const am::ConversationEnvelope candidate;
     am::ConversationReadLimits one;
