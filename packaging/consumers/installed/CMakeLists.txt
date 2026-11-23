@@ -46,3 +46,9 @@ add_executable(agent_memory_conversation_store_consumer
 target_link_libraries(agent_memory_conversation_store_consumer PRIVATE agent_memory::agent_memory)
 set_target_properties(agent_memory_conversation_store_consumer PROPERTIES
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+
+add_executable(agent_memory_conversation_import_consumer
+    "${CMAKE_CURRENT_LIST_DIR}/../../../examples/conversation_import.cpp")
+target_link_libraries(agent_memory_conversation_import_consumer PRIVATE agent_memory::agent_memory)
+set_target_properties(agent_memory_conversation_import_consumer PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)

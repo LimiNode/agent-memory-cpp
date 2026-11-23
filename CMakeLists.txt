@@ -108,6 +108,7 @@ add_library(agent_memory STATIC
     src/agent_memory/storage/IDocumentStorage.cpp
     src/agent_memory/storage/CanonicalContentStore.cpp
     src/agent_memory/storage/ConversationStore.cpp
+    src/agent_memory/ingestion/ConversationSourceImporter.cpp
     src/agent_memory/storage/CanonicalFlatStorage.cpp
     src/agent_memory/storage/CanonicalNavigationStore.cpp
     src/agent_memory/storage/FileRawBlobStore.cpp
