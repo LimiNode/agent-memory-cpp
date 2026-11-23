@@ -79,3 +79,84 @@ domain-specific wire kind merely to run this experiment.
    checks are executable.
 4. Keep compact-vector adapter work and ADELIA repair-frontier/tool-selection
    studies in separate PRs.
+
+## 2026-11-23: Question-conditioned aspect follow-up (proposed)
+
+- Context: local memory-foundations audit at source baseline
+  `aea7d89f657c04b7b6388353530d9418a6a6ad81`; documentation-only addition.
+- Status: **Research candidate / NOT RUN**. No dataset, model calls, generated
+  aspects, embedding run, runner, new external-source verification or quality
+  measurement is supplied. This section extends the same A0-A4 research line,
+  not a second evaluation framework or a production feature.
+- Owners: [aspect/recipe identity](../derived-representations-and-codecs.md),
+  [audit work order](../audits/2026-11-23-memory-foundations-corrective-audit.md#55-question-conditioned-derived-knowledge),
+  [activation research](../knowledge-activation-roadmap.md) and
+  [epistemic non-laundering](../source-trust-roadmap.md).
+
+Hypothesis: applying a shared question about uses, constraints, risks or
+integration to heterogeneous mechanisms may recover functional analogies that
+ordinary documentation retrieval misses. The strongest alternative is that
+generic generated phrasing merely makes unrelated mechanisms look similar or
+that added generation/query work, rather than a useful semantic aspect,
+explains the apparent gain. No cross-domain transfer or universal advantage is
+established by this proposal.
+
+### Proposed setup and controls
+
+Pin primary documentation revisions for this project and selected competitors,
+with exact source/frontier and access bindings. Select one bounded question
+family for the first fixture; retain the normalized question/template, relevant
+actor/task/environment context, source inputs and complete derivation recipe.
+Qualify embedding/semantic-space compatibility separately; equal question text
+or equal vector dimension is not a compatibility manifest.
+
+Use three focal arms within the existing A0-A4 scheme: original-document
+retrieval, question-conditioned-aspect retrieval and a bounded original+aspect
+route. Retain no-retrieval and ordinary source-chunk controls where downstream
+answer claims are made. All arms use the same authorized corpus, source frontier,
+holdout, embedding compatibility policy and final answer/evidence budget. Bound
+and report the complete candidate, token, decoded-byte, latency and generation
+envelope, including hybrid branches and any online aspect generation. If equal
+work envelopes cannot be met, report the cost/quality trade-off rather than a
+same-cost improvement. An additional control gives the original route matched
+query-expansion/model work to distinguish aspect utility from extra compute.
+
+Use independent, source-grounded labels rather than the aspect generator as
+the sole judge. Separate calibration, aspect selection and cache/adaptation
+policy tuning from held-out evaluation. Include:
+
+- positive functional analogies across different terminology and domains;
+- same vocabulary or generic "improves efficiency" text but incompatible
+  capabilities, preconditions, guarantees or actor/environment constraints;
+- PromptComposition versus Memory Blocks: possible context-editing overlap,
+  without inferring equal persistence, permissions or inclusion guarantees;
+- source corrections, stale retained aspects, changed question/context or
+  producer/model/schema, denied sources and private-context cache reuse;
+- unsupported applications, unanswerable questions and hypothetical risks or
+  commercial opportunities that must not be reported as observed facts.
+
+### Expected observation, measurements and decision
+
+An encouraging result would recover independently supported functional
+analogies missed by the matched original route while retaining stated
+differences, source citations, uncertainty and bounded cost. Record Recall/nDCG
+and candidate recall together with useful-analogy precision, false-analogy and
+unsupported-capability rates, downstream correctness/citation fidelity,
+abstention and correction behavior. Report generation/model calls, tokens,
+latency, peak memory, retained/index bytes, cold/warm reads and invalidation
+cost separately. A similarity score is not relation correctness or evidence of
+causality. Any optional Relation proposal needs a separate source-grounded
+validation/admission check; no retrieval arm writes canonical relations.
+
+Actual result: **NOT RUN**. Dataset and runner/command/configuration, pinned
+sources, independent labels, budget values and acceptance thresholds remain
+to be specified before execution. Keep the candidate only if held-out utility
+and provenance/cost controls support it; otherwise narrow or reject the tested
+profile without claiming that all arbitrary-aspect methods are disproved.
+No default aspect, cache, registry/API, new DBI or Conversation gate is adopted.
+
+The user supplied [IJCAI 2017 affordance extraction](https://www.ijcai.org/proceedings/2017/144)
+and [Knowledge Affordances for Hybrid Human-AI Information Seeking](https://arxiv.org/abs/2604.27539)
+as literature leads. Their contents, relevance and claimed findings have not
+been independently checked in this addition; they are not experiment evidence
+or an adopted algorithm.

@@ -520,6 +520,12 @@ G1 may be screened independently, then combined with G0 as a labelled ablation.
 
 #### AR0: Bounded Adaptive Associative Recall
 
+The [question-conditioned aspect audit](audits/2026-11-23-memory-foundations-corrective-audit.md#55-question-conditioned-derived-knowledge)
+is a related research candidate, not a prerequisite or implementation of AR0.
+It investigates functional analogies over compatible derived aspects without
+requiring explicit graph edges. Keep similarity discovery separate from
+evidence validation, canonical Relation publication and action authority.
+
 AR0 is a research lane for multi-step associative retrieval. It extends G0/G1
 and the existing `RetrievalPlan`, `CandidateSet`, `RetrievalTrace` and
 progressive-disclosure contracts; it is not a new graph API, a hidden write

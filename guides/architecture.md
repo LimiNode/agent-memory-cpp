@@ -87,6 +87,14 @@ The neutral contracts live in
 Reference integrations such as ADELIA map their native ids to
 `RuntimeObjectRef` in adapters; core headers must not include ADELIA types.
 
+The [memory-foundations corrective audit](audits/2026-11-23-memory-foundations-corrective-audit.md)
+records follow-up temporal, epistemic-awareness, prompt/keyed-memory,
+extensible processing/presentation and maintained-view questions. It requires
+implemented/contract/missing classification and REUSE/EXTEND/NEW before new
+schemas or subsystems; existing topic guides retain normative ownership.
+It does not expand the core into an agent runtime or delay the separately
+qualified Conversation codec.
+
 ## Layer Architecture
 
 The system is organized as four layers plus an orthogonal runtime-services

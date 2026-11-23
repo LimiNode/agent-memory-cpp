@@ -108,6 +108,13 @@ agent behavior into the storage layer.
 
 ## 3. AM-13: Bi-Temporal Knowledge
 
+AM-13 remains a contract-only M2+ candidate, not an implemented temporal query
+subsystem. Before its implementation or persistent-format freeze, complete the
+[Temporal Semantics Audit](audits/2026-11-23-memory-foundations-corrective-audit.md#2-temporal-semantics-audit):
+reconcile legacy zero-sentinel and optional-bound sketches, interval/uncertainty
+semantics and distinct time owners. Reuse the existing T0 frontier/visibility
+rules; do not add universal timestamps or change Conversation codec bytes.
+
 Current `TemporalComponent` is a single-axis validity component. M2+ should add
 an explicit bi-temporal component for workloads that must distinguish source
 validity time from the time when the agent recorded or invalidated the claim.
@@ -148,6 +155,11 @@ Required query forms:
 - `invalidated_after(recorded_time_ms)`: audit and contradiction review.
 - `known_at_sequence(sequence)`: what a runtime component could have known when
   an external event sequence was processed.
+
+Here recorded-time "known" or "believed" means the declared historical record
+view, not proof of observer endorsement, authorization, successful retrieval or
+actual decision use. Those distinctions belong to the perspective/awareness
+audit and must not be inferred from temporal eligibility alone.
 
 `recorded_sequence` and `invalidated_sequence` are optional producer-origin
 runtime log positions. `RuntimeSequence` is specified in

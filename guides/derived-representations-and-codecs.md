@@ -99,14 +99,18 @@ invalidation has been interrupted. The system never scans the whole corpus on
 one query. A coordinator may later maintain reverse invalidation eagerly, but
 the witness and read-time fence remain authoritative.
 
-The current graph-free implementation does not yet implement that
-authoritative transitive check. Its admission preview validates a
-caller-declared ordered input list against sequential KnowledgeUnit reads and
-returns only `KnowledgeUnitLocalMatch`. It neither confirms that a referenced
+The KnowledgeUnit-local admission preview does not implement that
+authoritative transitive check. Used without the later fenced adapters, it
+validates a caller-declared ordered input list against sequential KnowledgeUnit
+reads and returns only `KnowledgeUnitLocalMatch`. It neither confirms that a referenced
 root Resource revision is still current nor proves that the declared list is
-the complete causal lineage. Derived text remains ineligible for production
-retrieval until the resource-frontier and fenced read/commit checks above are
-implemented; original evidence remains independently addressable.
+the complete causal lineage. This preview alone cannot admit derived text for
+production retrieval; original evidence remains independently addressable.
+The separate MDBX B2/B3 adapters provide bounded direct-unit/root fenced
+publication and current reads, not the general transitive contract above. The
+[source-reviewed subset and compatibility audit](audits/2026-11-23-memory-foundations-corrective-audit.md#51-compatibility-seams-to-audit)
+records that distinction; neither storage matching nor the bounded adapter
+activates general derived retrieval or proves complete lineage.
 
 ### Reader admission fence
 
@@ -184,6 +188,26 @@ numeric IDs with a persisted dictionary, and numeric IDs plus metadata
 compression. It must include key bytes, MDBX page occupancy, dictionary/index
 overhead, point reads, cold reopen and import remapping. No new DBI is selected
 without manifest and migration review.
+
+## Processing and presentation follow-up
+
+The [memory-foundations work order](audits/2026-11-23-memory-foundations-corrective-audit.md#52-derived-knowledge-processing-profiles)
+tracks proposed Derived Knowledge Processing Profiles and the separate
+Materializer/Presenter boundary. Reuse this guide's aspect/recipe identity and
+publication contracts and the artifact owner's processor/coverage contracts;
+registration does not confer trust, access or write authority. Profile/output
+extensibility must not silently replace the current `ProjectionKind` API or
+add per-format stores. These are architecture-audit priorities, not an
+implemented registry, new plugin ABI or change to the Conversation delivery
+sequence. The work order owns questions and future acceptance cases, not a
+second representation specification.
+
+The [Question-Conditioned Derived Knowledge audit](audits/2026-11-23-memory-foundations-corrective-audit.md#55-question-conditioned-derived-knowledge)
+adds a research candidate for shared-question functional views. It must resolve
+question/context parameterization and compatible comparison spaces before an
+API or dictionary change. Similarity is not equivalence, independent evidence
+or a canonical Relation write; no implemented affordance-retrieval route is
+claimed.
 
 ## Text retention and rebuild policy
 

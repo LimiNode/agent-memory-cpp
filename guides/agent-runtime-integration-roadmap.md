@@ -651,6 +651,18 @@ Absent confidence or evidence never implies `confidence = 1.0`. A record that ca
 its required row is rejected or retained only as explicitly marked raw
 ingestion data; it must not be persisted as a validated cognitive claim.
 
+### Awareness and open-question audit (M2+)
+
+The [memory-foundations audit](audits/2026-11-23-memory-foundations-corrective-audit.md#3-epistemic-awareness--knowledge-gaps)
+tracks the gap between these perspective/epistemic contracts and a future
+observer/context-qualified open-question or coverage model. Stored existence,
+authorized visibility, retrievability, recognized relevance, belief and actual
+use are independent. A missing hit is not proof of ignorance; denied records
+must not leak through gap diagnostics. Known/unknown quadrants are analysis
+vocabulary, not new `KnowledgeUnitKind` values or implemented components.
+First test reuse of existing units, evidence and relations before proposing a
+new representation. Live cognition and autonomous questioning remain external.
+
 ### BiTemporalComponent
 
 The canonical M2+ bi-temporal component lives in

@@ -8,12 +8,16 @@ hierarchy, or an agent scheduler.
 Current status: **Docs/tests only**. This contract does not claim that an
 offline consolidator is implemented.
 
-The current graph-free publication admission preview validates an explicitly
-declared ordered list against sequential current KnowledgeUnit reads only. It
+The KnowledgeUnit-local publication admission preview, taken alone, validates
+an explicitly declared ordered list against sequential current unit reads. It
 does not validate the current root Resource frontier, prove complete causal
-lineage or fence publication against concurrent source changes. Consequently it
-is not yet the pinned-frontier publication gate required by OC-0; those missing
-guarantees remain in the later resource-frontier/coordinator conformance slice.
+lineage or fence publication against concurrent source changes. The separate
+MDBX B2/B3 adapters now provide direct-unit/root fenced publication and current
+reads within their bounded subset; see the
+[source-reviewed publication baseline](audits/2026-11-23-memory-foundations-corrective-audit.md#1-reuse-baseline-and-normative-owners).
+Neither path establishes generic transitive lineage or the full OC-0
+consolidation gate. Qualify the selected path instead of treating an older
+preview limitation as evidence that every publication fence is missing.
 
 ## 1. Purpose and boundary
 
@@ -39,6 +43,14 @@ change host permissions.
 The word "sleep" is an explanatory label for an offline phase. It must not
 become a public API or imply that a provider, model or process is continuously
 running.
+
+The [Maintained Knowledge Views audit](audits/2026-11-23-memory-foundations-corrective-audit.md#54-maintained-knowledge-views)
+tracks product integration for standing summaries/questions over existing
+canonical changes, publication/freshness and consolidation contracts. It calls
+for explicit stale/pending/unavailable outcomes, dependency-scoped incremental
+refresh, version-aware reuse and validated warm reads without a required model
+call. This does not establish a maintained-view service, a generic cache or an
+automatic background runtime; this guide retains consolidation ownership.
 
 ## Research basis and limits
 
