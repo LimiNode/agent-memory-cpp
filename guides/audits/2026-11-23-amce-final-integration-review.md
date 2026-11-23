@@ -139,6 +139,42 @@ additional 6-7 ms on these large frames is accepted for a 44-50% lower peak
 and less internal state; no production SLA or concurrent-throughput claim is
 inferred. Both strategies use the same standalone AMXR without changes.
 
+## Final semantic closure after `45d3f25c`
+
+The architecture owner accepted the current envelope and `256/1`, `257/1`
+layouts. The final batch refines [contract section 4.2](../conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)
+and API Doxygen: the call retains the original request, and a result retains a
+source-reported outcome at a documented observation boundary, not verified
+execution or world state. Approval, rewriting, attempts and effect verification
+remain distinct. No `Denied` outcome, lifecycle schema, runtime header or
+execution logic is added. The [vocabulary decision record](2026-11-23-amce-event-vocabulary-decision.md)
+preserves the completed research's pinned sources, counterexamples and deferred
+scope; it does not duplicate the normative grammar.
+
+Eight authored normalized scenarios in `tool_observation_semantic_fixtures()`
+exercise denial, synthetic recovery, timeout, request rewriting, repeated tokens
+across runs, several attempts, unresolved/no-body import and unverified reported
+success. A deliberately contradictory but structurally legal outcome remains
+codec-valid. These checks demonstrate retained references/outcomes and canonical
+round-trip, not a working importer, deduplicator, retry policy or effect verifier.
+The expanded installed-consumer example likewise claims preservation only.
+
+The codec implementation/API, wire registry, versions, standalone AMXR and all
+twenty independent goldens are unchanged. GNU Release JSON/MDBX OFF CTest
+57/57 and MSVC Release JSON/MDBX ON CTest 104/104 pass again, including the new
+scenarios and public-header tests. The latest example executes on both compilers
+and from a freshly installed GNU package genuinely moved to a new prefix with
+the original prefix absent. Independent read-only delta review found no blocker;
+its oracle check also matched twenty literals. Final sanitizer and exact-HEAD
+hosted CI/Packaging outcomes belong to the PR publication receipt, not an
+anticipatory claim here.
+
+No new benchmark is run: runtime behavior is unchanged, and the earlier
+source-bound memory/timing experiment remains a historical measurement at its
+recorded source/binary hashes. Final READY/HOLD and the exact published tree are
+reported separately after hosted checks. PR #690 stays Draft pending owner
+integration confirmation; this batch performs no merge.
+
 ## Open boundaries, not merge scope expansion
 
 - Patch/Compaction typed schemas, ConversationStore, MDBX journal and metadata

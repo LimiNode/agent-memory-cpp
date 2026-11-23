@@ -599,11 +599,35 @@ pair; they do not carry independently mutable duplicate header fields.
 | `258` | none | Reserved for a future Patch observation schema; retention-only today |
 | `259` | none | Reserved for a future Compaction observation schema; retention-only today |
 
-Tool call IDs are nonempty opaque bytes, not globally unique identities or
-execution tokens. A tool name is a nonempty UTF-8 observation, not a dispatch
-instruction. Request bindings and any present result bindings are nonempty
-exact immutable artifact bindings. Both typed tool observations require
+`ToolCallObserved 256/1` preserves the observed **original request**. Its
+`request` binding names the immutable originally requested arguments or request
+representation. It establishes neither approval, validation, argument rewriting,
+dispatch nor execution. Effective arguments after transformation must have
+separate retained evidence/observation; they must not silently replace the
+original request artifact. A tool name is a nonempty UTF-8 observation, not a
+dispatch instruction. Request bindings and any present result bindings are
+nonempty exact immutable artifact bindings. Both typed tool observations require
 `source` with retained observation evidence, even when a result artifact is absent.
+
+`ToolResultObserved 257/1` records a **source-reported outcome at a documented
+observation boundary**, not confirmed execution or external world state.
+The source evidence and its adapter recipe must make that boundary recoverable
+(for example, a provider response, a harness report or a recovery record).
+`Succeeded` does not independently verify an external effect. `Failed` does
+not necessarily mean the tool body started. `Cancelled` does not prove the
+absence of external side effects. `Unknown` preserves ambiguity; it grants no
+automatic retry and is not a substitute for distinct lifecycle observations
+such as approval denial or execution interruption. Approval and execution are
+independent axes; there is no `Denied` value in `ConversationToolOutcome`.
+
+Denial, timeout, synthetic recovery and transcript repair must not automatically
+be promoted to confirmed execution outcomes. Neither a tool/result role,
+`isError`, nor exit-shaped data establishes real execution. An adapter unable
+to distinguish a synthetic response's origin from a real execution result must
+not classify it as confirmed execution. Preserve the original evidence and use
+`Unknown` when the outcome at the chosen boundary is ambiguous. The codec does
+not parse error text, result artifacts or SDK behavior to make this decision.
+
 A result uses the same target tags/records as a link: an exact local call
 reference or an unresolved target with mandatory retained evidence and optional
 external AMXR. A resolved reference is in the same conversation and names a
@@ -612,11 +636,33 @@ identity nor an accessible same-conversation call. Later resolution must check
 the resolved policy again; a call ID alone never fabricates an EntryRef.
 Field validation does not prove target existence, type, matching call ID or
 accessibility. Those are later admission checks. Outcome wire tags are `1 Unknown`,
-`2 Succeeded`, `3 Failed`, `4 Cancelled`; all others reject. Timeout, missing
+`2 Succeeded`, `3 Failed`, `4 Cancelled`; all others reject. A missing
 result or an observed request must not infer an execution outcome. Outcome and
 result-artifact presence are independent: even a reported success may have no
 retained body, while a cancellation may have a diagnostic artifact. Absence is
 not an empty binding and does not mean success, failure or cancellation.
+
+Correlation must preserve these independent identities:
+
+| Identity/context | Meaning and boundary |
+| --- | --- |
+| Exact `EntryRef` | One retained observation occurrence/revision; not an execution identity |
+| Source `call_id` and issuer/correlation domain | Nonempty opaque source token; no global uniqueness, authority or execution guarantee |
+| Run / turn / step | Source execution context; not derivable from `EntryRef` or the token |
+| Execution attempt | A distinct attempt; one request can have several, with different observed outcomes |
+| External source identity | Exact source-side reference/revision, independent of the retained Entry identity |
+| Observer and source evidence | Who observed what and its provenance, not authenticity or verified world state |
+
+No global deduplication by `call_id`, nearest-time call matching or fabricated
+`EntryRef` is permitted. Local retention order must not become a global causal
+order. When the available evidence cannot establish an exact accessible call,
+retain the unresolved target rather than guessing. The current `256/1` and
+`257/1` pair provides narrow observations, not typed reconstruction of the
+complete approval/execution lifecycle. Run/step/attempt context may be retained
+in source evidence today; typed lifecycle queries require future separate
+schemas, not an inferred meaning for these fields. The
+[vocabulary decision record](audits/2026-11-23-amce-event-vocabulary-decision.md)
+records the source evidence and accepted scope without defining another grammar.
 
 The 2026-11-23 pre-freeze review considered keeping the narrower typed schema
 and retaining incomplete imports as unsupported private payloads. That would
@@ -738,6 +784,30 @@ invariants; normalized fixture assertions and evidence checks must be separate
 from the codec's retention/unsupported assertions. Tool result existence/type,
 call-ID matching, artifact availability, access and source authenticity also
 remain admission responsibilities, not consequences of successful decoding.
+
+`tool_observation_semantic_fixtures()` in
+`tests/domain/conversation_codec_test.cpp` supplies eight authored semantic
+acceptance scenarios. They separate three verification boundaries:
+
+| Scenario | Authored normalized expectation | Codec check / future adapter obligation |
+| --- | --- | --- |
+| Denial with synthetic shell exit code | `Unknown` execution outcome; preserve denial-origin evidence | Retain outcome and source reference / classify origin, not the numeric exit shape |
+| Recovery with `isError=true` | `Unknown`, not inferred execution failure | Retain recovery evidence / distinguish synthetic repair from execution |
+| Timeout after possible external success | Ambiguity and evidence retained | Retain `Unknown` / verify effects and retry policy separately |
+| Original request A, effective arguments B | Original request binding remains A; B is separate evidence | Preserve both exact references / establish transformation provenance |
+| Same token in independent runs | Distinct observations and run context remain distinct | Preserve Entry/source identities / no token-only global deduplication |
+| Several attempts for one call | Distinct attempt evidence and outcomes, same exact call target | Retain references and outcomes / reconstruct attempts only from source context |
+| Unresolved call, no result artifact | Evidence without invented local identity/body | Preserve unresolved variant and absence / resolve and authorize later |
+| Reported success, no effect verification | `Succeeded` remains a source report only | Preserve report / independently verify any claimed external effect |
+
+The fixture's explicitly authored source descriptions and normalization choices
+are not a tested importer. The codec checks validity, canonical round-trip and
+exact field/reference preservation; it neither reads the referenced artifacts
+nor authenticates or classifies their contents. A deliberately misclassified
+but structurally valid fixture remains codec-valid, exposing that boundary.
+Actual upstream classification, matching, deduplication, retries and effect
+verification remain unimplemented adapter/runtime obligations, not passed
+codec assertions.
 
 Reference-only design examples (not registered payload grammars):
 

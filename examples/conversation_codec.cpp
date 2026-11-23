@@ -25,17 +25,25 @@ int main() {
 
     auto call = agent_memory::make_conversation_envelope(entry);
     call.metadata.ref.entry = agent_memory::EntryId{std::uint64_t{13}};
+    call.metadata.source->adapter_recipe = "authored-tool-observations-v1";
+    call.metadata.source->evidence = {agent_memory::ArtifactBindingId{"tool-records@1"}, "run-a/request"};
+    // Bind the original request, not any rewritten effective arguments. Nothing is dispatched.
     call.payload = agent_memory::ConversationToolCallObserved{
         {0x00, 0xff, 0x01}, "example-tool", agent_memory::ArtifactBindingId{"request@1"}};
     call.extensions = {{7, false, {0x00, 0xff}}};
     const auto call_bytes = agent_memory::serialize_conversation_envelope(call);
     const auto retained = agent_memory::deserialize_conversation_envelope({call_bytes.data(), call_bytes.size()});
     const auto& typed = agent_memory::require_typed_conversation_payload(retained);
-    if(!std::holds_alternative<agent_memory::ConversationToolCallObserved>(typed) ||
+    const auto* request = std::get_if<agent_memory::ConversationToolCallObserved>(&typed);
+    if(!request || request->request != agent_memory::ArtifactBindingId{"request@1"} ||
        agent_memory::serialize_conversation_envelope(retained) != call_bytes) return 1;
 
     auto result = agent_memory::make_conversation_envelope(entry);
     result.metadata.ref.entry = agent_memory::EntryId{std::uint64_t{14}};
+    result.metadata.source = call.metadata.source;
+    result.metadata.source->evidence.record_locator = "run-a/recovery-unknown";
+    // Authored recovery observation: an error-shaped response need not prove execution failure.
+    // A real importer must establish this boundary from the source, not from isError alone.
     result.payload = agent_memory::ConversationToolResultObserved{call.metadata.ref, {0x00, 0xff, 0x01},
         agent_memory::ConversationToolOutcome::Unknown, agent_memory::ArtifactBindingId{"result@1"}};
     const auto result_bytes = agent_memory::serialize_conversation_envelope(result);
@@ -43,11 +51,28 @@ int main() {
     const auto* observation = std::get_if<agent_memory::ConversationToolResultObserved>(&result_read.payload);
     if(!observation || !std::holds_alternative<agent_memory::EntryRef>(observation->call) ||
        std::get<agent_memory::EntryRef>(observation->call) != call.metadata.ref ||
-       observation->outcome != agent_memory::ConversationToolOutcome::Unknown) return 1;
+       observation->outcome != agent_memory::ConversationToolOutcome::Unknown ||
+       agent_memory::serialize_conversation_envelope(result_read) != result_bytes) return 1;
+
+    // A separate source-reported success has no retained body or independent effect receipt.
+    // Successful decoding preserves the report; it cannot verify an external effect.
+    result.metadata.ref.entry = agent_memory::EntryId{std::uint64_t{15}};
+    result.metadata.source->evidence.record_locator = "run-a/reported-success-no-effect-receipt";
+    result.payload = agent_memory::ConversationToolResultObserved{call.metadata.ref, {0x00, 0xff, 0x01},
+        agent_memory::ConversationToolOutcome::Succeeded, std::nullopt};
+    const auto reported_bytes = agent_memory::serialize_conversation_envelope(result);
+    const auto reported_read = agent_memory::deserialize_conversation_envelope(
+        {reported_bytes.data(), reported_bytes.size()});
+    const auto& reported = std::get<agent_memory::ConversationToolResultObserved>(reported_read.payload);
+    if(reported.outcome != agent_memory::ConversationToolOutcome::Succeeded || reported.result ||
+       agent_memory::serialize_conversation_envelope(reported_read) != reported_bytes) return 1;
 
     // A partial import retains unresolved call evidence, not a fabricated local EntryRef.
+    result.metadata.ref.entry = agent_memory::EntryId{std::uint64_t{16}};
+    result.metadata.source->evidence.record_locator = "partial-run/reported-cancellation";
     result.payload = agent_memory::ConversationToolResultObserved{
-        agent_memory::UnresolvedConversationTarget{std::nullopt, entry.source->evidence},
+        agent_memory::UnresolvedConversationTarget{std::nullopt,
+            {agent_memory::ArtifactBindingId{"tool-records@1"}, "partial-run/unresolved-call"}},
         {0x00, 0xff, 0x01}, agent_memory::ConversationToolOutcome::Cancelled, std::nullopt};
     const auto partial_bytes = agent_memory::serialize_conversation_envelope(result);
     const auto partial_read = agent_memory::deserialize_conversation_envelope(

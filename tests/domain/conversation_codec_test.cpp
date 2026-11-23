@@ -794,6 +794,136 @@ void agent_session_controls(const std::vector<am::ConversationEnvelope>& values)
     }
 }
 
+void tool_observation_semantic_fixtures() {
+    // These are authored normalized evidence fixtures, not imported SDK records or execution proof.
+    // Descriptions stand for records in the named immutable artifact; only references enter AMCE.
+    // The fixture author chooses outcomes. An import adapter must justify that choice from its
+    // own source boundary; the codec cannot read artifact bodies or verify an external effect.
+    struct RetainedRecord final { const char* locator; const char* description; };
+    const am::ArtifactBindingId records{"normalized-tool-evidence@1"};
+    const auto observation = [&](std::uint64_t entry, const RetainedRecord& record) {
+        expect(record.description[0] != '\0', "authored evidence fixture has no record description");
+        auto value = envelope();
+        value.metadata.ref = reference(entry, 1);
+        value.metadata.source = source();
+        value.metadata.source->adapter_recipe = "authored-tool-semantics-v1";
+        value.metadata.source->evidence = {records, record.locator};
+        return value;
+    };
+    const am::ByteBuffer call_id = unhex("63616c6c00ff");
+    const RetainedRecord request_record{"runs/result-cases/request/0", "Observed original shell request"};
+    auto call = observation(10, request_record);
+    call.payload = am::ConversationToolCallObserved{call_id, "shell", am::ArtifactBindingId{"request-A@1"}};
+    round_trip(call);
+
+    struct ResultFixture final {
+        RetainedRecord evidence;
+        am::ConversationToolOutcome normalized_outcome;
+        const char* result_artifact;
+        bool has_resolved_call;
+    };
+    const ResultFixture reports[] = {
+        {{"runs/result-cases/denied", "boundary=agent-visible response; permission denied; "
+            "synthetic shell exit_code: 1; execution unknown"},
+            am::ConversationToolOutcome::Unknown, "denied-response@1", true},
+        {{"runs/result-cases/recovery", "boundary=transcript recovery; isError: true; "
+            "synthetic repair; execution outcome unknown"},
+            am::ConversationToolOutcome::Unknown, "recovery-response@1", true},
+        {{"runs/result-cases/timeout", "boundary=caller wait; timeout; remote operation may already "
+            "have succeeded; no effect verification"},
+            am::ConversationToolOutcome::Unknown, "timeout-response@1", true},
+        {{"runs/orphan/result/0", "boundary=partial source transcript; call token retained; "
+            "call occurrence unresolved; no result body retained"},
+            am::ConversationToolOutcome::Unknown, nullptr, false},
+        {{"runs/result-cases/success", "boundary=tool response; source reports success; "
+            "no independent verification of external effect"},
+            am::ConversationToolOutcome::Succeeded, "reported-success@1", true}
+    };
+    std::uint64_t result_entry = 11;
+    for(const auto& report : reports) {
+        auto value = observation(result_entry++, report.evidence);
+        const am::ConversationLinkTarget target = report.has_resolved_call ?
+            am::ConversationLinkTarget{call.metadata.ref} :
+            am::ConversationLinkTarget{am::UnresolvedConversationTarget{
+                std::nullopt, {records, report.evidence.locator}}};
+        const auto body = report.result_artifact ?
+            std::optional<am::ArtifactBindingId>{am::ArtifactBindingId{report.result_artifact}} : std::nullopt;
+        value.payload = am::ConversationToolResultObserved{target, call_id, report.normalized_outcome, body};
+        round_trip(value); // Preserves the authored outcome, exact target, evidence and body presence.
+    }
+
+    // Negative semantic control: this disagrees with the denied fixture's Unknown normalization,
+    // yet is structurally legal. Passing a codec test cannot certify an adapter's classification.
+    auto misclassified = observation(20, reports[0].evidence);
+    misclassified.payload = am::ConversationToolResultObserved{call.metadata.ref, call_id,
+        am::ConversationToolOutcome::Failed, am::ArtifactBindingId{"denied-response@1"}};
+    round_trip(misclassified);
+    expect(std::get<am::ConversationToolResultObserved>(misclassified.payload).outcome !=
+        reports[0].normalized_outcome, "semantic negative control no longer contradicts the authored fixture");
+
+    // Original request A survives; rewritten effective arguments B are separate source evidence,
+    // retained here as an ordinary snapshot, not a new typed dispatch/execution event.
+    const RetainedRecord original{"runs/rewrite/request/0", "original requested arguments A: command=echo A"};
+    const RetainedRecord rewritten{"runs/rewrite/effective/0", "effective arguments B: command=echo B; "
+        "derived from request A, not a replacement for its immutable artifact"};
+    auto original_call = observation(30, original);
+    original_call.payload = am::ConversationToolCallObserved{call_id, "shell", am::ArtifactBindingId{"args-A@1"}};
+    auto effective = observation(31, rewritten);
+    effective.payload = am::ConversationPayload{am::ConversationSnapshotObserved{
+        {std::nullopt, {am::ArtifactBindingId{"effective-args-B@1"}}}}};
+    round_trip(original_call);
+    round_trip(effective);
+    const auto original_bytes = am::serialize_conversation_envelope(original_call);
+    const auto effective_bytes = am::serialize_conversation_envelope(effective);
+    const auto original_decoded = am::deserialize_conversation_envelope(view(original_bytes));
+    const auto effective_decoded = am::deserialize_conversation_envelope(view(effective_bytes));
+    expect(std::get<am::ConversationToolCallObserved>(original_decoded.payload).request ==
+        am::ArtifactBindingId{"args-A@1"}, "effective arguments overwrote the original request artifact");
+    expect(std::get<am::ConversationSnapshotObserved>(std::get<am::ConversationPayload>(effective_decoded.payload))
+        .content.attachments == std::vector<am::ArtifactBindingId>{am::ArtifactBindingId{"effective-args-B@1"}},
+        "separate effective-argument evidence was lost");
+
+    // Run context is retained in source records, not invented as an EntryRef or call_id field.
+    // Accepting both observations is not a store-level deduplication or correlation algorithm.
+    const RetainedRecord run_alpha{"runs/alpha/request/0", "issuer=provider-one; run=alpha; original request"};
+    const RetainedRecord run_beta{"runs/beta/request/0", "issuer=provider-one; run=beta; original request"};
+    auto alpha = observation(40, run_alpha);
+    alpha.payload = am::ConversationToolCallObserved{call_id, "shell", am::ArtifactBindingId{"repeat-request@1"}};
+    auto beta = observation(41, run_beta);
+    beta.payload = alpha.payload;
+    round_trip(alpha);
+    round_trip(beta);
+    expect(alpha.metadata.ref != beta.metadata.ref &&
+        std::get<am::ConversationToolCallObserved>(alpha.payload).call_id ==
+            std::get<am::ConversationToolCallObserved>(beta.payload).call_id &&
+        !same_evidence(alpha.metadata.source->evidence, beta.metadata.source->evidence),
+        "equal call tokens collapsed independent source occurrences");
+
+    // Several result observations may reference one exact call. Attempt labels and observation
+    // boundaries remain in source evidence; two results do not reconstruct a typed lifecycle.
+    const RetainedRecord retry_request{"runs/retry/request/0", "run=retry; observed original request"};
+    const RetainedRecord first_attempt{"runs/retry/attempts/1/result", "run=retry; attempt=1; "
+        "boundary=caller wait; timeout; execution outcome unknown"};
+    const RetainedRecord second_attempt{"runs/retry/attempts/2/result", "run=retry; attempt=2; "
+        "boundary=tool response; source reports success; external effect unverified"};
+    auto repeated_call = observation(50, retry_request);
+    repeated_call.payload = am::ConversationToolCallObserved{call_id, "shell", am::ArtifactBindingId{"retry-request@1"}};
+    auto first = observation(51, first_attempt);
+    first.payload = am::ConversationToolResultObserved{repeated_call.metadata.ref, call_id,
+        am::ConversationToolOutcome::Unknown, am::ArtifactBindingId{"attempt-one-response@1"}};
+    auto second = observation(52, second_attempt);
+    second.payload = am::ConversationToolResultObserved{repeated_call.metadata.ref, call_id,
+        am::ConversationToolOutcome::Succeeded, am::ArtifactBindingId{"attempt-two-response@1"}};
+    round_trip(repeated_call);
+    round_trip(first);
+    round_trip(second);
+    expect(first.metadata.ref != second.metadata.ref &&
+        same_target(std::get<am::ConversationToolResultObserved>(first.payload).call,
+            std::get<am::ConversationToolResultObserved>(second.payload).call) &&
+        !same_evidence(first.metadata.source->evidence, second.metadata.source->evidence),
+        "separate attempt observations lost their exact shared call or distinct evidence");
+}
+
 std::size_t truncation_and_mutation_controls() {
     std::size_t truncations = 0;
     std::size_t accepted = 0;
@@ -1027,6 +1157,7 @@ int main() {
         unknown_and_lifetime_controls(values);
         semantic_and_profile_controls(values);
         agent_session_controls(values);
+        tool_observation_semantic_fixtures();
         (void)truncation_and_mutation_controls();
         maximum_controls();
         implementation_cap_controls();

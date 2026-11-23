@@ -23,21 +23,37 @@ struct ConversationMetadata final {
     std::vector<ConversationLink> links;
 };
 
-/// \brief An observed request, never authority to execute it.
-/// \note call_id is exact nonempty opaque bytes; request refers to an immutable artifact binding.
+/// \brief An observed original request, never approval or authority to execute it.
+/// \note request binds the immutable originally requested arguments or request representation.
+/// Validation, rewriting, dispatch and execution are not implied. Effective arguments need
+/// separate evidence, not replacement of request. call_id is exact nonempty opaque bytes,
+/// scoped by its source issuer/correlation domain, not a global identity or attempt ID.
+/// See guides/conversation-event-contract.md section 4.2 for admission and correlation rules.
 struct ConversationToolCallObserved final {
     ByteBuffer call_id;
     std::string tool_name;
     ArtifactBindingId request;
 };
 
-enum class ConversationToolOutcome { Unknown, Succeeded, Failed, Cancelled };
+/// \brief Source-reported outcome at a documented observation boundary, not verified world state.
+/// \note Approval and execution are independent; denial is not an additional outcome value.
+enum class ConversationToolOutcome {
+    Unknown,   ///< Ambiguity is retained; neither automatic retry nor a lifecycle event is implied.
+    Succeeded, ///< Reported success does not independently verify an external effect.
+    Failed,    ///< Reported failure does not establish that the tool body started.
+    Cancelled  ///< Reported cancellation does not establish absence of external side effects.
+};
 
-/// \brief An observed result, including error, cancellation or an unknown outcome.
+/// \brief A source-reported result observation, not proof of execution or effect verification.
 /// \note A resolved call is an exact same-conversation, different occurrence; an unresolved
 /// call retains evidence without fabricating a local identity. Source evidence is always
 /// required. Artifact presence and outcome are independent; absence means no retained body.
 /// Matching call_id to a retained ToolCall requires later admission, not field validation.
+/// Denial, timeout, synthetic recovery, transcript repair, roles, isError and exit-shaped
+/// data do not automatically establish execution outcomes. An adapter unable to distinguish
+/// synthetic origin from execution evidence must not classify a result as confirmed execution.
+/// See guides/conversation-event-contract.md section 4.2; the codec does not parse artifacts
+/// or reconstruct the approval, run, step, attempt or execution lifecycle.
 struct ConversationToolResultObserved final {
     ConversationLinkTarget call;
     ByteBuffer call_id;
