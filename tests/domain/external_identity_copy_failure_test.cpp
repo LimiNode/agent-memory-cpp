@@ -38,18 +38,21 @@ am::ConversationEnvelope envelope() {
     value.extensions.push_back({1024, false, {0, 255}});
     return value;
 }
-enum class Operation { Signed, Unsigned, String, Component, Composite, Ref, Binding, Metadata, Envelope };
+enum class Operation { Signed, Unsigned, String, Component, Composite, Ref, Binding, Metadata, Envelope,
+    KeySigned, KeyUnsigned, KeyString };
 struct Fixture {
     am::ExternalObjectRef original = external(), copied;
     am::ConversationEnvelope input = envelope(), output;
     am::ExternalIdentityScalar scalar = std::string(160, 's'), scalar_copy;
+    am::ExternalObjectKey scalar_key;
     am::ExternalIdentityComponent component{std::string(48, 'n'), std::string(160, 'v')}, component_copy;
     const std::string original_bytes = am::serialize_external_object_ref(original);
     const am::ByteBuffer input_bytes = am::serialize_conversation_envelope(input);
 
     explicit Fixture(Operation op) {
-        if(op == Operation::Signed) scalar = std::int64_t{-7};
-        if(op == Operation::Unsigned) scalar = std::uint64_t{9};
+        if(op == Operation::Signed || op == Operation::KeySigned) scalar = std::int64_t{-7};
+        if(op == Operation::Unsigned || op == Operation::KeyUnsigned) scalar = std::uint64_t{9};
+        scalar_key = std::visit([](const auto& value) { return am::ExternalObjectKey{value}; }, scalar);
     }
     void attempt(Operation op) {
         switch(op) {
@@ -61,12 +64,16 @@ struct Fixture {
         case Operation::Binding: output.metadata.source = am::copy_conversation_source_binding(*input.metadata.source); break;
         case Operation::Metadata: output.metadata = am::copy_conversation_metadata(input.metadata); break;
         case Operation::Envelope: output = am::copy_conversation_envelope(input); break;
+        case Operation::KeySigned: case Operation::KeyUnsigned: case Operation::KeyString:
+            copied.object_key = am::copy_external_object_key(scalar_key); break;
         }
     }
     void verify_source() const {
         expect(am::serialize_external_object_ref(original) == original_bytes, "source external bytes unchanged");
         expect(am::serialize_conversation_envelope(input) == input_bytes, "source envelope bytes unchanged");
         expect(std::get<std::string>(component.value) == std::string(160, 'v'), "component source unchanged");
+        expect(std::visit([&](const auto& value) { return std::get<std::decay_t<decltype(value)>>(scalar_key.value) == value; },
+            scalar), "scalar key input unchanged");
     }
     void verify_copy(Operation op) const {
         switch(op) {
@@ -85,6 +92,8 @@ struct Fixture {
                 "metadata sources/links retained"); break;
         case Operation::Envelope:
             expect(am::serialize_conversation_envelope(output) == input_bytes, "AMCE bytes retained"); break;
+        case Operation::KeySigned: case Operation::KeyUnsigned: case Operation::KeyString:
+            expect(copied.object_key == scalar_key, "scalar key type/value retained"); break;
         }
     }
 };
@@ -109,7 +118,8 @@ int main() {
 #else
     try {
         for(const auto op : {Operation::Signed, Operation::Unsigned, Operation::String, Operation::Component,
-            Operation::Composite, Operation::Ref, Operation::Binding, Operation::Metadata, Operation::Envelope}) sweep(op);
+            Operation::Composite, Operation::Ref, Operation::Binding, Operation::Metadata, Operation::Envelope,
+            Operation::KeySigned, Operation::KeyUnsigned, Operation::KeyString}) sweep(op);
         return 0;
     } catch(const std::exception& e) { g_gate.is_enabled = false; std::fprintf(stderr, "%s\n", e.what()); return 1; }
 #endif
