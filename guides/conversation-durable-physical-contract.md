@@ -372,7 +372,9 @@ counters; do not mislabel index reads as complete frame decodes. Default
 per-read raw scan budget 32 MiB, supported cap 256 MiB; at most 262144 visited
 physical rows. Existing public defaults remain 64 items / 1 MiB output /
 4096 frame visits / 32 MiB decoded; caps 65536 items / 262144 visits / 256 MiB.
-No full-store allocation on open or full-history scan inside a public page.
+No unbounded full-store allocation on open or unbounded history scan inside a
+public page. A Current page may perform the explicitly budgeted full fold
+below; reaching its input budget must refuse unqualified Current output.
 Finite logical charges are not a peak heap/RSS bound. Map growth remains an
 explicit host/backend policy; no implicit unbounded resize/retry loop.
 
