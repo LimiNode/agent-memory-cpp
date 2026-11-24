@@ -85,6 +85,13 @@ struct ConversationEnvelope final {
     std::vector<ConversationMetadataExtension> extensions;
 };
 
+/// \brief Copies metadata through shared source/target copy operations, including every link.
+/// \return An independent value; allocation failures propagate and leave the input unchanged.
+/// \note This is value copying, not validation, admission or a wire-format conversion.
+[[nodiscard]] ConversationMetadata copy_conversation_metadata(const ConversationMetadata&);
+/// \brief Copies typed/opaque payloads, extensions and metadata without copying external variants.
+[[nodiscard]] ConversationEnvelope copy_conversation_envelope(const ConversationEnvelope&);
+
 /// \brief Reports built-in interpretation support, not registration, validity or authority.
 [[nodiscard]] bool is_supported_conversation_payload(std::uint32_t type_id, std::uint16_t schema_version) noexcept;
 

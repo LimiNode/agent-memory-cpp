@@ -326,3 +326,28 @@ qualification. That gate is CLOSED at the integrated baseline named above;
 the source-bound historical records are unchanged. No release/tag, existing
 database migration, numeric/default activation,
 ConversationStore, TypedMetadata or publication coordinator is authorized here.
+
+### 6.1 Explicit exception-safe value copies
+
+The additive `copy_external_identity_scalar`, `copy_external_identity_component`,
+`copy_external_object_key` and `copy_external_object_ref` functions construct
+active alternatives directly and recursively copy composite components. They
+preserve exact types/bytes and leave the input unchanged if allocation fails.
+They neither validate/admit an identity nor change AMXR v1. Existing aliases,
+aggregate initialization, fields, layout, implicit special members and wire
+goldens remain unchanged. This is not a replacement variant implementation.
+
+Use these named operations when an external identity is copied in a path with
+an allocation-failure contract. Some tested libstdc++ headers fail while
+unwinding a throwing *variant copy constructor*; ordinary implicit caller-side
+copies still use the system STL and are not repaired by these functions.
+The Conversation wrappers similarly copy source bindings, unresolved targets,
+metadata links and envelopes through this one AMXR implementation. Move the
+result into optional/container/variant destinations; do not copy it again.
+Existing by-value conversion APIs remain source/binary compatible: pass a
+moved value (or an explicitly copied envelope) rather than relying on a
+caller-side implicit copy under injected OOM.
+
+The [copy-hardening audit](audits/2026-11-24-external-identity-copy.md) records the
+failure mechanism, alternative considered, per-path coverage and qualification
+limits. It does not identify an upstream GCC bug or fixed STL version.
