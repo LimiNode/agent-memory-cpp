@@ -144,5 +144,9 @@ These tests do not qualify SDK event classification, external-source dedupe,
 artifact authenticity, full host policy, durable retention/erase, crash recovery
 or MDBX. The eight Phase 2 semantic scenarios must later be tested against real
 normalized importer input in Phase 3B, not only hand-constructed codec values.
+The dependent [reference source importer](conversation-source-import.md) now
+provides that authored source-shaped qualification and a private-store atomic
+key/ID coordinator. It does not change this store API, wire bytes, durable
+allocator gap or provider-conformance boundary.
 Phase 4 owns persistence; Phase 5 owns the complete Conversation Core profile;
 Phase 6 owns the independent derived-knowledge bridge.

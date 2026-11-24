@@ -15,6 +15,11 @@ add_executable(agent_memory_conversation_store conversation_store.cpp)
 target_link_libraries(agent_memory_conversation_store PRIVATE agent_memory::agent_memory)
 set_target_properties(agent_memory_conversation_store PROPERTIES
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+
+add_executable(agent_memory_conversation_import conversation_import.cpp)
+target_link_libraries(agent_memory_conversation_import PRIVATE agent_memory::agent_memory)
+set_target_properties(agent_memory_conversation_import PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 set_target_properties(agent_memory_conversation PROPERTIES
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 

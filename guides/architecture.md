@@ -86,6 +86,10 @@ read projections and physical compression/storage remain separate boundaries.
 The separate [Phase 3A reference store](conversation-reference-store.md) provides
 backend-neutral exact/current reads and an in-memory history/CAS implementation,
 without source importing, artifact hydration, production authorization or MDBX.
+The dependent [Phase 3B source import slice](conversation-source-import.md)
+adds bounded source-shaped normalization and an atomic import-key/Entry/append
+seam over that reference backend. It is instance-local, not a provider SDK,
+durable allocator, artifact authenticity check or full Conversation Core.
 The full Conversation Core and typed-metadata ADR remain
 planned, not permission to change persisted identity, include paths or product
 defaults.

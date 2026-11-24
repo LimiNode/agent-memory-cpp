@@ -11,5 +11,6 @@
 
 #include "ingestion/ResourceIndexer.hpp"
 #include "ingestion/ResourceImporter.hpp"
+#include "ingestion/ConversationSourceImporter.hpp"
 
 #endif

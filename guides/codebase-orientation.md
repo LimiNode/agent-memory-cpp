@@ -26,7 +26,7 @@ Open experimental PRs are not part of this map until integrated.
 | --- | --- | --- |
 | Domain | `domain/`, `domain.hpp` | Identifiers, canonical content, KnowledgeUnits, artifacts, source bindings, prompt composition and shared SHA-256. No MDBX dependency. |
 | Storage | `storage/`, `storage.hpp` | Backend-neutral contracts and reference implementations: canonical revisions/editing, KnowledgeUnits, projections, publication admission, prompt profiles, identity mapping and raw blobs. See [Canonical content storage](canonical-content-storage-roadmap.md) and [Linked derived knowledge](linked-derived-knowledge.md). |
-| Ingestion | `ingestion/`, `ingestion.hpp` | Resource import/reindexing contracts; `ResourceIndexer` remains a pre-chunked dense prototype, not the failure-atomic product importer. See [Resource reindexing](resource-reindexing.md). |
+| Ingestion | `ingestion/`, `ingestion.hpp` | Resource import/reindexing contracts and bounded [Conversation source import](conversation-source-import.md); `ResourceIndexer` remains a pre-chunked dense prototype, not the failure-atomic product importer. See [Resource reindexing](resource-reindexing.md). |
 | Lexical and vector indexes | `lexical/`, `index/` and their aggregate headers | Tokenization/BM25, exact vector baselines and optional binary representations. Indexing does not own retrieval policy or source authority. |
 | Retrieval | `retrieval/`, `retrieval.hpp` | Hybrid and projection-aware retrieval, revision-bound reads and traces. See [Retrieval execution](retrieval-execution-roadmap.md). |
 | Memory | `memory/`, `memory.hpp` | Memory value types. Context and prompt contracts have their own domain/storage owners; see [Context building](context-building.md). Not a general agent runtime. |
