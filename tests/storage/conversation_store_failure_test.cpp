@@ -197,7 +197,16 @@ void expect_same_result(const am::ConversationReadResult& actual, const am::Conv
     }
 }
 
-enum class Operation { Create, Append, Correct, Exact, History, Current };
+enum class Operation { Create, Append, Correct, Exact, History, Current, NoChange };
+
+am::ConversationEnvelope candidate_for(Operation operation) {
+    if(operation == Operation::NoChange) {
+        auto value = message(1);
+        value.metadata.ref.revision = am::EventRevision{std::uint64_t{2}};
+        return value;
+    }
+    return message(operation == Operation::Correct ? 1 : 4, operation == Operation::Correct);
+}
 
 bool is_read(Operation operation) {
     return operation == Operation::Exact || operation == Operation::History || operation == Operation::Current;
@@ -211,6 +220,7 @@ const char* operation_name(Operation operation) {
     case Operation::Exact: return "read_exact";
     case Operation::History: return "read_history/continuation";
     case Operation::Current: return "read_current/continuation";
+    case Operation::NoChange: return "correct/NoChange";
     }
     throw std::runtime_error("invalid operation");
 }
@@ -235,7 +245,7 @@ am::ConversationStoreOptions options(Operation operation) {
 
 struct Fixture final {
     explicit Fixture(Operation operation) : store(options(operation)), exact_ref(ref(1, is_read(operation) ? 2 : 1)),
-        candidate(message(operation == Operation::Correct ? 1 : 4, operation == Operation::Correct)) {
+        candidate(candidate_for(operation)) {
         expect(store.create_conversation(authority, stream).status == am::ConversationWriteStatus::Applied, "fixture create");
         for(std::uint64_t entry = 1; entry <= 3; ++entry)
             expect(store.append(authority, message(entry)).status == am::ConversationWriteStatus::Applied, "fixture append");
@@ -258,7 +268,8 @@ struct Fixture final {
         switch(operation) {
         case Operation::Create: write = store.create_conversation(authority, new_stream); break;
         case Operation::Append: write = store.append(authority, candidate); break;
-        case Operation::Correct: write = store.correct(authority, candidate, exact_ref.revision, reason); break;
+        case Operation::Correct: case Operation::NoChange:
+            write = store.correct(authority, candidate, exact_ref.revision, reason); break;
         case Operation::Exact: read = store.read_exact(authority, exact_ref); break;
         case Operation::History: read = store.read_history(authority, stream, one, history_first.continuation); break;
         case Operation::Current: read = store.read_current(authority, stream, one, current_first.continuation); break;
@@ -287,6 +298,16 @@ struct Fixture final {
     }
 
     void verify_success(Operation operation) {
+        if(operation == Operation::NoChange) {
+            expect(write.status == am::ConversationWriteStatus::NoChange && write.ref == exact_ref &&
+                write.commit_generation == history.commit_generation, "NoChange preserves ref/generation");
+            verify_unchanged();
+            expect(store.append(authority, message(4)).status == am::ConversationWriteStatus::Applied,
+                "NoChange failures consume no IDs/capacity");
+            expect_same_result(store.read_history(authority, stream, {}, history_first.continuation), history_tail);
+            expect_same_result(store.read_current(authority, stream, {}, current_first.continuation), current_tail);
+            return;
+        }
         if(operation == Operation::Exact) {
             expect_same_result(read, exact);
             verify_unchanged();
@@ -391,12 +412,13 @@ int main(int argc, char** argv) {
         g_use_external_keys = argc > 1;
         std::size_t failures = 0;
         for(const auto operation : {Operation::Create, Operation::Append, Operation::Correct,
-            Operation::Exact, Operation::History, Operation::Current}) {
+            Operation::Exact, Operation::History, Operation::Current, Operation::NoChange}) {
+            if(operation == Operation::NoChange && !g_use_external_keys) continue;
             if(argc > 2 && std::atoi(argv[2]) != static_cast<int>(operation)) continue;
             failures += run_fault_matrix(operation);
         }
         std::printf("PASS conversation store: %zu actual one-shot allocation failures\n", failures);
-        std::puts("Coverage: replaceable C++ allocation calls on these six fixtures; no malloc/OS/host allocator failures,");
+        std::puts("Coverage: replaceable C++ allocation calls on the selected fixtures; no malloc/OS/host allocator failures,");
         std::puts("no asynchronous failures, checked-STL faults, arbitrary input proof or persistent-backend claim.");
         return 0;
     } catch(const std::exception& error) {
