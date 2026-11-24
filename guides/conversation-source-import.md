@@ -162,6 +162,14 @@ conversation NotFound, malformed/mismatched access Denied. Allocation failures
 propagate without successful partial admission. The host authorizes every call;
 scope/policy-shaped values do not themselves implement authentication.
 
+Potentially throwing copies of nested external identities use the shared
+[explicit copy operations](identity-policy.md#61-explicit-exception-safe-value-copies),
+including validation probes, normalized metadata, retained source witnesses
+and source/unresolved targets. The adapter reconstructs its source-shaped DTO
+around those operations; it does not introduce another AMXR copying scheme.
+Input lvalue copies made by a caller before this API remain ordinary STL
+operations, outside the sink's exception-atomicity qualification.
+
 ## Reuse and deferred gates
 
 | Disposition | Surface |

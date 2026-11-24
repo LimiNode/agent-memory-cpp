@@ -1,83 +1,6 @@
 #include <agent_memory/ingestion/ConversationSourceImporter.hpp>
 
-#include <cstdio>
-#include <cstdlib>
-#include <limits>
-#include <new>
-#include <stdexcept>
-#if defined(_WIN32)
-#include <malloc.h>
-#endif
-
-namespace {
-// Isolated single-threaded standard replacement functions, not runtime detours.
-// Fixtures/assertions allocate outside the one-shot operation gate.
-struct AllocationGate final { bool is_enabled = false; bool has_failed = false; std::size_t calls = 0, fail_at = 0; };
-thread_local AllocationGate g_gate;
-void check_allocation() {
-    if(!g_gate.is_enabled) return;
-    if(++g_gate.calls == g_gate.fail_at) {
-        g_gate.has_failed = true; g_gate.is_enabled = false;
-        throw std::bad_alloc{};
-    }
-}
-void* allocate(std::size_t size) {
-    check_allocation();
-    if(auto* result = std::malloc(size ? size : 1)) return result;
-    throw std::bad_alloc{};
-}
-void* allocate_aligned(std::size_t size, std::size_t alignment) {
-    check_allocation();
-    if(size > std::numeric_limits<std::size_t>::max() - (alignment - 1)) throw std::bad_alloc{};
-    const auto rounded = size ? ((size + alignment - 1) / alignment) * alignment : alignment;
-#if defined(_WIN32)
-    if(auto* result = _aligned_malloc(rounded, alignment)) return result;
-#else
-    void* result = nullptr;
-    if(posix_memalign(&result, alignment, rounded) == 0) return result;
-#endif
-    throw std::bad_alloc{};
-}
-void release_aligned(void* pointer) noexcept {
-#if defined(_WIN32)
-    _aligned_free(pointer);
-#else
-    std::free(pointer);
-#endif
-}
-struct ScopedGate final {
-    explicit ScopedGate(std::size_t ordinal) { g_gate = {true, false, 0, ordinal}; }
-    ~ScopedGate() { g_gate.is_enabled = false; }
-};
-} // namespace
-void* operator new(std::size_t n) { return allocate(n); }
-void* operator new[](std::size_t n) { return allocate(n); }
-void* operator new(std::size_t n, const std::nothrow_t&) noexcept {
-    try { return allocate(n); } catch(const std::bad_alloc&) { return nullptr; }
-}
-void* operator new[](std::size_t n, const std::nothrow_t&) noexcept {
-    try { return allocate(n); } catch(const std::bad_alloc&) { return nullptr; }
-}
-void* operator new(std::size_t n, std::align_val_t a) { return allocate_aligned(n, static_cast<std::size_t>(a)); }
-void* operator new[](std::size_t n, std::align_val_t a) { return allocate_aligned(n, static_cast<std::size_t>(a)); }
-void* operator new(std::size_t n, std::align_val_t a, const std::nothrow_t&) noexcept {
-    try { return allocate_aligned(n, static_cast<std::size_t>(a)); } catch(const std::bad_alloc&) { return nullptr; }
-}
-void* operator new[](std::size_t n, std::align_val_t a, const std::nothrow_t&) noexcept {
-    try { return allocate_aligned(n, static_cast<std::size_t>(a)); } catch(const std::bad_alloc&) { return nullptr; }
-}
-void operator delete(void* p) noexcept { std::free(p); }
-void operator delete[](void* p) noexcept { std::free(p); }
-void operator delete(void* p, std::size_t) noexcept { std::free(p); }
-void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
-void operator delete(void* p, const std::nothrow_t&) noexcept { std::free(p); }
-void operator delete[](void* p, const std::nothrow_t&) noexcept { std::free(p); }
-void operator delete(void* p, std::align_val_t) noexcept { release_aligned(p); }
-void operator delete[](void* p, std::align_val_t) noexcept { release_aligned(p); }
-void operator delete(void* p, std::size_t, std::align_val_t) noexcept { release_aligned(p); }
-void operator delete[](void* p, std::size_t, std::align_val_t) noexcept { release_aligned(p); }
-void operator delete(void* p, std::align_val_t, const std::nothrow_t&) noexcept { release_aligned(p); }
-void operator delete[](void* p, std::align_val_t, const std::nothrow_t&) noexcept { release_aligned(p); }
+#include "../support/allocation_failure.hpp"
 
 namespace am = agent_memory;
 namespace {
@@ -101,11 +24,47 @@ am::ConversationSourceObservation observation(std::uint64_t index) {
         {std::string(160, 't'), {am::ArtifactBindingId{std::string(48, 'b')}}}};
     return value;
 }
-enum class Operation { Create, Import, Replay, Result, ExternalEvent };
+enum class Operation { Create, Import, Replay, Result, ExternalEvent, CompositeEvent,
+    CompositeObject, CompositeReplay, CompositeConflict, ExactResult, UnresolvedResult, ResolvedSourceResult };
+bool is_replay(Operation op) { return op == Operation::Replay || op == Operation::CompositeReplay; }
+am::ExternalObjectRef external(std::uint64_t index) {
+    const auto key = [=] {
+        std::vector<am::ExternalIdentityComponent> parts;
+        parts.push_back({"signed", std::int64_t{-9}});
+        parts.push_back({"unsigned", index});
+        parts.push_back({std::string(48, 'k'), std::string(160, 'v')});
+        return am::ExternalObjectKey{std::move(parts)};
+    };
+    return {"fixture", std::string(48, 'i'), "run-a", "event", key(), key()};
+}
+void bind_external(am::ConversationSourceBinding& source, std::uint64_t index, bool is_object = false) {
+    source.object = external(index);
+    if(is_object) {
+        source.identity = am::ConversationSourceIdentity::ObjectRevision;
+        source.provider_revision_marker = std::string(48, 'm');
+    } else {
+        source.identity = am::ConversationSourceIdentity::ExternalEvent;
+        source.event = external(index);
+    }
+}
+bool same_source(const am::ConversationSourceBinding& a, const am::ConversationSourceBinding& b) {
+    return a.identity == b.identity && a.object == b.object && a.event == b.event && a.revision == b.revision &&
+        a.provider_revision_marker == b.provider_revision_marker && a.adapter_recipe == b.adapter_recipe &&
+        a.evidence.artifact == b.evidence.artifact && a.evidence.record_locator == b.evidence.record_locator;
+}
 struct Fixture final {
     explicit Fixture(Operation operation) : baseline(observation(1)), candidate(observation(2)), sink(options()) {
+        if(operation == Operation::CompositeEvent || operation == Operation::CompositeObject ||
+            operation == Operation::CompositeReplay || operation == Operation::CompositeConflict ||
+            operation == Operation::ResolvedSourceResult) {
+            bind_external(baseline.source, 1, operation == Operation::CompositeObject);
+            bind_external(candidate.source, 2, operation == Operation::CompositeObject);
+        }
+        if(operation == Operation::ExactResult || operation == Operation::ResolvedSourceResult)
+            baseline.payload = am::ConversationSourceToolCall{{0, 255}, "tool", am::ArtifactBindingId{"request"}, std::nullopt};
         expect(sink.create_conversation(authority, stream).status == am::ConversationWriteStatus::Applied, "baseline create");
-        expect(sink.import_observation(authority, baseline).status == am::ConversationWriteStatus::Applied, "baseline import");
+        const auto initial = sink.import_observation(authority, baseline);
+        expect(initial.status == am::ConversationWriteStatus::Applied, "baseline import");
         if(operation == Operation::Result) {
             candidate.payload = am::ConversationSourceToolResult{
                 am::ConversationSourceTarget{stream, authority.scope, observation(3).source}, {0, 255},
@@ -117,15 +76,48 @@ struct Fixture final {
             candidate.source.event = am::ExternalObjectRef{"fixture", std::string(48, 'i'), "run-a", "event",
                 std::nullopt, am::ExternalObjectKey{std::string(48, 'k')}};
         }
+        if(operation == Operation::CompositeConflict) {
+            candidate = baseline; // Setup is outside every fault gate.
+            candidate.producer[0] = 'q';
+        }
+        if(operation == Operation::ExactResult) {
+            candidate.payload = am::ConversationSourceToolResult{*initial.ref, {0, 255}};
+        } else if(operation == Operation::ResolvedSourceResult) {
+            candidate.payload = am::ConversationSourceToolResult{
+                am::ConversationSourceTarget{stream, authority.scope, am::copy_conversation_source_binding(baseline.source)},
+                {0, 255}};
+        } else if(operation == Operation::UnresolvedResult) {
+            bind_external(candidate.source, 2);
+            candidate.payload = am::ConversationSourceToolResult{
+                am::UnresolvedConversationTarget{external(3), {am::ArtifactBindingId{"unresolved-evidence"}, "record/3"}},
+                {0, 255}};
+        }
+        baseline_before = am::copy_conversation_source_binding(baseline.source);
+        candidate_before = am::copy_conversation_source_binding(candidate.source);
+        producer_before = candidate.producer;
+        if(const auto* tool = std::get_if<am::ConversationSourceToolResult>(&candidate.payload)) {
+            if(const auto* target = std::get_if<am::ConversationSourceTarget>(&tool->call))
+                target_source_before = am::copy_conversation_source_binding(target->source);
+            if(const auto* target = std::get_if<am::UnresolvedConversationTarget>(&tool->call))
+                if(target->external) target_external_before = am::copy_external_object_ref(*target->external);
+        }
         history = sink.history().read_history(authority, stream);
         current = sink.history().read_current(authority, stream);
         replay = sink.import_observation(authority, baseline);
     }
     void attempt(Operation operation) {
         if(operation == Operation::Create) result = sink.create_conversation(authority, another_stream);
-        else result = sink.import_observation(authority, operation == Operation::Replay ? baseline : candidate);
+        else result = sink.import_observation(authority, is_replay(operation) ? baseline : candidate);
     }
     void verify_unchanged() {
+        expect(same_source(baseline.source, baseline_before) && same_source(candidate.source, candidate_before) &&
+            candidate.producer == producer_before, "input identity/witness unchanged");
+        if(target_source_before) expect(same_source(*target_source_before,
+            std::get<am::ConversationSourceTarget>(std::get<am::ConversationSourceToolResult>(candidate.payload).call).source),
+            "source-shaped target input unchanged");
+        if(target_external_before) expect(target_external_before ==
+            std::get<am::UnresolvedConversationTarget>(std::get<am::ConversationSourceToolResult>(candidate.payload).call).external,
+            "unresolved target input unchanged");
         const auto actual = sink.history().read_history(authority, stream);
         expect(actual.status == history.status && actual.commit_generation == history.commit_generation &&
             actual.records.size() == history.records.size(), "no partial canonical append/generation");
@@ -134,8 +126,9 @@ struct Fixture final {
                 am::serialize_conversation_envelope(history.records[i].envelope), "history bytes unchanged");
         const auto now = sink.history().read_current(authority, stream);
         expect(now.status == current.status && now.commit_generation == current.commit_generation &&
-            now.messages.size() == current.messages.size() && now.messages[0].content->text ==
-            current.messages[0].content->text, "current unchanged");
+            now.messages.size() == current.messages.size(), "current unchanged");
+        for(std::size_t i = 0; i < now.messages.size(); ++i)
+            expect(now.messages[i].content->text == current.messages[i].content->text, "current content unchanged");
         const auto repeated = sink.import_observation(authority, baseline);
         expect(repeated.status == am::ConversationWriteStatus::NoChange && repeated.ref == replay.ref &&
             repeated.commit_generation == replay.commit_generation, "old mapping unchanged");
@@ -143,13 +136,21 @@ struct Fixture final {
             "no orphan conversation");
     }
     void verify_success(Operation operation) {
-        expect(result.status == (operation == Operation::Replay ? am::ConversationWriteStatus::NoChange :
+        if(operation == Operation::CompositeConflict) {
+            expect(result.status == am::ConversationWriteStatus::Conflict, "changed source witness conflicts");
+            verify_unchanged();
+            const auto next = sink.import_observation(authority, observation(2));
+            expect(next.status == am::ConversationWriteStatus::Applied && next.ref->entry.value() == 2,
+                "conflict consumes no mapping or ID");
+            return;
+        }
+        expect(result.status == (is_replay(operation) ? am::ConversationWriteStatus::NoChange :
             am::ConversationWriteStatus::Applied), "retry success");
         if(operation == Operation::Create) {
             expect(result.commit_generation == history.commit_generation + 1 &&
                 sink.history().read_history(authority, another_stream).status == am::ConversationReadStatus::Complete,
                 "create publishes once");
-        } else if(operation == Operation::Replay) {
+        } else if(is_replay(operation)) {
             expect(result.ref == replay.ref && result.commit_generation == replay.commit_generation, "replay unchanged");
             const auto appended = sink.import_observation(authority, candidate);
             expect(appended.status == am::ConversationWriteStatus::Applied && appended.ref->entry.value() == 2,
@@ -164,8 +165,12 @@ struct Fixture final {
     }
     const am::ConversationStoreAccess authority = access();
     const am::ConversationRef stream = conversation(), another_stream = conversation(2);
-    const am::ConversationSourceObservation baseline;
+    am::ConversationSourceObservation baseline;
     am::ConversationSourceObservation candidate;
+    am::ConversationSourceBinding baseline_before, candidate_before;
+    std::optional<am::ConversationSourceBinding> target_source_before;
+    std::optional<am::ExternalObjectRef> target_external_before;
+    std::string producer_before;
     am::InMemoryConversationImportSink sink;
     am::ConversationReadResult history, current;
     am::ConversationWriteResult replay, result;
@@ -208,7 +213,9 @@ int main() {
     try {
         std::size_t total = 0;
         for(const auto operation : {Operation::Create, Operation::Import, Operation::Replay, Operation::Result,
-            Operation::ExternalEvent})
+            Operation::ExternalEvent, Operation::CompositeEvent, Operation::CompositeObject,
+            Operation::CompositeReplay, Operation::CompositeConflict, Operation::ExactResult,
+            Operation::UnresolvedResult, Operation::ResolvedSourceResult})
             total += run_matrix(operation);
         std::printf("PASS import atomicity: %zu failures; no malloc/OS/crash/arbitrary-input guarantee\n", total);
         return 0;

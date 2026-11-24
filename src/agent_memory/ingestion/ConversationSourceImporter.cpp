@@ -175,7 +175,7 @@ ConversationWriteStatus source_status(const ConversationSourceBinding& source,
     ConversationEntry probe;
     probe.ref = {conversation, EntryId{std::uint64_t{1}}, EventRevision{std::uint64_t{1}}};
     probe.scope = scope;
-    probe.source = source;
+    probe.source = copy_conversation_source_binding(source);
     // A field-only target avoids depending on a consumer's inline-text budget.
     probe.payload = ConversationTombstoned{{conversation, EntryId{std::uint64_t{2}}, EventRevision{std::uint64_t{1}}}};
     const auto issues = validate_conversation_entry_with_limits(probe, limits);
@@ -271,6 +271,30 @@ SourceKey source_key(const ConversationSourceBinding& source) {
     return key;
 }
 
+ConversationSourceCallTarget copy_source_target(const ConversationSourceCallTarget& target) {
+    if(const auto* ref = std::get_if<EntryRef>(&target)) return *ref;
+    if(const auto* source = std::get_if<ConversationSourceTarget>(&target)) {
+        return ConversationSourceTarget{source->conversation, source->scope,
+            copy_conversation_source_binding(source->source)};
+    }
+    return copy_unresolved_conversation_target(std::get<UnresolvedConversationTarget>(target));
+}
+
+ConversationSourceObservation copy_observation(const ConversationSourceObservation& input) {
+    ConversationSourcePayload payload;
+    if(const auto* message = std::get_if<ConversationSourceMessage>(&input.payload)) {
+        payload = ConversationSourcePayload{std::in_place_index<0>, *message};
+    } else if(const auto* call = std::get_if<ConversationSourceToolCall>(&input.payload)) {
+        payload = ConversationSourcePayload{std::in_place_index<1>, *call};
+    } else {
+        const auto& result = std::get<ConversationSourceToolResult>(input.payload);
+        payload = ConversationSourceToolResult{copy_source_target(result.call), result.call_id,
+            result.origin, result.reported_outcome, result.result, result.is_error, result.exit_code};
+    }
+    return {input.conversation, input.scope, copy_conversation_source_binding(input.source), input.producer,
+        input.actor, input.observer, input.llm_role, input.source_unix_us, input.observed_unix_us, std::move(payload)};
+}
+
 } // namespace
 
 IConversationImportSink::~IConversationImportSink() = default;
@@ -313,12 +337,15 @@ struct InMemoryConversationImportSink::Impl final {
 
     ConversationLinkTarget resolve_target(const ConversationSourceCallTarget& input, const Conversation& conversation) const {
         if(const auto* ref = std::get_if<EntryRef>(&input)) return *ref;
-        if(const auto* unresolved = std::get_if<UnresolvedConversationTarget>(&input)) return *unresolved;
+        if(const auto* unresolved = std::get_if<UnresolvedConversationTarget>(&input))
+            return copy_unresolved_conversation_target(*unresolved);
         const auto& source_target = std::get<ConversationSourceTarget>(input);
         const auto found = conversation.mappings.find(source_key(source_target.source));
         if(found != conversation.mappings.end()) return found->second.original_ref;
-        return UnresolvedConversationTarget{source_target.source.event ? source_target.source.event : source_target.source.object,
-            source_target.source.evidence};
+        const auto& external = source_target.source.event ? source_target.source.event : source_target.source.object;
+        std::optional<ExternalObjectRef> retained;
+        if(external) retained = copy_external_object_ref(*external);
+        return UnresolvedConversationTarget{std::move(retained), source_target.source.evidence};
     }
 
     ConversationEnvelope normalize(const ConversationSourceObservation& input, const EntryRef& ref,
@@ -326,7 +353,7 @@ struct InMemoryConversationImportSink::Impl final {
         ConversationEnvelope envelope;
         envelope.metadata.ref = ref;
         envelope.metadata.scope = input.scope;
-        envelope.metadata.source = input.source;
+        envelope.metadata.source = copy_conversation_source_binding(input.source);
         envelope.metadata.actor = input.actor;
         envelope.metadata.observer = input.observer;
         envelope.metadata.llm_role = input.llm_role;
@@ -434,7 +461,7 @@ ConversationWriteResult InMemoryConversationImportSink::import_observation(
     auto envelope = m_impl->normalize(observation, ref, conversation);
     // Result and witness allocations precede canonical append. Nothing after Applied allocates.
     ConversationWriteResult result{ConversationWriteStatus::Applied, ref, 0};
-    Impl::Mapping row{observation, ref, 0};
+    Impl::Mapping row{copy_observation(observation), ref, 0};
     const auto inserted = conversation.mappings.emplace(std::move(key), std::move(row));
     static_assert(std::is_nothrow_move_constructible_v<ConversationWriteResult>);
     try {

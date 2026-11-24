@@ -1,13 +1,18 @@
 # Conversation source import: bounded Phase 3B qualification
 
-- Date: 2026-11-24. Status: **HOLD** after hosted Linux allocation-failure abort;
-  local Windows qualification does not close this finding.
+- Date: 2026-11-24. Status: corrective implementation passes local Linux and
+  Windows qualification; **HOLD pending exact-head hosted checks and independent
+  review**. Historical abort evidence below is retained, not current verdict.
 - Branch: `feat/conversation-source-import`, dependent Draft PR over Phase 3A
   `feat/conversation-reference-store@cd6d5dffc8c2c3684330c2fcfea46aa5042cdcee`.
 - Normative owner: [source import contract](../conversation-source-import.md).
   This report records evidence, not another event grammar or admission policy.
 
 ## Baseline and Phase 3A gate
+
+This section through the original hosted finding records the historical
+`22ec139a` / `9ed28efe` qualification. The corrective appendix below supersedes
+its unresolved copy-path inventory and records the new dependencies/results.
 
 Phase 3A final qualification added deterministic allocation-failure and exact
 historical-revision tests plus the [Current pagination measurement](../experiments/2026-11-24-conversation-current-pagination.md).
@@ -201,6 +206,119 @@ atomicity from the successful Windows matrices. Next work must choose and
 review either complete portable copy hardening (including the Phase 3A paths)
 or a demonstrably fixed toolchain, then rerun external/composite-key fault
 fixtures and exact-head CI/Packaging. No such correction is included here.
+
+## Corrective qualification: shared external-identity copies
+
+### Dependencies and implementation boundary
+
+Foundation Draft [#696](https://github.com/LimiNode/agent-memory-cpp/pull/696)
+introduces additive compiled named copies at `ccc4a3e6`, with scalar-key tests
+at `3d7b868d`. The [foundation audit](2026-11-24-external-identity-copy.md)
+owns the complete copy-path inventory, evidence, alternatives and compatibility
+boundary. No aggregate special member, alternative, layout or AMXR/AMCE wire
+grammar changes. Ordinary caller copies remain ordinary STL operations.
+No proven fixed alternative STL was available; Clang/libc++ were unavailable
+locally. The OpenTelemetry report is corroboration, not an asserted GCC bug ID.
+
+The expanded Phase 3A fixture reproduced two additional failures against the
+historical store: `correct` envelope copy and Current origin metadata assignment.
+The minimal correction is shared envelope cloning plus moving metadata from
+the private decoded root. See the [Phase 3A appendix](2026-11-23-conversation-reference-store-qualification.md#2026-11-24-external-key-exception-safety-correction).
+No fold/cache/projection semantics changed.
+
+The importer now routes validation, normalization, source witnesses and
+exact/source/unresolved target staging through shared copies. The optional
+fallback selects its source by const reference, then clones explicitly; no
+conditional-expression copy remains. Message/call DTO fields contain no
+external identity variants. All staged values move into mappings before append.
+Source keys, equality, budgets, lock, ID allocation and commit/rollback remain
+unchanged. After Applied there are only scalar counter updates and the
+statically checked nonthrowing result move. No callbacks run under the lock.
+
+Foundation and Phase 3A corrections are distributed here by ordinary
+cherry-picks (`723bd4b1`, `5ce7fed7`, `48e8b576`, `2236727f`), with originating
+commits retained in commit messages. These are duplicate logical patches in
+an unmerged stack, not independent competing implementations. #690/#693 were
+not changed. The publication receipt binds final heads and exact hosted runs.
+
+### Executed local qualification
+
+All builds use C++17, static library, tests/examples ON, JSON/MDBX/research OFF.
+Linux: WSL2 Ubuntu, kernel 6.18.33.2-microsoft-standard-WSL2, g++ 15.2.0
+(package 15.2.0-16ubuntu1), headers `/usr/include/c++/15`, runtime package
+`libstdc++6` **16-20260322-1ubuntu1**. Runtime and header versions are not
+conflated. Linux Debug applies `-fsanitize=address,undefined
+-fno-omit-frame-pointer` to library and executables with no suppression.
+Linux Release uses the CMake Release profile. Windows GNU is MinGW-w64
+15.2.0 release-posix-seh-msvcrt-rt_v13-rev0; MSVC is 19.44.35228.0,
+VS2022 x64 Release. Compiler/runtime-specific interception counts are not
+assumed equal.
+
+| Full build + CTest | Result |
+| --- | --- |
+| Linux Debug ASan/UBSan, `/var/tmp/am-copy-phase3b-debug` | 64/64 passed; no sanitizer report |
+| Linux Release, `/var/tmp/am-copy-phase3b-release` | 64/64 passed |
+| Windows GNU Release, `.build/conversation-phase3b-gnu` | 64/64 passed |
+| Windows MSVC Release, `.build/conversation-phase3b-msvc` | 64/64 passed |
+| Public header self-sufficiency, AMXR/AMCE goldens, semantic/concurrency tests | Included in all four full suites |
+
+| Actual injected failures | Linux Debug sanitized | Linux Release | Windows GNU Release | Windows MSVC Release |
+| --- | ---: | ---: | ---: | ---: |
+| Foundation twelve copy cases | 130 | 130 | 26 | 130 |
+| Original store six local cases | 184 | 184 | 39 | 187 |
+| Store external keys, seven cases including NoChange | 336 | 336 | 74 | 339 |
+| Importer twelve cases | 718 | 718 | 126 | 722 |
+
+Importer operation order and Linux counts:
+create/local import/replay/out-of-order result/scalar ExternalEvent/composite
+ExternalEvent/composite ObjectRevision/composite replay/conflicting witness/
+exact result/unresolved complex result/resolved complex source-target result =
+6/44/13/58/54/93/75/30/29/49/108/159. MSVC differs only in create (10).
+Windows GNU = 2/6/0/6/7/19/13/5/5/7/23/33. Its replay lane really intercepts
+zero calls; allocating Debug/Linux/MSVC replay lanes remain exercised.
+
+Every measured ordinal throws once and disarms before unwinding. The fixture
+checks original source/target witnesses, canonical bytes, Current, old replay
+mapping and generation; retry and exact two-row mapping capacity detect consumed
+IDs, rows or duplicate append. The external store fixture additionally checks
+receipts, historical corrected revisions, exact remaining storage capacity and
+pinned cursors on correction/read/NoChange failures. Scalar signed/unsigned/string
+tags and both composite parent/object keys are tested in the shared foundation.
+No previous failure fixture or diagnostic was disabled. The independent standard
+variant reproducer remains diagnostic, not an expected-pass CTest.
+
+This is qualification of the measured replaceable C++ allocation calls and
+fixtures, not malloc/OS/host-allocator, asynchronous failures, arbitrary caller
+copies or whole-process OOM safety. MSVC checked STL remains explicit SKIP 77,
+not qualified failure recovery. Importer correction uses the independently
+swept Phase 3A path; not every importer refusal branch is separately swept.
+
+Installed C++17 `find_package` consumers for identity, conversation, codec,
+store and import plus library-info compile and execute on Linux GNU Release
+and Windows MSVC Release. All six consumers also compile/run from a moved
+prefix on both platforms, with the original prefix absent. Final exact-head
+hosted results are recorded in the PR receipt after execution. Local build/CTest raw logs remain
+under the named build directories; this committed table is the durable summary.
+No local JSON/MDBX or Clang claim is implied; hosted lanes qualify their own
+profiles separately.
+
+The [copy-cost experiment](../experiments/2026-11-24-external-identity-copy-cost.md)
+records normal-path allocation counts, directional latency, peak process RSS
+and explicit measurement limitations; no speedup or universal OOM claim is made.
+
+### Integration and remaining acceptance
+
+The concrete Linux abort is not reproduced after correction in either full
+Linux profile. This closes the local technical regression, **not** the final
+acceptance gate: exact-head CI/Packaging and independent reviewer confirmation
+must be observed and attached to the publication receipt. Self-review is not
+independent review. Until those gates are satisfied, the overall verdict is HOLD.
+
+Owner-only future integration: #690, #693 documentation reconciliation, #696
+foundation, #694 on the resulting main, then retarget/reconcile #695 and rerun
+exact-tree checks. Ordinary cherry-pick distribution does not authorize rebase,
+force-push, branch deletion or duplicate integration. No merge/release/migration
+was performed. Phase 4 remains deferred until acceptance; no MDBX code is added.
 
 ## Open boundaries for Phase 4/5
 
