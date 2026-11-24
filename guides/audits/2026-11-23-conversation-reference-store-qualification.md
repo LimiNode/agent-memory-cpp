@@ -162,3 +162,12 @@ checks belong in the PR receipt, not the old-head result above. Core readiness
 remains limited to the reference subset; the stack must receive final
 external-key qualification before the Phase 3B HOLD can be lifted. No merge,
 rebase, force-push, release or migration was performed.
+
+### Integration rehearsal status update
+
+The historical external-key/independent-review HOLD above was closed by the
+four-profile corrective qualification and independent read-only review of
+`a0c2d6bb`, `3d7b868d` and `de63e95a`. Exact-head #694 CI 45303452987 and
+Packaging 45303452990 passed. The [combined rehearsal report](2026-11-24-conversation-stack-integration-rehearsal.md)
+owns the subsequent five-PR integration result. This updates acceptance status,
+not the historical measurements or the reference-only/persistence boundary.

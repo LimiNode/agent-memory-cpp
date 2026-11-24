@@ -2,7 +2,8 @@
 
 - Status: **Phase 1 values/field validation integrated in main; Phase 2 Event
   Codec v1 reviewed in Draft PR #690; Phase 3A in-memory reference store in a
-  separate dependent Draft PR. Import, persistence and the complete
+  separate dependent Draft PR; Phase 3B bounded reference source importer
+  implemented in dependent Draft PR #695. Persistence and the complete
   Conversation Core profile remain Planned**.
 - Date: 2026-11-22. Scheduling: planned early opt-in Conversation Core;
   advanced conversation memory remains M2/M2+ under [milestones](milestones.md).

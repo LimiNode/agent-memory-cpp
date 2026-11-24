@@ -91,7 +91,10 @@ snapshot paging. The dependent [Phase 3B source importer](conversation-source-im
 adds authored source-shaped normalization, instance-local idempotence and
 coordinated key/ID admission, not upstream SDK or durable recovery qualification.
 Durable ID allocation/persistence (4), full Core qualification (5) and the derived
-bridge (6) remain Planned. Review and qualify
+bridge (6) remain Planned. The separate
+[Phase 4 implementation brief](conversation-durable-store-phase4-plan.md)
+proposes durable slices and gates; it is not implementation authorization.
+Review and qualify
 each slice before advertising the complete profile. The revised
 [AMCE envelope](conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)
 supports independently versioned payloads, bounded default/extended consumer
