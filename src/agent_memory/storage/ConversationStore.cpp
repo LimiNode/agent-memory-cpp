@@ -369,7 +369,7 @@ ConversationWriteResult InMemoryConversationStore::correct(const ConversationSto
     ByteBuffer bytes;
     const auto encoded = m_impl->encode(envelope, bytes);
     if(encoded != ConversationWriteStatus::Applied) return write_refusal(encoded);
-    auto normalized = envelope;
+    auto normalized = copy_conversation_envelope(envelope);
     normalized.metadata.ref.revision = expected;
     if(serialize_conversation_envelope(normalized, m_impl->options.codec_limits) == previous->bytes)
         return {ConversationWriteStatus::NoChange, previous->ref, m_impl->generation};
@@ -479,14 +479,14 @@ ConversationReadResult InMemoryConversationStore::read_current(const Conversatio
             result.continuation = m_impl->cursor(access, ref, true, frontier, seek_entry, 0);
             return result;
         }
-        const auto envelope = m_impl->decode(record);
+        auto envelope = m_impl->decode(record);
         if(!entry.root) continue;
         const auto type = family(envelope);
         if(type == 0 || type == 1) {
             Fold fold;
             fold.view.origin = envelope.metadata.ref;
             fold.view.state = envelope.metadata.ref;
-            fold.view.origin_metadata = envelope.metadata;
+            fold.view.origin_metadata = std::move(envelope.metadata);
             fold.view.content = *content(envelope);
             fold.view.content_ref = record.content_ref;
             fold.view.is_snapshot_origin = type == 1;

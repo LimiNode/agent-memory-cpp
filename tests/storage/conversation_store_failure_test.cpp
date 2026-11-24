@@ -111,6 +111,7 @@ void operator delete[](void* pointer, std::align_val_t, const std::nothrow_t&) n
 
 namespace am = agent_memory;
 namespace {
+bool g_use_external_keys = false;
 void expect(bool condition, const char* message) {
     if(!condition) throw std::runtime_error(message);
 }
@@ -135,6 +136,26 @@ am::ConversationEnvelope message(std::uint64_t entry, bool is_corrected = false)
     source.revision = am::SourceRevisionId{std::string(48, 'r')};
     source.adapter_recipe = is_corrected ? "normalization-v2" : "normalization-v1";
     source.evidence = {am::ArtifactBindingId{std::string(48, 'b')}, "records/" + std::to_string(entry)};
+    if(g_use_external_keys) {
+        const auto key = [] {
+            std::vector<am::ExternalIdentityComponent> parts;
+            parts.push_back({"signed", std::int64_t{-9}});
+            parts.push_back({"unsigned", std::uint64_t{17}});
+            parts.push_back({std::string(48, 'k'), std::string(160, 'v')});
+            return am::ExternalObjectKey{std::move(parts)};
+        };
+        const auto external = [&] {
+            return am::ExternalObjectRef{"fixture", std::string(48, 'i'), "run-a", "event", key(), key()};
+        };
+        source.object = external();
+        if(entry % 2) {
+            source.identity = am::ConversationSourceIdentity::ExternalEvent;
+            source.event = external();
+        } else {
+            source.identity = am::ConversationSourceIdentity::ObjectRevision;
+            source.provider_revision_marker = std::string(48, 'm');
+        }
+    }
     value.source = std::move(source);
     value.payload = am::ConversationMessageCreated{{std::string(160, is_corrected ? 'c' : 'x'),
         {am::ArtifactBindingId{std::string(48, 'i')}, am::ArtifactBindingId{std::string(48, 'j')}}}};
@@ -145,7 +166,7 @@ am::ConversationEnvelope message(std::uint64_t entry, bool is_corrected = false)
 
 am::ByteBuffer metadata_bytes(const am::ConversationMetadata& metadata) {
     am::ConversationEnvelope value;
-    value.metadata = metadata;
+    value.metadata = am::copy_conversation_metadata(metadata);
     value.payload = am::ConversationPayload{am::ConversationMessageCreated{{std::string("metadata"), {}}}};
     return am::serialize_conversation_envelope(value);
 }
@@ -245,6 +266,7 @@ struct Fixture final {
     }
 
     void verify_unchanged() const {
+        expect(am::serialize_conversation_envelope(candidate) == candidate_bytes, "candidate input unchanged");
         expect_same_result(store.read_history(authority, stream), history);
         expect_same_result(store.read_current(authority, stream), current);
         expect_same_result(store.read_exact(authority, exact_ref), exact);
@@ -316,6 +338,7 @@ struct Fixture final {
     const am::EntryRef exact_ref;
     const std::string reason = std::string(80, 'r');
     const am::ConversationEnvelope candidate;
+    const am::ByteBuffer candidate_bytes = am::serialize_conversation_envelope(candidate);
     am::ConversationReadLimits one;
     am::ConversationReadResult history, current, exact, history_first, current_first;
     am::ConversationReadResult history_second, current_second, history_tail, current_tail, read;
@@ -356,7 +379,7 @@ std::size_t run_fault_matrix(Operation operation) {
 }
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
 #if defined(_MSC_VER) && _ITERATOR_DEBUG_LEVEL > 0
     // The repository's checked-STL reproducer documents proxy allocations in
     // noexcept string construction. Failing those terminates before rollback.
@@ -365,9 +388,13 @@ int main() {
     return 77;
 #else
     try {
+        g_use_external_keys = argc > 1;
         std::size_t failures = 0;
         for(const auto operation : {Operation::Create, Operation::Append, Operation::Correct,
-            Operation::Exact, Operation::History, Operation::Current}) failures += run_fault_matrix(operation);
+            Operation::Exact, Operation::History, Operation::Current}) {
+            if(argc > 2 && std::atoi(argv[2]) != static_cast<int>(operation)) continue;
+            failures += run_fault_matrix(operation);
+        }
         std::printf("PASS conversation store: %zu actual one-shot allocation failures\n", failures);
         std::puts("Coverage: replaceable C++ allocation calls on these six fixtures; no malloc/OS/host allocator failures,");
         std::puts("no asynchronous failures, checked-STL faults, arbitrary input proof or persistent-backend claim.");
