@@ -9,6 +9,7 @@
 
 #include "storage/IDocumentStorage.hpp"
 #include "storage/CanonicalContentStore.hpp"
+#include "storage/ConversationStore.hpp"
 #include "storage/CanonicalFlatStorage.hpp"
 #include "storage/CanonicalNavigationStore.hpp"
 #include "storage/FileRawBlobStore.hpp"

@@ -106,6 +106,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'conversation installed consumer failed' }
           & (Join-Path $installedBuild 'agent_memory_conversation_codec_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'conversation codec installed consumer failed' }
+          & (Join-Path $installedBuild 'agent_memory_conversation_store_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'conversation store installed consumer failed' }
 
           $relocatedPrefix = Join-Path $repo '.build/packaging-prefix-minimal-relocated'
           Copy-Item -Recurse -Force $packagePrefix $relocatedPrefix
@@ -121,6 +123,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'relocated conversation consumer failed' }
           & (Join-Path $relocatedBuild 'agent_memory_conversation_codec_consumer')
           if ($LASTEXITCODE -ne 0) { throw 'relocated conversation codec consumer failed' }
+          & (Join-Path $relocatedBuild 'agent_memory_conversation_store_consumer')
+          if ($LASTEXITCODE -ne 0) { throw 'relocated conversation store consumer failed' }
 
           cmake "-DAGENT_MEMORY_SOURCE_DIR=$repo" `
             "-DAGENT_MEMORY_HEADER_FIXTURE_BUILD_ROOT=$(Join-Path $repo '.build/packaging-header-manifest')" `

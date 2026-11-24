@@ -83,6 +83,9 @@ separates common metadata, versioned payload schemas and consumer resource
 budgets. Unsupported bytes are retained, not semantically admitted; tool
 observations do not execute tools. Wire framing, canonical history, rebuildable
 read projections and physical compression/storage remain separate boundaries.
+The separate [Phase 3A reference store](conversation-reference-store.md) provides
+backend-neutral exact/current reads and an in-memory history/CAS implementation,
+without source importing, artifact hydration, production authorization or MDBX.
 The full Conversation Core and typed-metadata ADR remain
 planned, not permission to change persisted identity, include paths or product
 defaults.

@@ -1,8 +1,9 @@
 # Conversation/Event Model: proposed domain contract
 
 - Status: **Phase 1 values/field validation integrated in main; Phase 2 Event
-  Codec v1 under independent review in a separate Draft PR. Store and the
-  complete Conversation Core profile remain Planned**.
+  Codec v1 reviewed in Draft PR #690; Phase 3A in-memory reference store in a
+  separate dependent Draft PR. Import, persistence and the complete
+  Conversation Core profile remain Planned**.
 - Date: 2026-11-22. Scheduling: planned early opt-in Conversation Core;
   advanced conversation memory remains M2/M2+ under [milestones](milestones.md).
 - Baseline inspected: `main@386e26fe9176d268722894cd9f48df33f3b7bf72`.
@@ -1001,7 +1002,8 @@ need not implement every tool/development-session payload.
 | --- | --- | --- |
 | 1. Values / validation | Use the approved event/revision baseline; add C++17 Conversation/Entry/Actor values, exact references, message/change and reply/thread values, optional AMXR bindings, evidence-qualified snapshot observations, textless example, invalid-input and unchanged legacy tests | Ambiguous identity/target, invented source history or field validation mistaken for admission |
 | 2. Event codec | Separately approve envelope framing, payload schemas/registry, metadata extensions, resource profiles and source-anchor mapping; exact goldens and malformed/oversized/unsupported-retention controls. AMXR is nested external identity, not the event format | Prematurely freezing a persistent format or treating opaque retention as semantic admission |
-| 3. Reference store / import | Backend-neutral exact/current history, actor/role observations, message/change fold, expected-revision conflict/NoChange, deterministic idempotent import and bounded stable-frontier paging | Losing history, replay collisions or mixing snapshots |
+| 3A. Reference store | [Backend-neutral in-memory contract](conversation-reference-store.md): immutable exact/current history, actor/role observations, deterministic message/change fold, expected-revision conflict/NoChange and bounded stable-frontier paging | Losing exact history, silently resolving ambiguous branches or mixing snapshots |
+| 3B. Source importer | Reviewed source-occurrence/evidence keys, deterministic idempotent normalized import and explicit conflict disposition; real adapter classification fixtures for all eight Phase 2 tool semantics scenarios | Mistaking codec fixtures for SDK classification or collapsing call/run/attempt identity |
 | 4. Numeric MDBX history | Reuse backend context; review physical manifest/DBI budget and event-specific mappings, atomic history/dedupe/sequence writes, rollback/no-reuse, admission order, prefix/scope isolation and fresh-process reopen/crash recovery | Publishing mappings or current views without their canonical history |
 | 5. Core vertical qualification | Import normalized chat/session fixtures, replay, edit/delete/restore, reopen and read bounded history/reply/thread views with exact source refs; verify no graph/embedder requirement and all Core gates below | A value/codec test mistaken for a usable chat profile |
 | 6. Derived-knowledge bridge (separate follow-up) | Exact Entry/source publication/frontier adapter, graph-off direct/reverse provenance, multi-support/stale/denied evidence tests; only then episode/summary/semantic-relation and retrieval adapters | Derived rows treated as original evidence or unsupported freshness |
@@ -1024,8 +1026,11 @@ TypedMetadata or storage migration is included here.
 
 The event-versus-representation-revision baseline is implemented in Phase 1;
 section 4.2 defines the separately reviewed Phase 2 wire format and limits.
-Per-conversation Entry allocation, source-event/local-observation key recipes
-and their transactional persistence still need the store reviews below.
+The [Phase 3A reference contract](conversation-reference-store.md) supplies only
+instance-local sequential Entry admission, immutable revisions, fold and bounded
+reads. Source-event/local-observation key recipes and their transactional
+persistence still need Phase 3B/4 reviews below. Its current-view ambiguity and
+snapshot handles do not settle durable retention/erase or actor alias history.
 The first proposed consumers are a chat importer and Efi dialogue memory. Core
 qualification uses bounded normalized import/session fixtures, not a live provider SDK: message
 creation, attachment-only content, edit, tombstone/restore, replay and unresolved

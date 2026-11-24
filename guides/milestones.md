@@ -84,8 +84,11 @@ proposed domain invariants and small-PR plan; its
 [ADR](adr/2026-11-conversation-event-identity.md) records Phase 1 values integrated
 in `main@386e26fe9176d268722894cd9f48df33f3b7bf72`. Standalone AMXR v1 passed its
 integration gate and is CLOSED within that scope. Phase 2 Event Codec v1 is
-implemented/reviewed in a separate Draft PR; canonical history, ID allocation,
-import and durable Conversation persistence remain Planned. Review and qualify
+implemented/reviewed in Draft PR #690. The separate dependent
+[Phase 3A reference store](conversation-reference-store.md) implements instance-local
+immutable exact history, deterministic current views, CAS correction and bounded
+snapshot paging. Source import (3B), durable ID allocation/persistence (4), full
+Core qualification (5) and the derived bridge (6) remain Planned. Review and qualify
 each slice before advertising the complete profile. The revised
 [AMCE envelope](conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)
 supports independently versioned payloads, bounded default/extended consumer
@@ -93,7 +96,7 @@ profiles and lossless unsupported-data retention. Retention does not establish
 canonical semantic admission, and a frame/header read is not a validated event.
 
 Required gates **when this chat profile is selected** (full profile still `Planned`;
-implemented values/codec do not prove store/admission/recovery behavior):
+implemented values/codec/reference backend do not prove importer/durable recovery behavior):
 
 | Capability | Required surface / profile delta | Required evidence | Owner |
 | --- | --- | --- | --- |
