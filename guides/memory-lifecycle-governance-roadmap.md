@@ -108,6 +108,13 @@ agent behavior into the storage layer.
 
 ## 3. AM-13: Bi-Temporal Knowledge
 
+AM-13 remains a contract-only M2+ candidate, not an implemented temporal query
+subsystem. Before its implementation or persistent-format freeze, complete the
+[Temporal Semantics Audit](audits/2026-11-23-memory-foundations-corrective-audit.md#2-temporal-semantics-audit):
+reconcile legacy zero-sentinel and optional-bound sketches, interval/uncertainty
+semantics and distinct time owners. Reuse the existing T0 frontier/visibility
+rules; do not add universal timestamps or change Conversation codec bytes.
+
 Current `TemporalComponent` is a single-axis validity component. M2+ should add
 an explicit bi-temporal component for workloads that must distinguish source
 validity time from the time when the agent recorded or invalidated the claim.
@@ -149,6 +156,11 @@ Required query forms:
 - `known_at_sequence(sequence)`: what a runtime component could have known when
   an external event sequence was processed.
 
+Here recorded-time "known" or "believed" means the declared historical record
+view, not proof of observer endorsement, authorization, successful retrieval or
+actual decision use. Those distinctions belong to the perspective/awareness
+audit and must not be inferred from temporal eligibility alone.
+
 `recorded_sequence` and `invalidated_sequence` are optional producer-origin
 runtime log positions. `RuntimeSequence` is specified in
 [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
@@ -189,6 +201,20 @@ Storage implications:
 - keep temporal semantics in `agent-memory-cpp`;
 - use generic MDBX range-index primitives rather than a Graphiti-specific
   graph schema.
+
+### Relative expressions and interpretation (M2+)
+
+Relative temporal expressions are source evidence, not automatically absolute
+timestamps. A structured interpretation of “last week” retains the original
+expression and exact source anchor, with optional reference date, timezone,
+calendar/week convention, quoted-context anchor and interpretation recipe.
+Without adequate anchors it remains unresolved; an import or recording time
+must not silently supply the speaker's reference date, nor may a missing
+timezone silently become UTC. Multiple plausible intervals and uncertainty
+stay explicit. Resolving an expression creates a
+versioned interpretation, not a rewrite of the original or of a historical
+schema. This is a future AM-13/structured-profile fixture, not an implemented
+date resolver or new Conversation field.
 
 ### Physical Query Profiles And Benchmarks (M2+)
 
@@ -445,6 +471,12 @@ and separate fan-out budget. `ArtifactCatalog::artifact_relations` remains
 technical lineage outside the semantic graph unless an application records an
 explicit cross-reference. Retrieval may use bounded semantic expansion when
 `MemoryReadPlan::require_causal_evidence` or a similar query intent is set.
+
+A source's claimed cause is not verified causality, and an action's intended
+purpose is not its achieved outcome. Retain the exact assertion, observer,
+evidence and validation status independently; relation labels or temporal
+ordering alone do not establish either causal proof or success. Domain schemas
+may express these distinctions without adopting a mandatory event ontology.
 
 ## 6. AM-16: Progressive Retrieval
 

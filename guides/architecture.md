@@ -66,6 +66,12 @@ it does not activate a conversation model, schema migration or production path.
 - Avoid speculative plugin systems before at least two real implementations
   require the same extension point.
 
+Keep the infrastructure metamodel separate from optional domain ontologies.
+The [structured representation contract](derived-representations-and-codecs.md#ontology-neutral-structured-representations)
+permits versioned alternative schemas without requiring binary relations,
+actants or a universal event model. This is a future extension boundary, not
+an implemented generic schema SPI or permission to change existing wire types.
+
 The source-bound [domain identity and public API audit](audits/2026-11-domain-identity-public-api-audit.md)
 and [type catalogue](audits/2026-11-public-type-catalogue.json) distinguish
 logical identities, scoped external references, binary content digests and
@@ -93,6 +99,14 @@ The neutral contracts live in
 [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
 Reference integrations such as ADELIA map their native ids to
 `RuntimeObjectRef` in adapters; core headers must not include ADELIA types.
+
+The [memory-foundations corrective audit](audits/2026-11-23-memory-foundations-corrective-audit.md)
+records follow-up temporal, epistemic-awareness, prompt/keyed-memory,
+extensible processing/presentation and maintained-view questions. It requires
+implemented/contract/missing classification and REUSE/EXTEND/NEW before new
+schemas or subsystems; existing topic guides retain normative ownership.
+It does not expand the core into an agent runtime or delay the separately
+qualified Conversation codec.
 
 ## Layer Architecture
 

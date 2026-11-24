@@ -310,6 +310,16 @@ table structure, visual description, scene index or translation. It is not
 canonical knowledge and must retain enough processor provenance to explain or
 rebuild it.
 
+Cross-modal concept alignment and identity of a particular physical entity
+are different claims. An image, utterance and text may concern one concept
+without identifying the same object in the world. Shared labels, embedding
+similarity and representation identity are not entity-resolution evidence.
+Reuse exact artifact locators, semantic assertions and the governed AM-19
+[entity-resolution contract](memory-lifecycle-governance-roadmap.md#10-am-19-deterministic-first-entity-resolution)
+for any proposed identity binding. Multiple representations of one source
+are not independent corroboration. A new mandatory Symbol Grounding subsystem
+is not required by the [ontology-neutral audit](audits/2026-11-23-memory-foundations-corrective-audit.md#7-ontology-neutral-derived-knowledge-differential-audit).
+
 ```cpp
 struct Representation {
     RepresentationId id;
@@ -658,7 +668,8 @@ primary model/repository documentation instead.
 |---|---|---|
 | Artifact identity/retention value types | Contract + domain tests | `src/agent_memory/domain/Artifact.hpp` validates typed ids, SHA-256 digest identity and body-state transition rules; no durable catalog or blob store is implied. |
 | File-backed Raw CAS | Executable slice + storage test | `FileRawBlobStore` verifies decoded SHA-256 bytes with bounded-memory streaming, atomically publishes deterministic `.raw` paths without clobbering, supports reopen/probe and verified bounded reads; each range is limited by a configurable materialization budget (64 MiB by default). This is atomic visibility/integrity for ordinary trusted local storage only, not crash durability or protection against hostile concurrent filesystem mutation. Leases, catalog publication, recovery, GC and compression remain separate. |
-| `Artifact`/`Representation`/`ExtractionReport`/typed locators | Contract only | Owned here; existing catalog and evidence records remain the source of truth. |
+| Representation/table/media values and typed locators | Implemented, bounded value-only preview | [Typed representation preview](typed-representation-locators.md), `TypedRepresentation.hpp/.cpp` and its domain fixture provide values, validators and the bounded TL1 locator codec; no parser, catalog, structured persistence or general artifact hydration is implied. |
+| Full artifact/representation/extraction-report workflow | Contract only | Owned here; the value preview does not implement the full catalog/extraction/admission workflow. Existing catalog and evidence contracts retain authority. |
 | Provider/recipe/admission boundary | Contract | This subsection; exact public provider ABI is deferred. |
 | Concrete OCR, parser, VLM and region-fallback adapters | Research candidate | External or optional adapters; no core runtime dependency is implied. |
 | Markdown/table/JSON materialization views | Roadmap only | Derived views over the structured representation, not a replacement catalog. |

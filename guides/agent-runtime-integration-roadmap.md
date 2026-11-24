@@ -608,6 +608,11 @@ struct PerspectiveComponent {
 `character` and `observer` are intentionally independent. Two partitions can
 both represent the same character while remaining different observers.
 
+Observer, perspective and access scope remain independent. Partial or
+disconnected histories and incompatible interpretations may coexist without a
+central observer; a reconciliation or schema upgrade cannot retroactively
+grant another observer knowledge, endorsement or earlier visibility.
+
 ### EpistemicStatusComponent
 
 ```cpp
@@ -650,6 +655,28 @@ projection. Validation is fail-closed before persistence:
 Absent confidence or evidence never implies `confidence = 1.0`. A record that cannot satisfy
 its required row is rejected or retained only as explicitly marked raw
 ingestion data; it must not be persisted as a validated cognitive claim.
+
+### Awareness and open-question audit (M2+)
+
+The [memory-foundations audit](audits/2026-11-23-memory-foundations-corrective-audit.md#3-epistemic-awareness--knowledge-gaps)
+tracks the gap between these perspective/epistemic contracts and a future
+observer/context-qualified open-question or coverage model. Stored existence,
+authorized visibility, retrievability, recognized relevance, belief and actual
+use are independent. A missing hit is not proof of ignorance; denied records
+must not leak through gap diagnostics. Known/unknown quadrants are analysis
+vocabulary, not new `KnowledgeUnitKind` values or implemented components.
+First test reuse of existing units, evidence and relations before proposing a
+new representation. Live cognition and autonomous questioning remain external.
+
+For optional domain schemas, distinguish an absent assertion, a declared
+unknown value, explicit negation and an unsupported type/schema. In epistemic
+notation, `not K_subject(P)` differs from `K_subject(not P)`; a retrieval miss
+establishes neither. Open-world absence does not generate a negated fact, and
+the system must not enumerate all possible negations. Reuse the
+[typed-decision outcome separation](structured-data-retrieval-roadmap.md#optional-typed-ai-operators)
+where applicable without coercing provider `Unsupported`/`Abstained` into
+semantic false/unknown. These are future validation cases, not new enum values
+or an implemented general epistemic reasoner.
 
 ### BiTemporalComponent
 

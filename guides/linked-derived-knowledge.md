@@ -234,6 +234,32 @@ long-running orchestration or automatic retry scheduling. Those guarantees
 belong to a future publication coordinator; the coordinator stack is not
 assumed to be integrated by this document.
 
+### Multi-output structured publication (future)
+
+The [composite representation contract](derived-representations-and-codecs.md#composite-elements-and-independent-units)
+extends the design question from many inputs to one output toward one processor
+producing several related outputs/elements. This is **not implemented** by the
+current text-body B1 store, B2 fenced writer or B3 reader. Their single-output,
+direct-unit/root scope must not be generalized by analogy.
+
+Before such a publisher is implemented, define the complete output set and
+identities, shared captured input frontier, exact per-output/per-element
+dependencies, schema/recipe versions and admission rules. The first future
+profile should use all-or-none visibility for its declared related output set
+inside one supported transaction domain: validate every expected member and
+dependency before the commit marker admits any member. Failed validation,
+missing members or interrupted staging must expose no partial Current set.
+Recovery/retry must be create-or-validate and retain historical generations.
+
+An intentionally partial product is a different declared profile with explicit
+coverage, missing members and dependency semantics, not an accidental success
+after half a batch fails. Cross-backend atomic commit is not promised; reject
+that mode or qualify a separate coordination contract before advertising it.
+Unchanged elements may be reused only with exact unchanged dependencies and
+compatible recipe/schema; structure edits must not leave stale role indices
+or references pointing to a new meaning. Reuse the existing frontier witness,
+reader admission and maintained-view rules, with budgets for the full set.
+
 ### Generic aspects without graph materialization
 
 An aspect projection such as `example/actor` or `example/relationships` may
@@ -378,13 +404,16 @@ The provider performs sequential `find()` calls, not a consistent multi-unit
 read snapshot. Unit state may change after the check and before publication or
 read, so `PublishedAfterUnitCheck` and `KnowledgeUnitLocalMatch` are not
 query-time freshness proofs and must not activate production derived retrieval.
-A root-resource frontier provider, consistent canonical read snapshot,
-cross-store commit fence and post-update query-time revalidation remain one
-separate coordinator/fenced conformance slice. The scoped design and acceptance
-gates for that next slice live in
-[`root-resource-frontier-conformance.md`](root-resource-frontier-conformance.md);
-the document is planning-only and does not claim that the missing guarantees
-are implemented.
+The separate [root-resource frontier conformance owner](root-resource-frontier-conformance.md)
+defines the fence/read contract at its B2-era baseline. The later source
+includes the [B2 writer](../src/agent_memory/infrastructure/mdbx/MdbxDerivedPublicationStore.hpp)
+and [B3 reader](../src/agent_memory/infrastructure/mdbx/MdbxCurrentDerivedPublicationReader.hpp)
+for bounded direct-unit/root bindings, including one-snapshot current/historical
+reads. Those adapters supply a root frontier and commit/read fence for that
+subset; they do not change the sequential B1
+preview into an authoritative result. Generic transitive dependencies,
+structured multi-output sets, host authorization and a cross-backend
+coordinator remain unimplemented follow-up, not guarantees inherited from B2/B3.
 
 The following states are intentionally distinct:
 
