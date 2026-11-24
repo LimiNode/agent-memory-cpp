@@ -101,7 +101,7 @@ struct ObservationPreflight final {
             return false;
         }
         // Standalone AMXR is bounded to 64 KiB and retains its existing text API.
-        return value(serialize_external_object_ref(ref).size());
+        return value(serialize_external_object_ref_bytes(ref).size());
     }
 
     bool evidence(const ConversationImportEvidence& item) {
@@ -263,9 +263,7 @@ SourceKey source_key(const ConversationSourceBinding& source) {
         key.locator = source.evidence.record_locator;
     } else {
         const auto& external = source.identity == ConversationSourceIdentity::ExternalEvent ? *source.event : *source.object;
-        // Explicit, bounded adapter for the independent standalone AMXR API.
-        const auto encoded = serialize_external_object_ref(external);
-        key.external.assign(encoded.begin(), encoded.end());
+        key.external = serialize_external_object_ref_bytes(external);
         if(source.identity == ConversationSourceIdentity::ObjectRevision) key.marker = source.provider_revision_marker;
     }
     return key;
