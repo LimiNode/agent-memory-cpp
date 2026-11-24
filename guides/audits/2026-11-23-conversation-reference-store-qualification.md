@@ -142,6 +142,12 @@ semantics. No mutation is published by either read path.
 | Composite external keys: create/append/correct/exact/history/current | 3/15/83/33/37/117 = 288 | 5/15/83/33/37/118 = 291 | 3/15/83/33/37/117 = 288 |
 | Original local-observation fixture, GNU Debug | 3/12/47/19/23/80 = 184 | See final receipt | See final receipt |
 
+The subsequent explicit NoChange external-key case adds 48 injected failures
+on Windows GNU Debug and MSVC Release: extended totals **336** and **339**.
+It verifies the original ref/generation, unused ID/capacity and pinned cursors
+after each failure and retry. The six-case measurements above are preserved
+as historical measurements, not silently replaced with the extended totals.
+
 Every measured ordinal throws once, verifies unchanged input, canonical bytes,
 receipts, current view, generation, next IDs/capacity and pinned continuations,
 and then retries. Exact/history cases read already committed correction
