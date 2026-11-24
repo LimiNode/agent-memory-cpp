@@ -1,10 +1,11 @@
 # Conversation/Event Model: proposed domain contract
 
-- Status: **Phase 1 values/field validation integrated in main; Phase 2 Event
-  Codec v1 reviewed in Draft PR #690; Phase 3A in-memory reference store in a
-  separate dependent Draft PR; Phase 3B bounded reference source importer
-  implemented in dependent Draft PR #695. Persistence and the complete
-  Conversation Core profile remain Planned**.
+- Status: **Phase 1 values/field validation and the qualified Phase 2/3A/3B
+  codec/reference-store/source-import stack are integrated through #698 in
+  `main@77a278bef338074227efa05365e83e967334f429`. Persistence and the complete
+  Conversation Core profile remain Planned**. The separate
+  [P4-0 physical proposal](conversation-durable-physical-contract.md) is
+  documentation only, not implementation or schema deployment.
 - Date: 2026-11-22. Scheduling: planned early opt-in Conversation Core;
   advanced conversation memory remains M2/M2+ under [milestones](milestones.md).
 - Baseline inspected: `main@386e26fe9176d268722894cd9f48df33f3b7bf72`.

@@ -1,6 +1,7 @@
 # Conversation Core Phase 4 implementation brief
 
-- Status: proposed, implementation NOT STARTED; owner approval required.
+- Status: P4-0 physical design proposed; implementation NOT STARTED; separate
+  owner approval required before P4-1.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
 - Entry gate: qualified combined Phase 2/3A/3B tree and separate owner decision.
 - Contract owners: [events](conversation-event-contract.md),
@@ -15,6 +16,17 @@ authorizes no DBI allocation, migration or production implementation. The
 in-memory oracle stays unchanged. Full Conversation Core remains Planned;
 provider SDKs, execution, generic knowledge storage, ontology SPI and Managed
 Memory Blocks are outside this vertical.
+
+The combined Phase 2/3A/3B stack is integrated through PR #698 at
+`main@77a278bef338074227efa05365e83e967334f429`, accepted tree
+`00cbb85105cb57a5a455dbb0e380238edef74cfa`. The
+[integration receipt](audits/2026-11-24-conversation-main-and-p4-0.md) records
+post-main checks and source-PR disposition. P4-0's concrete
+[physical contract proposal](conversation-durable-physical-contract.md) now
+defines three optional DBIs, bytewise keys, versioned values/witnesses,
+transactions, durability flags, frontier/token boundaries and test fixtures.
+Its [Current decision screen](experiments/2026-11-24-conversation-durable-current-plan.md)
+is predeclared, NOT RUN. The YAML delta allocates/deploys nothing.
 
 ## Transaction and authority decisions
 

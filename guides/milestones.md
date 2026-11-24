@@ -84,7 +84,8 @@ proposed domain invariants and small-PR plan; its
 [ADR](adr/2026-11-conversation-event-identity.md) records Phase 1 values integrated
 in `main@386e26fe9176d268722894cd9f48df33f3b7bf72`. Standalone AMXR v1 passed its
 integration gate and is CLOSED within that scope. Phase 2 Event Codec v1 is
-implemented/reviewed in Draft PR #690. The separate dependent
+integrated with the qualified Phase 3A/3B stack through #698 at
+`main@77a278be`. The
 [Phase 3A reference store](conversation-reference-store.md) implements instance-local
 immutable exact history, deterministic current views, CAS correction and bounded
 snapshot paging. The dependent [Phase 3B source importer](conversation-source-import.md)
@@ -94,6 +95,9 @@ Durable ID allocation/persistence (4), full Core qualification (5) and the deriv
 bridge (6) remain Planned. The separate
 [Phase 4 implementation brief](conversation-durable-store-phase4-plan.md)
 proposes durable slices and gates; it is not implementation authorization.
+Its concrete [P4-0 physical contract](conversation-durable-physical-contract.md)
+and optional three-DBI manifest delta are proposed documentation only. P4-1
+production code needs separate owner approval; the full profile remains Planned.
 Review and qualify
 each slice before advertising the complete profile. The revised
 [AMCE envelope](conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)

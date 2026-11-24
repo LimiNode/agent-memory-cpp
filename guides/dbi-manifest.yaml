@@ -249,6 +249,60 @@ canonical:
     migration_peak: 1
 
 profile_deltas:
+  - name: conversation_durable_v1
+    dbis: 3
+    migration_peak: 3
+    default: false
+    activation: proposed_documentation_only
+    schema_status: proposed_not_implemented
+    schema_version: conversation_durable.v1.be.keys.sha256.values.witness1
+    default_table_prefix: agent_memory
+    names_are_suffixes: true
+    names: [conversation_meta_v1, conversation_events_v1, conversation_sources_v1]
+    note: >-
+      P4-0 proposal only, not an activated profile or production schema. See
+      conversation-durable-physical-contract.md for key/value/witness grammar,
+      scope/allocator/generation atomicity and full-key collision checks. Does
+      not reuse conversation_episode_payloads or change expanded_peak_reference.
+      Expanded 76 + 3 fits 96 with 17 free; expanded numeric 89 + 3 needs 108
+      to retain 16 free slots. Multiple prefixes add three slots each.
+    dbi_entries:
+      - name: conversation_meta_v1
+        owner: conversation_storage
+        table_type: KeyValueTable
+        opens: component_profile
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [KeyVersion, MetadataRowKind, OptionalConversationRef]
+        comparator: MDBX_BYTEWISE
+        flags: []
+        key_encoding: versioned_be_bytes
+        schema_version: conversation_durable.v1.be.keys.sha256.values.witness1
+        migration_peak: 1
+      - name: conversation_events_v1
+        owner: conversation_storage
+        table_type: KeyValueTable
+        opens: component_profile
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [KeyVersion, EventRowKind, ExactRevisionOrGeneration]
+        comparator: MDBX_BYTEWISE
+        flags: []
+        key_encoding: versioned_be_bytes
+        schema_version: conversation_durable.v1.be.keys.sha256.values.witness1
+        migration_peak: 1
+      - name: conversation_sources_v1
+        owner: conversation_ingestion
+        table_type: KeyValueTable
+        opens: component_profile
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [KeyVersion, SourceRowKind, ConversationRef, SourceKeyDigest, CollisionSlot]
+        comparator: MDBX_BYTEWISE
+        flags: []
+        key_encoding: versioned_be_bytes
+        schema_version: conversation_durable.v1.be.keys.sha256.values.witness1
+        migration_peak: 1
   # Experimental numeric-storage profiles.  These DBIs are not opened by the
   # legacy store and are admitted only as an explicit, exclusive profile.
   # Physical names are `<sanitized table_prefix>_<name>`; the default prefix

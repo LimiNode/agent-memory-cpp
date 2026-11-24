@@ -1,8 +1,9 @@
 # Storage Backend Integration Roadmap
 
-**Status:** Normative architecture contract and roadmap; documentation only. This
-guide does not introduce production C++ APIs or claim that the context, bundle,
-SQLite, or canonical-content integrations already exist.
+**Status:** Normative architecture boundaries and roadmap, with a historical
+baseline audit and the dated implementation correction below. This guide itself
+introduces no production API. Context/canonical-content slices now exist;
+bundle, SQLite and durable Conversation integrations are not implied.
 
 This guide owns the backend integration boundary:
 
@@ -26,6 +27,18 @@ It complements, and does not replace:
 - [dependencies.md](dependencies.md) for the flat CMake dependency graph.
 
 ## 1. Factual audit
+
+This section's present-tense implementation statements describe its original
+baseline below, not current main. At `main@77a278be` (2026-11-24),
+`MdbxStorageContext.{hpp,cpp}` already implements owned `open`, retained `attach`
+and a shared `mdbxc::Connection`, with default `max_dbs=96`. Canonical-content
+and identity-mapping adapters reuse that context. Do not implement another
+context from the older conceptual sketch. This correction does not claim that
+every legacy adapter, read-only option or bundle has been converted. Section 13
+is likewise the historical roadmap inventory where not superseded by this
+dated note or the implemented R0/R1 sections. The separate
+[Conversation P4-0 physical proposal](conversation-durable-physical-contract.md)
+reuses the existing context; its durable journal is NOT IMPLEMENTED.
 
 The audit was performed against:
 
@@ -153,7 +166,9 @@ SqliteStorageContext
     ownership mode and shutdown policy
 ~~~
 
-These are design names, not existing public C++ classes.
+`MdbxStorageContext` is now an existing optional infrastructure class; the fuller
+configuration shown above is still conceptual. `SqliteStorageContext` remains a
+design name. See the dated implementation note in section 1.
 
 The rule is **one shared Connection per logical MDBX environment/context**.
 It is not one process-global singleton. Independent databases, workspaces or
