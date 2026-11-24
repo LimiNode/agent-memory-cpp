@@ -306,7 +306,7 @@ The [copy-cost experiment](../experiments/2026-11-24-external-identity-copy-cost
 records normal-path allocation counts, directional latency, peak process RSS
 and explicit measurement limitations; no speedup or universal OOM claim is made.
 
-### Integration and remaining acceptance
+### Integration and remaining acceptance (historical pre-review status)
 
 The concrete Linux abort is not reproduced after correction in either full
 Linux profile. This closes the local technical regression, **not** the final
@@ -341,3 +341,34 @@ was performed. Phase 4 remains deferred until acceptance; no MDBX code is added.
   conformance. Phase 6 exact-source publication remains independent.
 
 No merge, rebase, force-push, release or migration is authorized by this report.
+
+## Final Phase 3B missing-source closure
+
+The independent read-only agent review of `de63e95a`, `a0c2d6bb` and
+`3d7b868d` found no blocking issue and independently reran the existing
+fault executables in the four qualified profiles. Exact-head CI/Packaging
+passed (CI 45304889542 / Packaging 45304889497 for the importer). This
+supersedes the historical independent-review HOLD above; it does not authorize
+merge into main or establish whole-process OOM safety.
+
+The thirteenth allocation fixture, `MissingCompositeSourceResult`, now enters
+the absent source-map fallback through `ConversationSourceTarget`. Its missing
+call has composite parent and object keys with signed, unsigned and long-string
+components. Every intercepted allocation ordinal throws once. Assertions check
+unchanged inputs/history/Current/old mapping/generation, consecutive retry ID,
+exact unresolved external identity and evidence, later call admission, frozen
+byte-identical replay, and resolution of a separate new result. Only this
+fixture uses four mapping rows; all original exact two-row fixtures remain.
+The later call/new result consume IDs three/four and the remaining rows,
+detecting a partial missing-call mapping or ID consumption. No production code,
+wire format, semantics or failure gate changed.
+
+| Targeted source semantic + failure tests | Result | New-case failures | Importer total |
+| --- | --- | ---: | ---: |
+| Windows GNU 15.2 Release | 2/2 passed | 17 | 143 |
+| Windows MSVC 19.44 Release | 2/2 passed | 98 | 820 |
+| Linux GNU Debug ASan/UBSan failure executable | Passed, no sanitizer report | 98 | 816 |
+
+New exact-head hosted receipts are published after execution in #695. Combined
+integration qualification is a separate temporary rehearsal artifact, not
+implied by these individual-branch checks. Phase 4 remains plan-only.

@@ -25,7 +25,8 @@ am::ConversationSourceObservation observation(std::uint64_t index) {
     return value;
 }
 enum class Operation { Create, Import, Replay, Result, ExternalEvent, CompositeEvent,
-    CompositeObject, CompositeReplay, CompositeConflict, ExactResult, UnresolvedResult, ResolvedSourceResult };
+    CompositeObject, CompositeReplay, CompositeConflict, ExactResult, UnresolvedResult, ResolvedSourceResult,
+    MissingCompositeSourceResult };
 bool is_replay(Operation op) { return op == Operation::Replay || op == Operation::CompositeReplay; }
 am::ExternalObjectRef external(std::uint64_t index) {
     const auto key = [=] {
@@ -53,7 +54,13 @@ bool same_source(const am::ConversationSourceBinding& a, const am::ConversationS
         a.evidence.artifact == b.evidence.artifact && a.evidence.record_locator == b.evidence.record_locator;
 }
 struct Fixture final {
-    explicit Fixture(Operation operation) : baseline(observation(1)), candidate(observation(2)), sink(options()) {
+    explicit Fixture(Operation operation) : baseline(observation(1)), candidate(observation(2)), missing_call(observation(3)),
+        sink([operation] {
+            auto value = options();
+            // Only this fixture needs baseline + result + later call + fresh result.
+            if(operation == Operation::MissingCompositeSourceResult) value.max_mappings = 4;
+            return value;
+        }()) {
         if(operation == Operation::CompositeEvent || operation == Operation::CompositeObject ||
             operation == Operation::CompositeReplay || operation == Operation::CompositeConflict ||
             operation == Operation::ResolvedSourceResult) {
@@ -90,6 +97,13 @@ struct Fixture final {
             bind_external(candidate.source, 2);
             candidate.payload = am::ConversationSourceToolResult{
                 am::UnresolvedConversationTarget{external(3), {am::ArtifactBindingId{"unresolved-evidence"}, "record/3"}},
+                {0, 255}};
+        } else if(operation == Operation::MissingCompositeSourceResult) {
+            bind_external(missing_call.source, 3);
+            missing_call.payload = am::ConversationSourceToolCall{{0, 255}, "tool", am::ArtifactBindingId{"request"},
+                std::nullopt};
+            candidate.payload = am::ConversationSourceToolResult{
+                am::ConversationSourceTarget{stream, authority.scope, am::copy_conversation_source_binding(missing_call.source)},
                 {0, 255}};
         }
         baseline_before = am::copy_conversation_source_binding(baseline.source);
@@ -161,12 +175,44 @@ struct Fixture final {
             const auto repeated = sink.import_observation(authority, candidate);
             expect(repeated.status == am::ConversationWriteStatus::NoChange && repeated.ref == result.ref &&
                 sink.history().read_history(authority, stream).records.size() == 2, "no orphan mapping or duplicate append");
+            if(operation == Operation::MissingCompositeSourceResult) verify_frozen_missing_target();
         }
+    }
+    void verify_frozen_missing_target() {
+        const auto admitted = sink.history().read_exact(authority, *result.ref);
+        expect(admitted.status == am::ConversationReadStatus::Complete && admitted.records.size() == 1,
+            "missing composite target committed exactly once");
+        const auto& target = std::get<am::UnresolvedConversationTarget>(
+            std::get<am::ConversationToolResultObserved>(admitted.records[0].envelope.payload).call);
+        expect(target.external == missing_call.source.event &&
+            target.evidence.artifact == missing_call.source.evidence.artifact &&
+            target.evidence.record_locator == missing_call.source.evidence.record_locator,
+            "fallback retains exact composite external reference and evidence");
+        const auto frozen = am::serialize_conversation_envelope(admitted.records[0].envelope);
+        const auto call = sink.import_observation(authority, missing_call);
+        expect(call.status == am::ConversationWriteStatus::Applied && call.ref->entry.value() == 3 &&
+            call.commit_generation == result.commit_generation + 1, "missing call had no partial mapping or consumed ID");
+        const auto repeated = sink.import_observation(authority, candidate);
+        expect(repeated.status == am::ConversationWriteStatus::NoChange && repeated.ref == result.ref &&
+            repeated.commit_generation == result.commit_generation, "later call cannot reconcile frozen replay");
+        const auto retained = sink.history().read_exact(authority, *result.ref);
+        expect(retained.records.size() == 1 &&
+            am::serialize_conversation_envelope(retained.records[0].envelope) == frozen, "unresolved bytes remain frozen");
+        auto fresh = observation(4);
+        fresh.payload = std::get<am::ConversationSourceToolResult>(candidate.payload);
+        const auto resolved = sink.import_observation(authority, fresh);
+        expect(resolved.status == am::ConversationWriteStatus::Applied && resolved.ref->entry.value() == 4 &&
+            resolved.commit_generation == call.commit_generation + 1, "all four mapping rows remain available after retry");
+        const auto latest = sink.history().read_exact(authority, *resolved.ref);
+        expect(latest.records.size() == 1 && std::get<am::EntryRef>(
+            std::get<am::ConversationToolResultObserved>(latest.records[0].envelope.payload).call) == *call.ref,
+            "new source-target result resolves the now-present exact call");
     }
     const am::ConversationStoreAccess authority = access();
     const am::ConversationRef stream = conversation(), another_stream = conversation(2);
     am::ConversationSourceObservation baseline;
     am::ConversationSourceObservation candidate;
+    am::ConversationSourceObservation missing_call;
     am::ConversationSourceBinding baseline_before, candidate_before;
     std::optional<am::ConversationSourceBinding> target_source_before;
     std::optional<am::ExternalObjectRef> target_external_before;
@@ -215,7 +261,7 @@ int main() {
         for(const auto operation : {Operation::Create, Operation::Import, Operation::Replay, Operation::Result,
             Operation::ExternalEvent, Operation::CompositeEvent, Operation::CompositeObject,
             Operation::CompositeReplay, Operation::CompositeConflict, Operation::ExactResult,
-            Operation::UnresolvedResult, Operation::ResolvedSourceResult})
+            Operation::UnresolvedResult, Operation::ResolvedSourceResult, Operation::MissingCompositeSourceResult})
             total += run_matrix(operation);
         std::printf("PASS import atomicity: %zu failures; no malloc/OS/crash/arbitrary-input guarantee\n", total);
         return 0;
