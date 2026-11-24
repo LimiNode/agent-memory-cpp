@@ -81,11 +81,28 @@ Core name assigns no persistent capability number or DBI schema.
 
 The [Conversation/Event proposal](conversation-event-contract.md) owns the
 proposed domain invariants and small-PR plan; its
-[ADR](adr/2026-11-conversation-event-identity.md) remains review pending.
-Identity Architecture must first pass its separate integration gate. Review
-and qualify each implementation slice before advertising this profile.
+[ADR](adr/2026-11-conversation-event-identity.md) records Phase 1 values integrated
+in `main@386e26fe9176d268722894cd9f48df33f3b7bf72`. Standalone AMXR v1 passed its
+integration gate and is CLOSED within that scope. Phase 2 Event Codec v1 is
+implemented/reviewed in Draft PR #690. The separate dependent
+[Phase 3A reference store](conversation-reference-store.md) implements instance-local
+immutable exact history, deterministic current views, CAS correction and bounded
+snapshot paging. The dependent [Phase 3B source importer](conversation-source-import.md)
+adds authored source-shaped normalization, instance-local idempotence and
+coordinated key/ID admission, not upstream SDK or durable recovery qualification.
+Durable ID allocation/persistence (4), full Core qualification (5) and the derived
+bridge (6) remain Planned. The separate
+[Phase 4 implementation brief](conversation-durable-store-phase4-plan.md)
+proposes durable slices and gates; it is not implementation authorization.
+Review and qualify
+each slice before advertising the complete profile. The revised
+[AMCE envelope](conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)
+supports independently versioned payloads, bounded default/extended consumer
+profiles and lossless unsupported-data retention. Retention does not establish
+canonical semantic admission, and a frame/header read is not a validated event.
 
-Required gates **when this chat profile is selected** (all `Planned`):
+Required gates **when this chat profile is selected** (full profile still `Planned`;
+implemented values/codec/reference backend do not prove importer/durable recovery behavior):
 
 | Capability | Required surface / profile delta | Required evidence | Owner |
 | --- | --- | --- | --- |
@@ -104,8 +121,10 @@ frozen by this table, and no implementation is authorized by a roadmap edit.
 Automatic relation extraction, semantic graph reasoning, multi-aspect
 embeddings, intelligent dialogue compaction, arbitrary episode reconstruction,
 GraphRAG and bi-temporal logic remain later M2/M2+ work. The core journal and
-later technical provenance must work without a graph backend. Tools may be
-recorded as observations in later payload slices; their execution remains
+later technical provenance must work without a graph backend. The separate
+Phase 2 draft includes typed tool-call/result observations; future
+Patch/Compaction schemas remain reserved and their illustrative artifact-only
+fixtures prove no typed support or derived publication. Execution remains
 outside the library.
 
 ### M1a - Hybrid Retrieval

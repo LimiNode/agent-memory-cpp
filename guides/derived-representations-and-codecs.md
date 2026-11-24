@@ -99,14 +99,18 @@ invalidation has been interrupted. The system never scans the whole corpus on
 one query. A coordinator may later maintain reverse invalidation eagerly, but
 the witness and read-time fence remain authoritative.
 
-The current graph-free implementation does not yet implement that
-authoritative transitive check. Its admission preview validates a
-caller-declared ordered input list against sequential KnowledgeUnit reads and
-returns only `KnowledgeUnitLocalMatch`. It neither confirms that a referenced
+The KnowledgeUnit-local admission preview does not implement that
+authoritative transitive check. Used without the later fenced adapters, it
+validates a caller-declared ordered input list against sequential KnowledgeUnit
+reads and returns only `KnowledgeUnitLocalMatch`. It neither confirms that a referenced
 root Resource revision is still current nor proves that the declared list is
-the complete causal lineage. Derived text remains ineligible for production
-retrieval until the resource-frontier and fenced read/commit checks above are
-implemented; original evidence remains independently addressable.
+the complete causal lineage. This preview alone cannot admit derived text for
+production retrieval; original evidence remains independently addressable.
+The separate MDBX B2/B3 adapters provide bounded direct-unit/root fenced
+publication and current reads, not the general transitive contract above. The
+[source-reviewed subset and compatibility audit](audits/2026-11-23-memory-foundations-corrective-audit.md#51-compatibility-seams-to-audit)
+records that distinction; neither storage matching nor the bounded adapter
+activates general derived retrieval or proves complete lineage.
 
 ### Reader admission fence
 
@@ -184,6 +188,131 @@ numeric IDs with a persisted dictionary, and numeric IDs plus metadata
 compression. It must include key bytes, MDBX page occupancy, dictionary/index
 overhead, point reads, cold reopen and import remapping. No new DBI is selected
 without manifest and migration review.
+
+## Processing and presentation follow-up
+
+The [memory-foundations work order](audits/2026-11-23-memory-foundations-corrective-audit.md#52-derived-knowledge-processing-profiles)
+tracks proposed Derived Knowledge Processing Profiles and the separate
+Materializer/Presenter boundary. Reuse this guide's aspect/recipe identity and
+publication contracts and the artifact owner's processor/coverage contracts;
+registration does not confer trust, access or write authority. Profile/output
+extensibility must not silently replace the current `ProjectionKind` API or
+add per-format stores. These are architecture-audit priorities, not an
+implemented registry, new plugin ABI or change to the Conversation delivery
+sequence. The work order owns questions and future acceptance cases, not a
+second representation specification.
+
+The [Question-Conditioned Derived Knowledge audit](audits/2026-11-23-memory-foundations-corrective-audit.md#55-question-conditioned-derived-knowledge)
+adds a research candidate for shared-question functional views. It must resolve
+question/context parameterization and compatible comparison spaces before an
+API or dictionary change. Similarity is not equivalence, independent evidence
+or a canonical Relation write; no implemented affordance-retrieval route is
+claimed.
+
+## Ontology-neutral structured representations
+
+Status: **Specified future contract**, not an implemented structured publisher
+or schema registry. The infrastructure metamodel owns identity, revisions,
+typed values, exact provenance, schema/recipe descriptors, publication,
+authorization, budgets and freshness. Domain ontologies are optional,
+versioned schemas/profiles over that substrate. No actant model, SPO triple,
+binary opposition, philosophical theory or universal event ontology is
+mandatory. This does not remove existing infrastructure types or validation.
+
+The existing [optional N-ary relational-fact contract](knowledge-base-roadmap.md#optional-typed-relational-facts)
+already supplies typed roles and occurrence/context identity as a future
+profile. The refinement here generalizes the schema boundary; it does not
+claim to introduce N-ary knowledge or implement that earlier proposal.
+
+A declared schema may support nullary assertions, unary properties, binary
+or N-ary relations, nested structures, multivalued or fuzzy assessments. Roles
+may be named or positional; schemas may depend on language, domain, observer,
+perspective or context, but need not. Storing a structure does not mean that
+the engine understands its semantics, supports arbitrary queries over it or
+can represent every experience without further programming.
+
+### Representation objects and interpretation boundaries
+
+An object of representation may be a physical entity, state, relation,
+classification, assessment or another distinction. For example, rested-Peter
+and tired-Peter may be distinct state representations referring to the same
+person. Comparing the states does not create two physical people; sharing a
+name or concept does not establish entity identity. A distinction may itself
+be an exact input to a later derivation. Reuse the existing revision-qualified
+derivation DAG and provenance rather than introducing a mandatory
+`Distinction` or `BinaryOpposition` kind.
+
+Finite alternatives may be encoded through binary choices, but encoding
+capacity is not ontological primacy. Reifying an N-ary statement into an event
+node and binary role edges can be structurally lossless under a declared
+mapping; semantic equivalence additionally requires preservation and validation
+of event identity, role assignments, context, provenance and uncertainty.
+Comparisons may be contextual, cyclic or incomparable rather than a total order.
+Binary distinction and relation arity are separate questions.
+
+Multiple incompatible interpretations of one source may coexist under distinct
+schema/recipe identities, with independent projections and admission. A schema
+installation or upgrade must not reinterpret historical bytes, overwrite an
+old interpretation or turn previously untyped text into verified facts.
+Missing assertion, unknown value, explicit negation and unsupported schema/type
+are distinct. In particular, not-knowing-P is not knowing-not-P. No default
+closed-world inference or exhaustive generation of negations is implied.
+
+### Composite elements and independent units
+
+Existing [typed representation/locator values](typed-representation-locators.md)
+already provide table rows/cells, media values, validators and a bounded TL1
+locator codec. They are a reuse baseline, not generic nested-schema persistence
+or artifact hydration. Canonical text-block reads are another bounded baseline.
+
+The future composite representation contract must provide:
+
+- typed nested elements, primitive/structured values, local metadata and exact
+  source evidence anchors; references may target other elements or units;
+- stable element identities within a declared container namespace and exact
+  revision-qualified locators; a transient array position or physical offset
+  alone is not a stable identity across edits;
+- explicit insertion, move, replacement, deletion and identity-reuse rules,
+  with historical references remaining resolvable under retention policy;
+- bounded depth, elements, references, bytes and traversal, plus validation
+  against the declared schema/version before publication;
+- optional per-element search projections and exact dependency sets, not
+  automatic global indexing of every field.
+
+Containment identifies structural membership, not a semantic relationship,
+physical entity identity, similarity or technical derivation dependency.
+Internal semantic references may cross-link or cycle; containment must remain
+well-formed under its schema, while technical derivation remains acyclic.
+Neither nested elements nor internal links require a graph storage backend.
+
+An element stays internal when its identity/lifecycle is governed by the
+container and it is addressed through that representation's revision. Explicit
+promotion to an independent canonical unit is appropriate when it needs its
+own retained body, lifecycle, access policy or citation surface. Promotion must
+bind the source container/element revision and preserve lineage; it must not
+silently clone evidence into independent corroboration. Not every field or
+role becomes a `KnowledgeUnit`. Reuse canonical stable-block and artifact
+locator principles where applicable, without claiming their current codecs
+encode arbitrary structures.
+
+### Extension seam before API stabilization
+
+New domain schemas should not require another core enum value, a change to
+canonical envelope bytes or a mandatory backend. Before implementation, qualify
+a minimal opt-in SPI for descriptor/schema validation, bounded encode/decode
+and typed result inspection, locator/reference resolution and declared search
+projection capabilities. It must reuse existing publication/admission and
+recipe identity, declare version/unknown-schema behavior and preserve exact
+historical bindings. Registration alone grants neither execution nor write
+authority. This is a capability checklist, not a frozen interface, plugin ABI
+or generic opaque-JSON escape hatch. `Custom` remains governed by its existing
+experimental admission contract, not a ready production SPI.
+
+The [multi-output publication boundary](linked-derived-knowledge.md#multi-output-structured-publication-future),
+[local and role-aware retrieval contract](structured-data-retrieval-roadmap.md#composite-local-and-role-aware-retrieval)
+and [differential audit](audits/2026-11-23-memory-foundations-corrective-audit.md#7-ontology-neutral-derived-knowledge-differential-audit)
+own their respective follow-up work. No code, DBI, wire grammar or migration is
+changed here.
 
 ## Text retention and rebuild policy
 

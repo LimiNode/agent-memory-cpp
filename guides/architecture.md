@@ -55,7 +55,7 @@ The central [identity policy](identity-policy.md) owns category separation,
 external namespace issuance and the standalone AMXR value codec. It preserves
 the existing topic-owned allocation, revision, lifecycle, authorization and
 persistence contracts. External object identity is neither a local occurrence
-nor an MDBX physical address. Its current closure status is REVIEW_REQUIRED;
+nor an MDBX physical address. Its standalone AMXR closure status is CLOSED;
 it does not activate a conversation model, schema migration or production path.
 
 - Put stable value objects and contracts near the domain they describe.
@@ -66,13 +66,33 @@ it does not activate a conversation model, schema migration or production path.
 - Avoid speculative plugin systems before at least two real implementations
   require the same extension point.
 
+Keep the infrastructure metamodel separate from optional domain ontologies.
+The [structured representation contract](derived-representations-and-codecs.md#ontology-neutral-structured-representations)
+permits versioned alternative schemas without requiring binary relations,
+actants or a universal event model. This is a future extension boundary, not
+an implemented generic schema SPI or permission to change existing wire types.
+
 The source-bound [domain identity and public API audit](audits/2026-11-domain-identity-public-api-audit.md)
 and [type catalogue](audits/2026-11-public-type-catalogue.json) distinguish
 logical identities, scoped external references, binary content digests and
 physical allocation keys. They also record feature-local type ownership and
-the retained compatibility status of legacy DTOs. Its conversation/event and
-typed-metadata ADRs are proposals awaiting review, not implemented APIs or
-permission to change persisted identity, include paths or product defaults.
+the retained compatibility status of legacy DTOs. Conversation Phase 1 values
+and validation are integrated; the Phase 2 event codec is implemented in a
+separate Draft PR. Its [AMCE envelope contract](conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)
+separates common metadata, versioned payload schemas and consumer resource
+budgets. Unsupported bytes are retained, not semantically admitted; tool
+observations do not execute tools. Wire framing, canonical history, rebuildable
+read projections and physical compression/storage remain separate boundaries.
+The separate [Phase 3A reference store](conversation-reference-store.md) provides
+backend-neutral exact/current reads and an in-memory history/CAS implementation,
+without source importing, artifact hydration, production authorization or MDBX.
+The dependent [Phase 3B source import slice](conversation-source-import.md)
+adds bounded source-shaped normalization and an atomic import-key/Entry/append
+seam over that reference backend. It is instance-local, not a provider SDK,
+durable allocator, artifact authenticity check or full Conversation Core.
+The full Conversation Core and typed-metadata ADR remain
+planned, not permission to change persisted identity, include paths or product
+defaults.
 
 ## Agent Runtime Integration
 
@@ -86,6 +106,14 @@ The neutral contracts live in
 [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
 Reference integrations such as ADELIA map their native ids to
 `RuntimeObjectRef` in adapters; core headers must not include ADELIA types.
+
+The [memory-foundations corrective audit](audits/2026-11-23-memory-foundations-corrective-audit.md)
+records follow-up temporal, epistemic-awareness, prompt/keyed-memory,
+extensible processing/presentation and maintained-view questions. It requires
+implemented/contract/missing classification and REUSE/EXTEND/NEW before new
+schemas or subsystems; existing topic guides retain normative ownership.
+It does not expand the core into an agent runtime or delay the separately
+qualified Conversation codec.
 
 ## Layer Architecture
 

@@ -34,3 +34,21 @@ target_compile_definitions(agent_memory_installed_consumer PRIVATE
     AGENT_MEMORY_EXPECTED_VERSION_MAJOR=${_agent_memory_version_major}
     AGENT_MEMORY_EXPECTED_VERSION_MINOR=${_agent_memory_version_minor}
     AGENT_MEMORY_EXPECTED_VERSION_PATCH=${_agent_memory_version_patch})
+
+add_executable(agent_memory_conversation_codec_consumer
+    "${CMAKE_CURRENT_LIST_DIR}/../../../examples/conversation_codec.cpp")
+target_link_libraries(agent_memory_conversation_codec_consumer PRIVATE agent_memory::agent_memory)
+set_target_properties(agent_memory_conversation_codec_consumer PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+
+add_executable(agent_memory_conversation_store_consumer
+    "${CMAKE_CURRENT_LIST_DIR}/../../../examples/conversation_store.cpp")
+target_link_libraries(agent_memory_conversation_store_consumer PRIVATE agent_memory::agent_memory)
+set_target_properties(agent_memory_conversation_store_consumer PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+
+add_executable(agent_memory_conversation_import_consumer
+    "${CMAKE_CURRENT_LIST_DIR}/../../../examples/conversation_import.cpp")
+target_link_libraries(agent_memory_conversation_import_consumer PRIVATE agent_memory::agent_memory)
+set_target_properties(agent_memory_conversation_import_consumer PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)

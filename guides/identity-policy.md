@@ -1,13 +1,15 @@
 # Identity policy and decision register
 
 **Status: normative specification for Identity Architecture; standalone AMXR v1
-architecture APPROVED, integration REVIEW_REQUIRED, not CLOSED.** Existing
+architecture APPROVED, integrated and CLOSED within standalone AMXR v1.** Existing
 implementation observations below are bound to
 `main@acd5ad5545386b3feeaa79f8a587855b60801b4d`. The new ExternalObjectRef /
-AMXR value-and-codec implementation is a separate review-required change; this
+AMXR value-and-codec implementation was separately reviewed; this
 policy was first published in documentation PR #682. Companion implementation
 [#684](https://github.com/LimiNode/agent-memory-cpp/pull/684) supplies the opt-in
-values and codec; neither PR is integrated into main yet.
+values and codec. #682/#684/#685 are integrated in
+`main@386e26fe9176d268722894cd9f48df33f3b7bf72`; historical qualification records
+retain their original source/HEAD identities and are not rewritten.
 
 This is the central owner of identity-category separation, external namespace
 issuance and the standalone AMXR codec. Topic owners retain allocation,
@@ -242,7 +244,7 @@ AMXR. `REVIEW_REQUIRED` is not CLOSED or permission to merge.
 | ScopeId | COMPATIBILITY_RETAINED; units / scope admission | Current wrapper/recipe v2 use supplied bytes; empty is unspecified, not implicit global. Future roadmap canonical_bytes normalization is not current wrapper behavior |
 | RepresentationId / SegmentSetId / SegmentId / EvidenceAnchorId | COMPATIBILITY_RETAINED; artifact/representation owner | Preserve opaque IDs and existing locator bytes; use containing source/revision/recipe/representation where required. No local-counter substitution |
 | LexicalSegmentPhysicalKey | IMPLEMENTED; lexical physical contract | Preserve versioned composite widths/comparator/epoch; rebuildable key is not source provenance |
-| ExternalIdentityScalar / component / key / ExternalObjectRef | IMPLEMENTED in #684; domain / this guide; integration REVIEW_REQUIRED | Dependency-free values and exact standalone AMXR v1 codec; no existing DBI integration, issuer registry or default activation |
+| ExternalIdentityScalar / component / key / ExternalObjectRef | IMPLEMENTED in #684; domain / this guide; standalone integration CLOSED | Dependency-free values and exact standalone AMXR v1 codec; no existing DBI integration, issuer registry or default activation |
 | MessageId / ThreadId / AuthorId | COMPATIBILITY_RETAINED; legacy chat / future conversation owner | Keep old strings, constructors and validation. No automatic external-ref conversion; internal/external namespaces in the old shapes remain incomplete |
 | FactId / MemoryObjectId | COMPATIBILITY_RETAINED; legacy facts/memory | Keep existing value APIs; do not invent or activate a competing canonical allocator/store |
 | Portable namespace registry persistence | PLANNED_NOT_BLOCKING; host / source catalog | The issuance contract is mandatory now; an additional library registry/store is not needed to encode caller-supplied verified tuples |
@@ -317,8 +319,35 @@ header AST at `a27e0c0558314d3760b41217ca37b29ab71c3bff`: 149 headers, 565
 declarations, exactly four added types and unchanged hashes for the 561 old
 declarations. Its name-based field count is not semantic identity inference.
 
-Closure remains REVIEW_REQUIRED until public API, this owner, implementation,
-goldens, compatibility and independent review agree. CLOSED requires explicit
-merge authorization, approved integration and qualification on the exact final
-main. No release/tag, existing database migration, numeric/default activation,
+The standalone closure gate required agreement between public API, this owner,
+implementation, goldens, compatibility and independent review, followed by
+explicit merge authorization, approved integration and exact-final-main
+qualification. That gate is CLOSED at the integrated baseline named above;
+the source-bound historical records are unchanged. No release/tag, existing
+database migration, numeric/default activation,
 ConversationStore, TypedMetadata or publication coordinator is authorized here.
+
+### 6.1 Explicit exception-safe value copies
+
+The additive `copy_external_identity_scalar`, `copy_external_identity_component`,
+`copy_external_object_key` and `copy_external_object_ref` functions construct
+active alternatives directly and recursively copy composite components. They
+preserve exact types/bytes and leave the input unchanged if allocation fails.
+They neither validate/admit an identity nor change AMXR v1. Existing aliases,
+aggregate initialization, fields, layout, implicit special members and wire
+goldens remain unchanged. This is not a replacement variant implementation.
+
+Use these named operations when an external identity is copied in a path with
+an allocation-failure contract. Some tested libstdc++ headers fail while
+unwinding a throwing *variant copy constructor*; ordinary implicit caller-side
+copies still use the system STL and are not repaired by these functions.
+The Conversation wrappers similarly copy source bindings, unresolved targets,
+metadata links and envelopes through this one AMXR implementation. Move the
+result into optional/container/variant destinations; do not copy it again.
+Existing by-value conversion APIs remain source/binary compatible: pass a
+moved value (or an explicitly copied envelope) rather than relying on a
+caller-side implicit copy under injected OOM.
+
+The [copy-hardening audit](audits/2026-11-24-external-identity-copy.md) records the
+failure mechanism, alternative considered, per-path coverage and qualification
+limits. It does not identify an upstream GCC bug or fixed STL version.

@@ -170,6 +170,34 @@ adapter introduces no second document tree or implicit revision substitution.
 The additive schema decision and experimental scope are recorded in
 [`guides/adr/2026-11-18-prompt-profile-history-storage.md`](adr/2026-11-18-prompt-profile-history-storage.md).
 
+## Managed Memory Blocks / Keyed Memory Facade audit
+
+The [memory-foundations audit](audits/2026-11-23-memory-foundations-corrective-audit.md#4-prompt--keyed-memory)
+records follow-up requirements, not another implemented Phase. Investigate
+Managed Memory Blocks as one high-level capability combining exact scoped keys
+and governed context attachment. It is a facade over canonical references,
+reusing block reads and expected-revision edits rather than duplicating text in
+a new KV corpus. Reading a key is independent of authorization, shared attachment,
+profile activation and prompt inclusion.
+
+The [managed-block work order](audits/2026-11-23-memory-foundations-corrective-audit.md#41-managed-block-operations-and-independent-guarantees)
+covers read/replace/append/delete/history, simple and explicit-control API
+levels, shared-consumer rights and persistent/conditional/on-demand attachment.
+Mutation protection and required context presence are independent trusted-host
+policy decisions. Required content that is missing, denied or over budget must
+cause an explicit refusal/error, not silent omission or an access bypass.
+The host resolves freshness and pins revisions before invoking the compiler;
+this follow-up does not introduce implicit `latest` reads or an agent runtime.
+
+`required` is profile-relative and does not protect a block against every future
+edit or activation choice; an unreachable subtree is excluded before descendant
+required-condition/variant checks. Trusted host policy must govern proposed
+changes separately.
+`PromptPolicy`, `PromptCandidate` and `PromptGenome` are conceptual audit terms,
+not existing public APIs. A genome, if needed, remains configuration over the
+existing blocks/profiles. Storage/compiler success is not activation approval
+or evidence that an evolutionary candidate improves behavior.
+
 ## Non-goals
 
 Prompt composition does not provide semantic search, summarization, model

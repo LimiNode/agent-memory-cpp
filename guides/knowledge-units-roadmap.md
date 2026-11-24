@@ -1255,6 +1255,18 @@ experiments with appraisal, affect snapshots, goal impacts, action outcomes,
 salience, and relationship evidence before any dedicated component schema is
 frozen.
 
+### 5.9. Ontology profiles and internal elements
+
+The [ontology-neutral representation owner](derived-representations-and-codecs.md#ontology-neutral-structured-representations)
+defines the future schema/profile boundary and internal-element versus
+independent-unit criteria. It extends the existing
+[optional N-ary relational-fact proposal](knowledge-base-roadmap.md#optional-typed-relational-facts),
+not a new mandatory kind. The existing binary `Relation`/`GraphEdge` projection
+does not constrain the arity of every domain payload. Its identity, validation
+and wire contract remain unchanged. `Custom` retains the experimental,
+capability-enabled, fail-closed rules above; it is not evidence of a production
+schema registry or arbitrary typed-payload persistence.
+
 ## 6. Lifecycle FSM
 
 Lifecycle FSM определён в `memory-stacks-roadmap.md` ADR-011 и расширен здесь детальной семантикой durable transitions и anti-loop подсвинка (через `UsageStatsComponent`).

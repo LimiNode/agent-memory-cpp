@@ -31,6 +31,7 @@ add_library(agent_memory STATIC
     src/agent_memory/domain/Document.cpp
     src/agent_memory/domain/ExternalObjectRef.cpp
     src/agent_memory/domain/Conversation.cpp
+    src/agent_memory/domain/conversation_codec.cpp
     src/agent_memory/domain/CanonicalContent.cpp
     src/agent_memory/domain/PromptComposition.cpp
     src/agent_memory/domain/CanonicalNavigation.cpp
@@ -106,6 +107,8 @@ add_library(agent_memory STATIC
     src/agent_memory/retrieval/Retrieval.cpp
     src/agent_memory/storage/IDocumentStorage.cpp
     src/agent_memory/storage/CanonicalContentStore.cpp
+    src/agent_memory/storage/ConversationStore.cpp
+    src/agent_memory/ingestion/ConversationSourceImporter.cpp
     src/agent_memory/storage/CanonicalFlatStorage.cpp
     src/agent_memory/storage/CanonicalNavigationStore.cpp
     src/agent_memory/storage/FileRawBlobStore.cpp
