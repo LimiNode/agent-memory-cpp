@@ -68,7 +68,8 @@ Qualification of actual injected exceptions is separate in the linked audit
 and [Phase 3B report](../audits/2026-11-24-conversation-source-import-qualification.md).
 This benchmark does not inject malloc/OS faults, prove caller-side implicit
 copies safe, exercise maximum-size identities or establish another STL as fixed.
-Before setting a production latency budget, use isolated repeated processes,+randomized order, representative key-size distributions and allocation-byte /
+Before setting a production latency budget, use isolated repeated processes,
+randomized order, representative key-size distributions and allocation-byte /
 peak-memory instrumentation. No cache or broader value-type rewrite is justified
 by this bounded cost screen. Raw output is retained in the tool transcript;
 this compact table and committed harness are the durable reproducible summary.
