@@ -55,7 +55,7 @@ The central [identity policy](identity-policy.md) owns category separation,
 external namespace issuance and the standalone AMXR value codec. It preserves
 the existing topic-owned allocation, revision, lifecycle, authorization and
 persistence contracts. External object identity is neither a local occurrence
-nor an MDBX physical address. Its current closure status is REVIEW_REQUIRED;
+nor an MDBX physical address. Its standalone AMXR closure status is CLOSED;
 it does not activate a conversation model, schema migration or production path.
 
 - Put stable value objects and contracts near the domain they describe.
@@ -70,9 +70,16 @@ The source-bound [domain identity and public API audit](audits/2026-11-domain-id
 and [type catalogue](audits/2026-11-public-type-catalogue.json) distinguish
 logical identities, scoped external references, binary content digests and
 physical allocation keys. They also record feature-local type ownership and
-the retained compatibility status of legacy DTOs. Its conversation/event and
-typed-metadata ADRs are proposals awaiting review, not implemented APIs or
-permission to change persisted identity, include paths or product defaults.
+the retained compatibility status of legacy DTOs. Conversation Phase 1 values
+and validation are integrated; the Phase 2 event codec is implemented in a
+separate Draft PR. Its [AMCE envelope contract](conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)
+separates common metadata, versioned payload schemas and consumer resource
+budgets. Unsupported bytes are retained, not semantically admitted; tool
+observations do not execute tools. Wire framing, canonical history, rebuildable
+read projections and physical compression/storage remain separate boundaries.
+The full Conversation Core and typed-metadata ADR remain
+planned, not permission to change persisted identity, include paths or product
+defaults.
 
 ## Agent Runtime Integration
 

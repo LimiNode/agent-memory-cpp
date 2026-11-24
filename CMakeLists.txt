@@ -31,6 +31,7 @@ add_library(agent_memory STATIC
     src/agent_memory/domain/Document.cpp
     src/agent_memory/domain/ExternalObjectRef.cpp
     src/agent_memory/domain/Conversation.cpp
+    src/agent_memory/domain/conversation_codec.cpp
     src/agent_memory/domain/CanonicalContent.cpp
     src/agent_memory/domain/PromptComposition.cpp
     src/agent_memory/domain/CanonicalNavigation.cpp
