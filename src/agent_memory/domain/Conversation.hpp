@@ -175,6 +175,15 @@ struct UnresolvedConversationTarget final {
 
 using ConversationLinkTarget = std::variant<EntryRef, UnresolvedConversationTarget>;
 
+/// \brief Copies retained source identity through the shared AMXR active-alternative copy operations.
+/// \return An independent source binding; the input is unchanged on success or exception.
+/// \throws std::bad_alloc Allocation failures propagate without admission or normalization.
+[[nodiscard]] ConversationSourceBinding copy_conversation_source_binding(const ConversationSourceBinding&);
+/// \brief Copies unresolved evidence and its optional external identity through the AMXR operation.
+[[nodiscard]] UnresolvedConversationTarget copy_unresolved_conversation_target(const UnresolvedConversationTarget&);
+/// \brief Copies an exact/unresolved target, including its optional external identity.
+[[nodiscard]] ConversationLinkTarget copy_conversation_link_target(const ConversationLinkTarget&);
+
 /// \brief Reply/Thread stay in the same Conversation; Branch/Forward/Quote may cross it.
 /// \note Cross-conversation references never grant target access. These are not KnowledgeUnit Relations.
 /// All resolved links reject the containing Entry occurrence, regardless of its revision.

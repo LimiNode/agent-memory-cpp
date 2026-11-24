@@ -275,6 +275,55 @@ bool is_supported_conversation_payload(std::uint32_t type_id, std::uint16_t sche
     return schema_version == 1 && ((type_id >= 1 && type_id <= 5) || type_id == 256 || type_id == 257);
 }
 
+ConversationSourceBinding copy_conversation_source_binding(const ConversationSourceBinding& value) {
+    std::optional<ExternalObjectRef> object, event;
+    if(value.object) object = copy_external_object_ref(*value.object);
+    if(value.event) event = copy_external_object_ref(*value.event);
+    return {value.identity, std::move(object), std::move(event), value.revision,
+        value.provider_revision_marker, value.adapter_recipe, value.evidence};
+}
+
+UnresolvedConversationTarget copy_unresolved_conversation_target(const UnresolvedConversationTarget& unresolved) {
+    std::optional<ExternalObjectRef> external;
+    if(unresolved.external) external = copy_external_object_ref(*unresolved.external);
+    return {std::move(external), unresolved.evidence};
+}
+
+ConversationLinkTarget copy_conversation_link_target(const ConversationLinkTarget& value) {
+    if(const auto* exact = std::get_if<EntryRef>(&value))
+        return ConversationLinkTarget{std::in_place_index<0>, *exact};
+    return copy_unresolved_conversation_target(std::get<UnresolvedConversationTarget>(value));
+}
+
+ConversationMetadata copy_conversation_metadata(const ConversationMetadata& value) {
+    std::optional<ConversationSourceBinding> source;
+    if(value.source) source = copy_conversation_source_binding(*value.source);
+    std::vector<ConversationLink> links;
+    links.reserve(value.links.size());
+    for(const auto& link : value.links)
+        links.push_back({link.kind, copy_conversation_link_target(link.target)});
+    return {value.ref, value.scope, std::move(source), value.actor, value.llm_role, value.observer,
+        value.source_unix_us, value.observed_unix_us, std::move(links)};
+}
+
+ConversationEnvelope copy_conversation_envelope(const ConversationEnvelope& value) {
+    ConversationEnvelope result;
+    result.metadata = copy_conversation_metadata(value.metadata);
+    if(const auto* legacy = std::get_if<ConversationPayload>(&value.payload)) {
+        result.payload = ConversationEnvelopePayload{std::in_place_index<0>, *legacy};
+    } else if(const auto* call = std::get_if<ConversationToolCallObserved>(&value.payload)) {
+        result.payload = ConversationEnvelopePayload{std::in_place_index<1>, *call};
+    } else if(const auto* observed = std::get_if<ConversationToolResultObserved>(&value.payload)) {
+        result.payload = ConversationToolResultObserved{copy_conversation_link_target(observed->call),
+            observed->call_id, observed->outcome, observed->result};
+    } else {
+        result.payload = ConversationEnvelopePayload{std::in_place_index<3>,
+            std::get<ConversationOpaquePayload>(value.payload)};
+    }
+    result.extensions = value.extensions;
+    return result;
+}
+
 std::vector<ConversationValidationIssue> validate_conversation_entry_with_limits(
     const ConversationEntry& entry, const ConversationFieldLimits& limits) {
     EntryValidator validator(limits);
