@@ -129,6 +129,10 @@ target_link_libraries(agent_memory_conversation_store_failure_test PRIVATE agent
 add_test(NAME agent_memory_conversation_store_failure_test COMMAND agent_memory_conversation_store_failure_test)
 set_tests_properties(agent_memory_conversation_store_failure_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
 
+add_test(NAME agent_memory_conversation_store_external_failure_test
+    COMMAND agent_memory_conversation_store_failure_test external)
+set_tests_properties(agent_memory_conversation_store_external_failure_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+
 add_executable(agent_memory_canonical_content_test
     domain/canonical_content_test.cpp
 )

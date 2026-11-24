@@ -120,3 +120,39 @@ tests. No confirmed blocking implementation defect was found by these cases.
 Verdict: **READY for owner review within the declared reference subset**;
 Phase 4/5 persistence, crash/reopen and scalable projection qualification remain
 explicitly open.
+
+## 2026-11-24 external-key exception-safety correction
+
+The reviewed `cd6d5dffc8c2c3684330c2fcfea46aa5042cdcee` remains a historical
+baseline, not external-key OOM qualification. Expanding the same failure
+fixture with composite parent/object keys, ExternalEvent and ObjectRevision
+independently reproduced UBSan `variant:1916` in its `correct` envelope copy
+and Current origin-metadata copy assignment. Both stacks used the original
+store implementation; inputs were fully constructed before injection.
+
+The additive [foundation copy operations](2026-11-24-external-identity-copy.md)
+from Draft #696 (`ccc4a3e6`, distributed here by ordinary cherry-pick) preserve
+aggregate/API layout and wire bytes. The minimal store correction uses the
+shared envelope copy in CAS/no-op comparison and moves root metadata from its
+privately decoded envelope into Current. It adds no projection/cache or fold
+semantics. No mutation is published by either read path.
+
+| Matrix | GNU 15.2 Debug | MSVC 19.44 Release | Linux GNU Debug ASan/UBSan |
+| --- | ---: | ---: | ---: |
+| Composite external keys: create/append/correct/exact/history/current | 3/15/83/33/37/117 = 288 | 5/15/83/33/37/118 = 291 | 3/15/83/33/37/117 = 288 |
+| Original local-observation fixture, GNU Debug | 3/12/47/19/23/80 = 184 | See final receipt | See final receipt |
+
+Every measured ordinal throws once, verifies unchanged input, canonical bytes,
+receipts, current view, generation, next IDs/capacity and pinned continuations,
+and then retries. Exact/history cases read already committed correction
+receipts and old revisions; cursors remain pinned even after a successful retry
+commits. The reduction from 199 to 184 local failures reflects removal of
+metadata-copy allocations by the move, not disabled ordinals. The original
+199 result is not relabelled as a measurement of the corrected code.
+
+GNU Debug and MSVC Release targeted revisions/local-fault/external-fault tests
+passed 3/3 each. Final exact-head hosted CI/Packaging and any further profile
+checks belong in the PR receipt, not the old-head result above. Core readiness
+remains limited to the reference subset; the stack must receive final
+external-key qualification before the Phase 3B HOLD can be lifted. No merge,
+rebase, force-push, release or migration was performed.
