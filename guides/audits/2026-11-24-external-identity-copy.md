@@ -78,6 +78,10 @@ fixture contains composite parent and object keys, nested optional sources,
 unresolved metadata links and a result target; byte re-encoding is exact.
 Static assertions preserve aggregates and the original scalar alias.
 
+The extended scalar-key cases (signed/unsigned/string) add 0/0/1 measured
+failures. The twelve-case Linux Debug ASan/UBSan foundation sweep passes
+**130 actual failures**, preserving scalar key types and values on retry.
+
 This is not whole-process OOM survival, malloc/OS/crash qualification or a fix
 for arbitrary caller copies. Checked MSVC STL retains its explicit SKIP 77 for
 proxy allocations in noexcept construction. A skipped lane is not a pass.
