@@ -50,6 +50,20 @@ struct ExternalObjectRef final {
     ExternalObjectKey object_key;
 };
 
+/// \brief Copies an active scalar alternative directly, without a variant copy constructor.
+/// \return An independent value with the same alternative and exact bytes.
+/// \throws std::bad_alloc Allocation failures propagate; the input is unchanged.
+/// \throws std::bad_variant_access If the input is valueless.
+/// \note Use the named copy operations on affected standard libraries. Implicit copies
+/// remain ordinary STL operations; aggregate initialization, layout and AMXR bytes are unchanged.
+[[nodiscard]] ExternalIdentityScalar copy_external_identity_scalar(const ExternalIdentityScalar&);
+/// \brief Copies a named component through the same exception-safe scalar operation.
+[[nodiscard]] ExternalIdentityComponent copy_external_identity_component(const ExternalIdentityComponent&);
+/// \brief Copies scalar/composite keys, including each nested component, without variant copying.
+[[nodiscard]] ExternalObjectKey copy_external_object_key(const ExternalObjectKey&);
+/// \brief Copies both optional parent and object keys through the shared key operation.
+[[nodiscard]] ExternalObjectRef copy_external_object_ref(const ExternalObjectRef&);
+
 inline constexpr std::size_t kMaxExternalObjectRefBytes = 65536;
 inline constexpr std::size_t kMaxExternalIdentityKeyBytes = 4096;
 inline constexpr std::size_t kMaxExternalIdentityComponents = 16;

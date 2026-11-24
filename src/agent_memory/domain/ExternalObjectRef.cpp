@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace agent_memory {
@@ -196,6 +197,39 @@ ExternalObjectKey read_key(Reader& input) {
 }
 
 } // namespace
+
+ExternalIdentityScalar copy_external_identity_scalar(const ExternalIdentityScalar& value) {
+    return std::visit([](const auto& scalar) -> ExternalIdentityScalar {
+        using Scalar = std::decay_t<decltype(scalar)>;
+        return ExternalIdentityScalar{std::in_place_type<Scalar>, scalar};
+    }, value);
+}
+
+ExternalIdentityComponent copy_external_identity_component(const ExternalIdentityComponent& value) {
+    return {value.name, copy_external_identity_scalar(value.value)};
+}
+
+ExternalObjectKey copy_external_object_key(const ExternalObjectKey& key) {
+    using Value = decltype(key.value);
+    return std::visit([](const auto& value) -> ExternalObjectKey {
+        using Alternative = std::decay_t<decltype(value)>;
+        if constexpr(std::is_same_v<Alternative, std::vector<ExternalIdentityComponent>>) {
+            std::vector<ExternalIdentityComponent> parts;
+            parts.reserve(value.size());
+            for(const auto& part : value) parts.push_back(copy_external_identity_component(part));
+            return {Value{std::in_place_type<Alternative>, std::move(parts)}};
+        } else {
+            return {Value{std::in_place_type<Alternative>, value}};
+        }
+    }, key.value);
+}
+
+ExternalObjectRef copy_external_object_ref(const ExternalObjectRef& value) {
+    std::optional<ExternalObjectKey> parent;
+    if(value.parent_key) parent = copy_external_object_key(*value.parent_key);
+    return {value.provider, value.service_instance, value.identity_domain, value.object_kind,
+        std::move(parent), copy_external_object_key(value.object_key)};
+}
 
 bool is_valid_external_object_ref(const ExternalObjectRef& value) noexcept {
     std::size_t size = 0;
