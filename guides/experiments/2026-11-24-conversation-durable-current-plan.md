@@ -32,7 +32,11 @@ of old occurrences at generations before/between/after output pages and
 unresolved results followed by late calls. Separate regimes rather than
 multiply all worst cases into one inadmissible store. Use 65536 total Entry,
 1024 revisions/Entry and 256 MiB canonical/map ceilings for the extended
-screen; record any rejected workload explicitly, not as a fast successful read.
+screen; these are fixture quotas for reference-oracle feasibility, NOT supported
+durable totals or implementation ceilings. Add a durable-only streaming regime
+beyond 65536 rows / 256 MiB with bounded working memory; validate selected pages
+against independently partitioned oracle fixtures where a whole reference store
+cannot admit the history. Record rejected workloads, not fast successful reads.
 Pin authored data/seed/manifest SHA before measurement. Test 1/32/128-item pages,
 latest and 25%/50%/75%/100% frontiers, retained exact targets and policy refusal.
 

@@ -71,6 +71,9 @@ must use the M2 artifact provenance profile.
 
 ### Early opt-in Conversation Core (Planned)
 
+The [Foundation Closure Gate](audits/2026-11-foundation-closure.md) is a
+pre-P4-1 review step, not a new capability or permission to deploy a journal.
+
 Priority: the first practically useful **chat profile** for chat importers and
 Efi dialogue memory must retain real conversations before expanding
 experimental search algorithms. This is a planned, separately selected profile

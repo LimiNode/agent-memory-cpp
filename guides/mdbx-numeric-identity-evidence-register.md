@@ -2,7 +2,21 @@
 
 Status: `PRE-NUMERIC BASELINES RETAINED / POST-MIGRATION REQUALIFICATION REQUIRED`
 
-Date: 2026-11-19
+Date: 2026-11-19; current status addendum 2026-11-24.
+
+## Current source-bound status
+
+At `main@77a278bef338074227efa05365e83e967334f429`, numeric key/typed unit
+stores, persistent identity mapping and canonical flat v2 are implemented
+opt-in. The [numeric reopen gate](experiments/2026-11-20-numeric-storage-reopen-gate.md)
+records POST_NUMERIC_REJECT_OLD, not migration: `migration_executed=false` and
+`post_migration_upgrade_proof=false`. Legacy product facades still use the
+decimal-primary MdbxKnowledgeUnitStore path. The
+[foundation register and product closure sequence](audits/2026-11-foundation-closure.md#3-identity-closure-register-at-main)
+separate these states. Historical snapshots below retain their original labels;
+no production activation, database migration or regeneration is performed here.
+
+## Historical baseline and evidence rules
 
 This register is the compatibility ledger for the move from decimal text
 physical keys to numeric MDBX keys. It does not change a logical identity,
@@ -15,11 +29,11 @@ by [Index lifecycle](index-lifecycle-roadmap.md) and
 `tools/run-exact-generation-upgrade.py`; the register does not introduce a
 second classifier or treat an arbitrary commit selection as migration proof.
 
-The current `main` baseline still contains the historical
+The 2026-11-19 `main` baseline contained the historical
 `MdbxKnowledgeUnitStore` layout. The opt-in `StorageIdentityMapping` pilot is
-not, by itself, a migration of that store. Until a reviewed pilot wires a
-numeric DBI and records its migration decision, every physical snapshot below
-is explicitly **pre-numeric**.
+not, by itself, a migration of that store. At that baseline, before a reviewed pilot wired a
+numeric DBI and recorded its migration decision, every physical snapshot below
+was explicitly **pre-numeric**.
 
 ## Decision rule
 

@@ -28,6 +28,11 @@ transactions, durability flags, frontier/token boundaries and test fixtures.
 Its [Current decision screen](experiments/2026-11-24-conversation-durable-current-plan.md)
 is predeclared, NOT RUN. The YAML delta allocates/deploys nothing.
 
+The [Foundation Closure Gate](audits/2026-11-foundation-closure.md) now precedes
+P4-1 authorization. It separates profile-qualified compact physical keys from
+full logical references, durable quotas from in-memory ceilings, and typed
+byte codecs from legacy string adapters. Owner approval remains separate.
+
 ## Transaction and authority decisions
 
 Use one backend context/Connection for the logical environment, not a new

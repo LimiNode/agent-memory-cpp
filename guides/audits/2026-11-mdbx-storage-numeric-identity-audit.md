@@ -17,6 +17,11 @@ replacement for every textual key in the MDBX adapters.
 
 ## Executive result
 
+For the `main@77a278bef338` status of integrated opt-in numeric/typed/mapping/flat
+paths versus unchanged legacy product defaults, use the
+[foundation register](2026-11-foundation-closure.md#3-identity-closure-register-at-main).
+This earlier audit retains its source binding; it is not a migration receipt.
+
 The repository has three different things that are easy to call a “string
 key”, but must not be conflated:
 

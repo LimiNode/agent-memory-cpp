@@ -10,6 +10,10 @@
 
 ## Decision summary
 
+Current status is separately bound to `main@77a278bef338` in the
+[Foundation Closure Gate](2026-11-foundation-closure.md), with a fresh AST
+catalogue. This audit and its original catalogue remain historical, not relabelled.
+
 Keep logical identity, external source identity, content identity and physical
 storage keys separate. A string wrapper is not itself a defect. Strong numeric
 IDs, binary digests, versioned composites and `std::variant` already exist;

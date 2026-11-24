@@ -93,6 +93,9 @@ durable allocator, artifact authenticity check or full Conversation Core.
 The separate [Phase 4 P4-0 physical proposal](conversation-durable-physical-contract.md)
 reuses existing MDBX context/transactions and proposes three optional DBIs;
 no durable Conversation adapter, schema deployment or P4-1 code exists yet.
+The [Foundation Closure Gate](audits/2026-11-foundation-closure.md) reviews
+binary APIs, identity integration and durable key/quota policy before P4-1;
+the gate does not activate numeric product defaults or future memory facades.
 The full Conversation Core and typed-metadata ADR remain
 planned, not permission to change persisted identity, include paths or product
 defaults.

@@ -18,6 +18,16 @@ An identity policy does not authorize a migration, production activation or
 rewriting a legacy constructor. Conversation/Event Model, TypedMetadata,
 ConversationStore and canonical publication remain separate workstreams.
 
+### Current implementation status addendum (2026-11-24)
+
+At `main@77a278bef338074227efa05365e83e967334f429`, Conversation identity,
+AMCE, the in-memory reference store/corrections and source importer are
+integrated through #698. They are not a deployed durable journal. The
+[foundation closure register](audits/2026-11-foundation-closure.md#3-identity-closure-register-at-main)
+updates source-bound maturity and numeric product integration; historical
+catalogues/qualification retain their original SHAs. Opt-in numeric/typed/flat
+stores do not mean the legacy product default has migrated.
+
 ## 1. Categories and authority
 
 An identifier's type/namespace is part of its meaning. Equal raw integers,
@@ -48,7 +58,7 @@ Authority is deliberately distributed, without duplicated wire grammars:
 | Physical document/block mapping | [storage identity mapping](storage-identity-mapping.md), [DBI manifest](dbi-manifest.yaml) |
 | Token namespace/dictionary epochs and posting generations | [lexical search](lexical-search-roadmap.md) |
 | Candidate identity, exact hydration and final deduplication | [retrieval execution](retrieval-execution-roadmap.md) |
-| Future conversation identities and events | [conversation/event ADR](adr/2026-11-conversation-event-identity.md), subordinate to this guide for reusable external references |
+| Conversation identities and events | [conversation/event ADR](adr/2026-11-conversation-event-identity.md), subordinate to this guide for reusable external references; integrated codec/reference/import slices, durable storage separate |
 
 Specific legacy encodings win over a generic recommendation in this guide.
 An actual contradiction requires a named owner correction and conformance
@@ -249,7 +259,7 @@ AMXR. `REVIEW_REQUIRED` is not CLOSED or permission to merge.
 | FactId / MemoryObjectId | COMPATIBILITY_RETAINED; legacy facts/memory | Keep existing value APIs; do not invent or activate a competing canonical allocator/store |
 | Portable namespace registry persistence | PLANNED_NOT_BLOCKING; host / source catalog | The issuance contract is mandatory now; an additional library registry/store is not needed to encode caller-supplied verified tuples |
 | Binary ArtifactId lookup optimization | PLANNED_NOT_BLOCKING; artifact owner | Existing digest/text representation is correct and retained; optimizing lookup needs separate compatibility evidence, not AMXR changes |
-| Conversation occurrence allocator and actor/thread identities | PLANNED_NOT_BLOCKING; conversation ADR | No event/store added now; AMXR is reusable without inventing an EntryId allocator |
+| Conversation occurrence allocator and actor/thread identities | IMPLEMENTED reference/import slice after #698; conversation ADR | Namespace-qualified numeric values, source import allocator and revision-aware in-memory store exist. Durable allocator/profile is proposed separately, not deployed; actor issuance remains host-owned |
 | Generic Fact/MemoryObject and representation allocator profiles | PLANNED_NOT_BLOCKING; units / artifact owner | Existing concrete validators/codecs remain authoritative; their broader stores are not consumers required by AMXR |
 
 ### Named legacy/raw-string exceptions

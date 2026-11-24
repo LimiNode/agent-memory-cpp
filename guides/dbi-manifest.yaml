@@ -273,7 +273,7 @@ profile_deltas:
         opens: component_profile
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
-        physical_key: [KeyVersion, MetadataRowKind, OptionalConversationRef]
+        physical_key: [KeyVersion, MetadataRowKind, OptionalProfileConversationId]
         comparator: MDBX_BYTEWISE
         flags: []
         key_encoding: versioned_be_bytes
@@ -285,7 +285,7 @@ profile_deltas:
         opens: component_profile
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
-        physical_key: [KeyVersion, EventRowKind, ExactRevisionOrGeneration]
+        physical_key: [KeyVersion, EventRowKind, ProfileRevisionOrGeneration]
         comparator: MDBX_BYTEWISE
         flags: []
         key_encoding: versioned_be_bytes
@@ -297,7 +297,7 @@ profile_deltas:
         opens: component_profile
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
-        physical_key: [KeyVersion, SourceRowKind, ConversationRef, SourceKeyDigest, CollisionSlot]
+        physical_key: [KeyVersion, SourceRowKind, ProfileConversationId, SourceKeyDigest, CollisionSlot]
         comparator: MDBX_BYTEWISE
         flags: []
         key_encoding: versioned_be_bytes

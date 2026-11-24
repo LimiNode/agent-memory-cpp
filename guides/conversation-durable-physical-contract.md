@@ -93,51 +93,80 @@ B(x) = U32(byte length of x) | exact bytes x
 O(x) = U8(0) if absent; U8(1) | x if present
 C = U16(namespace byte length) | namespace ASCII bytes | U64(ConversationId)
 R = C | U64(EntryId) | U64(EventRevision)
+P = U64(ConversationId)  # profile-qualified physical conversation component
 
 meta/profile         = 01 00
-meta/conversation    = 01 01 | C
-events/revision      = 01 01 | R
+meta/conversation    = 01 01 | P
+events/revision      = 01 01 | P | U64(EntryId) | U64(EventRevision)
 events/generation    = 01 02 | U64(commit_generation)
-sources/occurrence   = 01 01 | C | SHA256(logical_source_key) [32 bytes] | U32(slot)
+sources/occurrence   = 01 01 | P | SHA256(logical_source_key) [32 bytes] | U32(slot)
 ```
 
 The first byte is key version 1, the next is the table-specific row tag.
 Unknown versions/tags are unsupported schema, not ignored rows. `C` has a
 1..128-byte namespace validated by the existing Conversation owner; all local
-IDs/revisions are nonzero u64. The profile binds one allocation namespace;
-retain the full namespace in each key anyway. Ordering across namespaces is
-length-first then bytewise, intentionally **not** `ConversationRef::operator<`.
-Within an exact `C` prefix, EntryId/revision order is numeric. Generation order
+IDs/revisions are nonzero u64. The profile binds one immutable allocation namespace.
+`C` and `R` remain full logical references in values/witnesses; they are NOT the
+physical key grammar. Within an exact `P` prefix, EntryId/revision order is numeric. Generation order
 is numeric and profile-global. Source digest/slot order has no chronological
-or semantic meaning. Validate decoded key namespace against the profile.
+or semantic meaning. Resolve `P` only through the verified profile; reject any
+request/value namespace differing from it before reading or writing rows.
 
 | Key | Maximum bytes | Derivation |
 | --- | ---: | --- |
 | Profile | 2 | version + tag |
-| Conversation | 140 | 2 + 2 + 128 + 8 |
-| Revision | 156 | 140 + 8 + 8 |
+| Conversation | 10 | 2 + 8 |
+| Revision | 26 | 10 + 8 + 8 |
 | Generation | 10 | 2 + 8 |
-| Source bucket member | 176 | 140 + 32 + 4 |
+| Source bucket member | 46 | 10 + 32 + 4 |
 
 Before table creation/writes, query the actual environment's maximum key size
 for flags 0 (`mdbx_env_get_maxkeysize_ex(env, 0)` at the pinned dependency) and
-require at least **176 bytes**. Do not assume 511 bytes or one page size.
+require at least **46 bytes**. Do not assume 511 bytes or one page size.
 Read-only open also refuses a layout it cannot interpret. Any exact key has
-fixed size once its namespace is known. Never append a full AMXR to a physical
+fixed size independent of namespace length. Never append a full AMXR to a physical
 key: a valid AMXR can be 65,536 bytes before source-revision framing.
 
 Literal key control (not an executed fixture): namespace `a`, conversation 1,
 entry 2, revision 3:
 
 ```text
-01 01 00 01 61 00 00 00 00 00 00 00 01
+01 01 00 00 00 00 00 00 00 01
 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 03
 ```
 
-P4-1 must independently encode/decode this 29-byte literal, 128-byte namespace
-maximums, 255/256 boundaries and UINT64_MAX. At exhaustion use an explicit
-persisted exhausted flag, never wrap to zero or reserve UINT64_MAX silently.
+P4-1 must independently encode/decode this 26-byte literal, 128-byte namespace
+profile maximums, 255/256 boundaries and UINT64_MAX. Match the integrated
+importer: UINT64_MAX is the reserved exhausted-next sentinel; allocate
+1..UINT64_MAX-1 only. Persist next EntryId, not an exhausted flag.
+Generation/revision counters may reach UINT64_MAX but cannot advance beyond it;
+they are not the import allocator. Reject exhaustion without mutation or wrap.
 Aborted tentative IDs may be retried; committed identities are never reused.
+
+### Namespace alternatives and isolation decision
+
+| Choice | Revision/source key bytes | Identity and operational consequence |
+| --- | --- | --- |
+| A: full namespace per key | 156 / 176 maximum | Self-describing component, but still needs profile/scope/integrity validation. Prefix includes length+namespace. |
+| B: immutable profile namespace (selected) | 26 / 46 fixed | One namespace per verified three-DBI set; numeric prefix scans; no mapping table. Full logical identity retained in values and digest context. |
+| C: u64 namespace surrogate | 34 / 54 fixed | Requires atomic dictionary, no-reuse and backup/reopen checks; justified only by a future multi-namespace requirement, absent here. |
+
+B is selected because the profile already prohibits multiple allocation
+namespaces, not merely because it saves up to 130 bytes per key.
+Each prefix resolves to exactly one marker, namespace and incarnation. Open and
+attach validate all three DBIs, flags and descriptor before returning a handle;
+a second namespace uses a separate validated prefix/profile set. Reject wrong
+namespace before a compact-key seek. Backup/restore/relocation retains the marker
+and all tables together; copying one table alone is invalid. No path/prefix
+enters logical identity. Rebinding a prefix to another namespace or attaching
+foreign rows is rejected, never inferred from a numeric key. Value integrity
+below binds namespace/incarnation against accidental cross-profile substitution.
+A malicious writer able to replace the marker and recompute digests is outside
+checksum protection; host admission and fencing remain necessary in A, B and C.
+Reduced width suggests better fanout/less write amplification, but no actual page
+or latency improvement is measured. Qualification compares pages/tree depth/write
+bytes at equal logical data. A multi-namespace requirement reopens this decision;
+it does not silently add a dictionary.
 
 ### Exact source identity and collision-verifying indirection
 
@@ -168,7 +197,13 @@ with unequal full key allocates a distinct next slot; never overwrite/coalesce.
 Slots start at 0, remain contiguous and append-only; no slot reclamation in this
 profile. Default bucket bound 16 rows / 8 MiB inspected value bytes; supported
 caps 256 rows / 32 MiB. Reject a new key or incomplete lookup with ResourceLimit
-when either bound would be exceeded. A digest-only negative/equal result is
+when either bound would be exceeded. NEW admission checks aggregate row count
+and sum of encoded value sizes of the ENTIRE post-insert bucket, not just the
+candidate or scan prefix. Persist admission bounds in the immutable descriptor;
+never admit a bucket larger than a conforming replay reader can scan. Later
+insertion must not make an earlier mapping unreplayable. A stricter local lookup
+budget may return ResourceLimit, never NotFound/Conflict/corruption; it is not
+the full replay-compatible profile. A digest-only negative/equal result is
 forbidden. Identical retry within the admitted bound remains possible at quota.
 Forced-digest-collision tests must retain distinct refs and detect changed
 witnesses for each key. Full keys/witnesses are value-sized, not key-sized.
@@ -179,12 +214,13 @@ Each value is privately framed as:
 
 ```text
 value = U16(value_schema=1) | B(body) | digest [32 bytes]
-digest = SHA256(B(ASCII schema marker) | U8(table_kind) | B(physical_key)
+digest = SHA256(B(ASCII schema marker) | B(allocation namespace) | incarnation[16]
+                | U8(table_kind) | B(physical_key)
                 | U16(1) | B(body))
 table_kind = 1 metadata | 2 events | 3 sources
 ```
 
-The digest binds table/key/schema/body, detecting accidental substitution, not
+The digest binds profile/table/key/schema/body, detecting accidental substitution, not
 authenticating a hostile writer. Check finite total size, lengths, version,
 integrity, exact consumption and semantic consistency before owning copies or
 publication. No trailing fields/unknown value versions are silently skipped.
@@ -196,11 +232,14 @@ Proposed bodies, in order:
 ```text
 profile = B(schema marker) | B(allocation namespace) | incarnation[16]
           | B(storage profile descriptor) | U64(last generation)
-          | U8(generation exhausted) | U64(conversation count)
+          | U64(conversation count)
           | U64(entry count) | U64(revision count) | U64(mapping count)
           | U64(canonical logical charge) | U64(mapping logical charge)
+          | U64(quota policy version) | U64(conversation quota) | U64(entry quota)
+          | U64(revisions per entry quota) | U64(canonical logical byte quota)
+          | U64(mapping row quota) | U64(mapping logical byte quota)
 conversation = B(exact scope bytes) | U64(created generation)
-               | U64(next EntryId) | U8(entry allocator exhausted)
+               | U64(next EntryId)
 revision = U64(admission generation)
            | O(U64(previous revision) | B(reason code)) | B(canonical AMCE)
 generation = U8(create=1 | import=2 | correction=3) | C
@@ -221,10 +260,17 @@ Storage profile descriptor schema 1 is `U16(1)` followed by U64 values in this
 fixed order: codec frame, owned bytes, text bytes, attachment count, link count,
 binding bytes, locator bytes, recipe bytes, extension count, extension bytes,
 codec allocation-object units;
-store conversations, entries, revisions per entry, storage logical bytes;
-import observation bytes, mapping rows, mapping logical bytes;
+import observation bytes;
 physical transaction bytes, bucket rows, bucket inspected bytes. Names correspond
-to the existing option owners, including `ConversationCodecLimits::max_objects`.
+to codec option owners, including `ConversationCodecLimits::max_objects`.
+Persistent quotas are NOT reference-store option fields. The six quota fields
+above require explicit host configuration at creation. A versioned quota update
+can only RAISE them atomically (CAS on quota policy version, checked no-wrap).
+Lowering persisted quotas requires a separately reviewed maintenance contract;
+it is not an implicit reopen setting or an unbounded scan of all history.
+Quota updates do not change the immutable codec/bucket descriptor.
+They advance quota policy version only, not event commit_generation; no domain
+event/receipt is fabricated for this administrative configuration transaction.
 Any added field or changed ordering requires a new descriptor schema before
 deployment; omission must not silently relax a reader/writer bound.
 These values are bounded, not permission to relax namespace/AMXR invariants.
@@ -349,12 +395,38 @@ reopen state rather than assume that every exception means durable rollback.
 
 ### Finite profile and operational limits
 
-Reuse existing codec/store/import option bounds and logical charge rules;
-persist the admitted profile rather than silently accepting a smaller writer
-on reopen. Default observation 2 MiB (cap 32 MiB), mapping 4096 rows / 64 MiB
-(caps 65536 / 256 MiB), store 4096 entries / 64 revisions per Entry / 64 MiB
-logical canonical charge (caps 65536 / 1024 / 256 MiB). Existing scope/frame
-charges stay conjunctive. NoChange must still validate current access/input.
+Reuse codec grammar, source validation and logical charge definitions, NOT the
+reference backend's total ceilings. Its 4096/65536 entries/mappings, 64/1024
+revisions and 64/256 MiB totals are in-memory implementation policy, not durable
+limits. NoChange still validates current access/input. The proposed durable
+limits below are separate; no P4 options/runtime are implemented yet.
+
+| Limit | Default / supported maximum | Unit; scope; reason | Exhaustion / reopen behavior |
+| --- | --- | --- | --- |
+| Wire lengths/counts | u32 lengths, u16 AMCE counts | Bytes/elements per field; grammar, not permission to allocate | Malformed encoding rejects; unchanged on reopen |
+| AMCE frame | 32 MiB / 32 MiB | Bytes/object; current implementation cap, not total history | ResourceLimit; immutable codec profile covers admitted frames |
+| Observation | 2 MiB / 32 MiB | Logical input bytes/operation; source preflight | ResourceLimit; persisted admitted maximum; smaller local budget is not corruption |
+| Codec fields/objects | Existing `ConversationCodecLimits` descriptor, every field persisted | Per frame; conjunctive field/object bounds, no domain relaxation | Codec ResourceLimit; incompatible descriptor refuses reopen |
+| Conversations, entries, mappings | REQUIRED explicit quotas / UINT64_MAX-1 each | Rows/profile; deployment capacity | ResourceLimit for new admissions; replay first; reopen uses persisted policy, mismatch refuses writes pending explicit update |
+| Revisions per entry | REQUIRED explicit quota / UINT64_MAX-1 | Rows/entry; independent of bounded page work | ResourceLimit on correction; persisted lowering unsupported |
+| Canonical / mapping charge | REQUIRED separate quotas / UINT64_MAX-1 each | Logical bytes/profile; checked u64 aggregate counters | ResourceLimit; persisted lowering unsupported |
+| Collision bucket | 16 / 256 rows; 8 / 32 MiB | Aggregate encoded value bytes and rows/bucket; immutable admission ceiling | ResourceLimit BEFORE insertion; full replay remains possible; incompatible reopen refuses |
+| Changed transaction bytes | 32 / 256 MiB | Sum changed key+value bytes/transaction, including repeated witness/index bytes | ResourceLimit before writes; persisted writer profile, not page/RSS bound |
+| Changed rows | 16 / 16 | Rows/transaction; layout safety bound | ResourceLimit before writes; extension needs review |
+| Read raw bytes/rows | 32 / 256 MiB; 262144 / 262144 rows | Visited physical bytes/rows per call, including bucket scans | BudgetExhausted (read) / ResourceLimit (lookup); local reopen change allowed |
+| Public output/decode | Defaults 64 items, 1 MiB output, 4096 visits, 32 MiB decoded; caps 65536 items, 262144 visits, 256 MiB bytes | Per call; bounded owning result and fold | Existing budget result, no fabricated Complete/Current; local change allowed |
+| Live preparation budget | 128 / 512 MiB charged buffers plus codec object cap | Concurrent owned frame/witness/bucket/result buffers per operation | ResourceLimit before allocation/commit; local lowering can refuse, not invalidate stored data |
+| MDBX map/growth | REQUIRED host policy; actual platform/environment maximum | Physical bytes/environment, not logical charge or heap | Backend map-full diagnostic, no auto-resize/retry; attach never changes geometry |
+
+Required quotas have no hidden unlimited default. Zero forbids new consumption;
+it cannot replace a nonzero persisted quota at reopen. P4-1 must
+use explicit durable quota configuration, not pass large totals through
+`ConversationStoreOptions` and weaken its validator. Long history grows on disk
+without full-store hydration at open/per write. Seek/stream pages and bounded
+folds use memory independent of total persisted history. The live preparation
+budget is a buffer charge, NOT an RSS guarantee: account simultaneous copies
+and containers before allocation, then measure peak heap/RSS/allocator overhead
+in qualification. Wire-size preflight alone is insufficient memory evidence.
 
 New physical limits proposed: 32 MiB encoded changed key+value bytes per
 transaction by default (cap 256 MiB), including duplicated witness/key/index
@@ -387,7 +459,8 @@ NoChange/Conflict and never wraps. It is not EntryId, wall time or a count
 safe to expose across denied scopes. Retain generation rows and immutable
 history for the profile lifetime; erase/retention/GC is a separate reviewed gate.
 
-Exact reads use full `R`. History seeks `(C,EntryId,revision)` and filters by
+Exact reads validate full `R` then seek its compact physical key. History seeks
+`(P,EntryId,revision)` after profile/scope checks and filters by
 admission generation <= pinned frontier; corrections admitted later remain
 invisible. For each Current occurrence select latest revision <= frontier,
 then use the unchanged reference fold and exact retained targets. Old target
@@ -488,6 +561,16 @@ migration needs separate owner authorization, immutable old/new fixtures,
 backup validation, quiescence/fencing, rollback/read-compatibility policy,
 disk/map/DBI peak budget and explicit version markers. No automatic destructive
 open-time upgrade, retention or database deployment is authorized here.
+
+New key/value/witness codecs return `ByteBuffer` and borrow `ByteView`; fixed
+digests/incarnations use byte arrays. Keep strings for text and explicitly
+compatible legacy boundaries only. An MDBX wrapper requiring `std::string`
+gets one named infrastructure adapter, not a string-based domain codec.
+Nested AMXR uses its additive byte API; legacy entry points and all AMXR/AMCE
+goldens/digest preimages are unchanged. Null/nonzero input rejects; nullptr/0
+is an empty view, still malformed where a complete frame is required. Borrowed
+MDBX/input views cannot escape the transaction/call; returned DTOs own memory.
+See the [foundation gate](audits/2026-11-foundation-closure.md).
 
 | Disposition | Boundary |
 | --- | --- |
