@@ -155,7 +155,12 @@ am::ExternalObjectRef maximal_external() {
     expect(size > 65536 && size - 65536 < tail.size(), "invalid maximal AMXR recipe");
     tail.resize(tail.size() - (size - 65536));
     value.object_key = am::ExternalObjectKey{std::move(parts)};
+#ifdef AGENT_MEMORY_AMCE_BENCH_LEGACY
+    // Frozen pre-merge baseline has only the historical binary-string API.
     expect(am::serialize_external_object_ref(value).size() == 65536, "maximal AMXR must be exactly64KiB");
+#else
+    expect(am::serialize_external_object_ref_bytes(value).size() == 65536, "maximal AMXR must be exactly64KiB");
+#endif
     return value;
 }
 

@@ -5,6 +5,8 @@
 /// \file ExternalObjectRef.hpp
 /// \brief Namespace-qualified external object identity, independent of local storage keys.
 
+#include <agent_memory/domain/ByteView.hpp>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -83,11 +85,27 @@ inline constexpr std::size_t kMaxExternalIdentityComponents = 16;
 /// \throws std::invalid_argument if either reference violates the version-1 profile.
 [[nodiscard]] bool operator<(const ExternalObjectRef&, const ExternalObjectRef&);
 
+/// \brief Encodes standalone AMXR v1 directly into an owning binary buffer.
+/// \param value A reference satisfying the complete version-1 profile.
+/// \return Canonical bytes, identical to the legacy string encoding.
+/// \throws std::invalid_argument For invalid or oversized values.
+/// \note Exact-size preflight precedes output allocation; no storage schema is written.
+[[nodiscard]] ByteBuffer serialize_external_object_ref_bytes(const ExternalObjectRef& value);
+
+/// \brief Decodes one complete bounded AMXR v1 reference without copying the input frame.
+/// \param bytes Borrowed input, alive and unmodified for the duration of this call.
+/// \return An owning reference independent of the input lifetime.
+/// \throws std::invalid_argument For null nonempty, malformed, noncanonical or oversized input.
+/// \note Empty input (including nullptr/0) is malformed, not an absent reference.
+[[nodiscard]] ExternalObjectRef deserialize_external_object_ref_bytes(ByteView bytes);
+
+/// Legacy binary-string compatibility interface; new binary consumers use the byte API.
 /// Encodes the standalone AMXR version-1 contract; does not write any storage schema.
 /// Preflights the exact size before allocating its output buffer.
 /// \throws std::invalid_argument for an invalid or oversized value.
 [[nodiscard]] std::string serialize_external_object_ref(const ExternalObjectRef& value);
 
+/// Legacy binary-string compatibility interface, borrowing the input without a frame copy.
 /// Decodes one complete bounded AMXR reference. Unknown formats and trailing bytes reject.
 /// \throws std::invalid_argument for malformed, noncanonical or oversized input.
 [[nodiscard]] ExternalObjectRef deserialize_external_object_ref(std::string_view bytes);

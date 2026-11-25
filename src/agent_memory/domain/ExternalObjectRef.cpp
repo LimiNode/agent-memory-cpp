@@ -86,17 +86,20 @@ bool reference_size(const ExternalObjectRef& ref, std::size_t& size) noexcept {
     return add_size(size, 1) && (!ref.parent_key || key_size(*ref.parent_key, size)) && key_size(ref.object_key, size);
 }
 
-void put_uint(std::string& out, std::uint64_t value, unsigned width) {
-    for(unsigned i = width; i > 0; --i) out.push_back(static_cast<char>((value >> ((i - 1) * 8)) & 0xffU));
+template<typename Buffer>
+void put_uint(Buffer& out, std::uint64_t value, unsigned width) {
+    for(unsigned i = width; i > 0; --i)
+        out.push_back(static_cast<typename Buffer::value_type>((value >> ((i - 1) * 8)) & 0xffU));
 }
 
-void put_text(std::string& out, std::string_view text, unsigned width) {
+template<typename Buffer>
+void put_text(Buffer& out, std::string_view text, unsigned width) {
     put_uint(out, text.size(), width);
-    out.append(text.data(), text.size());
+    out.insert(out.end(), text.begin(), text.end());
 }
 
-template<typename Variant>
-void put_scalar(std::string& out, const Variant& value) {
+template<typename Buffer, typename Variant>
+void put_scalar(Buffer& out, const Variant& value) {
     out.push_back(static_cast<char>(value.index() + 1));
     if(const auto* text = std::get_if<std::string>(&value)) put_text(out, *text, 4);
     else {
@@ -107,7 +110,8 @@ void put_scalar(std::string& out, const Variant& value) {
     }
 }
 
-void put_key(std::string& out, const ExternalObjectKey& key) {
+template<typename Buffer>
+void put_key(Buffer& out, const ExternalObjectKey& key) {
     const auto* parts = std::get_if<std::vector<ExternalIdentityComponent>>(&key.value);
     if(!parts) { put_scalar(out, key.value); return; }
     std::size_t size = 0;
@@ -122,30 +126,35 @@ void put_key(std::string& out, const ExternalObjectKey& key) {
 
 class Reader final {
 public:
-    explicit Reader(std::string_view input) : bytes(input) {}
+    explicit Reader(ByteView input) : m_bytes(input) {}
     std::uint64_t integer(unsigned width) {
         const auto value = take(width);
         std::uint64_t result = 0;
-        for(const auto c : value) result = (result << 8) | static_cast<unsigned char>(c);
+        for(std::size_t i = 0; i < value.size; ++i) result = (result << 8) | value.data[i];
         return result;
     }
-    std::string_view take(std::size_t count) {
-        if(count > bytes.size() - position) reject();
-        const auto result = bytes.substr(position, count);
-        position += count;
+    ByteView take(std::size_t count) {
+        if(count > remaining()) reject();
+        const ByteView result{m_bytes.data ? m_bytes.data + m_position : nullptr, count};
+        m_position += count;
         return result;
+    }
+    std::string_view text_view(std::size_t count) {
+        const auto value = take(count);
+        return value.size == 0 ? std::string_view{} :
+            std::string_view{reinterpret_cast<const char*>(value.data), value.size};
     }
     std::string text(unsigned width, std::size_t maximum) {
         const auto count = integer(width);
         if(count == 0 || count > maximum || count > remaining()) reject();
-        const auto value = take(static_cast<std::size_t>(count));
+        const auto value = text_view(static_cast<std::size_t>(count));
         if(!valid_utf8(value)) reject();
         return std::string(value);
     }
-    std::size_t remaining() const noexcept { return bytes.size() - position; }
+    std::size_t remaining() const noexcept { return m_bytes.size - m_position; }
 private:
-    std::string_view bytes;
-    std::size_t position = 0;
+    ByteView m_bytes;
+    std::size_t m_position = 0;
 };
 
 ExternalIdentityScalar read_scalar(unsigned tag, Reader& payload) {
@@ -158,7 +167,7 @@ ExternalIdentityScalar read_scalar(unsigned tag, Reader& payload) {
         return bits <= maximum ? static_cast<std::int64_t>(bits) : -static_cast<std::int64_t>(~bits) - 1;
     }
     if(tag != 3 || payload.remaining() == 0 || payload.remaining() > kMaxExternalIdentityKeyBytes) reject();
-    const auto value = payload.take(payload.remaining());
+    const auto value = payload.text_view(payload.remaining());
     if(!valid_utf8(value)) reject();
     return std::string(value);
 }
@@ -247,18 +256,20 @@ bool operator==(const ExternalObjectRef& lhs, const ExternalObjectRef& rhs) {
 }
 bool operator!=(const ExternalObjectRef& lhs, const ExternalObjectRef& rhs) { return !(lhs == rhs); }
 bool operator<(const ExternalObjectRef& lhs, const ExternalObjectRef& rhs) {
-    const auto a = serialize_external_object_ref(lhs);
-    const auto b = serialize_external_object_ref(rhs);
-    return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(),
-        [](unsigned char x, unsigned char y) { return x < y; });
+    const auto a = serialize_external_object_ref_bytes(lhs);
+    const auto b = serialize_external_object_ref_bytes(rhs);
+    return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end());
 }
 
-std::string serialize_external_object_ref(const ExternalObjectRef& value) {
+namespace {
+
+template<typename Buffer>
+Buffer encode_reference(const ExternalObjectRef& value) {
     std::size_t size = 0;
     if(!reference_size(value, size)) reject();
-    std::string out;
+    Buffer out;
     out.reserve(size);
-    out.append(MAGIC.data(), MAGIC.size());
+    out.insert(out.end(), MAGIC.begin(), MAGIC.end());
     put_uint(out, VERSION, 2);
     for(const auto* text : {&value.provider, &value.service_instance, &value.identity_domain, &value.object_kind})
         put_text(out, *text, 4);
@@ -269,10 +280,25 @@ std::string serialize_external_object_ref(const ExternalObjectRef& value) {
     return out;
 }
 
+} // namespace
+
+ByteBuffer serialize_external_object_ref_bytes(const ExternalObjectRef& value) {
+    return encode_reference<ByteBuffer>(value);
+}
+
+std::string serialize_external_object_ref(const ExternalObjectRef& value) {
+    return encode_reference<std::string>(value);
+}
+
 ExternalObjectRef deserialize_external_object_ref(std::string_view bytes) {
-    if(bytes.size() > kMaxExternalObjectRefBytes) reject();
+    return deserialize_external_object_ref_bytes(
+        {reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size()});
+}
+
+ExternalObjectRef deserialize_external_object_ref_bytes(ByteView bytes) {
+    if((!bytes.data && bytes.size != 0) || bytes.size > kMaxExternalObjectRefBytes) reject();
     Reader reader(bytes);
-    if(reader.take(4) != MAGIC || reader.integer(2) != VERSION) reject();
+    if(reader.text_view(4) != MAGIC || reader.integer(2) != VERSION) reject();
     ExternalObjectRef result;
     result.provider = reader.text(4, 128);
     result.service_instance = reader.text(4, 1024);
@@ -287,7 +313,9 @@ ExternalObjectRef deserialize_external_object_ref(std::string_view bytes) {
 }
 
 std::array<std::uint8_t, 32> external_object_ref_digest(const ExternalObjectRef& value) {
-    return sha256(serialize_external_object_ref(value));
+    const auto bytes = serialize_external_object_ref_bytes(value);
+    // The hash API retains its legacy binary-string view; this adapter does not copy.
+    return sha256({reinterpret_cast<const char*>(bytes.data()), bytes.size()});
 }
 
 } // namespace agent_memory

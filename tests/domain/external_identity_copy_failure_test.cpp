@@ -46,7 +46,7 @@ struct Fixture {
     am::ExternalIdentityScalar scalar = std::string(160, 's'), scalar_copy;
     am::ExternalObjectKey scalar_key;
     am::ExternalIdentityComponent component{std::string(48, 'n'), std::string(160, 'v')}, component_copy;
-    const std::string original_bytes = am::serialize_external_object_ref(original);
+    const am::ByteBuffer original_bytes = am::serialize_external_object_ref_bytes(original);
     const am::ByteBuffer input_bytes = am::serialize_conversation_envelope(input);
 
     explicit Fixture(Operation op) {
@@ -69,7 +69,7 @@ struct Fixture {
         }
     }
     void verify_source() const {
-        expect(am::serialize_external_object_ref(original) == original_bytes, "source external bytes unchanged");
+        expect(am::serialize_external_object_ref_bytes(original) == original_bytes, "source external bytes unchanged");
         expect(am::serialize_conversation_envelope(input) == input_bytes, "source envelope bytes unchanged");
         expect(std::get<std::string>(component.value) == std::string(160, 'v'), "component source unchanged");
         expect(std::visit([&](const auto& value) { return std::get<std::decay_t<decltype(value)>>(scalar_key.value) == value; },
@@ -81,7 +81,7 @@ struct Fixture {
             expect(scalar_copy == scalar && scalar_copy.index() == scalar.index(), "scalar type/value retained"); break;
         case Operation::Component: expect(component_copy == component, "component retained"); break;
         case Operation::Composite: expect(copied.object_key == original.object_key, "composite retained"); break;
-        case Operation::Ref: expect(am::serialize_external_object_ref(copied) == original_bytes, "AMXR bytes retained"); break;
+        case Operation::Ref: expect(am::serialize_external_object_ref_bytes(copied) == original_bytes, "AMXR bytes retained"); break;
         case Operation::Binding:
             expect(*output.metadata.source->event == *input.metadata.source->event &&
                 *output.metadata.source->object == *input.metadata.source->object, "both source refs retained"); break;
