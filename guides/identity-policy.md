@@ -18,7 +18,15 @@ An identity policy does not authorize a migration, production activation or
 rewriting a legacy constructor. Conversation/Event Model, TypedMetadata,
 ConversationStore and canonical publication remain separate workstreams.
 
-### Current implementation status addendum (2026-11-24)
+### Current implementation status addendum (2026-11-25)
+
+Direct AMXR ByteBuffer/ByteView entry points are integrated through #700 at
+`main@7a9be667b4f5657c1c50590dde6b0a4888acdd4b`. New AMCE/import consumers use
+them directly; optional legacy functions share the same codec and bytes. The
+source-bound [AMXR delta](audits/2026-11-foundation-amxr-integration-delta.json)
+complements rather than rewrites the historical inventory. P4-0 design is
+owner-approved for a separate P4-1 implementation Draft; durable runtime is
+not yet implemented or deployed at this integration gate.
 
 At `main@77a278bef338074227efa05365e83e967334f429`, Conversation identity,
 AMCE, the in-memory reference store/corrections and source importer are

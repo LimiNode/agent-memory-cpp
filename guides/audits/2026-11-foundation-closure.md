@@ -1,5 +1,23 @@
 # Foundation Closure Gate before durable Phase 4
 
+## Accepted integration addendum (2026-11-25)
+
+The owner has accepted the P4-0 design and authorized qualified #700/#699
+integration followed by P4-1 in a separate Draft. The original inspected-source
+receipt below remains historical, including its then-current HOLD conditions.
+#700 is now integrated at `main@7a9be667b4f5657c1c50590dde6b0a4888acdd4b`, tree
+`32fbfcf25ab070735aad9203f82b5e4da7447d88`. Final #700 `f7de2469` passed GNU/MSVC
+64/64 tests each, Linux GNU15.2 Debug ASan/UBSan8/8 targeted codec/copy/store/import
+controls, CI45528005943 and Packaging45528005671 (6/6). No wire, preimage or
+golden changes. See the [integration delta](2026-11-foundation-amxr-integration-delta.json)
+and [verifier](verify-foundation-amxr-delta.py); historical ledgers/catalogues
+are unchanged. Durable runtime remains NOT IMPLEMENTED at this gate; approval
+of design is not schema deployment. Other byte API and numeric product work
+remain open. The [release progress register](../markdown-technical-preview-release-candidate.md#current-progress-register-2026-11-25)
+separates profiles, prior merged HOLDs and current qualification gaps without
+expanding release scope. No release, migration, deployment or P4-1 merge is
+authorized by this addendum.
+
 - Date: 2026-11-24. Owner: storage/identity/conversation contracts.
 - Scope: P4-0 review, not P4-1 authorization or product migration.
 - Inspected main: `77a278bef338074227efa05365e83e967334f429`.

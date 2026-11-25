@@ -1,6 +1,7 @@
-# Conversation Phase 4: proposed MDBX physical contract (P4-0)
+# Conversation Phase 4: approved MDBX physical contract (P4-0)
 
-- Status: **draft proposal; NOT IMPLEMENTED, NOT DEPLOYED**. No API/schema freeze.
+- Status: **OWNER-APPROVED FOR P4-1 IMPLEMENTATION; runtime NOT IMPLEMENTED,
+  NOT DEPLOYED**. No published API/deployed-schema freeze.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
 - Base: integrated Phase 2/3 tree `00cbb85105cb57a5a455dbb0e380238edef74cfa`,
   `main@77a278bef338074227efa05365e83e967334f429`, promotion PR #698.
@@ -8,7 +9,7 @@
   retention, synchronization change or migration.
 - Parent: [Phase 4 plan](conversation-durable-store-phase4-plan.md).
 
-This guide owns the **proposed physical encoding and transaction boundary**,
+This guide owns the **approved physical encoding and transaction boundary**,
 not event meaning. The [event contract](conversation-event-contract.md),
 [reference store](conversation-reference-store.md),
 [source importer](conversation-source-import.md), [identity policy](identity-policy.md)
@@ -16,8 +17,11 @@ and [backend boundary](storage-backend-integration-roadmap.md) remain their
 semantic owners. [YAML](dbi-manifest.yaml) is the sole DBI inventory/budget
 authority; the [physical guide](mdbx-containers-extension-tz.md) contains its
 checked review projection. All fixtures and performance measurements below
-are **NOT RUN** for a durable Conversation adapter. Owner approval and separate
-implementation PRs are required; P4-0 deploys nothing.
+are **NOT RUN** for a durable Conversation adapter. The owner accepted P4-0
+on 2026-11-25 and authorized P4-1 in a separate Draft after qualified #700/#699
+integration. P4-0 deploys nothing; release, migration and automatic P4-1 merge
+remain unauthorized. AMXR byte APIs are integrated through #700 at
+`main@7a9be667b4f5657c1c50590dde6b0a4888acdd4b`.
 
 ## 1. Reuse, ownership and smallest layout
 
@@ -600,8 +604,8 @@ Either implement a bounded oracle-conformant baseline for the advertised
 interface or keep the first durable vertical internal until it is conformant;
 review this concrete choice in P4-1. P4-0 adds no API enum or runtime stub.
 
-Owner review must approve the three-DBI/witness/profile proposal, collision
-budgets and instance-bound continuation decision before P4-1. The complete
+Owner review has approved the three-DBI/witness/profile design, collision
+budgets and instance-bound continuation decision for P4-1. The complete
 codec descriptor field list and exact optional constructor/error surface are
 pre-implementation checks, not permission to freeze/deploy this draft. Current
 strategy, portable historical request and migration remain explicit later gates.

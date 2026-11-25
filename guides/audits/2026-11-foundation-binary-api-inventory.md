@@ -5,6 +5,17 @@ Source: `main@77a278bef338074227efa05365e83e967334f429`;
 tree `00cbb85105cb57a5a455dbb0e380238edef74cfa`.
 The [closure report](2026-11-foundation-closure.md) owns gate disposition.
 
+Integration addendum (2026-11-25): #700 is merged at
+`main@7a9be667b4f5657c1c50590dde6b0a4888acdd4b`. AMXR REPLACE items below
+describe the historical inspected source, not current missing work. Direct
+byte APIs and AMCE/importer consumers are now integrated; legacy entry points
+remain explicit compatibility boundaries. The
+[four-file delta](2026-11-foundation-amxr-integration-delta.json) and
+[verifier](verify-foundation-amxr-delta.py) bind the new source without rewriting
+this inventory, its ledger or AST catalogue. Run with `--current` at the
+documentation integration gate; later production changes need their own delta.
+Other DEFER items remain open.
+
 ## Coverage and interpretation
 
 The [source ledger](2026-11-foundation-source-inventory.json) enumerates ALL
