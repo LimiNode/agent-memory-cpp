@@ -91,8 +91,11 @@ adds bounded source-shaped normalization and an atomic import-key/Entry/append
 seam over that reference backend. It is instance-local, not a provider SDK,
 durable allocator, artifact authenticity check or full Conversation Core.
 The separate [Phase 4 P4-0 physical proposal](conversation-durable-physical-contract.md)
-reuses existing MDBX context/transactions and proposes three optional DBIs;
-no durable Conversation adapter, schema deployment or P4-1 code exists yet.
+reuses existing MDBX context/transactions and defines three optional DBIs.
+P4-1 adds a private optional create/import/exact/history/reopen implementation
+and private byte codecs; it is not installed as an incomplete public store.
+See the [qualification note](experiments/2026-11-25-conversation-durable-p4-1.md).
+Schema deployment, crash/races, corrections and Current remain separate gates.
 The [Foundation Closure Gate](audits/2026-11-foundation-closure.md) reviews
 binary APIs, identity integration and durable key/quota policy before P4-1;
 the gate does not activate numeric product defaults or future memory facades.

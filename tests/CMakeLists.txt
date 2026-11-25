@@ -9,12 +9,22 @@ target_link_libraries(agent_memory_smoke
 
 add_test(NAME agent_memory_smoke COMMAND agent_memory_smoke)
 
+add_executable(agent_memory_conversation_durable_codec_test
+    storage/conversation_durable_codec_test.cpp)
+target_link_libraries(agent_memory_conversation_durable_codec_test PRIVATE agent_memory::agent_memory)
+add_test(NAME agent_memory_conversation_durable_codec_test COMMAND agent_memory_conversation_durable_codec_test)
+
 file(GLOB_RECURSE agent_memory_public_headers
     CONFIGURE_DEPENDS
     RELATIVE ${PROJECT_SOURCE_DIR}/src
     ${PROJECT_SOURCE_DIR}/src/*.hpp
 )
 list(SORT agent_memory_public_headers)
+list(REMOVE_ITEM agent_memory_public_headers
+    "agent_memory/ingestion/ConversationSourceImporterInternal.hpp"
+    "agent_memory/infrastructure/mdbx/ConversationDurableCodecInternal.hpp"
+    "agent_memory/infrastructure/mdbx/MdbxConversationDurableInternal.hpp"
+)
 
 # These public headers intentionally reject JSON-disabled translation units.
 # Keep the generic self-sufficiency target focused on headers available in the
@@ -852,6 +862,29 @@ target_compile_definitions(agent_memory_feature_flags_test
 add_test(NAME agent_memory_feature_flags_test COMMAND agent_memory_feature_flags_test)
 
 if(AGENT_MEMORY_ENABLE_MDBX)
+    add_executable(agent_memory_conversation_durable_boundaries_test
+        infrastructure/mdbx/conversation_durable_boundaries_test.cpp)
+    target_link_libraries(agent_memory_conversation_durable_boundaries_test
+        PRIVATE agent_memory::agent_memory ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET})
+    add_test(NAME agent_memory_conversation_durable_boundaries_test
+        COMMAND agent_memory_conversation_durable_boundaries_test)
+
+    add_executable(agent_memory_conversation_durable_failure_test
+        infrastructure/mdbx/conversation_durable_failure_test.cpp)
+    target_link_libraries(agent_memory_conversation_durable_failure_test
+        PRIVATE agent_memory::agent_memory ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET})
+    add_test(NAME agent_memory_conversation_durable_failure_test
+        COMMAND agent_memory_conversation_durable_failure_test)
+    set_tests_properties(agent_memory_conversation_durable_failure_test
+        PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+
+    add_executable(agent_memory_mdbx_conversation_durable_test
+        infrastructure/mdbx/mdbx_conversation_durable_test.cpp)
+    target_link_libraries(agent_memory_mdbx_conversation_durable_test
+        PRIVATE agent_memory::agent_memory ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET})
+    add_test(NAME agent_memory_mdbx_conversation_durable_test
+        COMMAND agent_memory_mdbx_conversation_durable_test)
+
     add_executable(agent_memory_mdbx_dependency_bulk_retrieval_test
         infrastructure/mdbx/mdbx_dependency_bulk_retrieval_test.cpp)
     target_link_libraries(agent_memory_mdbx_dependency_bulk_retrieval_test

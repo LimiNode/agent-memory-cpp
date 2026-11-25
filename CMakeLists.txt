@@ -109,6 +109,8 @@ add_library(agent_memory STATIC
     src/agent_memory/storage/CanonicalContentStore.cpp
     src/agent_memory/storage/ConversationStore.cpp
     src/agent_memory/ingestion/ConversationSourceImporter.cpp
+    src/agent_memory/ingestion/ConversationSourceImporterInternal.cpp
+    src/agent_memory/infrastructure/mdbx/ConversationDurableCodecInternal.cpp
     src/agent_memory/storage/CanonicalFlatStorage.cpp
     src/agent_memory/storage/CanonicalNavigationStore.cpp
     src/agent_memory/storage/FileRawBlobStore.cpp
@@ -169,6 +171,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         PRIVATE
             src/agent_memory/infrastructure/mdbx/MdbxDocumentStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxStorageContext.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxConversationDurableInternal.cpp
             src/agent_memory/infrastructure/mdbx/MdbxStorageIdentityMapping.cpp
             src/agent_memory/infrastructure/mdbx/MdbxExactIndexGenerationStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentStore.cpp
@@ -2629,6 +2632,9 @@ install(DIRECTORY src/agent_memory/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/agent_memory
     FILES_MATCHING
         PATTERN "CanonicalContentStoreInternal.hpp" EXCLUDE
+        PATTERN "ConversationSourceImporterInternal.hpp" EXCLUDE
+        PATTERN "ConversationDurableCodecInternal.hpp" EXCLUDE
+        PATTERN "MdbxConversationDurableInternal.hpp" EXCLUDE
         PATTERN "*.hpp"
         PATTERN "*.h"
         PATTERN "*.ipp"

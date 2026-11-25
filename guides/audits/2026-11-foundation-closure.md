@@ -9,10 +9,16 @@ receipt below remains historical, including its then-current HOLD conditions.
 `32fbfcf25ab070735aad9203f82b5e4da7447d88`. Final #700 `f7de2469` passed GNU/MSVC
 64/64 tests each, Linux GNU15.2 Debug ASan/UBSan8/8 targeted codec/copy/store/import
 controls, CI45528005943 and Packaging45528005671 (6/6). No wire, preimage or
-golden changes. See the [integration delta](2026-11-foundation-amxr-integration-delta.json)
+golden changes. #699 is integrated at
+`4418a58c41d6c4e8f42d311708f849e00e40e59f` (qualified head `3b6936b5`,
+tree `7dc0bcb5e7cbb4c3a1c5b6a0aa52c0626680244f`); exact-head
+CI45543670619/Packaging45543670719 and post-main
+CI45544579308/Packaging45544580025 succeeded. See the [integration delta](2026-11-foundation-amxr-integration-delta.json)
 and [verifier](verify-foundation-amxr-delta.py); historical ledgers/catalogues
-are unchanged. Durable runtime remains NOT IMPLEMENTED at this gate; approval
-of design is not schema deployment. Other byte API and numeric product work
+are unchanged. Durable runtime was NOT IMPLEMENTED at that integration gate.
+The subsequent [private P4-1 vertical](../experiments/2026-11-25-conversation-durable-p4-1.md)
+is implemented under review, not a complete installed store or schema deployment.
+Other byte API and numeric product work
 remain open. The [release progress register](../markdown-technical-preview-release-candidate.md#current-progress-register-2026-11-25)
 separates profiles, prior merged HOLDs and current qualification gaps without
 expanding release scope. No release, migration, deployment or P4-1 merge is

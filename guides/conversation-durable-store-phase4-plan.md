@@ -1,8 +1,7 @@
 # Conversation Core Phase 4 implementation brief
 
-- Status: P4-0 physical design OWNER-APPROVED; durable runtime NOT STARTED at
-  this integration gate. P4-1 separate Draft authorized after qualified
-  #700/#699 integration; no automatic P4-1 merge.
+- Status: P4-0 integrated; P4-1 INTERNAL IMPLEMENTATION UNDER REVIEW in a
+  separate Draft. No automatic P4-1 merge, deployed schema or full Core claim.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
 - Entry gate: qualified combined Phase 2/3A/3B tree and separate owner decision.
 - Contract owners: [events](conversation-event-contract.md),
@@ -35,6 +34,11 @@ P4-1 authorization. It separates profile-qualified compact physical keys from
 full logical references, durable quotas from in-memory ceilings, and typed
 byte codecs from legacy string adapters. Owner approval is now recorded;
 #700 byte APIs are integrated at `main@7a9be667b4f5657c1c50590dde6b0a4888acdd4b`.
+#699 is integrated at `main@4418a58c41d6c4e8f42d311708f849e00e40e59f`.
+The [P4-1 qualification note](experiments/2026-11-25-conversation-durable-p4-1.md)
+tracks the private create/import/exact/history/reopen implementation. Mandatory
+Current/correct semantics are intentionally not exposed through a partial
+public interface. No store-wide history is hydrated at open or per import.
 
 ## Transaction and authority decisions
 
@@ -176,4 +180,10 @@ order; concurrency tests compare actual committed order, not thread start time.
 P4-1 is the first authorized implementation boundary, contingent on qualified
 integration of P4-0 and its AMXR correction. It must not be shipped
 as a fully durable Conversation Core before P4-2/P4-3 recovery/frontier gates.
-No production Phase 4 code is part of the current integration rehearsal.
+P4-1 adds private optional backend code, not a deployed/public full store.
+Before Phase 4 completion, P4-5 must execute at least 65537 small admissions
+with explicit durable quotas, close/fresh-process reopen and bounded first/
+middle/last-page reads plus replay at a reached quota. This scale fixture is
+deferred from P4-1: synchronous per-record commits and the current multi-toolchain
+fault/sanitizer qualification are the bounded first-slice workload. Source
+inspection of u64 counters and synthetic MAX seeds are not that scale evidence.

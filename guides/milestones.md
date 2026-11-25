@@ -94,14 +94,15 @@ immutable exact history, deterministic current views, CAS correction and bounded
 snapshot paging. The dependent [Phase 3B source importer](conversation-source-import.md)
 adds authored source-shaped normalization, instance-local idempotence and
 coordinated key/ID admission, not upstream SDK or durable recovery qualification.
-Durable ID allocation/persistence (4), full Core qualification (5) and the derived
-bridge (6) remain Planned. The separate
+Durable ID allocation/persistence (4) has a private P4-1 implementation under
+review; full Phase 4, Core qualification (5) and the derived bridge (6) remain
+Planned. The separate
 [Phase 4 implementation brief](conversation-durable-store-phase4-plan.md)
 defines durable slices and gates. The owner has authorized P4-1 implementation
 in a separate Draft after qualified #700/#699 integration.
 Its concrete [P4-0 physical contract](conversation-durable-physical-contract.md)
-and optional three-DBI manifest delta are approved design, NOT IMPLEMENTED or
-deployed by this document; the full profile remains Planned.
+and optional three-DBI manifest delta have a private P4-1 implementation, not a
+deployed schema or complete installed API; the full profile remains Planned.
 Review and qualify
 each slice before advertising the complete profile. The revised
 [AMCE envelope](conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)

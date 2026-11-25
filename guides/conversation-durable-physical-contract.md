@@ -1,7 +1,7 @@
 # Conversation Phase 4: approved MDBX physical contract (P4-0)
 
-- Status: **OWNER-APPROVED FOR P4-1 IMPLEMENTATION; runtime NOT IMPLEMENTED,
-  NOT DEPLOYED**. No published API/deployed-schema freeze.
+- Status: **P4-1 INTERNAL IMPLEMENTATION UNDER REVIEW; NOT DEPLOYED**.
+  No published durable API/deployed-schema freeze; full Phase 4 remains open.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
 - Base: integrated Phase 2/3 tree `00cbb85105cb57a5a455dbb0e380238edef74cfa`,
   `main@77a278bef338074227efa05365e83e967334f429`, promotion PR #698.
@@ -16,12 +16,20 @@ not event meaning. The [event contract](conversation-event-contract.md),
 and [backend boundary](storage-backend-integration-roadmap.md) remain their
 semantic owners. [YAML](dbi-manifest.yaml) is the sole DBI inventory/budget
 authority; the [physical guide](mdbx-containers-extension-tz.md) contains its
-checked review projection. All fixtures and performance measurements below
-are **NOT RUN** for a durable Conversation adapter. The owner accepted P4-0
+checked review projection. P4-1 executable evidence and its unrun gates are
+tracked in the [qualification note](experiments/2026-11-25-conversation-durable-p4-1.md).
+Crash/races, corrections, Current strategy and full scale remain later gates.
+The owner accepted P4-0
 on 2026-11-25 and authorized P4-1 in a separate Draft after qualified #700/#699
 integration. P4-0 deploys nothing; release, migration and automatic P4-1 merge
 remain unauthorized. AMXR byte APIs are integrated through #700 at
 `main@7a9be667b4f5657c1c50590dde6b0a4888acdd4b`.
+
+#699 was integrated at `4418a58c41d6c4e8f42d311708f849e00e40e59f`.
+P4-1 uses private physical codecs and a private optional MDBX vertical, not
+an incomplete `IConversationStore`/`IConversationImportSink`. Its three headers
+are excluded from install. No Current/correction method or public continuation
+is advertised. This is the internal alternative selected in section 8.
 
 ## 1. Reuse, ownership and smallest layout
 
@@ -64,9 +72,10 @@ KV mirroring is not logical replication. Sync activation is DEFERRED.
 
 ### DBI capacity proposal
 
-The delta is optional, `default: false`, documentation-only. It adds three
-steady/peak named DBIs; it does not alter existing reference totals or activate
-a capability. Named-DBI capacity excludes MDBX's main DB.
+The delta is optional, `default: false`, and used only by the internal P4-1
+qualification slice. It adds three steady/peak named DBIs; it does not alter
+existing reference totals or activate a default/public capability. Named-DBI
+capacity excludes MDBX's main DB.
 
 | Composition | Accounted peak | Required max_dbs for 16 free | Result |
 | --- | ---: | ---: | --- |
@@ -131,8 +140,8 @@ Read-only open also refuses a layout it cannot interpret. Any exact key has
 fixed size independent of namespace length. Never append a full AMXR to a physical
 key: a valid AMXR can be 65,536 bytes before source-revision framing.
 
-Literal key control (not an executed fixture): namespace `a`, conversation 1,
-entry 2, revision 3:
+Literal key control: namespace `a`, conversation 1, entry 2, revision 3.
+P4-1 independently exercises this grammar in its private-codec fixtures:
 
 ```text
 01 01 00 00 00 00 00 00 00 01
@@ -367,7 +376,8 @@ artifact evidence before entry (host obligation). Then:
 Create is also one transaction: immutable scope, allocator initialized to 1,
 created generation and generation row with absent EntryRef. It increments
 generation exactly as the reference oracle does. Repeat same scope returns
-NoChange at current generation; scope mismatch denies. Correction checks CAS
+NoChange at current generation; a hidden scope returns NotFound as in the
+reference import sink, without a ref/generation. Correction checks CAS
 before no-op and appends revision/receipt/generation/counters in one transaction;
 it leaves source rows/allocator unchanged. Correction NoChange reports current
 generation, whereas import replay reports original admission generation.
@@ -396,14 +406,20 @@ and report success speculatively.
 Backend exceptions remain infrastructure errors, not fabricated domain Conflict
 or a new giant public error hierarchy. A commit-error fixture must inspect
 reopen state rather than assume that every exception means durable rollback.
+For an already-fetched row, check an impossible structural length against its
+immutable profile/row-family ceiling before charging local raw-read bytes.
+This is a constant-time length check, not permission for unbudgeted decoding
+or further scanning. A structurally admissible row may still exhaust a smaller
+local budget without being diagnosed as corruption.
 
 ### Finite profile and operational limits
 
 Reuse codec grammar, source validation and logical charge definitions, NOT the
 reference backend's total ceilings. Its 4096/65536 entries/mappings, 64/1024
 revisions and 64/256 MiB totals are in-memory implementation policy, not durable
-limits. NoChange still validates current access/input. The proposed durable
-limits below are separate; no P4 options/runtime are implemented yet.
+limits. NoChange still validates current access/input. The durable limits below
+are separate; private P4-1 options support create/import/exact/history only,
+not corrections or quota updates.
 
 | Limit | Default / supported maximum | Unit; scope; reason | Exhaustion / reopen behavior |
 | --- | --- | --- | --- |
@@ -431,6 +447,24 @@ folds use memory independent of total persisted history. The live preparation
 budget is a buffer charge, NOT an RSS guarantee: account simultaneous copies
 and containers before allocation, then measure peak heap/RSS/allocator overhead
 in qualification. Wire-size preflight alone is insufficient memory evidence.
+The internal slice reserves a 16 KiB fixed operation slab; AMXR preflight and
+validation are temporary scratch. Source bucket scratch is reused per row,
+while matched keys and witnesses remain charged. Target-lookup scratch is
+released before writer preparation. New admissions reserve twelve logical
+observation copies plus four codec-object slabs; replay never reserves those
+future writer buffers. Object slabs account container elements separately from
+wire bytes. Arrays of prepared rows move wrapped values, avoiding
+initializer-list buffer copies. The note records actual replaceable-C++
+allocation requests, not MDBX malloc, allocator overhead or measured peak RSS.
+Initialization/bootstrap is a separate fixed operation (64 KiB), so zero local
+read budgets can still open the profile.
+
+Full replay compatibility uses local raw budget 256 MiB, live budget 512 MiB
+and 262144 physical visits with the exact persisted descriptor/quotas; these
+cover an admitted maximum collision bucket plus revision and metadata reads.
+The smaller local defaults are an operational policy, not a claim that every
+extended-profile witness can be replayed under 32 MiB of raw work. A stricter
+local policy may refuse without diagnosing corruption or invalidating history.
 
 New physical limits proposed: 32 MiB encoded changed key+value bytes per
 transaction by default (cap 256 MiB), including duplicated witness/key/index
@@ -583,7 +617,7 @@ See the [foundation gate](audits/2026-11-foundation-closure.md).
 | NEW proposed | Three DBIs, private versioned witness/value/key framing, durable allocator/generation and collision-verifying source buckets |
 | DEFER | Portable cursor/export API, selected Current projection/checkpoints, migration/retention/erase, sync, SQLite, provider SDKs, runtime execution, generic knowledge/Managed Memory Blocks |
 
-Proposed P4-1 public direction: optional concrete `MdbxConversationImportSink`
+Deferred public direction: optional concrete `MdbxConversationImportSink`
 implementing existing `IConversationImportSink`, constructed from existing
 `MdbxStorageContext` plus bounded options, returning a lifetime-bound const
 `IConversationStore&`. This is a design name, **not a published signature**.

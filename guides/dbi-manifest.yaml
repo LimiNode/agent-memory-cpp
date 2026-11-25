@@ -253,14 +253,14 @@ profile_deltas:
     dbis: 3
     migration_peak: 3
     default: false
-    activation: proposed_documentation_only
-    schema_status: proposed_not_implemented
+    activation: internal_qualification_only
+    schema_status: internal_p4_1_not_deployed
     schema_version: conversation_durable.v1.be.keys.sha256.values.witness1
     default_table_prefix: agent_memory
     names_are_suffixes: true
     names: [conversation_meta_v1, conversation_events_v1, conversation_sources_v1]
     note: >-
-      P4-0 proposal only, not an activated profile or production schema. See
+      P4-1 internal qualification only, not a default or deployed schema. See
       conversation-durable-physical-contract.md for key/value/witness grammar,
       scope/allocator/generation atomicity and full-key collision checks. Does
       not reuse conversation_episode_payloads or change expanded_peak_reference.
