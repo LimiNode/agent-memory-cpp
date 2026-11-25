@@ -50,6 +50,7 @@ struct Fixture final {
     std::filesystem::path path;
     std::shared_ptr<am::MdbxStorageContext> context;
     cd::Quotas policy;
+    cd::StorageDescriptor descriptor;
     explicit Fixture(cd::Quotas input = quotas()) : policy(input) {
         static std::uint64_t serial = 0;
         path = std::filesystem::temp_directory_path() / ("agent_memory_durable_boundaries_" +
@@ -73,6 +74,7 @@ struct Fixture final {
         cd::DurableOptions result(context, conversation().allocation_namespace, policy,
             {info.mi_geo.upper, info.mi_geo.grow});
         result.allow_initialize = initialize;
+        result.descriptor = descriptor;
         return result;
     }
     std::vector<RawRow> snapshot() const {
@@ -133,6 +135,134 @@ void refused_unchanged(Fixture& fixture, cd::MdbxConversationDurable& store,
     expect(result.status == am::ConversationWriteStatus::ResourceLimit && !result.ref && !result.commit_generation,
         "Boundary refusal must be ResourceLimit without a hidden receipt");
     expect(fixture.snapshot() == before, "Boundary refusal changed physical rows/counters");
+}
+
+template<typename Function>
+void corrupt_unchanged(Fixture& fixture, Function operation, const char* message) {
+    const auto before = fixture.snapshot(); bool is_corruption = false;
+    try { operation(); }
+    catch(const cd::CodecError& error) { is_corruption = error.code() == cd::CodecCode::Corruption; }
+    expect(is_corruption, message);
+    expect(fixture.snapshot() == before, "Corruption refusal changed persisted rows");
+}
+
+void profile_size_and_local_budget() {
+    Fixture fixture; create(fixture);
+    const auto key = cd::encode_profile_key(); const auto original = fixture.get(0, key);
+    const auto charge = key.size() + original.size();
+    auto missing = observation(); missing.conversation = conversation(2);
+    for(const auto budget : {charge, charge - 1, std::size_t{0}}) {
+        auto options = fixture.options(false); options.max_read_raw_bytes = budget;
+        // Bootstrap has its own fixed schema budget, even when subsequent reads
+        // have no raw-byte allowance. A valid profile never becomes corruption.
+        cd::MdbxConversationDurable store(options); const auto before = fixture.snapshot();
+        const auto read = store.read_history(access(), conversation(2));
+        const auto write = store.import_observation(access(), missing);
+        expect(read.status == (budget == charge ? am::ConversationReadStatus::NotFound :
+            am::ConversationReadStatus::BudgetExhausted), "Valid profile local read boundary misclassified");
+        expect(write.status == (budget == charge ? am::ConversationWriteStatus::NotFound :
+            am::ConversationWriteStatus::ResourceLimit), "Valid profile local write boundary misclassified");
+        expect(!write.ref && !write.commit_generation && fixture.snapshot() == before,
+            "Local profile budget refusal changed persisted state");
+    }
+    for(const auto size : {std::size_t{65537}, std::size_t{65536}, cd::kMaxProfileValueBytes + 1,
+            cd::kMaxProfileValueBytes}) {
+        auto malformed = original; malformed.resize(size, 0);
+        fixture.put(0, key, malformed);
+        corrupt_unchanged(fixture, [&fixture] { cd::MdbxConversationDurable store(fixture.options(false)); },
+            "Malformed profile bootstrap must report corruption, not local ResourceLimit");
+        fixture.put(0, key, original);
+        auto options = fixture.options(false);
+        // At the size ceiling the deliberately malformed grammar needs decode
+        // budget. Beyond it the already-fetched impossible length is decisive.
+        options.max_read_raw_bytes = size == cd::kMaxProfileValueBytes ? key.size() + size : 0;
+        cd::MdbxConversationDurable store(options); fixture.put(0, key, malformed);
+        corrupt_unchanged(fixture, [&store] { (void)store.read_history(access(), conversation(2)); },
+            "Malformed loaded profile read must report corruption");
+        corrupt_unchanged(fixture, [&store, &missing] { (void)store.import_observation(access(), missing); },
+            "Malformed loaded profile write must report corruption");
+        fixture.put(0, key, original);
+        if(size == cd::kMaxProfileValueBytes) {
+            options.max_read_raw_bytes = 0; cd::MdbxConversationDurable bounded(options);
+            fixture.put(0, key, malformed); const auto before = fixture.snapshot();
+            expect(bounded.read_history(access(), conversation(2)).status == am::ConversationReadStatus::BudgetExhausted &&
+                bounded.import_observation(access(), missing).status == am::ConversationWriteStatus::ResourceLimit &&
+                fixture.snapshot() == before, "Possible profile length must not force decode beyond local budget");
+            fixture.put(0, key, original);
+        }
+    }
+}
+
+void fetched_row_size_precedes_local_budget() {
+    Fixture fixture;
+    fixture.descriptor.codec.max_frame_bytes = 2048;
+    fixture.descriptor.bucket_bytes = 4096;
+    create(fixture);
+    am::ConversationWriteResult admitted;
+    { cd::MdbxConversationDurable store(fixture.options(false)); admitted = store.import_observation(access(), observation()); }
+    expect(admitted.status == am::ConversationWriteStatus::Applied && admitted.ref, "Size-boundary import failed");
+    const auto profile_key = cd::encode_profile_key(); const auto profile_value = fixture.get(0, profile_key);
+    const auto conversation_key = cd::encode_conversation_key(conversation().id);
+    const auto conversation_value = fixture.get(0, conversation_key);
+    const auto revision_key = cd::encode_revision_key({conversation().id, admitted.ref->entry, admitted.ref->revision});
+    const auto revision_value = fixture.get(1, revision_key);
+    const auto generation_key = cd::encode_generation_key(admitted.commit_generation);
+    const auto source_body = cd::encode_logical_source_key(observation().source);
+    const auto source_key = cd::encode_source_key({conversation().id, cd::source_digest(view(source_body)), 0});
+    const auto profile_charge = profile_key.size() + profile_value.size();
+    const auto conversation_charge = conversation_key.size() + conversation_value.size();
+    const auto revision_charge = revision_key.size() + revision_value.size();
+    const auto frame_limit = fixture.descriptor.codec.max_frame_bytes;
+    struct Case final { std::size_t table; am::ByteBuffer key; std::size_t value_limit, prior_bytes; };
+    const Case cases[] = {
+        {0, conversation_key, frame_limit + 20 + cd::kValueOverheadBytes, profile_charge},
+        {1, revision_key, frame_limit + 153 + cd::kValueOverheadBytes, profile_charge + conversation_charge},
+        {1, generation_key, cd::kMaxGenerationValueBytes, profile_charge + conversation_charge + revision_charge},
+        {2, source_key, static_cast<std::size_t>(fixture.descriptor.bucket_bytes), profile_charge + conversation_charge}
+    };
+    for(const auto& selected : cases) {
+        const auto original = fixture.get(selected.table, selected.key);
+        auto options = fixture.options(false); options.max_read_raw_bytes = selected.prior_bytes;
+        cd::MdbxConversationDurable store(options);
+        auto at_limit = original; at_limit.resize(selected.value_limit, 0);
+        fixture.put(selected.table, selected.key, at_limit);
+        // Equality alone proves no corruption: do not decode malformed bytes
+        // that remain within the structural ceiling after local work is spent.
+        if(selected.table == 2) refused_unchanged(fixture, store, observation());
+        else {
+            const auto before = fixture.snapshot(); const auto result = store.read_exact(access(), *admitted.ref);
+            expect(result.status == am::ConversationReadStatus::BudgetExhausted && fixture.snapshot() == before,
+                "Possible fetched row length must retain local budget refusal");
+        }
+        auto oversized = original; oversized.resize(selected.value_limit + 1, 0);
+        fixture.put(selected.table, selected.key, oversized);
+        if(selected.table == 2) {
+            corrupt_unchanged(fixture, [&store] { (void)store.import_observation(access(), observation()); },
+                "Oversized fetched source row must report corruption before local budget");
+        } else {
+            corrupt_unchanged(fixture, [&store, &admitted] { (void)store.read_exact(access(), *admitted.ref); },
+                "Oversized fetched metadata/event row must report corruption before local budget");
+            if(selected.key != generation_key) {
+                corrupt_unchanged(fixture, [&store] { (void)store.read_history(access(), conversation()); },
+                    "Oversized fetched history row must report corruption before local budget");
+            }
+            if(selected.table == 0) {
+                corrupt_unchanged(fixture, [&store] { (void)store.create_conversation(access(), conversation()); },
+                    "Oversized existing conversation must report corruption before local budget");
+            }
+        }
+        fixture.put(selected.table, selected.key, original);
+        // The same low budget must not falsely label the valid original row.
+        if(selected.table == 2) {
+            const auto before = fixture.snapshot(); const auto result = store.import_observation(access(), observation());
+            expect(result.status == am::ConversationWriteStatus::ResourceLimit && fixture.snapshot() == before,
+                "Valid fetched source row must retain local resource refusal");
+        } else {
+            const auto before = fixture.snapshot(); const auto result = store.read_exact(access(), *admitted.ref);
+            expect(result.status == am::ConversationReadStatus::BudgetExhausted && fixture.snapshot() == before,
+                "Valid fetched metadata/event row must retain local budget refusal");
+        }
+    }
 }
 
 void allocator_exhaustion() {
@@ -299,8 +429,9 @@ void invalid_dto_error_order() {
 
 int main() {
     try {
+        profile_size_and_local_budget(); fetched_row_size_precedes_local_budget();
         allocator_exhaustion(); generation_exhaustion(); quota_and_counter_no_wrap(); owned_context_lifetime(); invalid_dto_error_order();
-        std::puts("PASS durable allocator/generation/quota boundaries, owned context and invalid DTO error-order parity");
+        std::puts("PASS durable structural/local budgets, allocator/generation/quota boundaries, owned context and DTO order");
         return 0;
     } catch(const std::exception& error) { std::fprintf(stderr, "durable boundaries: %s\n", error.what()); return 1; }
 }

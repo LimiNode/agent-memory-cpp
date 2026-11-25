@@ -12,6 +12,11 @@ namespace agent_memory::detail::conversation_durable {
 
 inline constexpr const char* kSchemaMarker = "conversation_durable.v1.be.keys.sha256.values.witness1";
 inline constexpr std::size_t kMaxPhysicalBytes = 256U * 1024U * 1024U;
+inline constexpr std::size_t kValueOverheadBytes = 2 + 4 + 32;
+inline constexpr std::size_t kMaxProfileBytes = 4096;
+inline constexpr std::size_t kMaxProfileValueBytes = kMaxProfileBytes + kValueOverheadBytes;
+inline constexpr std::size_t kMaxGenerationBytes = 160;
+inline constexpr std::size_t kMaxGenerationValueBytes = kMaxGenerationBytes + kValueOverheadBytes;
 using Digest = std::array<std::uint8_t, 32>;
 using Incarnation = std::array<std::uint8_t, 16>;
 

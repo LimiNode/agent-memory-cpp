@@ -72,9 +72,10 @@ KV mirroring is not logical replication. Sync activation is DEFERRED.
 
 ### DBI capacity proposal
 
-The delta is optional, `default: false`, documentation-only. It adds three
-steady/peak named DBIs; it does not alter existing reference totals or activate
-a capability. Named-DBI capacity excludes MDBX's main DB.
+The delta is optional, `default: false`, and used only by the internal P4-1
+qualification slice. It adds three steady/peak named DBIs; it does not alter
+existing reference totals or activate a default/public capability. Named-DBI
+capacity excludes MDBX's main DB.
 
 | Composition | Accounted peak | Required max_dbs for 16 free | Result |
 | --- | ---: | ---: | --- |
@@ -139,8 +140,8 @@ Read-only open also refuses a layout it cannot interpret. Any exact key has
 fixed size independent of namespace length. Never append a full AMXR to a physical
 key: a valid AMXR can be 65,536 bytes before source-revision framing.
 
-Literal key control (not an executed fixture): namespace `a`, conversation 1,
-entry 2, revision 3:
+Literal key control: namespace `a`, conversation 1, entry 2, revision 3.
+P4-1 independently exercises this grammar in its private-codec fixtures:
 
 ```text
 01 01 00 00 00 00 00 00 00 01
@@ -405,6 +406,11 @@ and report success speculatively.
 Backend exceptions remain infrastructure errors, not fabricated domain Conflict
 or a new giant public error hierarchy. A commit-error fixture must inspect
 reopen state rather than assume that every exception means durable rollback.
+For an already-fetched row, check an impossible structural length against its
+immutable profile/row-family ceiling before charging local raw-read bytes.
+This is a constant-time length check, not permission for unbudgeted decoding
+or further scanning. A structurally admissible row may still exhaust a smaller
+local budget without being diagnosed as corruption.
 
 ### Finite profile and operational limits
 

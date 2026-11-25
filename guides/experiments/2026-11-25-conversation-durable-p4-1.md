@@ -101,6 +101,30 @@ is `09cb64646a23fb29c9264fbb97369e37d5a27b0d8c020cf0405186a8e2cec6dd`.
 Linux sanitizer and exact-head hosted checks are recorded in the final PR
 receipt, not implied by these local results.
 
+### Final qualification follow-up
+
+The initial published head `5518478ffb23d2a3b4a2f6f14724eecd966228d4`
+passed hosted [CI 45551264366](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45551264366)
+and [Packaging 45551264485](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45551264485).
+Conditional full-research/combined-evidence lanes were skipped, not executed.
+Linux Debug ASan/UBSan also passed all six selected durable/source-import tests
+in 19.87 seconds, with leak detection and halt-on-error enabled. Both libmdbx
+C and C++ compilation carried sanitizer flags; its `ENABLE_ASAN=ON` and
+`ENABLE_UBSAN=ON` options were enabled as well. A preceding flags-only attempt
+failed because libmdbx's sanitizer-aware build settings were not enabled; that
+attempt is not a passing receipt and no suppression was added.
+
+Independent exact-head review then found an additional corruption-classification
+defect: an oversized stored profile could exhaust the raw-read budget before
+the structural-size check, incorrectly reporting `ResourceLimit`. The same
+ordering affected conversation, revision, generation and source-bucket reads.
+The correction checks immutable size ceilings on already-fetched values before
+local byte charges, without unbudgeted decode or additional scans. Regression
+coverage contrasts malformed oversized values with valid data under the same
+tight budgets, including bootstrap and already-open operations. The preceding
+green receipts do not qualify that subsequent correction; its exact head,
+reruns and review belong in the final Draft PR receipt.
+
 | Compiler / operation | Actual allocation failures | Strict precommit rollback | Commit-boundary all-after | Largest / cumulative requested bytes |
 | --- | --- | --- | --- | --- |
 | GNU / create | 18 | 18 | 0 | 434 / 1598 |

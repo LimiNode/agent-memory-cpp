@@ -16,6 +16,8 @@ namespace {
 
 constexpr std::uint64_t kMiB = 1024U * 1024U;
 constexpr auto kMax = std::numeric_limits<std::uint64_t>::max();
+constexpr std::size_t kConversationValueOverheadBytes = 4 + 8 + 8 + kValueOverheadBytes;
+constexpr std::size_t kRevisionValueOverheadBytes = 8 + 1 + 8 + 4 + 128 + 4 + kValueOverheadBytes;
 ByteView view(const ByteBuffer& value) { return {value.data(), value.size()}; }
 ByteView view(const MDBX_val& value) { return {static_cast<const std::uint8_t*>(value.iov_base), value.iov_len}; }
 MDBX_val val(ByteView value) { return {const_cast<std::uint8_t*>(value.data), value.size}; }
@@ -69,7 +71,10 @@ struct Work final {
         // Profile, fixed keys, row-vector storage and small result identities.
         prepare(16384);
     }
-    void visit(ByteView key, ByteView value) {
+    void visit(ByteView key, ByteView value, std::uint64_t max_value_bytes) {
+        // An already-fetched impossible stored length is corruption, regardless
+        // of a stricter local budget. No decode or copy is needed to establish it.
+        if(value.size > max_value_bytes) corrupt();
         const auto size = sum(key.size, value.size);
         if(rows >= options.max_read_rows || !fits(bytes, size, options.max_read_raw_bytes)) resource_limit();
         ++rows;
@@ -99,13 +104,14 @@ std::uint64_t object_reserve(const ConversationCodecLimits& limits) {
         8U * kMaxExternalIdentityComponents * sizeof(ExternalIdentityComponent));
 }
 
-std::optional<ByteView> get(MDBX_txn* txn, MDBX_dbi dbi, const ByteBuffer& key, Work& work) {
+std::optional<ByteView> get(MDBX_txn* txn, MDBX_dbi dbi, const ByteBuffer& key, Work& work,
+    std::uint64_t max_value_bytes) {
     auto k = val(view(key));
     MDBX_val value{};
     const auto code = mdbx_get(txn, dbi, &k, &value);
     if(code == MDBX_NOTFOUND) return std::nullopt;
     checked(code);
-    work.visit(view(key), view(value));
+    work.visit(view(key), view(value), max_value_bytes);
     return view(value);
 }
 void put(MDBX_txn* txn, MDBX_dbi dbi, const ByteBuffer& key, const ByteBuffer& value, bool immutable) {
@@ -240,9 +246,8 @@ struct MdbxConversationDurable::Impl final {
             startup.max_read_rows = 1;
             startup.max_live_bytes = 65536;
             Work work{startup};
-            const auto encoded = get(txn.handle(), dbis[0], encode_profile_key(), work);
+            const auto encoded = get(txn.handle(), dbis[0], encode_profile_key(), work, kMaxProfileValueBytes);
             if(!encoded) unsupported();
-            if(encoded->size > 65536) corrupt();
             identity = stored([&encoded] { return decode_profile_value(*encoded); });
             compatible(identity);
         }
@@ -269,8 +274,8 @@ struct MdbxConversationDurable::Impl final {
             if(actual != dbis[i]) unsupported();
             table_flags(txn, actual);
         }
-        const auto raw = get(txn, dbis[0], encode_profile_key(), work);
-        if(!raw || raw->size > 65536) corrupt();
+        const auto raw = get(txn, dbis[0], encode_profile_key(), work, kMaxProfileValueBytes);
+        if(!raw) corrupt();
         auto result = stored([&raw] { return decode_profile_value(*raw); });
         compatible(result);
         if(result.incarnation != identity.incarnation) unsupported();
@@ -279,9 +284,9 @@ struct MdbxConversationDurable::Impl final {
     std::optional<ConversationRow> conversation(MDBX_txn* txn, const Profile& profile,
         const ConversationRef& ref, const ConversationStoreAccess& access, Work& work) const {
         const auto key = encode_conversation_key(ref.id);
-        const auto raw = get(txn, dbis[0], key, work);
+        const auto raw = get(txn, dbis[0], key, work,
+            profile.descriptor.codec.max_frame_bytes + kConversationValueOverheadBytes);
         if(!raw) return std::nullopt;
-        if(raw->size > profile.descriptor.codec.max_frame_bytes + 64) corrupt();
         work.prepare(raw->size);
         auto result = stored([&profile, &key, &raw] {
             return decode_conversation_row(unwrap_value(profile, TableKind::Metadata, view(key), *raw));
@@ -317,9 +322,8 @@ struct MdbxConversationDurable::Impl final {
         Bucket result;
         auto code = mdbx_cursor_get(cursor.handle(), &key, &raw, MDBX_SET_RANGE);
         while(code == MDBX_SUCCESS && key.iov_len >= 42 && std::memcmp(key.iov_base, start.data(), 42) == 0) {
-            work.visit(view(key), view(raw));
-            if(result.rows >= profile.descriptor.bucket_rows ||
-                !fits(result.bytes, raw.iov_len, profile.descriptor.bucket_bytes)) corrupt();
+            if(result.rows >= profile.descriptor.bucket_rows) corrupt();
+            work.visit(view(key), view(raw), profile.descriptor.bucket_bytes - result.bytes);
             const auto physical = decode_source_key(view(key));
             if(physical.slot != result.rows) corrupt();
             ++result.rows;
@@ -349,9 +353,9 @@ struct MdbxConversationDurable::Impl final {
     std::optional<RevisionRow> revision(MDBX_txn* txn, const Profile& profile, const EntryRef& ref,
         const ScopeId& scope, Work& work) const {
         const auto key = encode_revision_key({ref.conversation.id, ref.entry, ref.revision});
-        const auto raw = get(txn, dbis[1], key, work);
+        const auto raw = get(txn, dbis[1], key, work,
+            profile.descriptor.codec.max_frame_bytes + kRevisionValueOverheadBytes);
         if(!raw) return std::nullopt;
-        if(raw->size > profile.descriptor.codec.max_frame_bytes + 191) corrupt();
         work.prepare(sum(sum(raw->size, sum(raw->size, raw->size)), object_reserve(profile.descriptor.codec)));
         auto row = stored([&profile, &key, &raw] {
             return decode_revision_row(unwrap_value(profile, TableKind::Events, view(key), *raw));
@@ -359,7 +363,7 @@ struct MdbxConversationDurable::Impl final {
         if(!row.generation || row.generation > profile.generation || row.receipt || ref.revision.value() != 1) corrupt();
         static_cast<void>(scope); // Envelope identity is checked only when decode work is permitted.
         const auto generation_key = encode_generation_key(row.generation);
-        const auto generation_raw = get(txn, dbis[1], generation_key, work);
+        const auto generation_raw = get(txn, dbis[1], generation_key, work, kMaxGenerationValueBytes);
         if(!generation_raw) corrupt();
         const auto generation = stored([&profile, &generation_key, &generation_raw] {
             return decode_generation_row(unwrap_value(profile, TableKind::Events, view(generation_key), *generation_raw));
@@ -392,7 +396,8 @@ ConversationWriteResult MdbxConversationDurable::create_conversation(
         auto txn = m_impl->options.context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
         auto profile = m_impl->load(txn.handle(), work, true);
         const auto key = encode_conversation_key(ref.id);
-        const auto raw = get(txn.handle(), m_impl->dbis[0], key, work);
+        const auto raw = get(txn.handle(), m_impl->dbis[0], key, work,
+            profile.descriptor.codec.max_frame_bytes + kConversationValueOverheadBytes);
         if(raw) {
             const auto row = m_impl->conversation(txn.handle(), profile, ref, access, work);
             if(!row) return refused(ConversationWriteStatus::NotFound);
@@ -614,7 +619,8 @@ ConversationReadResult MdbxConversationDurable::read_history(const ConversationS
         MDBX_val value{};
         auto code = mdbx_cursor_get(cursor.handle(), &key, &value, MDBX_SET_RANGE);
         while(code == MDBX_SUCCESS && key.iov_len >= 10 && std::memcmp(key.iov_base, start.data(), 10) == 0) {
-            work.visit(view(key), view(value));
+            work.visit(view(key), view(value),
+                profile.descriptor.codec.max_frame_bytes + kRevisionValueOverheadBytes);
             const auto physical = decode_revision_key(view(key));
             if(result.records.size() >= limits.max_items) {
                 result.status = result.records.empty() ? ConversationReadStatus::BudgetExhausted : ConversationReadStatus::Partial;

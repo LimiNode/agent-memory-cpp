@@ -569,7 +569,7 @@ ByteBuffer encode_profile(const Profile& value) {
         fail(CodecCode::InvalidValue);
     check_quotas(value.quotas);
     const auto descriptor = encode_descriptor(value.descriptor);
-    return encode(4096, [&value, &descriptor](Writer& out) {
+    return encode(kMaxProfileBytes, [&value, &descriptor](Writer& out) {
         out.text(kSchemaMarker); out.text(value.allocation_namespace, kMaxConversationNamespaceBytes);
         out.raw({value.incarnation.data(), value.incarnation.size()}); out.blob(bytes(descriptor));
         for(const auto field : {value.generation, value.conversation_count, value.entry_count, value.revision_count,
@@ -579,7 +579,7 @@ ByteBuffer encode_profile(const Profile& value) {
     });
 }
 Profile decode_profile(ByteView value) {
-    Reader in(value, 4096);
+    Reader in(value, kMaxProfileBytes);
     const auto marker = in.blob(128); if(text_view(marker) != kSchemaMarker) fail(CodecCode::UnsupportedSchema);
     const auto name = in.blob(kMaxConversationNamespaceBytes);
     if(!is_valid_conversation_namespace(text_view(name))) fail();
@@ -645,7 +645,7 @@ SourceRow decode_source_row(ByteView value, std::size_t maximum) {
     });
 }
 ByteBuffer encode_generation_row(const GenerationRow& value) {
-    return encode(160, [&value](Writer& out) {
+    return encode(kMaxGenerationBytes, [&value](Writer& out) {
         switch(value.kind) {
         case GenerationKind::Create: out.u8(1); if(value.entry) fail(CodecCode::InvalidValue); break;
         case GenerationKind::Import: out.u8(2); if(!value.entry) fail(CodecCode::InvalidValue); break;
@@ -659,7 +659,7 @@ ByteBuffer encode_generation_row(const GenerationRow& value) {
     });
 }
 GenerationRow decode_generation_row(ByteView value) {
-    return decode(value, 160, [](Reader& in) {
+    return decode(value, kMaxGenerationBytes, [](Reader& in) {
         GenerationRow row;
         switch(in.u8()) {
         case 1: row.kind = GenerationKind::Create; break;
@@ -696,9 +696,9 @@ ByteView unwrap_value(const Profile& profile, TableKind table, ByteView key, Byt
     return body;
 }
 Profile decode_profile_value(ByteView value) {
-    const auto body = value_body(value, 4134);
+    const auto body = value_body(value, kMaxProfileValueBytes);
     auto profile = decode_profile(body); const auto key = encode_profile_key();
-    (void)unwrap_value(profile, TableKind::Metadata, bytes(key), value, 4134);
+    (void)unwrap_value(profile, TableKind::Metadata, bytes(key), value, kMaxProfileValueBytes);
     return profile;
 }
 
