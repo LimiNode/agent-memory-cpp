@@ -4,6 +4,20 @@
 guide does not introduce production C++ APIs or claim that the context, bundle,
 SQLite, or canonical-content integrations already exist.
 
+**Dated implementation boundary (2026-11-21):** the factual audit in section 1,
+original future-signature discussion in section 3 and capability list in
+section 13 describe their explicitly named
+`45e72316...` baseline, not current main. At
+`acd5ad5545386b3feeaa79f8a587855b60801b4d`, `MdbxStorageContext` owned/attached
+construction, shared-context adapters, C1/opt-in flat canonical stores, typed
+numeric KU storage, snapshot admission and installed consumers are implemented.
+This does not implement the whole future bundle, SQLite, or canonical-to-index
+publication contract. See the source-bound
+[product integration audit](storage-product-integration-audit.md) and proposed
+[publication ADR](storage-product-integration-adr.md) for the current map and
+remaining transaction/recovery seams. The architectural rules below remain in
+force; historical "contract only" rows must not be read as current absences.
+
 This guide owns the backend integration boundary:
 
 - how a host creates or attaches a persistent backend;
@@ -153,7 +167,11 @@ SqliteStorageContext
     ownership mode and shutdown policy
 ~~~
 
-These are design names, not existing public C++ classes.
+The shapes above describe the intended context responsibilities, not the full
+current class layout. At the dated current baseline, `MdbxStorageContext` is an
+implemented optional public class; `SqliteStorageContext` remains a design name.
+The existing MDBX class does not itself implement the whole profile/bundle
+contract shown here.
 
 The rule is **one shared Connection per logical MDBX environment/context**.
 It is not one process-global singleton. Independent databases, workspaces or
@@ -205,9 +223,12 @@ the environment has already been shut down, attached stores fail with the
 backend's unavailable/shutdown category; they must not infer that a live
 `shared_ptr` makes the environment operational.
 
-The exact constructor and ownership marker are intentionally deferred. The
-contract is about lifetime authority and transaction provenance, not a
-particular signature.
+The initial design deferred the constructor and ownership marker. The current
+optional [`MdbxStorageContext` header](../src/agent_memory/infrastructure/mdbx/MdbxStorageContext.hpp)
+now exposes `open(path, relative_to_exe, max_dbs)` and
+`attach(std::shared_ptr<mdbxc::Connection>)`. These implement the owned/attached
+entry points without making every future context responsibility operational.
+The lifetime-authority and transaction-provenance rules above still apply.
 
 ### 3.3 Public header decision for attached connections
 
@@ -218,16 +239,18 @@ Two designs were considered:
 | Typed MDBX-only entry point exposing std::shared_ptr<mdbxc::Connection> | direct and simple for hosts already using mdbx-containers | dependency is confined to an optional MDBX header; core remains clean | explicit | direct |
 | Opaque/PImpl-only entry point | requires a bridge, factory or opaque adapter to attach an existing connection | strongest header and ABI isolation | ownership is easier to obscure | possible, but indirect |
 
-The chosen direction is a **typed MDBX-specific construction/attach surface**:
-a future optional header may include mdbx-containers types and accept an existing
-std::shared_ptr<mdbxc::Connection>. That dependency is allowed to remain in
+The chosen direction is a **typed MDBX-specific construction/attach surface**.
+The implemented optional header forward-declares `mdbxc::Connection` and accepts
+an existing `std::shared_ptr<mdbxc::Connection>`. A backend-specific dependency
+is allowed to remain in
 infrastructure/mdbx; it must not enter domain or dependency-free storage headers.
 Concrete stores may still use PImpl to keep implementation details and
 serialization out of their public class layout.
 
 This choice optimizes existing-environment sharing and makes ownership visible.
-Exact signatures, ABI policy and package-export details remain deferred until a
-real attached use case is implemented.
+The current signature and installed-consumer evidence are described by the
+dated source audit above. They do not settle a general ABI guarantee or the
+remaining future bundle/profile API.
 
 ## 4. mdbx-containers role
 
