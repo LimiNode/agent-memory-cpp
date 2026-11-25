@@ -224,6 +224,38 @@ cannot become a mandatory dependency of the core value types.
 
 ## 5. Identity architecture decision register
 
+### Additive binary-buffer API
+
+New binary consumers use `serialize_external_object_ref_bytes()` returning the
+existing `ByteBuffer` and `deserialize_external_object_ref_bytes(ByteView)`.
+The two string entry points remain explicit legacy compatibility interfaces;
+they share the same encoder/decoder, grammar, admission limits and goldens.
+No AMXR version, digest preimage, identity equivalence or persisted byte changes.
+The decoder borrows its input only during the call; returned fields own memory.
+Null/nonempty views reject before access; empty input, including nullptr/0,
+is malformed because a complete standalone AMXR is required. Distinct names
+avoid introducing an ambiguous `{}` overload in existing source consumers.
+AMCE nesting and source-key construction consume bytes directly. SHA-256's
+legacy string-view boundary is an explicit zero-copy implementation adapter.
+
+`ByteBuffer`/`ByteView` are the primary interfaces for new binary code. The
+retained binary-string functions are optional, documented compatibility entry
+points, not an alternative internal architecture. New production consumers,
+ordinary tests, current tools and primary examples use the equivalent byte API
+when available. Keep explicit legacy parity tests, compatibility examples and
+frozen historical fixtures/baselines; do not route new code through legacy calls
+or add unnecessary string/vector staging. One shared encoding/decoding
+algorithm owns each format; an independent legacy codec is not permitted.
+
+Persisted-byte compatibility, C++ source compatibility and ABI compatibility
+are separate decisions. Preserving AMXR bytes does not require retaining old
+C++ buffer types, and retaining a function does not require using it internally.
+No indefinite source/ABI compatibility is promised for intermediate pre-release
+APIs. The legacy AMXR entry points remain for now: repository consumers can be
+enumerated, but absence of unknown external consumers has not been established.
+Removal before the first release requires a separate owner decision after
+consumer review; it is not implied by adopting the primary byte API.
+
 `IMPLEMENTED` below describes the named existing slice, not universal production
 activation. `COMPATIBILITY_RETAINED` is an explicit choice to preserve current
 API/bytes. `PLANNED_NOT_BLOCKING` names an owner and a reason it does not block

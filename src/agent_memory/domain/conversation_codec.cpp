@@ -79,8 +79,8 @@ public:
     void opaque(ByteView bytes) { m_budget.charge(bytes.size, 0); raw(bytes); }
     void external(const ExternalObjectRef& ref) {
         // One bounded AMXR temporary at a time in both preflight and emission.
-        const auto bytes = serialize_external_object_ref(ref);
-        blob(bytes, kMaxExternalObjectRefBytes);
+        const auto bytes = serialize_external_object_ref_bytes(ref);
+        blob(ByteView{bytes.data(), bytes.size()}, kMaxExternalObjectRefBytes);
     }
     void presence(bool present) { integer(present ? 1 : 0, 1); }
 private:
@@ -193,7 +193,7 @@ void write_external(Writer& out, const std::optional<ExternalObjectRef>& ref) {
 std::optional<ExternalObjectRef> read_external(Reader& in) {
     if(!in.presence()) return std::nullopt;
     try {
-        return deserialize_external_object_ref(text_view(in.blob_view(kMaxExternalObjectRefBytes, true)));
+        return deserialize_external_object_ref_bytes(in.blob_view(kMaxExternalObjectRefBytes, true));
     } catch(const ConversationCodecError&) { throw; }
     catch(const std::invalid_argument&) { reject(); }
 }

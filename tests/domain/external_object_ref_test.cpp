@@ -9,6 +9,7 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace am = agent_memory;
@@ -42,9 +43,24 @@ void round_trip(const am::ExternalObjectRef& ref) {
     const auto decoded = am::deserialize_external_object_ref(bytes);
     expect(decoded == ref, "external identity changed in round trip");
     expect(am::serialize_external_object_ref(decoded) == bytes, "encoding is not canonical");
+    auto binary = am::serialize_external_object_ref_bytes(ref);
+    static_assert(std::is_same_v<decltype(binary), am::ByteBuffer>);
+    expect(binary.size() == bytes.size() && std::equal(binary.begin(), binary.end(), bytes.begin(),
+        [](std::uint8_t a, char b) { return a == static_cast<unsigned char>(b); }), "byte API wire drift");
+    const am::ByteView view{binary.data(), binary.size()};
+    const auto owned = am::deserialize_external_object_ref_bytes(view);
+    expect(am::deserialize_external_object_ref_bytes(view) == ref, "input buffer reuse failed");
+    std::fill(binary.begin(), binary.end(), 0xff);
+    expect(owned == ref, "decoded reference borrows input storage");
+    expect(am::serialize_external_object_ref(owned) == bytes, "byte API canonical reencoding drift");
 }
 
 void rejected_bytes(std::string_view bytes) {
+    bool byte_rejected = false;
+    try { (void)am::deserialize_external_object_ref_bytes(
+        {reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size()}); }
+    catch(const std::invalid_argument&) { byte_rejected = true; }
+    expect(byte_rejected, "byte API accepted malformed reference");
     try { (void)am::deserialize_external_object_ref(bytes); }
     catch(const std::invalid_argument&) { return; }
     throw std::runtime_error("malformed external reference decoded");
@@ -52,6 +68,10 @@ void rejected_bytes(std::string_view bytes) {
 
 void rejected_value(const am::ExternalObjectRef& ref) {
     expect(!am::is_valid_external_object_ref(ref), "malformed external reference validated");
+    bool byte_rejected = false;
+    try { (void)am::serialize_external_object_ref_bytes(ref); }
+    catch(const std::invalid_argument&) { byte_rejected = true; }
+    expect(byte_rejected, "byte API encoded malformed reference");
     try { (void)am::serialize_external_object_ref(ref); }
     catch(const std::invalid_argument&) { return; }
     throw std::runtime_error("malformed external reference encoded");
@@ -332,6 +352,11 @@ void deterministic_decoder_mutations() {
                 std::optional<am::ExternalObjectRef> decoded;
                 try { decoded = am::deserialize_external_object_ref(mutated); }
                 catch(const std::invalid_argument&) { ++rejected; }
+                std::optional<am::ExternalObjectRef> byte_decoded;
+                try { byte_decoded = am::deserialize_external_object_ref_bytes(
+                    {reinterpret_cast<const std::uint8_t*>(mutated.data()), mutated.size()}); }
+                catch(const std::invalid_argument&) {}
+                expect(decoded == byte_decoded, "byte/legacy mutation admission differs");
                 if(decoded) {
                     // A mutation can legally change identity: do not demand rejection of valid data.
                     expect(am::is_valid_external_object_ref(*decoded), "decoder admitted an invalid mutation");
@@ -365,6 +390,14 @@ void legacy_source_compatibility() {
 
 int main() {
     try {
+        const std::uint8_t unused = 0;
+        for(const auto view : {am::ByteView{}, am::ByteView{&unused, 0}, am::ByteView{nullptr, 1},
+             am::ByteView{nullptr, std::numeric_limits<std::size_t>::max()}}) {
+            bool rejected = false;
+            try { (void)am::deserialize_external_object_ref_bytes(view); }
+            catch(const std::invalid_argument&) { rejected = true; }
+            expect(rejected, "null AMXR view accepted");
+        }
         golden_vectors();
         source_domains_and_remapping();
         encoder_validation_and_bounds();
