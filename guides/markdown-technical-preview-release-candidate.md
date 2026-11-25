@@ -1,5 +1,54 @@
 # Markdown Technical Preview release-candidate matrix
 
+## Current progress register (2026-11-25)
+
+This section tracks existing gates; it does not expand release scope or approve
+publication. Source baseline: `77a278bef338074227efa05365e83e967334f429`.
+The frozen candidate and decision below remain historical. Update this register
+after accepted integration stages, preserving exact source/evidence identities.
+An implemented component, a merged corrective PR and a qualified release
+candidate are different states. General CI is not product qualification.
+
+Profile owners remain [milestones](milestones.md),
+[Raw Markdown operations](markdown-technical-preview.md),
+[normalized-first profile](first-release-profile.md),
+[product path](product-path.md) and
+[retrieval coverage](retrieval-roadmap-coverage.md). RM = Raw Markdown Technical
+Preview; NF = broader Normalized-First Knowledge Base Preview; CC = early opt-in
+Conversation Core. Numeric integration is a separate product workstream, not a
+new universal prerequisite for all profiles. M1/M2/M2+ retain milestone scope.
+
+| Existing gate / implementation | Current status and source-bound evidence | Owner / remaining action and dependency | Blocks which profile? |
+| --- | --- | --- | --- |
+| C++17 static library, public headers, installed/relocated package | IMPLEMENTED. #700 `8bc8ab49`: local GNU15.2/MSVC19.44 each64/64 tests and six installed+six relocated consumers per compiler. New primary-byte cleanup `f7de2469` requires its own CI qualification; older evidence remains historical. | [Build](build-and-test.md); run exact release-candidate package, headers and feature matrix, not only source-tree CTest. | RM/NF/CC when selected; final candidate gate OPEN. |
+| Package version policy #613 | MERGED `5cddc2a24a132a04353d9337efe9c7fcb7ff0f4e`; historical #611 Draft label below is not current. | [Decision report](experiments/2026-11-16-release-decision-report.md); retain ExactVersion tests at final candidate. No stable ABI promise. | Previous PR-integration HOLD CLOSED; candidate requalification remains. |
+| ANN compatibility #612 | MERGED `331d9aea2323d6b501a873a7791d8b719124400d`; historical bounded OLD-to-NEW evidence, not numeric migration. | [Index lifecycle](index-lifecycle-roadmap.md); preserve exact generation/source frontier and requalify any changed selected storage. | Previous PR HOLD CLOSED; no ANN serving requirement added to RM. |
+| ExactVector #628 / BruteForceTopK #631 | MERGED `425aca9911d5aebef02c6c475dbecba63cfb34e5` / `9bf52cbe214fcfd399356715ddbc5957324f610b`. Existing corrective tests are integrated. | [Retrieval coverage](retrieval-roadmap-coverage.md); execute required final-candidate regressions. | Previous corrective PR HOLDs CLOSED, not proof of all product gates. |
+| Shared MDBX context / actual toolchain and flags | IMPLEMENTED optional `MdbxStorageContext`; exact selected composition needs qualification. Historical MSVC setup failure in the old decision report is not a current unresolved PR verdict. | [Backend owner](storage-backend-integration-roadmap.md), [build](build-and-test.md); final GNU/MSVC MDBX matrix, actual flags, DBI capacity, reopen and ownership. | RM/NF/CC selected MDBX profiles; OPEN at final product candidate. |
+| Raw Markdown ingestion / resource identity and revisions | IMPLEMENTED bounded `MdbxRawMarkdownProductIngestion`, importer/manifest stores; #607/#611 source-bound evidence is historical. | [Resource owner](resource-reindexing.md); exact candidate A@1/reopen/A@2/replay and unchanged identity/frontier. Depends on selected product storage. | RM and selected NF text vertical; not a reason to require all CC. |
+| File CAS, SHA-256, exact source hydration | IMPLEMENTED `FileRawBlobStore`, ArtifactCatalog and verified hydration; old consumer receipts retained. | [Artifact owner](artifact-provenance-roadmap.md), [operations](markdown-technical-preview.md); exact-source ranges, missing/corrupt/stale and budget refusals at final candidate. | RM/NF selected artifact path; OPEN final end-to-end evidence. |
+| Original projections / lexical retrieval / publication frontier | IMPLEMENTED bounded product facade and persistent lexical path; not universal recoverable publication. | [Product path](product-path.md), [retrieval coverage](retrieval-roadmap-coverage.md); selected product composition, stale frontier and authoritative hydration regressions. | RM bounded composition; broader NF publication gate remains OPEN. |
+| Cold offline backup/restore | HISTORICALLY QUALIFIED #611, not fresh qualification of a changed physical schema. | [Operations](markdown-technical-preview.md); repeat exact selected schema+CAS, verify identities and bytes; no hot/online backup claim. | RM advertised operations; OPEN at final candidate. |
+| Numeric/typed/flat primitives and product default | IMPLEMENTED opt-in `MdbxKnowledgeUnitTypedStore`, numeric pilot, identity mapping and canonical flat storage; legacy product still decimal-primary at baseline. | [Numeric register](mdbx-numeric-identity-evidence-register.md), [foundation closure](audits/2026-11-foundation-closure.md#3-identity-closure-register-at-main); differential reuse of #681, #674 and #651, then transactional/snapshot/product integration. Their open PRs are not automatically accepted. | Selected numeric product path, not every RM/CC installation; independent work OPEN. |
+| Numeric migration / rebuild / reject-old | Existing opt-in evidence is POST_NUMERIC_REJECT_OLD, `migration_executed=false`; historical upgrade workflow is not migration proof. | [Numeric register](mdbx-numeric-identity-evidence-register.md); exercise declared policy for every selected changed DBI with exact OLD/NEW and consumer receipts. No production migration authorized. | Any release selecting changed numeric schema; OPEN until chosen policy is qualified. |
+| AMXR primary byte API / Foundation integration | #700 source review READY; #699 design review READY. Both still Draft at this source baseline. No wire/digest/golden migration. | [Identity](identity-policy.md), [foundation](audits/2026-11-foundation-closure.md); targeted Linux sanitizer, exact-head checks, integrate #700 then reconciled #699 and verify main. | Immediate CC implementation gate, not closure of all binary APIs or release acceptance. |
+| Conversation phases1/2/3A/3B | INTEGRATED through #698 at baseline; domain, AMCE, reference store and source importer exist. | [Event owner](conversation-event-contract.md); phase count is not percent effort or product acceptance. | CC prerequisites met within bounded slices, no RM dependency introduced. |
+| P4-0 / P4-1 / P4-2..5 | Owner accepts P4-0 for implementation in current assignment; runtime NOT IMPLEMENTED at baseline. P4-1 next after integration, separate Draft; no automatic merge. | [Phase4 plan](conversation-durable-store-phase4-plan.md): durable vertical, crash/races, corrections/frontiers, measured Current, full qualification in that order. | CC; not RM/NF universal blockers. |
+| Conversation phases5/6 | PLANNED: full Core qualification, then derived knowledge bridge. | [Event owner](conversation-event-contract.md); qualify selected durable profile before full Core claim. | CC full claim; derived bridge only when selected. |
+| Normalized-first source verticals / provenance / recoverable publication | PARTIAL implementations and contracts, not a finished NF profile. Tables/images/transcripts/derived multi-input views retain separate gates. | [First-release profile](first-release-profile.md), [product path](product-path.md), [retrieval coverage](retrieval-roadmap-coverage.md); implement and qualify declared verticals. | NF only; do not add these to narrow RM. |
+| M1/M2/M2+ and Managed Memory Blocks | PARTIAL / SPECIFIED / RESEARCH per owning capability; no blanket completion claim. | [Milestones](milestones.md), [foundation maturity](audits/2026-11-foundation-closure.md#5-historical-architecture-maturity-and-gate-classification); keyed facade reuses canonical content/prompt composition, later work. | Only selected capability/profile; not new P4-1 or RM gates. |
+| Final release decision / version/tag/package/GitHub Release | OPEN; old release report is superseded physical evidence. No release candidate selected/approved by this register. | [Preflight](technical-preview-preflight.md), [decision report](experiments/2026-11-16-release-decision-report.md); one exact candidate matrix, residual findings, owner approval, then publication. | RM/NF/CC release claims as applicable. |
+
+Critical path for the first limited RM release: select the intended product
+composition and old-data policy -> qualify that exact installed path, source
+frontiers, reopen/update/replay and cold restore -> close actual residual
+findings in the final preflight -> owner release decision -> version/tag/package
+publication. Numeric product activation requires its own integration evidence
+if selected; merely merging an opt-in pilot does not migrate the product.
+Conversation P4-1..5 and broader NF/M1/M2 work continue independently and are
+not silently added to that narrow release path. This register authorizes no
+release, database migration or deployment.
+
 > **Numeric-identity migration notice (2026-11-19).** The matrix below is a
 > pre-numeric physical-storage snapshot. Its exact SHAs and CI receipts are
 > retained for provenance, but the matrix is `HISTORICAL_ONLY` until the
