@@ -1,0 +1,29 @@
+{
+  "schema": "agent-memory.foundation-amxr-delta.v1",
+  "historical_inventory_source": "77a278bef338074227efa05365e83e967334f429",
+  "integrated_source": "7a9be667b4f5657c1c50590dde6b0a4888acdd4b",
+  "integrated_tree": "32fbfcf25ab070735aad9203f82b5e4da7447d88",
+  "scope": "Four production files; original inventory/catalogue unchanged. Static controls are not runtime equivalence proof.",
+  "files": [
+    {
+      "path": "src/agent_memory/domain/ExternalObjectRef.cpp",
+      "before_sha256": "0bfede4f4789f23d39b6581189d78000e54e7494e7da4940053dff60daa246ed",
+      "after_sha256": "b57396d775568e2d8be290d3cc451e167c2c21dc1c2573983fa1f19d8dc1ec30"
+    },
+    {
+      "path": "src/agent_memory/domain/ExternalObjectRef.hpp",
+      "before_sha256": "f87ec87745e176013c7b8cc984971b91b30b3c8e0c3825bf01a20bf8361f0ade",
+      "after_sha256": "e89b9f29c23bc6fbb7ac4213525abd1ac735ba1faadb3dfad6e9d0ba92d875a1"
+    },
+    {
+      "path": "src/agent_memory/domain/conversation_codec.cpp",
+      "before_sha256": "90805470f3288ea07814c921c84c1459d4550d5b320e2a64b61fdb278d305d44",
+      "after_sha256": "cf37c896b7aa2113093ac4e6d8bd7690e6c20cff54e2c6bb02c1256c3b30caf4"
+    },
+    {
+      "path": "src/agent_memory/ingestion/ConversationSourceImporter.cpp",
+      "before_sha256": "24649acc97fe641078617aacf737a8ccc299aa8115a3f2bb4809f442bfae8dd3",
+      "after_sha256": "db3b8d49bbbbd07817e3c2a85409c77739cf1171635ee77f2df4a799671381bd"
+    }
+  ]
+}

@@ -77,8 +77,8 @@ and [type catalogue](audits/2026-11-public-type-catalogue.json) distinguish
 logical identities, scoped external references, binary content digests and
 physical allocation keys. They also record feature-local type ownership and
 the retained compatibility status of legacy DTOs. Conversation Phase 1 values
-and validation are integrated; the Phase 2 event codec is implemented in a
-separate Draft PR. Its [AMCE envelope contract](conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)
+and validation are integrated; Phase 2/3A/3B were integrated through #698 at
+`main@77a278be`. Its [AMCE envelope contract](conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)
 separates common metadata, versioned payload schemas and consumer resource
 budgets. Unsupported bytes are retained, not semantically admitted; tool
 observations do not execute tools. Wire framing, canonical history, rebuildable
@@ -90,6 +90,12 @@ The dependent [Phase 3B source import slice](conversation-source-import.md)
 adds bounded source-shaped normalization and an atomic import-key/Entry/append
 seam over that reference backend. It is instance-local, not a provider SDK,
 durable allocator, artifact authenticity check or full Conversation Core.
+The separate [Phase 4 P4-0 physical proposal](conversation-durable-physical-contract.md)
+reuses existing MDBX context/transactions and proposes three optional DBIs;
+no durable Conversation adapter, schema deployment or P4-1 code exists yet.
+The [Foundation Closure Gate](audits/2026-11-foundation-closure.md) reviews
+binary APIs, identity integration and durable key/quota policy before P4-1;
+the gate does not activate numeric product defaults or future memory facades.
 The full Conversation Core and typed-metadata ADR remain
 planned, not permission to change persisted identity, include paths or product
 defaults.

@@ -47,8 +47,8 @@ its admitted scope. Its occurrence key is:
 This map uses complete values, not delimiter concatenation, content hashes,
 timestamps, call tokens or an unqualified message ID. Full AMXR retains provider,
 instance, identity domain, object kind, parent and key type. Standalone AMXR
-bytes may cross its existing string API through an explicit binary adapter;
-its grammar and public API are unchanged.
+bytes use the direct ByteBuffer API integrated through #700. Legacy string
+entry points remain optional compatibility adapters; the AMXR grammar is unchanged.
 
 Every source binding requires revision, evidence, locator and adapter recipe.
 The reference recipe is exactly the table above: callers may not reinterpret

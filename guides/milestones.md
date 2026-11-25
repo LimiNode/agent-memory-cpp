@@ -71,6 +71,9 @@ must use the M2 artifact provenance profile.
 
 ### Early opt-in Conversation Core (Planned)
 
+The [Foundation Closure Gate](audits/2026-11-foundation-closure.md) is a
+pre-P4-1 review step, not a new capability or permission to deploy a journal.
+
 Priority: the first practically useful **chat profile** for chat importers and
 Efi dialogue memory must retain real conversations before expanding
 experimental search algorithms. This is a planned, separately selected profile
@@ -84,7 +87,8 @@ proposed domain invariants and small-PR plan; its
 [ADR](adr/2026-11-conversation-event-identity.md) records Phase 1 values integrated
 in `main@386e26fe9176d268722894cd9f48df33f3b7bf72`. Standalone AMXR v1 passed its
 integration gate and is CLOSED within that scope. Phase 2 Event Codec v1 is
-implemented/reviewed in Draft PR #690. The separate dependent
+integrated with the qualified Phase 3A/3B stack through #698 at
+`main@77a278be`. The
 [Phase 3A reference store](conversation-reference-store.md) implements instance-local
 immutable exact history, deterministic current views, CAS correction and bounded
 snapshot paging. The dependent [Phase 3B source importer](conversation-source-import.md)
@@ -93,7 +97,11 @@ coordinated key/ID admission, not upstream SDK or durable recovery qualification
 Durable ID allocation/persistence (4), full Core qualification (5) and the derived
 bridge (6) remain Planned. The separate
 [Phase 4 implementation brief](conversation-durable-store-phase4-plan.md)
-proposes durable slices and gates; it is not implementation authorization.
+defines durable slices and gates. The owner has authorized P4-1 implementation
+in a separate Draft after qualified #700/#699 integration.
+Its concrete [P4-0 physical contract](conversation-durable-physical-contract.md)
+and optional three-DBI manifest delta are approved design, NOT IMPLEMENTED or
+deployed by this document; the full profile remains Planned.
 Review and qualify
 each slice before advertising the complete profile. The revised
 [AMCE envelope](conversation-event-contract.md#42-event-codec-v1-phase-2-review-contract)

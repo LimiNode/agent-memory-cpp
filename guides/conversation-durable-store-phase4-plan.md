@@ -1,6 +1,8 @@
 # Conversation Core Phase 4 implementation brief
 
-- Status: proposed, implementation NOT STARTED; owner approval required.
+- Status: P4-0 physical design OWNER-APPROVED; durable runtime NOT STARTED at
+  this integration gate. P4-1 separate Draft authorized after qualified
+  #700/#699 integration; no automatic P4-1 merge.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
 - Entry gate: qualified combined Phase 2/3A/3B tree and separate owner decision.
 - Contract owners: [events](conversation-event-contract.md),
@@ -11,10 +13,28 @@
   [artifact provenance](artifact-provenance-roadmap.md).
 
 This is an implementation plan, not an additional persisted contract. It
-authorizes no DBI allocation, migration or production implementation. The
+does not deploy DBIs or authorize migration/release. The owner's 2026-11-25
+assignment authorizes P4-1 implementation in a separate Draft after this gate. The
 in-memory oracle stays unchanged. Full Conversation Core remains Planned;
 provider SDKs, execution, generic knowledge storage, ontology SPI and Managed
 Memory Blocks are outside this vertical.
+
+The combined Phase 2/3A/3B stack is integrated through PR #698 at
+`main@77a278bef338074227efa05365e83e967334f429`, accepted tree
+`00cbb85105cb57a5a455dbb0e380238edef74cfa`. The
+[integration receipt](audits/2026-11-24-conversation-main-and-p4-0.md) records
+post-main checks and source-PR disposition. P4-0's concrete
+[physical contract proposal](conversation-durable-physical-contract.md) now
+defines three optional DBIs, bytewise keys, versioned values/witnesses,
+transactions, durability flags, frontier/token boundaries and test fixtures.
+Its [Current decision screen](experiments/2026-11-24-conversation-durable-current-plan.md)
+is predeclared, NOT RUN. The YAML delta allocates/deploys nothing.
+
+The [Foundation Closure Gate](audits/2026-11-foundation-closure.md) now precedes
+P4-1 authorization. It separates profile-qualified compact physical keys from
+full logical references, durable quotas from in-memory ceilings, and typed
+byte codecs from legacy string adapters. Owner approval is now recorded;
+#700 byte APIs are integrated at `main@7a9be667b4f5657c1c50590dde6b0a4888acdd4b`.
 
 ## Transaction and authority decisions
 
@@ -153,7 +173,7 @@ and unavailable artifacts. Compare every exact/history/Current result and
 canonical byte sequence with the reference oracle using the same admission
 order; concurrency tests compare actual committed order, not thread start time.
 
-P4-1 is the first proposed implementation boundary, contingent on P4-0 and a
-separate owner approval after integration qualification. It must not be shipped
+P4-1 is the first authorized implementation boundary, contingent on qualified
+integration of P4-0 and its AMXR correction. It must not be shipped
 as a fully durable Conversation Core before P4-2/P4-3 recovery/frontier gates.
 No production Phase 4 code is part of the current integration rehearsal.

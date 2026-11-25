@@ -12,6 +12,11 @@ optional `DocumentStorageId` and `BlockStorageId` values in
 `storage/StorageIdentityMapping.hpp` are a separate physical-key optimization;
 they do not replace, derive, or reinterpret the public identifiers.
 
+The [2026-11-24 foundation status](audits/2026-11-foundation-closure.md#3-identity-closure-register-at-main)
+records implemented persistent numeric/flat opt-in paths and the remaining
+product selection/reject-old/migration gates. Their implementation is not
+proof that the default product or existing databases have migrated.
+
 `StorageIdentityMapping` is a backend-neutral state machine.  A caller opts in
 explicitly, allocates a mapping, and persists `StorageIdentityRecord` values
 using the versioned AMSI v1 codec. The library does not wire this map into

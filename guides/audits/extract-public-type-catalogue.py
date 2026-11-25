@@ -1,6 +1,8 @@
 """Source-bound documentation catalogue; Python 3.10+, no library builds.
 
 Use --verify without a compiler to independently validate committed anchors.
+By default the working headers must also match BASE. --historical-source verifies
+only the recorded BASE blobs; it does not qualify the current production tree.
 Generation additionally requires Clang's JSON AST and usable C++17 headers.
 """
 from __future__ import annotations
@@ -338,17 +340,23 @@ def identity_policies(decls: list[dict]) -> list[dict]:
     return result
 
 
-def verify(catalogue: dict) -> None:
+def verify(catalogue: dict, *, historical_source: bool = False) -> None:
+    """Verify BASE anchors; historical mode explicitly omits current-tree parity."""
     assert catalogue["source_commit"] == BASE
     headers = included_headers()
     assert [h["path"] for h in catalogue["headers"]] == headers
+    source = {}
     for entry in catalogue["headers"]:
         original = subprocess.check_output(["git", "-C", str(ROOT), "show", f'{BASE}:{entry["path"]}'])
         assert sha(original) == entry["sha256"]
-        assert original == (ROOT / entry["path"]).read_bytes()
+        assert len(original) == entry["bytes"]
+        if not historical_source:
+            assert original == (ROOT / entry["path"]).read_bytes(), (
+                f'Current source differs from BASE: {entry["path"]}')
         assert (ROOT / entry["primary_contract_owner_candidate"]).is_file()
+        source[entry["path"]] = original
     for declaration in catalogue["types"] + catalogue["identity_fields"]:
-        raw = (ROOT / declaration["header"]).read_bytes()
+        raw = source[declaration["header"]]
         assert declaration["line"] == raw[:declaration["offset"]].count(b"\n") + 1
         assert raw[declaration["offset"]:].decode("utf-8").startswith(declaration["name"])
         if "declaration_sha256" in declaration:
@@ -373,13 +381,17 @@ def verify(catalogue: dict) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--verify", action="store_true", help="Verify Git hashes, coverage, anchors and counts; no compiler")
+    parser.add_argument("--historical-source", action="store_true",
+                        help="With --verify, validate recorded BASE blobs instead of requiring current-source parity")
     parser.add_argument("--clang", default=shutil.which("clang++"), help="Clang executable for generation")
     parser.add_argument("--mingw-root", type=Path, help="Optional recorded GCC 15.2.0 MinGW root for Windows")
     args = parser.parse_args()
+    if args.historical_source and not args.verify:
+        parser.error("--historical-source requires --verify; generation always requires current-source parity")
     if args.verify:
         catalogue = json.loads(OUT.read_text(encoding="utf-8"))
-        verify(catalogue)
-        print(json.dumps({"verified": True, **catalogue["counts"]}))
+        verify(catalogue, historical_source=args.historical_source)
+        print(json.dumps({"verified": True, "historical_source": args.historical_source, **catalogue["counts"]}))
     else:
         if not args.clang:
             parser.error("Generation requires --clang when clang++ is not in PATH")

@@ -1355,6 +1355,9 @@ allowing separate typed-store namespaces.
 ```text
 dbi-profile-delta-review-projection-v1
 # name|owner|table_type|opens|wire_sync_support|replication_semantics|physical_key|migration_peak
+conversation_meta_v1|conversation_storage|KeyValueTable|component_profile|kv_supported|logical_adapter_required|KeyVersion,MetadataRowKind,OptionalProfileConversationId|1
+conversation_events_v1|conversation_storage|KeyValueTable|component_profile|kv_supported|logical_adapter_required|KeyVersion,EventRowKind,ProfileRevisionOrGeneration|1
+conversation_sources_v1|conversation_ingestion|KeyValueTable|component_profile|kv_supported|logical_adapter_required|KeyVersion,SourceRowKind,ProfileConversationId,SourceKeyDigest,CollisionSlot|1
 agent_memory_exact_index_generations|embeddings|KeyValueTable|ExactIndexGenerationStore|kv_supported|derived_rebuildable|IndexName,GenerationId,RowKind,Ordinal|1
 knowledge_units_numeric_v1|numeric_knowledge_unit_pilot|KeyValueTable|NumericKnowledgeUnitPilot|kv_supported|logical_adapter_required|KnowledgeUnitId|1
 knowledge_units_numeric_v1_used|numeric_knowledge_unit_pilot|KeyValueTable|NumericKnowledgeUnitPilot|kv_supported|logical_adapter_required|KnowledgeUnitId|1
@@ -1528,6 +1531,18 @@ follows:
 Все таблицы используют префикс payload versioning (`agent_memory.knowledge_unit.v1`, `agent_memory.qa.v1`, и т.п.). `Config::max_dbs = 96` является рекомендуемым ceiling для одного agent-memory MDBX env; profiles that keep `64` must opt out of enough deltas to preserve the manifest reserve.
 
 #### 5.5.1 DBI budget checkpoint
+
+Conversation Phase 4 P4-0 adds a **proposed, NOT IMPLEMENTED** optional
+`conversation_durable_v1` delta to the YAML inventory: three dedicated bytewise
+KV DBIs with typed rows, no default activation. Its
+[physical contract](conversation-durable-physical-contract.md) owns proposed
+keys, values, original replay witnesses and transactions. This does not
+repurpose `conversation_episode_payloads` or select Current/checkpoint tables.
+The unchanged expanded reference 76 plus this delta is 79 (17 free at 96).
+The expanded numeric composition 89 plus 3 is 92 and needs explicit 108 to
+retain 16 free slots; its existing 105 is insufficient. Two independent
+Conversation prefixes plus expanded reference need 98. No runtime capacity
+enforcement or arbitrary-composition validator is claimed by this docs delta.
 
 `Config::max_dbs = 96` является recommended capacity ceiling, а не обещанием открыть 96
 named DBIs в каждом профиле. Machine-readable inventory in
