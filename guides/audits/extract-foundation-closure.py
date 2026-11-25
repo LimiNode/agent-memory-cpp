@@ -2,6 +2,8 @@
 
 The string ledger is exhaustive lexical discovery, NOT semantic inference.
 The companion Markdown audit owns semantic decisions and known limitations.
+Verification preserves the historical SOURCE catalogue; the separate
+verify-foundation-amxr-delta.py --current qualifies the integrated source delta.
 """
 from __future__ import annotations
 
@@ -58,7 +60,7 @@ if __name__ == "__main__":
     cat = module()
     if args.verify:
         assert json.loads(OUT.read_text(encoding="utf-8")) == audit
-        cat.verify(json.loads(CATALOGUE.read_text(encoding="utf-8")))
+        cat.verify(json.loads(CATALOGUE.read_text(encoding="utf-8")), historical_source=True)
     else:
         if not args.clang:
             parser.error("generation needs --clang")
