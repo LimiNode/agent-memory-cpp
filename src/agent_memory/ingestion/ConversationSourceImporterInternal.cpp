@@ -347,4 +347,3 @@ ConversationEnvelope normalize_observation(const ConversationSourceObservation& 
 }
 
 } // namespace agent_memory::detail
-
