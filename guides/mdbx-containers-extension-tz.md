@@ -1532,17 +1532,19 @@ follows:
 
 #### 5.5.1 DBI budget checkpoint
 
-Conversation Phase 4 P4-0 adds a **proposed, NOT IMPLEMENTED** optional
+Conversation Phase 4 P4-1 implements an **internal, NOT DEPLOYED** optional
 `conversation_durable_v1` delta to the YAML inventory: three dedicated bytewise
 KV DBIs with typed rows, no default activation. Its
-[physical contract](conversation-durable-physical-contract.md) owns proposed
+[physical contract](conversation-durable-physical-contract.md) owns
 keys, values, original replay witnesses and transactions. This does not
 repurpose `conversation_episode_payloads` or select Current/checkpoint tables.
 The unchanged expanded reference 76 plus this delta is 79 (17 free at 96).
 The expanded numeric composition 89 plus 3 is 92 and needs explicit 108 to
 retain 16 free slots; its existing 105 is insufficient. Two independent
-Conversation prefixes plus expanded reference need 98. No runtime capacity
-enforcement or arbitrary-composition validator is claimed by this docs delta.
+Conversation prefixes plus expanded reference need 98. The private vertical
+checks actual max_dbs, occupied rows and the host-declared complete environment
+peak (excluding its own three DBIs), preserving 16 slots. An unaccounted host
+table refuses; no arbitrary-composition auto-discovery is claimed.
 
 `Config::max_dbs = 96` является recommended capacity ceiling, а не обещанием открыть 96
 named DBIs в каждом профиле. Machine-readable inventory in

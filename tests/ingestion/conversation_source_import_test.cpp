@@ -1,4 +1,5 @@
 #include <agent_memory/ingestion/ConversationSourceImporter.hpp>
+#include <agent_memory/ingestion/ConversationSourceImporterInternal.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -301,6 +302,40 @@ void refused_targets_and_budgets() {
     expect(sink.import_observation(access(), malformed).status == am::ConversationWriteStatus::InvalidRequest, "retained evidence");
 }
 
+void shared_admission_helpers() {
+    const auto request = call("shared-request");
+    auto value = tool_result("shared-result", request, am::ConversationSourceResultOrigin::Timeout);
+    const auto fields = options().store.codec_limits.fields;
+    expect(am::detail::preflight_observation(value, fields, 0).status == am::ConversationWriteStatus::ResourceLimit,
+        "shared preflight preserves zero observation budget");
+    expect(am::detail::preflight_observation(value, fields, options().max_observation_bytes).status ==
+        am::ConversationWriteStatus::Applied, "shared preflight uses field and observation budgets only");
+    expect(am::detail::source_status(value.source, value.conversation, value.scope, fields) ==
+        am::ConversationWriteStatus::Applied && am::detail::target_status(value, fields) ==
+        am::ConversationWriteStatus::Applied, "shared source and target admission");
+    auto retained = am::detail::copy_observation(value);
+    expect(am::detail::same_witness(value, retained), "shared witness copy preserves raw classification inputs");
+    retained.producer += "-changed";
+    expect(!am::detail::same_witness(value, retained), "shared witness comparison is source-shaped");
+    const auto key = am::detail::source_key(value.source);
+    retained.source.adapter_recipe += "-changed";
+    const auto same_key = am::detail::source_key(retained.source);
+    expect(!(key < same_key) && !(same_key < key), "recipe remains outside occurrence key");
+    const am::EntryRef ref{conversation(), am::EntryId{std::uint64_t{2}}, am::EventRevision{std::uint64_t{1}}};
+    const auto unresolved = am::detail::normalize_observation(value, ref);
+    const auto& raw_result = std::get<am::ConversationToolResultObserved>(unresolved.payload);
+    expect(raw_result.outcome == am::ConversationToolOutcome::Unknown &&
+        std::holds_alternative<am::UnresolvedConversationTarget>(raw_result.call),
+        "pure normalization neither resolves a source target nor infers success from raw flags");
+    const am::EntryRef original_call{conversation(), am::EntryId{std::uint64_t{1}}, am::EventRevision{std::uint64_t{1}}};
+    const auto resolved = am::detail::normalize_observation(value, ref, am::ConversationLinkTarget{original_call});
+    expect(std::get<am::EntryRef>(std::get<am::ConversationToolResultObserved>(resolved.payload).call) == original_call,
+        "normalization consumes only the caller's transaction-resolved exact target");
+    value.producer = std::string(1, static_cast<char>(255));
+    expect(am::detail::preflight_observation(value, fields, options().max_observation_bytes).status ==
+        am::ConversationWriteStatus::InvalidRequest, "shared preflight preserves producer UTF-8 admission");
+}
+
 void concurrent_admission() {
     am::InMemoryConversationImportSink sink(options()); create(sink);
     const auto same = message("same");
@@ -333,7 +368,7 @@ void concurrent_admission() {
 int main() {
     try {
         replay_and_identity(); eight_tool_cases_and_frozen_resolution(); refused_targets_and_budgets();
-        exact_budget_boundaries(); concurrent_admission();
+        exact_budget_boundaries(); shared_admission_helpers(); concurrent_admission();
         std::cout << "PASS authored source-shaped reference adapter fixtures; no upstream SDK execution claim\n";
         return 0;
     } catch(const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
