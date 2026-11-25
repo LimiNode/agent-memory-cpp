@@ -100,7 +100,7 @@ struct ObservationPreflight final {
             status = ConversationWriteStatus::InvalidRequest;
             return false;
         }
-        // Standalone AMXR is bounded to 64 KiB and retains its existing text API.
+        // Standalone AMXR's direct byte API retains the independent 64 KiB frame bound.
         return value(serialize_external_object_ref_bytes(ref).size());
     }
 

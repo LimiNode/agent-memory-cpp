@@ -983,7 +983,7 @@ am::ExternalObjectRef maximal_external() {
     tail.resize(tail.size() - (bytes - 65536));
     result.object_key = am::ExternalObjectKey{std::move(parts)};
     expect(am::is_valid_external_object_ref(result), "maximal AMXR fixture invalid");
-    expect(am::serialize_external_object_ref(result).size() == 65536, "maximal AMXR size changed");
+    expect(am::serialize_external_object_ref_bytes(result).size() == 65536, "maximal AMXR size changed");
     return result;
 }
 

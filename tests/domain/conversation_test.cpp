@@ -262,7 +262,7 @@ void source_identity_and_snapshots() {
     auto value = message();
     value.source = source(); valid(value); // No external key is fabricated for local evidence.
     value.source->object = external(); valid(value);
-    const auto object_bytes = am::serialize_external_object_ref(*value.source->object);
+    const auto object_bytes = am::serialize_external_object_ref_bytes(*value.source->object);
     value.source->event = external("message-change"); invalid(value);
     value.source->identity = am::ConversationSourceIdentity::ExternalEvent; valid(value);
     value.source->provider_revision_marker = "not-an-event-key"; invalid(value);
@@ -300,7 +300,7 @@ void source_identity_and_snapshots() {
     invalid(value); // A snapshot needs retained evidence, not inferred creation history.
     value.source = source(); value.source->object = external(); valid(value);
     expect(!value.source->event && !value.source->provider_revision_marker, "snapshot invented source change identity");
-    expect(am::serialize_external_object_ref(*value.source->object) == object_bytes, "source object identity changed");
+    expect(am::serialize_external_object_ref_bytes(*value.source->object) == object_bytes, "source object identity changed");
     expect(std::holds_alternative<am::ConversationSnapshotObserved>(value.payload), "snapshot was promoted to creation");
     value.source->revision = {}; invalid(value);
     value.source = source(); value.source->object = am::ExternalObjectRef{}; invalid(value);
@@ -311,8 +311,8 @@ void source_identity_and_snapshots() {
         value.source = source(); value.source->object = external();
         value.source->object->object_key = key;
         valid(value);
-        const auto bytes = am::serialize_external_object_ref(*value.source->object);
-        expect(am::deserialize_external_object_ref(bytes) == *value.source->object,
+        const auto bytes = am::serialize_external_object_ref_bytes(*value.source->object);
+        expect(am::deserialize_external_object_ref_bytes({bytes.data(), bytes.size()}) == *value.source->object,
             "conversation source changed signed/unsigned/opaque AMXR identity");
     }
 }

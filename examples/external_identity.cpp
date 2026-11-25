@@ -15,7 +15,7 @@ int main() {
     static_assert(std::is_same_v<std::decay_t<decltype(bytes)>, agent_memory::ByteBuffer>);
     const auto restored = agent_memory::deserialize_external_object_ref_bytes({bytes.data(), bytes.size()});
     if(restored != message) return 1;
-    // Existing binary-string consumers remain source- and wire-compatible.
+    // Compatibility example only: existing binary-string entry points use the same AMXR bytes.
     const auto legacy = agent_memory::serialize_external_object_ref(restored);
     if(agent_memory::deserialize_external_object_ref(legacy) != message || legacy.size() != bytes.size()) return 3;
     const auto copied = agent_memory::copy_external_object_ref(message);
