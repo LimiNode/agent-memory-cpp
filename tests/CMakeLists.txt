@@ -22,6 +22,7 @@ file(GLOB_RECURSE agent_memory_public_headers
 list(SORT agent_memory_public_headers)
 list(REMOVE_ITEM agent_memory_public_headers
     "agent_memory/ingestion/ConversationSourceImporterInternal.hpp"
+    "agent_memory/storage/ConversationStoreInternal.hpp"
     "agent_memory/infrastructure/mdbx/ConversationDurableCodecInternal.hpp"
     "agent_memory/infrastructure/mdbx/MdbxConversationDurableInternal.hpp"
 )
@@ -864,6 +865,14 @@ add_test(NAME agent_memory_feature_flags_test COMMAND agent_memory_feature_flags
 if(AGENT_MEMORY_ENABLE_MDBX)
     # The deterministic termination/IPC harness has Windows and Linux implementations.
     if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_executable(agent_memory_conversation_durable_correction_process_test
+            infrastructure/mdbx/conversation_durable_correction_process_test.cpp)
+        target_link_libraries(agent_memory_conversation_durable_correction_process_test
+            PRIVATE agent_memory::agent_memory ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET})
+        add_test(NAME agent_memory_conversation_durable_correction_process_test
+            COMMAND agent_memory_conversation_durable_correction_process_test)
+        set_tests_properties(agent_memory_conversation_durable_correction_process_test PROPERTIES TIMEOUT 180)
+
         add_executable(agent_memory_conversation_durable_process_test
             infrastructure/mdbx/conversation_durable_process_test.cpp)
         target_link_libraries(agent_memory_conversation_durable_process_test
@@ -872,6 +881,22 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             COMMAND agent_memory_conversation_durable_process_test)
         set_tests_properties(agent_memory_conversation_durable_process_test PROPERTIES TIMEOUT 180)
     endif()
+
+    add_executable(agent_memory_conversation_durable_correction_test
+        infrastructure/mdbx/conversation_durable_correction_test.cpp)
+    target_link_libraries(agent_memory_conversation_durable_correction_test
+        PRIVATE agent_memory::agent_memory ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET})
+    add_test(NAME agent_memory_conversation_durable_correction_test
+        COMMAND agent_memory_conversation_durable_correction_test)
+    set_tests_properties(agent_memory_conversation_durable_correction_test PROPERTIES TIMEOUT 120)
+
+    add_executable(agent_memory_conversation_durable_correction_failure_test
+        infrastructure/mdbx/conversation_durable_correction_failure_test.cpp)
+    target_link_libraries(agent_memory_conversation_durable_correction_failure_test
+        PRIVATE agent_memory::agent_memory ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET})
+    add_test(NAME agent_memory_conversation_durable_correction_failure_test
+        COMMAND agent_memory_conversation_durable_correction_failure_test)
+    set_tests_properties(agent_memory_conversation_durable_correction_failure_test PROPERTIES TIMEOUT 120)
 
     add_executable(agent_memory_conversation_durable_native_failure_test
         infrastructure/mdbx/conversation_durable_native_failure_test.cpp)

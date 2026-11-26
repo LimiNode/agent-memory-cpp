@@ -1,6 +1,7 @@
 # Conversation durable P4-2: process recovery and admission races
 
-- Dates: 2026-11-25..26. Status: LOCAL QUALIFICATION PASS; hosted gate PENDING.
+- Dates: 2026-11-25..26. Status: **READY**, internal reviewed slice, Draft #702
+  remains unmerged. Final hosted receipt below supersedes the creation snapshot.
 - Baseline: #701 integrated at `2c895c9812128dcfc3ccd07ae84a7175e5ff371c`,
   tree `86ec0e739dd382a45b0c6bd89302a276abbc8dfa`.
 - Owner: [physical contract](../conversation-durable-physical-contract.md),
@@ -121,10 +122,29 @@ schema or public factory/interface change is part of this slice.
 
 ## Interpretation and remaining gates
 
+### Final exact-head gate (2026-11-26)
+
+Draft [#702](https://github.com/LimiNode/agent-memory-cpp/pull/702), exact HEAD
+`b546791191bb15b89436b7b09e25de08035a234b`, tree
+`917cf985c5f4f6076382ad078d4db9ea3937542c`:
+
+- [CI 45850534246](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45850534246)
+  SUCCESS: 14 successful jobs, 16 conditional skips; all required lanes and gate
+  passed. Research-only/combined evidence skips are classifier decisions, not
+  waived failed checks.
+- [Packaging 45850534204](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45850534204)
+  SUCCESS: 6/6, including installed MDBX/JSON, three-platform minimal consumers
+  and historical OLD-to-NEW exact replay.
+- [Final decision receipt](https://github.com/LimiNode/agent-memory-cpp/pull/702#issuecomment-7196799531):
+  READY with the local/review qualification above. No confirmed blocker remains.
+
+The table's hosted PENDING row is the initial publication snapshot, preserved
+historically; the exact-head result here closes that gate. P4-3 is now authorized
+in a separate stacked Draft based on the qualified #702 HEAD. Neither Draft
+is authorized for merge, release, migration or public activation.
+
 Local recovery/concurrency/failure qualification supports the bounded internal
-admission claim, not complete Phase 4. P4-3 remains gated on successful exact-head
-CI/Packaging with no unresolved blocker. No merge of either new Draft is
-authorized. P4-3 must remove the Entry-order generation early-break shortcut,
+admission claim, not complete Phase 4. P4-3 must remove the Entry-order generation early-break shortcut,
 add revision-aware seeks, CAS receipts and pinned historical pages; no Current
 projection is implemented here.
 

@@ -1,7 +1,7 @@
 # Conversation Core Phase 4 implementation brief
 
-- Status: P4-0 and INTERNAL P4-1 integrated through #701; P4-2 process
-  qualification in progress in a separate Draft. No deployed schema/full Core
+- Status: P4-0 and INTERNAL P4-1 integrated through #701; P4-2 READY in unmerged
+  Draft #702; P4-3 corrections/frontiers in progress in a stacked Draft. No deployed schema/full Core
   claim or authorization to merge P4-2/P4-3.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
 - Entry gate: qualified combined Phase 2/3A/3B tree and separate owner decision.
@@ -49,6 +49,12 @@ neither new Draft is authorized for merge. The
 [P4-2 qualification note](experiments/2026-11-25-conversation-durable-p4-2.md)
 separates process termination, native failures, injected exceptions and unrun
 device/commit-internal failure cases.
+
+The #702 exact-head gate passed at `b546791191bb15b89436b7b09e25de08035a234b`:
+CI 45850534246 (14 success, 16 conditional skips), Packaging 45850534204 (6/6),
+local platform/sanitizer/consumer tests and independent review READY. The
+[P4-3 qualification note](experiments/2026-11-26-conversation-durable-p4-3.md)
+tracks the next separate dependent Draft; neither new PR is merged.
 
 ## Transaction and authority decisions
 
