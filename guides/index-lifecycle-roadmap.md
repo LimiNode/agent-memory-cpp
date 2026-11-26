@@ -150,6 +150,21 @@ remain `HISTORICAL_ONLY`, and carry `migration_proof=false` as well as
 `post_migration_upgrade_proof=false`. This audit neither implements nor
 qualifies a physical-layout migration and grants no production activation.
 
+The later audit `mdbxc-335-336-merged-corrections-2026-11-27` admits only the
+same historical OLD external tree ->
+`f5679c6faf286af65e637301aed320c4e433f918`. Its sole changed entry is
+`mdbx-containers` -> `b28ce3a969ccde427e699cbb3ece74d35acc08c5`, the merged
+commit containing both #335 and #336. This preserves the loader deduction fix
+above and adds a lazy successful-diagnostic overload plus stack ownership of
+the manual transaction reservation before allocation. Both regression families
+and sync ON/OFF diagnostics remain in the dependency. No storage grammar,
+commit/durability policy or `libmdbx` pin changes. The guard still rejects any
+other tree/pin/direction or additional external entry; this is a historical
+consumer qualification exception, not a general dependency-update allowlist.
+The original audit remains reproducible and all evidence-class restrictions
+above apply unchanged. See the [downstream corrective qualification
+receipt](experiments/2026-11-27-mdbx-335-336-downstream-qualification.md).
+
 The migration-backed numeric OLD/NEW gate is **NOT_EXECUTED**. Selecting
 `--post-numeric-upgrade` currently writes a `NOT_EXECUTED` receipt and exits with
 code 3; it never runs the historical consumer as numeric proof. A CLI flag,
