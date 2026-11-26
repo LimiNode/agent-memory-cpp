@@ -61,8 +61,10 @@ post-main hosted checks remain separately identified above.
 
 The private P4-1/P4-2/P4-3 backend is integrated, not a complete installed durable
 Conversation API. The [P4-4 admission audit](2026-11-26-conversation-p4-4-admission-gate.md)
-records the confirmed Edit/Tombstone/Restore DTO/witness boundary and explicit
-owner choices. No public API, witness/profile version, schema marker or DBI
+records the confirmed Edit/Tombstone/Restore DTO/witness boundary. The later owner
+decision selects fresh witness2 without dual-reader/migration; the
+[compact exact contract delta](../conversation-durable-admission-v2-proposal.md)
+remains under review before implementation. No public API, witness/profile version, schema marker or DBI
 delta is adopted by that proposal. Correction remains distinct from a new
 message-state event, and raw append must not bypass coordinated source mapping.
 

@@ -6,6 +6,14 @@ Date: 2026-11-26. Read-only source audit of
 dependency changes or PR operations were performed by this audit. This is an
 audit/proposal, not a replacement normative specification or approved API/schema.
 
+Owner decision addendum (2026-11-26): typed source states/read-only extraction and
+a **fresh witness2 profile without dual-reader or migration** are approved in
+direction. The later fresh-profile choice supersedes the earlier v1/v2-reading
+request. The [compact exact contract delta](../conversation-durable-admission-v2-proposal.md)
+is now the review target before implementation. Alternatives below are historical
+decision analysis, not an active compatibility-reader requirement. Valuable v1
+data remains an explicit activation precondition to resolve with the owner.
+
 ## Finding
 
 The current supported coordinated admission path cannot express message Edit,
@@ -139,8 +147,9 @@ decision. Do not weaken `mapping_count == entry_count` to conceal a raw append.
   physical/decode/retained-state/output budgets. Source DTO extension does not
   itself prove Current correctness or performance.
 
-Conclusion: **HOLD for full message-state/public admission completion pending the
-owner's interface/witness/profile choice.** Existing #702/#703 integration and the
+Conclusion: **HOLD for exact DTO/witness2/profile/read-only contract approval and
+full message-state qualification.** Direction is selected in the addendum above.
+Existing #702/#703 integration and the
 separate diagnostic-allocation dependency fix are unaffected by this audit.
 
 ## Ordered continuation and Phase 5 handoff
@@ -150,7 +159,7 @@ This is not a completed P4-4 implementation or benchmark receipt. The
 remains unchanged and **NOT RUN**. The source findings above were inspected,
 not reproduced by a new build or durable-scale measurement.
 
-After the owner chooses the admission/profile boundary:
+After the owner approves the linked exact admission/profile contract:
 
 1. Review the minimum DTO, lossless witness/version, old/new reader/writer and
    append-versus-read-view contract delta; preserve existing evidence and prohibit

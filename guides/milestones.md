@@ -108,8 +108,9 @@ local/independent evidence remains in the
 note. Current/public durable activation and P4-5 scale qualification remain open.
 The [P4-4 admission audit](audits/2026-11-26-conversation-p4-4-admission-gate.md)
 records a concrete owner-review HOLD: coordinated Edit/Tombstone/Restore requires
-a reviewed source DTO and witness/profile delta. No public API/persisted schema
-change is approved by the audit; full Current parity/benchmark and the P4-5
+the [exact DTO/witness2/read-only delta](conversation-durable-admission-v2-proposal.md).
+Fresh opt-in witness2 without dual-reader/migration is selected in direction;
+exact API/persisted-schema approval remains pending. Full Current parity/benchmark and the P4-5
 65,537-admission fixture remain NOT RUN. New P4-4/P4-5 Drafts are not authorized
 for automatic merge.
 Its concrete [P4-0 physical contract](conversation-durable-physical-contract.md)
