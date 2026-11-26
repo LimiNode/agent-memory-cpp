@@ -107,10 +107,12 @@ local/independent evidence remains in the
 [P4-3 correction/frontier slice](experiments/2026-11-26-conversation-durable-p4-3.md)
 note. Current/public durable activation and P4-5 scale qualification remain open.
 The [P4-4 admission audit](audits/2026-11-26-conversation-p4-4-admission-gate.md)
-records a concrete owner-review HOLD: coordinated Edit/Tombstone/Restore requires
+records the resolved contract gate: coordinated Edit/Tombstone/Restore requires
 the [exact DTO/witness2/read-only delta](conversation-durable-admission-v2-proposal.md).
-Fresh opt-in witness2 without dual-reader/migration is selected in direction;
-exact API/persisted-schema approval remains pending. Full Current parity/benchmark and the P4-5
+The owner approved exact delta `aa0bae40`: fresh opt-in witness2 without
+dual-reader/migration and read-only API extraction. P4-4 implementation is
+authorized on fresh experimental environments, not existing-data activation.
+Full Current parity/benchmark and the P4-5
 65,537-admission fixture remain NOT RUN. New P4-4/P4-5 Drafts are not authorized
 for automatic merge.
 Its concrete [P4-0 physical contract](conversation-durable-physical-contract.md)

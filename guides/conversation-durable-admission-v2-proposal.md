@@ -1,14 +1,17 @@
 # P4-4 typed admission, witness2 and read-only API delta
 
-- Status: **DRAFT FOR EXACT CONTRACT APPROVAL; NOT IMPLEMENTED**.
+- Status: **EXACT CONTRACT OWNER-APPROVED; IMPLEMENTATION NOT QUALIFIED**.
 - Date: 2026-11-26. Owner: conversation storage/ingestion.
 - Base: `main@8a092d515f99ed34e50ffbc7642cd2fb80e4ef8d`, tree
   `ffe987701da42600079c36d54b69537d75532c6c`.
 - Owner-approved direction: fresh opt-in witness2 profile, no dual-reader or
   migration; typed source state events and a common read-only interface.
   This later choice supersedes the earlier request for active v1/v2 reading.
-- Review gate: approve the concrete types/grammar/profile/API below before P4-4
-  implementation. This proposal changes no executable API or persisted bytes.
+- Approval receipt: the owner accepted this exact delta at
+  `aa0bae40287999e24e179544116bb8712add9478` and authorized separate P4-4
+  implementation on fresh experimental environments. This documentation changes
+  no executable API or persisted bytes. Existing-data activation, migration,
+  release and automatic merge of new implementation Drafts remain unauthorized.
 
 Owners remain [source import](conversation-source-import.md),
 [reference semantics](conversation-reference-store.md),
@@ -251,8 +254,9 @@ retain the committed prefix/retry position. The snippet is proposed API usage,
 | Corrections between pinned pages, wrong-view/foreign/reopened tokens, policy changes | Frozen frontier/exact content and current authorization; no MDBX handles across calls |
 | GNU/MSVC/Linux, MDBX-off, header probes, installed/relocated C++17 read-only consumers | Intended source changes verified; no optional dependency leaks or synthetic append |
 
-All new implementation/grammar/consumer checks above are **NOT RUN**. After owner
-approval, implement coordinated admission and bounded Current in P4-4, then run
+All new implementation/grammar/consumer checks above are **NOT RUN** in this
+documentation-only PR. Under the recorded owner approval, implement coordinated
+admission and bounded Current in P4-4, then run
 the unchanged [Current screen](experiments/2026-11-24-conversation-durable-current-plan.md).
 Only after its semantic gate proceed to separate P4-5 scale/full qualification.
 No automatic merge, migration, release or new DBI is authorized by this draft.

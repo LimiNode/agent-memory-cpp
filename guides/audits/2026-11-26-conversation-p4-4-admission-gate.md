@@ -1,4 +1,4 @@
-# P4-4 admission boundary audit — owner decision required
+# P4-4 admission boundary audit — contract decision recorded
 
 Date: 2026-11-26. Read-only source audit of
 `feat/conversation-durable-p4-3@fb8656176fcaa4994cb29aa9a1fc497519a932a8`, tree
@@ -10,7 +10,9 @@ Owner decision addendum (2026-11-26): typed source states/read-only extraction a
 a **fresh witness2 profile without dual-reader or migration** are approved in
 direction. The later fresh-profile choice supersedes the earlier v1/v2-reading
 request. The [compact exact contract delta](../conversation-durable-admission-v2-proposal.md)
-is now the review target before implementation. Alternatives below are historical
+was subsequently approved exactly at `aa0bae40`; separate P4-4 implementation
+on fresh experimental environments is authorized. Implementation qualification
+and existing-data activation remain separate open gates. Alternatives below are historical
 decision analysis, not an active compatibility-reader requirement. Valuable v1
 data remains an explicit activation precondition to resolve with the owner.
 

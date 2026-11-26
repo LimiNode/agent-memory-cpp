@@ -1,7 +1,8 @@
 # Conversation Core Phase 4 implementation brief
 
 - Status: P4-0 and INTERNAL P4-1/P4-2/P4-3 integrated through #703. P4-4 full
-  message-state admission is HOLD pending exact DTO/witness2/read-only approval;
+  DTO/witness2/read-only contract is OWNER-APPROVED at `aa0bae40`;
+  implementation and semantic qualification remain OPEN;
   P4-4 Current and P4-5 qualification remain OPEN. No deployed schema/full Core
   claim or automatic merge authorization for new Drafts.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
@@ -63,12 +64,12 @@ Historical local results in the qualification notes are not new executions.
 The [P4-4 admission audit](audits/2026-11-26-conversation-p4-4-admission-gate.md)
 confirms that the current coordinated source DTO and persisted witness cannot
 express Edit/Tombstone/Restore. Correction is not a substitute, and raw append
-must not violate one mapping per occurrence. Full P4-4 semantics and public
-activation are HOLD pending approval of the
+must not violate one mapping per occurrence. The owner has approved the
 [compact exact contract delta](conversation-durable-admission-v2-proposal.md).
-The owner selected fresh opt-in witness2 with no dual-reader/migration and a
-read-only interface; this direction does not approve the exact grammar or adopt
-an API/schema change. The predeclared Current
+P4-4 implementation on fresh experimental environments is authorized with exact
+targets, fresh opt-in witness2, no dual-reader/migration and a read-only interface.
+Contract approval does not establish qualified implementation or permit activation
+against existing user data. The predeclared Current
 screen and P4-5 65,537-admission fixture remain NOT RUN; later slices stay separate
 Drafts with no automatic merge, release, migration or deployment authorization.
 

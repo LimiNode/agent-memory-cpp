@@ -20,10 +20,13 @@ checked review projection. P4-1 executable evidence and its unrun gates are
 tracked in the [qualification note](experiments/2026-11-25-conversation-durable-p4-1.md).
 P4-2 crash/race qualification and P4-3 private corrections/frontiers are integrated
 through #702/#703. Current strategy and full scale remain later gates; complete
-state-event admission awaits owner approval of the
+state-event admission follows the owner-approved
 [exact DTO/witness2/read-only delta](conversation-durable-admission-v2-proposal.md).
-Fresh opt-in witness2 without dual-reader/migration is selected in direction;
-the grammar below remains the existing witness1 contract until exact approval.
+The owner accepted exact proposal `aa0bae40` and authorized implementation on
+fresh experimental environments. The grammar below describes the integrated
+witness1 implementation; the approved delta supersedes its profile/witness/API
+sections for the separate, not-yet-qualified P4-4 implementation. There is no
+authorization to activate the new profile against existing user data.
 The owner accepted P4-0
 on 2026-11-25 and authorized P4-1 in a separate Draft after qualified #700/#699
 integration. P4-0 deploys nothing; release, migration and automatic P4-1 merge
@@ -49,7 +52,8 @@ the [integration receipt](audits/2026-11-26-conversation-p4-2-p4-3-integration.m
 records final main `8a092d515f99ed34e50ffbc7642cd2fb80e4ef8d`, unchanged accepted
 tree and post-main checks. No Current or full public store is advertised. This
 status update does not amend the physical grammar, schema marker, witness or
-DBI manifest; the P4-4 proposal remains unapproved.
+DBI manifest; P4-4 contract approval is recorded above, separately from
+implementation qualification.
 
 ## 1. Reuse, ownership and smallest layout
 
