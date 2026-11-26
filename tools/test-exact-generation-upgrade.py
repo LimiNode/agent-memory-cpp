@@ -23,6 +23,8 @@ class DependencyAuditTest(unittest.TestCase):
     NEW_TREE = "b816ddeccafa0375c15b977e71d4a36f6728f59f"
     OLD_CONTAINERS = "4ab32b5eab3cdfce95d1a6c0f05f566019793ec4"
     NEW_CONTAINERS = "c2a2326273a3d85f29283e2cd34942c7b8d72cbd"
+    MERGED_TREE = "f5679c6faf286af65e637301aed320c4e433f918"
+    MERGED_CONTAINERS = "b28ce3a969ccde427e699cbb3ece74d35acc08c5"
     OLD_ENTRIES = "\0".join((
         "160000 commit 3f3429661187e4c24a490a0f148fc6bc89042b3d\thnswlib",
         "160000 commit fc8b8e4697e0ef8b2cd5aee1f2d9fb0974fc665f\tlibmdbx",
@@ -32,6 +34,7 @@ class DependencyAuditTest(unittest.TestCase):
         "",
     ))
     NEW_ENTRIES = OLD_ENTRIES.replace(OLD_CONTAINERS, NEW_CONTAINERS)
+    MERGED_ENTRIES = OLD_ENTRIES.replace(OLD_CONTAINERS, MERGED_CONTAINERS)
 
     def test_exact_directional_audit(self) -> None:
         self.assertEqual(UPGRADE.audit_dependency_transition(
@@ -42,6 +45,32 @@ class DependencyAuditTest(unittest.TestCase):
         self.assertEqual(UPGRADE.audit_dependency_transition(
             self.OLD_TREE, self.OLD_TREE, self.OLD_ENTRIES, self.OLD_ENTRIES
         ), "identical-external-trees")
+
+    def test_exact_merged_corrections_audit(self) -> None:
+        self.assertEqual(UPGRADE.audit_dependency_transition(
+            self.OLD_TREE, self.MERGED_TREE, self.OLD_ENTRIES, self.MERGED_ENTRIES
+        ), "mdbxc-335-336-merged-corrections-2026-11-27")
+
+    def test_merged_audit_does_not_admit_other_transitions(self) -> None:
+        controls = {
+            "wrong_pin": (self.OLD_TREE, self.MERGED_TREE, self.OLD_ENTRIES, self.NEW_ENTRIES),
+            "wrong_tree": (self.OLD_TREE, self.NEW_TREE, self.OLD_ENTRIES, self.MERGED_ENTRIES),
+            "reverse": (self.MERGED_TREE, self.OLD_TREE, self.MERGED_ENTRIES, self.OLD_ENTRIES),
+            "incremental": (self.NEW_TREE, self.MERGED_TREE, self.NEW_ENTRIES, self.MERGED_ENTRIES),
+            "changed_libmdbx": (
+                self.OLD_TREE, self.MERGED_TREE, self.OLD_ENTRIES,
+                self.MERGED_ENTRIES.replace("fc8b8e4697e0ef8b2cd5aee1f2d9fb0974fc665f", "1" * 40)
+            ),
+            "extra_entry": (
+                self.OLD_TREE, self.MERGED_TREE, self.OLD_ENTRIES,
+                self.MERGED_ENTRIES + "160000 commit " + "2" * 40 + "\tunaudited\0"
+            ),
+        }
+        for name, values in controls.items():
+            with self.subTest(control=name), self.assertRaisesRegex(
+                RuntimeError, "no explicit audit admits"
+            ):
+                UPGRADE.audit_dependency_transition(*values)
 
     def test_unaudited_transitions_fail_closed(self) -> None:
         changed_libmdbx = self.NEW_ENTRIES.replace(

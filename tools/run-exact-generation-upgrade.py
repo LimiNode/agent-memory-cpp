@@ -27,6 +27,9 @@ AUDITED_NEW_EXTERNAL_TREE = "b816ddeccafa0375c15b977e71d4a36f6728f59f"
 AUDITED_OLD_CONTAINERS = "4ab32b5eab3cdfce95d1a6c0f05f566019793ec4"
 AUDITED_NEW_CONTAINERS = "c2a2326273a3d85f29283e2cd34942c7b8d72cbd"
 DEPENDENCY_AUDIT_ID = "mdbxc-db-load-private-template-2026-11-20"
+AUDITED_MERGED_EXTERNAL_TREE = "f5679c6faf286af65e637301aed320c4e433f918"
+AUDITED_MERGED_CONTAINERS = "b28ce3a969ccde427e699cbb3ece74d35acc08c5"
+MERGED_DEPENDENCY_AUDIT_ID = "mdbxc-335-336-merged-corrections-2026-11-27"
 
 
 def git(source: Path, *args: str) -> str:
@@ -40,20 +43,25 @@ def sha(path: Path) -> str:
 def audit_dependency_transition(
     old_tree: str, new_tree: str, old_entries: str, new_entries: str
 ) -> str:
-    """Admit identical dependencies or one exact, directional loader audit."""
+    """Admit identical dependencies or an exact, directional dependency audit."""
     if old_tree == new_tree and old_entries == new_entries:
         return "identical-external-trees"
-    if (old_tree, new_tree) == (
-        AUDITED_OLD_EXTERNAL_TREE, AUDITED_NEW_EXTERNAL_TREE
-    ):
+    audited_destinations = {
+        AUDITED_NEW_EXTERNAL_TREE: (AUDITED_NEW_CONTAINERS, DEPENDENCY_AUDIT_ID),
+        AUDITED_MERGED_EXTERNAL_TREE: (
+            AUDITED_MERGED_CONTAINERS, MERGED_DEPENDENCY_AUDIT_ID
+        ),
+    }
+    if old_tree == AUDITED_OLD_EXTERNAL_TREE and new_tree in audited_destinations:
+        containers, audit_id = audited_destinations[new_tree]
         old_entry = f"160000 commit {AUDITED_OLD_CONTAINERS}\tmdbx-containers\0"
-        new_entry = f"160000 commit {AUDITED_NEW_CONTAINERS}\tmdbx-containers\0"
+        new_entry = f"160000 commit {containers}\tmdbx-containers\0"
         # Preserve every other serialized entry, including its mode and path.
         # The exact tree pair also rejects additions shared by both inputs.
         if old_entries.count(old_entry) == 1 and new_entries == old_entries.replace(
             old_entry, new_entry, 1
         ):
-            return DEPENDENCY_AUDIT_ID
+            return audit_id
     raise RuntimeError(
         "dependency pins differ; no explicit audit admits this exact external-tree transition"
     )
