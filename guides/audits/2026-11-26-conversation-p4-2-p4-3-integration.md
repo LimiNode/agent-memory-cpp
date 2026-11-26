@@ -1,7 +1,7 @@
 # Conversation P4-2/P4-3 integration receipt
 
 - Date: 2026-11-26. Owner: conversation storage/ingestion.
-- Status: source integration verified; #703 post-main checks pending.
+- Status: **INTEGRATED / POST-MAIN CI AND PACKAGING PASS**.
 - Scope: guarded integration authorized by the owner's 2026-11-26 assignment.
   This receipt authorizes no release, migration, deployment or automatic merge
   of new P4-4/P4-5 Drafts.
@@ -43,10 +43,10 @@ liminode/main` verifies this commit/tree/parent relationship.
 | #702 actual main merge | [45881153706](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45881153706): PASS, 14 success / 16 conditional skips | [45881153603](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45881153603): PASS, 6/6 |
 | #703 accepted source HEAD | [45859831981](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45859831981): PASS, 32 success / 2 conditional skips | [45859831860](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45859831860): PASS, 6/6 |
 | #703 protected-branch integration HEAD | [45882637877](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45882637877): PASS, 32 success / 2 conditional skips | [45882637827](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45882637827): PASS, 6/6 |
-| #703 actual main merge | [45884614646](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45884614646): PENDING | [45884614214](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45884614214): PASS, 6/6 |
+| #703 actual main merge | [45884614646](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45884614646): PASS, 32 success / 2 conditional skips | [45884614214](https://github.com/LimiNode/agent-memory-cpp/actions/runs/45884614214): PASS, 6/6 |
 
 Raw final metadata is retained locally under `.artifacts/p4-2-post-main-*.json`,
-`.artifacts/p4-3-integration-head-*-final.json` and, after completion,
+`.artifacts/p4-3-integration-head-*-final.json` and
 `.artifacts/p4-3-post-main-*-final.json`. Hosted run links above are the published
 execution identities; generated job dumps are not committed.
 
@@ -95,8 +95,9 @@ storage uses C: to avoid filling E: again.
 An independent read-only pass reviewed these six documentation changes against
 the unchanged source and GitHub commit/tree/run metadata: READY, no confirmed
 contract drift or source blocker. It did not edit files or run builds. At review
-time #703 post-main Packaging was PASS and CI was pending; the final CI result
-above must be closed separately before this receipt is finalized. Local checks:
+time #703 post-main Packaging was PASS and CI was pending; root subsequently
+verified completed SUCCESS on exact main HEAD with 32 success / 2 conditional
+skips, recorded above. No source change followed that review. Local checks:
 relative links in all six changed documents, staged/unstaged `git diff --check`,
 historical research preservation and PCA12 residual preservation passed. No new
 Current, scale or source-code build evidence is inferred from those doc checks.
