@@ -58,13 +58,22 @@ public:
         const ConversationStoreAccess&, const ConversationRef&);
     [[nodiscard]] ConversationWriteResult import_observation(
         const ConversationStoreAccess&, const ConversationSourceObservation&);
+    // Representation CAS, not a new source occurrence. Original mappings and
+    // their admission receipts remain immutable; stale CAS precedes NoChange.
+    [[nodiscard]] ConversationWriteResult correct(const ConversationStoreAccess&,
+        const ConversationEnvelope&, EventRevision expected_revision, const std::string& reason_code);
     [[nodiscard]] ConversationReadResult read_exact(
         const ConversationStoreAccess&, const EntryRef&, const ConversationReadLimits& = {}) const;
-    // Qualification-only bounded page selector; not a portable public continuation.
-    // Zero frontier selects this transaction's generation. seek_entry is exclusive.
+    // Owning instance-bound continuation; each call opens a fresh transaction.
     [[nodiscard]] ConversationReadResult read_history(
         const ConversationStoreAccess&, const ConversationRef&, const ConversationReadLimits& = {},
-        std::uint64_t seek_entry = 0, std::uint64_t frontier = 0) const;
+        const std::optional<ConversationContinuation>& continuation = std::nullopt) const;
+    // Qualification-only explicit historical selector, not a portable public API.
+    // Frontier is nonzero and not before creation or beyond the current commit.
+    // The (entry, revision) pair is exclusive; only (0, 0) starts at the beginning.
+    [[nodiscard]] ConversationReadResult read_history_at(const ConversationStoreAccess&,
+        const ConversationRef&, const ConversationReadLimits&, std::uint64_t frontier,
+        std::uint64_t seek_entry = 0, std::uint64_t seek_revision = 0) const;
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

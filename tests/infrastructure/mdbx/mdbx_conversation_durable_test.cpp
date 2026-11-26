@@ -584,10 +584,11 @@ void history_paging_and_frontier() {
     const auto page = store.read_history(access(), conversation(), limits);
     expect(page.status == am::ConversationReadStatus::Partial && page.records.size() == 1 &&
         page.records.front().envelope.metadata.ref == *first.ref, "bounded history first page");
-    const auto tail = store.read_history(access(), conversation(), {}, first.ref->entry.value(), page.commit_generation);
+    const auto tail = store.read_history_at(access(), conversation(), {}, page.commit_generation,
+        first.ref->entry.value(), first.ref->revision.value());
     expect(tail.status == am::ConversationReadStatus::Complete && tail.records.size() == 2 &&
         tail.records.front().envelope.metadata.ref == *second.ref, "exclusive seek resumes pinned frontier");
-    const auto pinned = store.read_history(access(), conversation(), {}, 0, first.commit_generation);
+    const auto pinned = store.read_history_at(access(), conversation(), {}, first.commit_generation);
     expect(pinned.records.size() == 1 && pinned.commit_generation == first.commit_generation,
         "qualification frontier excludes later admissions");
 }

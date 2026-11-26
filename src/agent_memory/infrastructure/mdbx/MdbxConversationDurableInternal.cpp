@@ -2,6 +2,7 @@
 
 #if AGENT_MEMORY_HAS_MDBX
 #include <agent_memory/ingestion/ConversationSourceImporterInternal.hpp>
+#include <agent_memory/storage/ConversationStoreInternal.hpp>
 #include <mdbx_containers/common.hpp>
 
 #include <algorithm>
@@ -60,6 +61,32 @@ ConversationReadResult refused(ConversationReadStatus status) {
     ConversationReadResult result;
     result.status = status;
     return result;
+}
+
+// A never-instantiated abstract access seam, not a partial store implementation.
+struct ContinuationAccess : IConversationStore {
+    using IConversationStore::make_continuation;
+    using IConversationStore::continuation_state;
+};
+
+struct HistoryState final : ConversationContinuation::BackendState {
+    std::shared_ptr<const int> instance;
+    Incarnation incarnation{};
+    ConversationRef conversation;
+    ScopeId scope;
+    std::string policy_binding;
+    std::uint64_t frontier = 0;
+    std::uint64_t entry = 0;
+    std::uint64_t revision = 0;
+};
+
+std::uint64_t revision_charge(const RevisionRow& row) {
+    return sum(row.frame.size(), row.receipt ? row.receipt->reason_code.size() : 0);
+}
+
+std::optional<ConversationCorrectionReceipt> public_receipt(const RevisionRow& row) {
+    if(!row.receipt) return std::nullopt;
+    return ConversationCorrectionReceipt{row.receipt->previous_revision, row.receipt->reason_code};
 }
 
 // Counts physical rows/bytes before any copies. Persistent preparation charges
@@ -203,6 +230,7 @@ struct MdbxConversationDurable::Impl final {
     std::array<MDBX_dbi, 3> dbis{};
     Profile identity;
     ByteBuffer descriptor;
+    const std::shared_ptr<const int> instance = std::make_shared<const int>(0);
 
     Impl(DurableOptions input, QualificationHooks input_hooks) : options(std::move(input)), hooks(input_hooks) {
         validate_options(options);
@@ -365,7 +393,11 @@ struct MdbxConversationDurable::Impl final {
         auto row = stored([&profile, &key, &raw] {
             return decode_revision_row(unwrap_value(profile, TableKind::Events, view(key), *raw));
         });
-        if(!row.generation || row.generation > profile.generation || row.receipt || ref.revision.value() != 1) corrupt();
+        if(!row.generation || row.generation > profile.generation ||
+            ref.revision.value() > profile.quotas.revisions_per_entry) corrupt();
+        const bool is_original = ref.revision.value() == 1;
+        if(is_original ? row.receipt.has_value() : (!row.receipt ||
+            row.receipt->previous_revision.value() != ref.revision.value() - 1)) corrupt();
         static_cast<void>(scope); // Envelope identity is checked only when decode work is permitted.
         const auto generation_key = encode_generation_key(row.generation);
         const auto generation_raw = get(txn, dbis[1], generation_key, work, kMaxGenerationValueBytes);
@@ -373,10 +405,61 @@ struct MdbxConversationDurable::Impl final {
         const auto generation = stored([&profile, &generation_key, &generation_raw] {
             return decode_generation_row(unwrap_value(profile, TableKind::Events, view(generation_key), *generation_raw));
         });
-        if(generation.kind != GenerationKind::Import || generation.conversation != ref.conversation ||
+        if(generation.kind != (is_original ? GenerationKind::Import : GenerationKind::Correction) ||
+            generation.conversation != ref.conversation ||
             !generation.entry || generation.entry->first != ref.entry || generation.entry->second != ref.revision) corrupt();
         return row;
     }
+
+    std::optional<EntryRef> latest(MDBX_txn* txn, const Profile& profile,
+        const ConversationRef& ref, EntryId entry, Work& work) const {
+        const auto start = encode_revision_key({ref.id, entry, EventRevision{kMax}});
+        Cursor cursor(txn, dbis[1]);
+        auto key = val(view(start));
+        MDBX_val raw{};
+        auto code = mdbx_cursor_get(cursor.handle(), &key, &raw, MDBX_SET_RANGE);
+        if(code == MDBX_NOTFOUND) code = mdbx_cursor_get(cursor.handle(), &key, &raw, MDBX_LAST);
+        else if(code == MDBX_SUCCESS && (key.iov_len != start.size() ||
+            std::memcmp(key.iov_base, start.data(), start.size()) != 0)) {
+            code = mdbx_cursor_get(cursor.handle(), &key, &raw, MDBX_PREV);
+        }
+        if(code != MDBX_SUCCESS && code != MDBX_NOTFOUND) checked(code);
+        if(code == MDBX_NOTFOUND || key.iov_len < 18 ||
+            std::memcmp(key.iov_base, start.data(), 18) != 0) return std::nullopt;
+        work.visit(view(key), view(raw), profile.descriptor.codec.max_frame_bytes + kRevisionValueOverheadBytes);
+        const auto physical = decode_revision_key(view(key));
+        return EntryRef{ref, physical.entry, physical.revision};
+    }
+
+    bool targets_valid(MDBX_txn* txn, const Profile& profile, const ConversationEnvelope& envelope,
+        const ConversationStoreAccess& access, Work& work) const {
+        const auto accessible = [&](const EntryRef& target) {
+            return target.conversation.allocation_namespace == options.allocation_namespace &&
+                conversation(txn, profile, target.conversation, access, work).has_value();
+        };
+        for(const auto& link : envelope.metadata.links) {
+            if(const auto* target = std::get_if<EntryRef>(&link.target)) {
+                WorkPhase lookup(work);
+                if(!accessible(*target)) return false;
+                const auto row = revision(txn, profile, *target, access.scope, work);
+                if(!row) return false;
+                static_cast<void>(decode(profile, *row, *target, access.scope));
+            }
+        }
+        if(const auto* result = std::get_if<ConversationToolResultObserved>(&envelope.payload)) {
+            if(const auto* target = std::get_if<EntryRef>(&result->call)) {
+                WorkPhase lookup(work);
+                if(!accessible(*target)) return false;
+                const auto row = revision(txn, profile, *target, access.scope, work);
+                if(!row) return false;
+                const auto target_envelope = decode(profile, *row, *target, access.scope);
+                const auto* call = std::get_if<ConversationToolCallObserved>(&target_envelope.payload);
+                if(!call || call->call_id != result->call_id) return false;
+            }
+        }
+        return true;
+    }
+
     ConversationEnvelope decode(const Profile& profile, const RevisionRow& row,
         const EntryRef& ref, const ScopeId& scope) const {
         try {
@@ -385,6 +468,24 @@ struct MdbxConversationDurable::Impl final {
             return envelope;
         } catch(const ConversationCodecError&) { corrupt(); }
     }
+
+    ConversationContinuation continuation(const ConversationStoreAccess& access, const ConversationRef& ref,
+        std::uint64_t frontier, std::uint64_t entry, std::uint64_t revision) const {
+        auto state = std::make_shared<HistoryState>();
+        state->instance = instance;
+        state->incarnation = identity.incarnation;
+        state->conversation = ref;
+        state->scope = access.scope;
+        state->policy_binding = access.policy_binding;
+        state->frontier = frontier;
+        state->entry = entry;
+        state->revision = revision;
+        return ContinuationAccess::make_continuation(std::move(state));
+    }
+
+    ConversationReadResult history(const ConversationStoreAccess&, const ConversationRef&,
+        const ConversationReadLimits&, const std::optional<ConversationContinuation>&,
+        std::optional<std::uint64_t> explicit_frontier, std::uint64_t entry, std::uint64_t revision) const;
 };
 
 MdbxConversationDurable::MdbxConversationDurable(DurableOptions options, QualificationHooks hooks)
@@ -583,6 +684,101 @@ ConversationWriteResult MdbxConversationDurable::import_observation(
     }
 }
 
+ConversationWriteResult MdbxConversationDurable::correct(const ConversationStoreAccess& access,
+    const ConversationEnvelope& envelope, EventRevision expected, const std::string& reason_code) {
+    if(!valid_access(access) || envelope.metadata.scope.value() != access.scope.value())
+        return refused(ConversationWriteStatus::Denied);
+    const auto& ref = envelope.metadata.ref;
+    if(!is_valid_conversation_ref(ref.conversation) || ref.entry.empty() ||
+        ref.conversation.allocation_namespace != m_impl->options.allocation_namespace)
+        return refused(ConversationWriteStatus::NotFound);
+    try {
+        Work work{m_impl->options};
+        m_impl->step(WriteStep::BeforeTransaction);
+        auto txn = m_impl->options.context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
+        auto profile = m_impl->load(txn.handle(), work, true);
+        if(!m_impl->conversation(txn.handle(), profile, ref.conversation, access, work))
+            return refused(ConversationWriteStatus::NotFound);
+        const auto latest = m_impl->latest(txn.handle(), profile, ref.conversation, ref.entry, work);
+        if(!latest) return refused(ConversationWriteStatus::NotFound);
+        const auto previous = m_impl->revision(txn.handle(), profile, *latest, access.scope, work);
+        if(!previous) corrupt();
+        // A stale request is not converted into an identical-content replay.
+        if(latest->revision != expected) return refused(ConversationWriteStatus::Conflict);
+        if(expected.value() == kMax || ref.revision.value() != expected.value() + 1 ||
+            !is_valid_conversation_namespace(reason_code)) return refused(ConversationWriteStatus::InvalidRequest);
+        // Reserve a finite codec-sized output before encoding. This conservative
+        // local scratch policy may refuse even a smaller value under a stricter
+        // live budget; it never diagnoses existing data as corrupt. No future
+        // changed-writer buffers are reserved on the NoChange path.
+        const auto output_reserve = profile.descriptor.codec.max_frame_bytes;
+        work.prepare(output_reserve);
+        work.scratch(sum(2U * object_reserve(profile.descriptor.codec), kMaxExternalObjectRefBytes));
+        auto frame = serialize_conversation_envelope(envelope, profile.descriptor.codec);
+        work.live -= output_reserve - frame.size();
+        if(detail::conversation_payload_family(envelope) < 0 ||
+            std::any_of(envelope.extensions.begin(), envelope.extensions.end(),
+                [](const auto& value) { return value.is_critical; }))
+            return refused(ConversationWriteStatus::Unsupported);
+        {
+            WorkPhase comparison(work);
+            work.prepare(sum(2U * frame.size(), 2U * object_reserve(profile.descriptor.codec)));
+            auto normalized = copy_conversation_envelope(envelope);
+            normalized.metadata.ref.revision = expected;
+            if(serialize_conversation_envelope(normalized, profile.descriptor.codec) == previous->frame)
+                return {ConversationWriteStatus::NoChange, *latest, profile.generation};
+        }
+        {
+            WorkPhase validation(work);
+            const auto old_envelope = m_impl->decode(profile, *previous, *latest, access.scope);
+            if(!detail::same_conversation_immutable_binding(envelope, old_envelope) ||
+                !m_impl->targets_valid(txn.handle(), profile, envelope, access, work))
+                return refused(ConversationWriteStatus::InvalidRequest);
+        }
+        const auto charge = sum(frame.size(), reason_code.size());
+        if(profile.generation == kMax || profile.revision_count == kMax ||
+            ref.revision.value() > profile.quotas.revisions_per_entry ||
+            !fits(profile.canonical_charge, charge, profile.quotas.canonical_bytes))
+            return refused(ConversationWriteStatus::ResourceLimit);
+        work.prepare(sum(3U * frame.size(), 4096));
+        ++profile.generation;
+        ++profile.revision_count;
+        profile.canonical_charge += charge;
+        const auto revision_key = encode_revision_key({ref.conversation.id, ref.entry, ref.revision});
+        const auto revision_body = encode_revision_row({profile.generation,
+            CorrectionReceipt{expected, reason_code}, std::move(frame)});
+        const auto generation_key = encode_generation_key(profile.generation);
+        const auto generation_body = encode_generation_row({GenerationKind::Correction, ref.conversation,
+            std::make_pair(ref.entry, ref.revision)});
+        const auto profile_key = encode_profile_key();
+        const auto profile_body = encode_profile(profile);
+        const std::array<std::pair<ByteBuffer, ByteBuffer>, 3> rows{{
+            {revision_key, m_impl->value(profile, TableKind::Events, revision_key, revision_body)},
+            {generation_key, m_impl->value(profile, TableKind::Events, generation_key, generation_body)},
+            {profile_key, m_impl->value(profile, TableKind::Metadata, profile_key, profile_body)}}};
+        m_impl->transaction_size(rows);
+        ConversationWriteResult result{ConversationWriteStatus::Applied, ref, profile.generation};
+        static_assert(std::is_nothrow_move_constructible_v<ConversationWriteResult>);
+        m_impl->step(WriteStep::BeforeWrites);
+        put(txn.handle(), m_impl->dbis[1], rows[0].first, rows[0].second, true);
+        m_impl->step(WriteStep::AfterRevision);
+        put(txn.handle(), m_impl->dbis[1], rows[1].first, rows[1].second, true);
+        m_impl->step(WriteStep::AfterGeneration);
+        put(txn.handle(), m_impl->dbis[0], rows[2].first, rows[2].second, false);
+        m_impl->step(WriteStep::AfterProfile);
+        m_impl->step(WriteStep::BeforeCommit);
+        txn.commit();
+        m_impl->committed();
+        return result;
+    } catch(const ConversationCodecError& error) {
+        return refused(error.code() == ConversationCodecCode::ResourceLimit ?
+            ConversationWriteStatus::ResourceLimit : ConversationWriteStatus::InvalidRequest);
+    } catch(const CodecError& error) {
+        if(error.code() == CodecCode::ResourceLimit) return refused(ConversationWriteStatus::ResourceLimit);
+        throw;
+    }
+}
+
 ConversationReadResult MdbxConversationDurable::read_exact(const ConversationStoreAccess& access,
     const EntryRef& ref, const ConversationReadLimits& limits) const {
     if(!valid_access(access)) return refused(ConversationReadStatus::Denied);
@@ -598,12 +794,14 @@ ConversationReadResult MdbxConversationDurable::read_exact(const ConversationSto
         if(!row) return refused(ConversationReadStatus::NotFound);
         auto result = refused(ConversationReadStatus::Complete);
         result.commit_generation = profile.generation;
-        if(row->frame.size() > limits.max_output_bytes) { result.status = ConversationReadStatus::OversizedItem; return result; }
+        const auto charge = revision_charge(*row);
+        if(charge > limits.max_output_bytes) { result.status = ConversationReadStatus::OversizedItem; return result; }
         if(row->frame.size() > limits.max_decoded_bytes) { result.status = ConversationReadStatus::BudgetExhausted; return result; }
         result.records.push_back({m_impl->decode(profile, *row, ref, access.scope),
-            std::nullopt, row->generation});
+            public_receipt(*row), row->generation});
         result.visited_records = 1;
-        result.decoded_bytes = result.output_bytes = row->frame.size();
+        result.decoded_bytes = row->frame.size();
+        result.output_bytes = static_cast<std::size_t>(charge);
         return result;
     } catch(const CodecError& error) {
         if(error.code() == CodecCode::ResourceLimit) return refused(ConversationReadStatus::BudgetExhausted);
@@ -611,53 +809,105 @@ ConversationReadResult MdbxConversationDurable::read_exact(const ConversationSto
     }
 }
 
-ConversationReadResult MdbxConversationDurable::read_history(const ConversationStoreAccess& access,
-    const ConversationRef& ref, const ConversationReadLimits& limits, std::uint64_t seek_entry, std::uint64_t frontier) const {
+ConversationReadResult MdbxConversationDurable::Impl::history(const ConversationStoreAccess& access,
+    const ConversationRef& ref, const ConversationReadLimits& limits,
+    const std::optional<ConversationContinuation>& token, std::optional<std::uint64_t> explicit_frontier,
+    std::uint64_t seek_entry, std::uint64_t seek_revision) const {
     if(!valid_access(access)) return refused(ConversationReadStatus::Denied);
-    if(!is_valid_conversation_ref(ref) || ref.allocation_namespace != m_impl->options.allocation_namespace ||
+    if(!is_valid_conversation_ref(ref) || ref.allocation_namespace != options.allocation_namespace ||
         !valid_limits(limits)) return refused(ConversationReadStatus::InvalidRequest);
+    std::uint64_t frontier = explicit_frontier.value_or(0);
+    if(explicit_frontier && (!frontier || (!seek_entry != !seek_revision)))
+        return refused(ConversationReadStatus::InvalidRequest);
+    if(token) {
+        const auto* state = dynamic_cast<const HistoryState*>(ContinuationAccess::continuation_state(*token));
+        if(!state || state->instance != instance || state->incarnation != identity.incarnation ||
+            state->conversation != ref || state->scope.value() != access.scope.value() ||
+            state->policy_binding != access.policy_binding || !state->frontier ||
+            (!state->entry != !state->revision)) return refused(ConversationReadStatus::InvalidContinuation);
+        frontier = state->frontier;
+        seek_entry = state->entry;
+        seek_revision = state->revision;
+    }
     try {
-        Work work{m_impl->options};
-        auto txn = m_impl->options.context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
-        const auto profile = m_impl->load(txn.handle(), work, false);
-        if(!m_impl->conversation(txn.handle(), profile, ref, access, work)) return refused(ConversationReadStatus::NotFound);
-        if(frontier > profile.generation) return refused(ConversationReadStatus::InvalidRequest);
-        if(!frontier) frontier = profile.generation;
+        Work work{options};
+        auto txn = options.context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+        const auto profile = load(txn.handle(), work, false);
+        const auto stream = conversation(txn.handle(), profile, ref, access, work);
+        if(!stream) return refused(ConversationReadStatus::NotFound);
+        if(!token && !explicit_frontier) frontier = profile.generation;
+        if(frontier < stream->created_generation || frontier > profile.generation ||
+            (seek_entry && seek_entry >= stream->next_entry))
+            return refused(token ? ConversationReadStatus::InvalidContinuation : ConversationReadStatus::InvalidRequest);
+        // Reserve token ownership before retaining decoded rows so stopping a
+        // page cannot lose consumed work to a late continuation-budget check.
+        work.prepare(sum(access.scope.value().size(), sum(ref.allocation_namespace.size(),
+            sum(access.policy_binding.size(), 4096))));
         auto result = refused(ConversationReadStatus::Complete);
         result.commit_generation = frontier;
-        if(seek_entry == kMax) return result;
-        const auto start = encode_revision_key({ref.id, EntryId{seek_entry + 1}, EventRevision{std::uint64_t{1}}});
-        Cursor cursor(txn.handle(), m_impl->dbis[1]);
+        const auto stop = [&](ConversationReadStatus status) {
+            result.status = status;
+            result.continuation = continuation(access, ref, frontier, seek_entry, seek_revision);
+            return std::move(result);
+        };
+        const auto start = encode_revision_key({ref.id, EntryId{seek_entry ? seek_entry : std::uint64_t{1}},
+            EventRevision{seek_revision ? seek_revision : std::uint64_t{1}}});
+        Cursor cursor(txn.handle(), dbis[1]);
         auto key = val(view(start));
         MDBX_val value{};
         auto code = mdbx_cursor_get(cursor.handle(), &key, &value, MDBX_SET_RANGE);
+        if(code == MDBX_SUCCESS && seek_entry && key.iov_len == start.size() &&
+            std::memcmp(key.iov_base, start.data(), start.size()) == 0)
+            code = mdbx_cursor_get(cursor.handle(), &key, &value, MDBX_NEXT);
         while(code == MDBX_SUCCESS && key.iov_len >= 10 && std::memcmp(key.iov_base, start.data(), 10) == 0) {
-            work.visit(view(key), view(value),
-                profile.descriptor.codec.max_frame_bytes + kRevisionValueOverheadBytes);
-            const auto physical = decode_revision_key(view(key));
-            if(result.records.size() >= limits.max_items) {
-                result.status = result.records.empty() ? ConversationReadStatus::BudgetExhausted : ConversationReadStatus::Partial;
-                return result;
+            std::optional<ConversationReadStatus> stopped;
+            {
+                // Future rows use bounded physical work but no complete AMCE
+                // decode/output charge. Release their scratch before moving on.
+                WorkPhase row_work(work);
+                try {
+                    work.visit(view(key), view(value),
+                        profile.descriptor.codec.max_frame_bytes + kRevisionValueOverheadBytes);
+                    const auto physical = decode_revision_key(view(key));
+                    const EntryRef exact{ref, physical.entry, physical.revision};
+                    const auto row = revision(txn.handle(), profile, exact, access.scope, work);
+                    if(!row) corrupt();
+                    if(row->generation > frontier) {
+                        // Physical key order is not generation order across
+                        // Entries. Advancing this checked pair also avoids an
+                        // invisible-prefix rescan after raw budget exhaustion.
+                        seek_entry = physical.entry.value();
+                        seek_revision = physical.revision.value();
+                    } else {
+                        const auto charge = revision_charge(*row);
+                        if(result.records.size() >= limits.max_items)
+                            stopped = result.records.empty() ? ConversationReadStatus::BudgetExhausted :
+                                ConversationReadStatus::Partial;
+                        else if(charge > limits.max_output_bytes - result.output_bytes)
+                            stopped = result.records.empty() ? ConversationReadStatus::OversizedItem :
+                                ConversationReadStatus::Partial;
+                        else if(result.visited_records >= limits.max_visited_records ||
+                            row->frame.size() > limits.max_decoded_bytes - result.decoded_bytes)
+                            stopped = ConversationReadStatus::BudgetExhausted;
+                        else {
+                            result.records.push_back({decode(profile, *row, exact, access.scope),
+                                public_receipt(*row), row->generation});
+                            ++result.visited_records;
+                            result.decoded_bytes += row->frame.size();
+                            result.output_bytes += static_cast<std::size_t>(charge);
+                            seek_entry = physical.entry.value();
+                            seek_revision = physical.revision.value();
+                            // Retain a conservative complete row/object charge
+                            // for every owning output; only scratch is released.
+                            row_work.retained = work.live;
+                        }
+                    }
+                } catch(const CodecError& error) {
+                    if(error.code() != CodecCode::ResourceLimit) throw;
+                    stopped = ConversationReadStatus::BudgetExhausted;
+                }
             }
-            if(result.visited_records >= limits.max_visited_records) { result.status = ConversationReadStatus::BudgetExhausted; return result; }
-            // revision() charges/validates the exact row and generation index before copies.
-            const EntryRef exact{ref, physical.entry, physical.revision};
-            const auto row = m_impl->revision(txn.handle(), profile, exact, access.scope, work);
-            if(!row) corrupt();
-            if(row->generation > frontier) break;
-            if(row->frame.size() > limits.max_output_bytes - result.output_bytes) {
-                result.status = result.records.empty() ? ConversationReadStatus::OversizedItem : ConversationReadStatus::Partial;
-                return result;
-            }
-            if(row->frame.size() > limits.max_decoded_bytes - result.decoded_bytes) {
-                result.status = ConversationReadStatus::BudgetExhausted;
-                return result;
-            }
-            result.records.push_back({m_impl->decode(profile, *row, exact, access.scope),
-                std::nullopt, row->generation});
-            ++result.visited_records;
-            result.decoded_bytes += row->frame.size();
-            result.output_bytes += row->frame.size();
+            if(stopped) return stop(*stopped);
             code = mdbx_cursor_get(cursor.handle(), &key, &value, MDBX_NEXT);
         }
         if(code != MDBX_SUCCESS && code != MDBX_NOTFOUND) checked(code);
@@ -666,6 +916,18 @@ ConversationReadResult MdbxConversationDurable::read_history(const ConversationS
         if(error.code() == CodecCode::ResourceLimit) return refused(ConversationReadStatus::BudgetExhausted);
         throw;
     }
+}
+
+ConversationReadResult MdbxConversationDurable::read_history(const ConversationStoreAccess& access,
+    const ConversationRef& ref, const ConversationReadLimits& limits,
+    const std::optional<ConversationContinuation>& token) const {
+    return m_impl->history(access, ref, limits, token, std::nullopt, 0, 0);
+}
+
+ConversationReadResult MdbxConversationDurable::read_history_at(const ConversationStoreAccess& access,
+    const ConversationRef& ref, const ConversationReadLimits& limits, std::uint64_t frontier,
+    std::uint64_t seek_entry, std::uint64_t seek_revision) const {
+    return m_impl->history(access, ref, limits, std::nullopt, frontier, seek_entry, seek_revision);
 }
 
 } // namespace agent_memory::detail::conversation_durable

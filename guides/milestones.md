@@ -100,6 +100,11 @@ Planned. The separate
 [Phase 4 implementation brief](conversation-durable-store-phase4-plan.md)
 defines durable slices and gates. The owner has authorized separate P4-2 and,
 only after its qualification gate, P4-3 Drafts without automatic merge.
+P4-2 is READY in unmerged #702 at `b5467911`; its exact-head CI/Packaging and
+local/independent evidence are recorded in the
+[P4-2 note](experiments/2026-11-25-conversation-durable-p4-2.md). The separate
+[P4-3 correction/frontier slice](experiments/2026-11-26-conversation-durable-p4-3.md)
+is in progress; Current/public durable profile and P4-5 scale qualification remain open.
 Its concrete [P4-0 physical contract](conversation-durable-physical-contract.md)
 and optional three-DBI manifest delta have a private P4-1 implementation, not a
 deployed schema or complete installed API; the full profile remains Planned.

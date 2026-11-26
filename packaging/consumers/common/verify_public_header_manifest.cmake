@@ -35,13 +35,21 @@ foreach(_agent_memory_include_dir IN LISTS _agent_memory_include_dirs)
     endif()
     set(_agent_memory_checked_include_dir TRUE)
 
-    set(_agent_memory_internal_header
-        "${_agent_memory_include_dir_abs}/agent_memory/storage/CanonicalContentStoreInternal.hpp")
-    if(EXISTS "${_agent_memory_internal_header}")
-        message(FATAL_ERROR
-            "backend-only CanonicalContentStoreInternal.hpp leaked into the installed package: "
-            "${_agent_memory_internal_header}")
-    endif()
+    foreach(_agent_memory_internal_relative_header IN ITEMS
+        "agent_memory/storage/CanonicalContentStoreInternal.hpp"
+        "agent_memory/storage/ConversationStoreInternal.hpp"
+        "agent_memory/ingestion/ConversationSourceImporterInternal.hpp"
+        "agent_memory/infrastructure/mdbx/ConversationDurableCodecInternal.hpp"
+        "agent_memory/infrastructure/mdbx/MdbxConversationDurableInternal.hpp")
+        set(_agent_memory_internal_header
+            "${_agent_memory_include_dir_abs}/${_agent_memory_internal_relative_header}")
+        if(EXISTS "${_agent_memory_internal_header}")
+            get_filename_component(_agent_memory_internal_name "${_agent_memory_internal_header}" NAME)
+            message(FATAL_ERROR
+                "backend-only ${_agent_memory_internal_name} leaked into the installed package: "
+                "${_agent_memory_internal_header}")
+        endif()
+    endforeach()
 endforeach()
 
 if(NOT _agent_memory_checked_include_dir)
@@ -51,6 +59,8 @@ endif()
 
 unset(_agent_memory_checked_include_dir)
 unset(_agent_memory_internal_header)
+unset(_agent_memory_internal_relative_header)
+unset(_agent_memory_internal_name)
 unset(_agent_memory_include_dir_abs)
 unset(_agent_memory_include_dir)
 unset(_agent_memory_include_dirs)

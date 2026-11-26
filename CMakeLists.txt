@@ -108,6 +108,7 @@ add_library(agent_memory STATIC
     src/agent_memory/storage/IDocumentStorage.cpp
     src/agent_memory/storage/CanonicalContentStore.cpp
     src/agent_memory/storage/ConversationStore.cpp
+    src/agent_memory/storage/ConversationStoreInternal.cpp
     src/agent_memory/ingestion/ConversationSourceImporter.cpp
     src/agent_memory/ingestion/ConversationSourceImporterInternal.cpp
     src/agent_memory/infrastructure/mdbx/ConversationDurableCodecInternal.cpp
@@ -2633,6 +2634,7 @@ install(DIRECTORY src/agent_memory/
     FILES_MATCHING
         PATTERN "CanonicalContentStoreInternal.hpp" EXCLUDE
         PATTERN "ConversationSourceImporterInternal.hpp" EXCLUDE
+        PATTERN "ConversationStoreInternal.hpp" EXCLUDE
         PATTERN "ConversationDurableCodecInternal.hpp" EXCLUDE
         PATTERN "MdbxConversationDurableInternal.hpp" EXCLUDE
         PATTERN "*.hpp"

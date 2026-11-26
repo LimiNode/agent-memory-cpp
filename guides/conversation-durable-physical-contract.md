@@ -18,7 +18,8 @@ semantic owners. [YAML](dbi-manifest.yaml) is the sole DBI inventory/budget
 authority; the [physical guide](mdbx-containers-extension-tz.md) contains its
 checked review projection. P4-1 executable evidence and its unrun gates are
 tracked in the [qualification note](experiments/2026-11-25-conversation-durable-p4-1.md).
-Crash/races, corrections, Current strategy and full scale remain later gates.
+P4-2 crash/race qualification is READY in unmerged Draft #702. Corrections,
+Current strategy and full scale remain later implementation/qualification gates.
 The owner accepted P4-0
 on 2026-11-25 and authorized P4-1 in a separate Draft after qualified #700/#699
 integration. P4-0 deploys nothing; release, migration and automatic P4-1 merge
@@ -33,6 +34,13 @@ P4-1 uses private physical codecs and a private optional MDBX vertical, not
 an incomplete `IConversationStore`/`IConversationImportSink`. Its three headers
 are excluded from install. No Current/correction method or public continuation
 is advertised. This is the internal alternative selected in section 8.
+
+P4-2 passed at `b546791191bb15b89436b7b09e25de08035a234b` (Draft #702),
+CI 45850534246 / Packaging 45850534204, with source-bound local and independent
+review evidence in its [note](experiments/2026-11-25-conversation-durable-p4-2.md).
+P4-3 is a separate dependent private correction/history slice under qualification,
+tracked in the [P4-3 note](experiments/2026-11-26-conversation-durable-p4-3.md).
+Neither new Draft is merged; no Current or full public store is advertised.
 
 ## 1. Reuse, ownership and smallest layout
 
@@ -523,6 +531,35 @@ validating retention. Until then test old frontiers across reopen through a
 qualification-only internal selector, not an undocumented public API. This
 closes the apparent conflict between durable coordinates and the accepted
 instance-bound token contract without silently weakening either.
+
+The P4-3 private history selector uses an exclusive `(EntryId, revision)` pair,
+not an Entry-only seek: a page may end inside one Entry's representation history.
+The normal no-token read pins the current transaction's generation. A supplied
+empty/default token is invalid. The separately named qualification-only
+`read_history_at` requires a nonzero retained frontier no earlier than the
+conversation's creation and no later than the committed profile generation;
+invalid explicit frontiers never mean latest. Reopen tests start new selector
+reads; they do not resume a previous instance's token.
+
+History filters each revision by its admission generation before testing output
+item/decode caps. A later correction of an early Entry cannot stop the scan of
+later Entries. Invisible revisions still consume bounded physical raw work, not
+complete AMCE decode counters. Continuation progress can pass fully checked
+invisible rows at its fixed frontier, but never an eligible unreturned item.
+Exact/history output charge includes both canonical frame and correction reason.
+All result values own their data after the transaction closes. These rules do
+not select a Current strategy or introduce a public durable implementation.
+
+The private correction implementation conservatively reserves the persisted
+codec's frame ceiling before its first encode, then shrinks that charge to the
+actual frame size. A stricter local live-memory budget can therefore refuse even
+a small correction as ResourceLimit; it does not invalidate the storage profile
+or diagnose existing bytes as corrupt. No future changed-row preparation is
+charged before the NoChange decision. History reserves bounded continuation
+state before any frame decode/retained output, keeping that reservation alongside
+owning rows so a later live-budget stop preserves consumed-work counters and a
+same-frontier retry token. These are conservative accounting policies, not
+measured peak-heap/RSS guarantees.
 
 ## 6. Current alternatives and predeclared decision screen
 
