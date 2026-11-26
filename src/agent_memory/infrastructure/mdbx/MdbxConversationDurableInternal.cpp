@@ -251,8 +251,12 @@ struct MdbxConversationDurable::Impl final {
             identity = stored([&encoded] { return decode_profile_value(*encoded); });
             compatible(identity);
         }
-        if(missing) step(WriteStep::BeforeCommit);
+        if(missing) {
+            step(WriteStep::BeforeSchemaCommit);
+            step(WriteStep::BeforeCommit);
+        }
         txn.commit();
+        if(missing) committed();
     }
 
     void compatible(const Profile& profile) const {
@@ -299,6 +303,7 @@ struct MdbxConversationDurable::Impl final {
         return wrap_value(profile, kind, view(key), view(body));
     }
     void step(WriteStep point) const { if(hooks.before_commit_step) hooks.before_commit_step(point); }
+    void committed() const noexcept { if(hooks.after_commit) hooks.after_commit(); }
     template<std::size_t Count>
     void transaction_size(const std::array<std::pair<ByteBuffer, ByteBuffer>, Count>& rows) const {
         if(rows.size() > 16) resource_limit();
@@ -393,6 +398,7 @@ ConversationWriteResult MdbxConversationDurable::create_conversation(
         return refused(ConversationWriteStatus::InvalidRequest);
     try {
         Work work{m_impl->options};
+        m_impl->step(WriteStep::BeforeTransaction);
         auto txn = m_impl->options.context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
         auto profile = m_impl->load(txn.handle(), work, true);
         const auto key = encode_conversation_key(ref.id);
@@ -424,11 +430,14 @@ ConversationWriteResult MdbxConversationDurable::create_conversation(
         ConversationWriteResult result{ConversationWriteStatus::Applied, std::nullopt, profile.generation};
         m_impl->step(WriteStep::BeforeWrites);
         put(txn.handle(), m_impl->dbis[0], rows[0].first, rows[0].second, true);
+        m_impl->step(WriteStep::AfterConversation);
         put(txn.handle(), m_impl->dbis[1], rows[1].first, rows[1].second, true);
         m_impl->step(WriteStep::AfterGeneration);
         put(txn.handle(), m_impl->dbis[0], rows[2].first, rows[2].second, false);
+        m_impl->step(WriteStep::AfterProfile);
         m_impl->step(WriteStep::BeforeCommit);
         txn.commit();
+        m_impl->committed();
         return result;
     } catch(const CodecError& error) {
         if(error.code() == CodecCode::ResourceLimit) return refused(ConversationWriteStatus::ResourceLimit);
@@ -444,6 +453,7 @@ ConversationWriteResult MdbxConversationDurable::import_observation(
         return refused(ConversationWriteStatus::NotFound);
     try {
         Work work{m_impl->options};
+        m_impl->step(WriteStep::BeforeTransaction);
         auto txn = m_impl->options.context->connection()->transaction(mdbxc::TransactionMode::WRITABLE);
         auto profile = m_impl->load(txn.handle(), work, true);
         auto conversation = m_impl->conversation(txn.handle(), profile, input.conversation, access, work);
@@ -557,9 +567,12 @@ ConversationWriteResult MdbxConversationDurable::import_observation(
         put(txn.handle(), m_impl->dbis[1], rows[2].first, rows[2].second, true);
         m_impl->step(WriteStep::AfterGeneration);
         put(txn.handle(), m_impl->dbis[0], rows[3].first, rows[3].second, false);
+        m_impl->step(WriteStep::AfterConversation);
         put(txn.handle(), m_impl->dbis[0], rows[4].first, rows[4].second, false);
+        m_impl->step(WriteStep::AfterProfile);
         m_impl->step(WriteStep::BeforeCommit);
         txn.commit();
+        m_impl->committed();
         return result;
     } catch(const ConversationCodecError& error) {
         return refused(error.code() == ConversationCodecCode::ResourceLimit ?

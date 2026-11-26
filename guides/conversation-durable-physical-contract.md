@@ -1,6 +1,6 @@
 # Conversation Phase 4: approved MDBX physical contract (P4-0)
 
-- Status: **P4-1 INTERNAL IMPLEMENTATION UNDER REVIEW; NOT DEPLOYED**.
+- Status: **P4-1 INTERNAL IMPLEMENTATION INTEGRATED; NOT DEPLOYED**.
   No published durable API/deployed-schema freeze; full Phase 4 remains open.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
 - Base: integrated Phase 2/3 tree `00cbb85105cb57a5a455dbb0e380238edef74cfa`,
@@ -26,6 +26,9 @@ remain unauthorized. AMXR byte APIs are integrated through #700 at
 `main@7a9be667b4f5657c1c50590dde6b0a4888acdd4b`.
 
 #699 was integrated at `4418a58c41d6c4e8f42d311708f849e00e40e59f`.
+#701 was integrated at `2c895c9812128dcfc3ccd07ae84a7175e5ff371c`, tree
+`86ec0e739dd382a45b0c6bd89302a276abbc8dfa`. The later owner assignment
+authorizes P4-2 and, after its gate passes, P4-3 in separate unmerged Drafts.
 P4-1 uses private physical codecs and a private optional MDBX vertical, not
 an incomplete `IConversationStore`/`IConversationImportSink`. Its three headers
 are excluded from install. No Current/correction method or public continuation
@@ -540,6 +543,30 @@ On incomplete input fold return BudgetExhausted with no unqualified Current
 output. A partial output page does not make a partial-input fold valid.
 
 ## 7. Deterministic failure, crash and concurrency qualification
+
+P4-2 uses explicit private qualification hooks, absent from installed headers.
+Precommit hooks may throw and identify before-transaction, before-writes,
+revision/source/generation, conversation-allocator, profile-counter and
+before-commit boundaries; schema initialization has its own before-commit
+boundary. The post-commit hook is `noexcept` and runs only after the pinned
+wrapper's `commit()` returns successfully, before the store operation returns.
+It is not a hook inside native commit or between native commit and wrapper
+diagnostics. A separate child-side barrier after the store operation returns
+precedes receipt transmission. Neither boundary promises rollback on a later
+delivery failure. The MSVC post-native-commit allocation finding remains
+separate allocation-fault evidence, not a deterministic native-internal kill.
+
+The parent acknowledges barrier arrival before release/termination; independent
+processes open independent environments. Timeouts bound broken harnesses, not
+prove that competing writes overlap. A writer is held before commit while an
+independently opened contender must observe native `MDBX_BUSY` from a bounded
+`MDBX_TXN_TRY` probe; only then does the parent release the first writer. Both
+operand orders are exercised. This probe is test-only, not a second production
+transaction framework. All-table checks and reference replay use
+the actual committed generation order, not process launch order. Process crash
+recovery does not qualify storage-device power-loss durability. See the
+[P4-2 note](experiments/2026-11-25-conversation-durable-p4-2.md) for executed
+versus NOT RUN coverage.
 
 Use fresh temporary environments and independent child processes, not threads
 sharing one sink. Hooked barriers acknowledge the exact step to a supervising

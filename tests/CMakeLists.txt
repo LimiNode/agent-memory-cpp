@@ -862,6 +862,25 @@ target_compile_definitions(agent_memory_feature_flags_test
 add_test(NAME agent_memory_feature_flags_test COMMAND agent_memory_feature_flags_test)
 
 if(AGENT_MEMORY_ENABLE_MDBX)
+    # The deterministic termination/IPC harness has Windows and Linux implementations.
+    if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_executable(agent_memory_conversation_durable_process_test
+            infrastructure/mdbx/conversation_durable_process_test.cpp)
+        target_link_libraries(agent_memory_conversation_durable_process_test
+            PRIVATE agent_memory::agent_memory ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET})
+        add_test(NAME agent_memory_conversation_durable_process_test
+            COMMAND agent_memory_conversation_durable_process_test)
+        set_tests_properties(agent_memory_conversation_durable_process_test PROPERTIES TIMEOUT 180)
+    endif()
+
+    add_executable(agent_memory_conversation_durable_native_failure_test
+        infrastructure/mdbx/conversation_durable_native_failure_test.cpp)
+    target_link_libraries(agent_memory_conversation_durable_native_failure_test
+        PRIVATE agent_memory::agent_memory ${AGENT_MEMORY_MDBX_CONTAINERS_TARGET})
+    add_test(NAME agent_memory_conversation_durable_native_failure_test
+        COMMAND agent_memory_conversation_durable_native_failure_test)
+    set_tests_properties(agent_memory_conversation_durable_native_failure_test PROPERTIES TIMEOUT 120)
+
     add_executable(agent_memory_conversation_durable_boundaries_test
         infrastructure/mdbx/conversation_durable_boundaries_test.cpp)
     target_link_libraries(agent_memory_conversation_durable_boundaries_test

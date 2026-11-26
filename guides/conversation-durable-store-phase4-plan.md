@@ -1,7 +1,8 @@
 # Conversation Core Phase 4 implementation brief
 
-- Status: P4-0 integrated; P4-1 INTERNAL IMPLEMENTATION UNDER REVIEW in a
-  separate Draft. No automatic P4-1 merge, deployed schema or full Core claim.
+- Status: P4-0 and INTERNAL P4-1 integrated through #701; P4-2 process
+  qualification in progress in a separate Draft. No deployed schema/full Core
+  claim or authorization to merge P4-2/P4-3.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
 - Entry gate: qualified combined Phase 2/3A/3B tree and separate owner decision.
 - Contract owners: [events](conversation-event-contract.md),
@@ -36,9 +37,18 @@ byte codecs from legacy string adapters. Owner approval is now recorded;
 #700 byte APIs are integrated at `main@7a9be667b4f5657c1c50590dde6b0a4888acdd4b`.
 #699 is integrated at `main@4418a58c41d6c4e8f42d311708f849e00e40e59f`.
 The [P4-1 qualification note](experiments/2026-11-25-conversation-durable-p4-1.md)
-tracks the private create/import/exact/history/reopen implementation. Mandatory
+tracks the private create/import/exact/history/reopen implementation, integrated
+through #701 at `main@2c895c9812128dcfc3ccd07ae84a7175e5ff371c`, accepted tree
+`86ec0e739dd382a45b0c6bd89302a276abbc8dfa`. Mandatory
 Current/correct semantics are intentionally not exposed through a partial
 public interface. No store-wide history is hydrated at open or per import.
+
+The owner authorized guarded #701 integration followed by separately reviewed
+P4-2 and P4-3 Drafts. P4-3 starts only after the process/failure gate passes;
+neither new Draft is authorized for merge. The
+[P4-2 qualification note](experiments/2026-11-25-conversation-durable-p4-2.md)
+separates process termination, native failures, injected exceptions and unrun
+device/commit-internal failure cases.
 
 ## Transaction and authority decisions
 
