@@ -1,6 +1,6 @@
 # Conversation Phase 4: approved MDBX physical contract (P4-0)
 
-- Status: **P4-1 INTERNAL IMPLEMENTATION INTEGRATED; NOT DEPLOYED**.
+- Status: **P4-1/P4-2/P4-3 INTERNAL IMPLEMENTATION INTEGRATED; NOT DEPLOYED**.
   No published durable API/deployed-schema freeze; full Phase 4 remains open.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
 - Base: integrated Phase 2/3 tree `00cbb85105cb57a5a455dbb0e380238edef74cfa`,
@@ -18,8 +18,10 @@ semantic owners. [YAML](dbi-manifest.yaml) is the sole DBI inventory/budget
 authority; the [physical guide](mdbx-containers-extension-tz.md) contains its
 checked review projection. P4-1 executable evidence and its unrun gates are
 tracked in the [qualification note](experiments/2026-11-25-conversation-durable-p4-1.md).
-P4-2 crash/race qualification is READY in unmerged Draft #702. Corrections,
-Current strategy and full scale remain later implementation/qualification gates.
+P4-2 crash/race qualification and P4-3 private corrections/frontiers are integrated
+through #702/#703. Current strategy and full scale remain later gates; complete
+state-event admission awaits owner review of the
+[API/witness/profile proposal](audits/2026-11-26-conversation-p4-4-admission-gate.md).
 The owner accepted P4-0
 on 2026-11-25 and authorized P4-1 in a separate Draft after qualified #700/#699
 integration. P4-0 deploys nothing; release, migration and automatic P4-1 merge
@@ -28,19 +30,24 @@ remain unauthorized. AMXR byte APIs are integrated through #700 at
 
 #699 was integrated at `4418a58c41d6c4e8f42d311708f849e00e40e59f`.
 #701 was integrated at `2c895c9812128dcfc3ccd07ae84a7175e5ff371c`, tree
-`86ec0e739dd382a45b0c6bd89302a276abbc8dfa`. The later owner assignment
-authorizes P4-2 and, after its gate passes, P4-3 in separate unmerged Drafts.
+`86ec0e739dd382a45b0c6bd89302a276abbc8dfa`. The owner's 2026-11-26 assignment
+then authorized guarded #702/#703 integration. New P4-4/P4-5 Drafts are not
+authorized for automatic merge.
 P4-1 uses private physical codecs and a private optional MDBX vertical, not
 an incomplete `IConversationStore`/`IConversationImportSink`. Its three headers
 are excluded from install. No Current/correction method or public continuation
 is advertised. This is the internal alternative selected in section 8.
 
-P4-2 passed at `b546791191bb15b89436b7b09e25de08035a234b` (Draft #702),
+P4-2 passed at `b546791191bb15b89436b7b09e25de08035a234b` (#702),
 CI 45850534246 / Packaging 45850534204, with source-bound local and independent
 review evidence in its [note](experiments/2026-11-25-conversation-durable-p4-2.md).
-P4-3 is a separate dependent private correction/history slice under qualification,
-tracked in the [P4-3 note](experiments/2026-11-26-conversation-durable-p4-3.md).
-Neither new Draft is merged; no Current or full public store is advertised.
+P4-3's accepted private correction/history slice is tracked in the
+[P4-3 note](experiments/2026-11-26-conversation-durable-p4-3.md). Both are merged;
+the [integration receipt](audits/2026-11-26-conversation-p4-2-p4-3-integration.md)
+records final main `8a092d515f99ed34e50ffbc7642cd2fb80e4ef8d`, unchanged accepted
+tree and post-main checks. No Current or full public store is advertised. This
+status update does not amend the physical grammar, schema marker, witness or
+DBI manifest; the P4-4 proposal remains unapproved.
 
 ## 1. Reuse, ownership and smallest layout
 

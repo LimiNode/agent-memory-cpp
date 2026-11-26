@@ -1,8 +1,9 @@
 # Conversation Core Phase 4 implementation brief
 
-- Status: P4-0 and INTERNAL P4-1 integrated through #701; P4-2 READY in unmerged
-  Draft #702; P4-3 corrections/frontiers in progress in a stacked Draft. No deployed schema/full Core
-  claim or authorization to merge P4-2/P4-3.
+- Status: P4-0 and INTERNAL P4-1/P4-2/P4-3 integrated through #703. P4-4 full
+  message-state admission is HOLD pending owner API/witness/profile review;
+  P4-4 Current and P4-5 qualification remain OPEN. No deployed schema/full Core
+  claim or automatic merge authorization for new Drafts.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
 - Entry gate: qualified combined Phase 2/3A/3B tree and separate owner decision.
 - Contract owners: [events](conversation-event-contract.md),
@@ -44,8 +45,8 @@ Current/correct semantics are intentionally not exposed through a partial
 public interface. No store-wide history is hydrated at open or per import.
 
 The owner authorized guarded #701 integration followed by separately reviewed
-P4-2 and P4-3 Drafts. P4-3 starts only after the process/failure gate passes;
-neither new Draft is authorized for merge. The
+P4-2 and P4-3 Drafts, then authorized guarded integration of #702/#703 on
+2026-11-26. Both are now integrated; their private backend remains internal. The
 [P4-2 qualification note](experiments/2026-11-25-conversation-durable-p4-2.md)
 separates process termination, native failures, injected exceptions and unrun
 device/commit-internal failure cases.
@@ -54,7 +55,19 @@ The #702 exact-head gate passed at `b546791191bb15b89436b7b09e25de08035a234b`:
 CI 45850534246 (14 success, 16 conditional skips), Packaging 45850534204 (6/6),
 local platform/sanitizer/consumer tests and independent review READY. The
 [P4-3 qualification note](experiments/2026-11-26-conversation-durable-p4-3.md)
-tracks the next separate dependent Draft; neither new PR is merged.
+records the accepted corrections/frontiers slice. The
+[integration receipt](audits/2026-11-26-conversation-p4-2-p4-3-integration.md)
+records exact source, integration and main trees with separate post-main runs.
+Historical local results in the qualification notes are not new executions.
+
+The [P4-4 admission audit](audits/2026-11-26-conversation-p4-4-admission-gate.md)
+confirms that the current coordinated source DTO and persisted witness cannot
+express Edit/Tombstone/Restore. Correction is not a substitute, and raw append
+must not violate one mapping per occurrence. Full P4-4 semantics and public
+activation are HOLD pending owner review of the smallest API/witness/profile
+delta. No schema or API change is adopted by that audit. The predeclared Current
+screen and P4-5 65,537-admission fixture remain NOT RUN; later slices stay separate
+Drafts with no automatic merge, release, migration or deployment authorization.
 
 ## Transaction and authority decisions
 

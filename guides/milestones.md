@@ -94,17 +94,24 @@ immutable exact history, deterministic current views, CAS correction and bounded
 snapshot paging. The dependent [Phase 3B source importer](conversation-source-import.md)
 adds authored source-shaped normalization, instance-local idempotence and
 coordinated key/ID admission, not upstream SDK or durable recovery qualification.
-Durable ID allocation/persistence (4) has a private P4-1 implementation integrated
-through #701 at `main@2c895c98`; full Phase 4, Core qualification (5) and the derived bridge (6) remain
-Planned. The separate
+Durable ID allocation/persistence (4) has private P4-1/P4-2/P4-3 implementation
+and qualification integrated through #703 at `main@8a092d51`; full Phase 4, Core
+qualification (5) and the derived bridge (6) remain Planned. The separate
 [Phase 4 implementation brief](conversation-durable-store-phase4-plan.md)
-defines durable slices and gates. The owner has authorized separate P4-2 and,
-only after its qualification gate, P4-3 Drafts without automatic merge.
-P4-2 is READY in unmerged #702 at `b5467911`; its exact-head CI/Packaging and
-local/independent evidence are recorded in the
-[P4-2 note](experiments/2026-11-25-conversation-durable-p4-2.md). The separate
+defines durable slices and gates. The owner authorized guarded #702/#703
+integration on 2026-11-26; the
+[integration receipt](audits/2026-11-26-conversation-p4-2-p4-3-integration.md)
+preserves exact source/main trees and post-main CI/Packaging. Historical
+local/independent evidence remains in the
+[P4-2 note](experiments/2026-11-25-conversation-durable-p4-2.md) and
 [P4-3 correction/frontier slice](experiments/2026-11-26-conversation-durable-p4-3.md)
-is in progress; Current/public durable profile and P4-5 scale qualification remain open.
+note. Current/public durable activation and P4-5 scale qualification remain open.
+The [P4-4 admission audit](audits/2026-11-26-conversation-p4-4-admission-gate.md)
+records a concrete owner-review HOLD: coordinated Edit/Tombstone/Restore requires
+a reviewed source DTO and witness/profile delta. No public API/persisted schema
+change is approved by the audit; full Current parity/benchmark and the P4-5
+65,537-admission fixture remain NOT RUN. New P4-4/P4-5 Drafts are not authorized
+for automatic merge.
 Its concrete [P4-0 physical contract](conversation-durable-physical-contract.md)
 and optional three-DBI manifest delta have a private P4-1 implementation, not a
 deployed schema or complete installed API; the full profile remains Planned.
