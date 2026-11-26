@@ -185,3 +185,23 @@ freshly reopen all three DBIs. Then two independent processes import equal,
 conflicting and distinct keys; replay actual commit order against the oracle.
 Keep synchronous flags and report filesystem/device assumptions separately.
 No migration/deployment/release or automatic P4-1 merge is authorized.
+
+## Subsequent owner-authorized integration (2026-11-25/26)
+
+The next owner assignment explicitly authorized guarded ordinary integration
+of #701. Exact head `6bdfc9c7541ae0faa335c0604ecbbdea8be893b3` and base
+`4418a58c41d6c4e8f42d311708f849e00e40e59f` were rechecked, including the full
+diff/deletions, helper extraction and private-header exclusion. Synthetic
+`ce223dda79aa4778e9ed2da1ad0990f5f1569251` and final merge
+`2c895c9812128dcfc3ccd07ae84a7175e5ff371c` both have accepted tree
+`86ec0e739dd382a45b0c6bd89302a276abbc8dfa`. Independent integration review
+reported no blocker; no additional runtime rerun was claimed by that reviewer.
+
+Post-main CI45642552979 succeeded on attempt 2: the first attempt's macOS Zstd
+job was cancelled without executing any steps; the required gate correctly
+failed and was not waived. Its rerun passed. Packaging45642553187 passed.
+The exact accepted source-tree local results above remain applicable; these
+hosted runs additionally exercise the integrated tree, MDBX-off configurations
+and installed consumers. No AMXR/AMCE wire, digest/golden or public durable
+factory was introduced. P4-1 is integrated INTERNAL implementation only;
+P4-2..5, production activation, migration and release remain separate gates.

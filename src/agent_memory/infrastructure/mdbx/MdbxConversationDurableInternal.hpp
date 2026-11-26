@@ -35,10 +35,17 @@ struct DurableOptions final {
 };
 
 // Test-only hooks are passed explicitly, never persisted. They may throw before commit.
-enum class WriteStep { BeforeWrites, AfterRevision, AfterSource, AfterGeneration, BeforeCommit };
+enum class WriteStep {
+    BeforeTransaction, BeforeWrites, AfterRevision, AfterSource, AfterGeneration,
+    AfterConversation, AfterProfile, BeforeCommit, BeforeSchemaCommit
+};
 struct QualificationHooks final {
     bool force_digest_collision = false;
     void (*before_commit_step)(WriteStep) = nullptr;
+    // Runs only after the wrapper has returned successfully from commit, before
+    // the operation returns. Not a native-commit-internal injection point. It
+    // cannot throw or promise rollback; the process harness may terminate here.
+    void (*after_commit)() noexcept = nullptr;
 };
 
 class MdbxConversationDurable final {
