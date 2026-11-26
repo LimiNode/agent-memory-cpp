@@ -136,6 +136,34 @@ repeat with MDBX OFF. Install Release, configure
 dependencies, then build/run all six consumers. The manifest fixture command is
 `cmake -DAGENT_MEMORY_SOURCE_DIR=<source> -DAGENT_MEMORY_HEADER_FIXTURE_BUILD_ROOT=<fixture-build> -P packaging/consumers/header-manifest-fixture/run.cmake`.
 
+## Hosted checked-STL correction (2026-11-26)
+
+Initial HEAD `fe62534ff09c64d49d0bed6c3149f30a98800902` passed Packaging
+45857357625 (6/6), Linux ASan/UBSan (11/11, 37.17 s) and independent source
+review. CI 45857357710 failed: the new correction allocation-failure target
+timed out after 120 s in MSVC Debug; the dependent CI gate also failed. All
+other 30 jobs succeeded, with two conditional workflow skips. This failed
+attempt remains historical evidence, not a passing gate.
+
+The test omitted an existing injection-profile boundary. MSVC checked STL can
+allocate a container proxy inside a noexcept constructor; injecting bad_alloc
+there invokes terminate instead of propagating the exception the sweep requires.
+A standalone local MSVC Debug probe using the same isolated allocation gate,
+an empty vector and a custom terminate handler confirms this: expected exit 86,
+`p4-3-checked-stl-probe-run.log`. The handler avoids an interactive CRT abort
+dialog; no storage code is involved. Existing store/import/durable fault suites
+already guard `_MSC_VER && _ITERATOR_DEBUG_LEVEL > 0` for this reason.
+
+The follow-up changes only the new fault test: explicitly report the allocation
+sweep as NOT RUN in that checked-STL profile, while still executing all six
+deterministic precommit rollback cases. It does not skip the entire test or
+disable checked iterators. Full allocation sweeps remain enabled in GNU/MSVC
+Release and Linux Debug ASan/UBSan. Semantic and process Debug tests remain active.
+The original unsupported injection configuration is not repaired by raising its
+timeout. Final local Debug, repeat regression, independent delta review and
+fresh exact-head CI/Packaging are required; see the final PR receipt. No
+production/library/header/codec changes are made by this follow-up.
+
 ## Remaining boundaries
 
 Internal only, no fake Current/Empty/Complete or partial public implementation.
