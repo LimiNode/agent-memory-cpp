@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <map>
 #include <random>
 #include <type_traits>
 #include <utility>
@@ -16,6 +17,7 @@ namespace agent_memory::detail::conversation_durable {
 namespace {
 
 constexpr std::uint64_t kMiB = 1024U * 1024U;
+constexpr std::size_t kMaxStateTraversal = 65536;
 constexpr auto kMax = std::numeric_limits<std::uint64_t>::max();
 constexpr std::size_t kConversationValueOverheadBytes = 4 + 8 + 8 + kValueOverheadBytes;
 constexpr std::size_t kRevisionValueOverheadBytes = 8 + 1 + 8 + 4 + 128 + 4 + kValueOverheadBytes;
@@ -64,9 +66,9 @@ ConversationReadResult refused(ConversationReadStatus status) {
 }
 
 // A never-instantiated abstract access seam, not a partial store implementation.
-struct ContinuationAccess : IConversationStore {
-    using IConversationStore::make_continuation;
-    using IConversationStore::continuation_state;
+struct ContinuationAccess : IConversationHistory {
+    using IConversationHistory::make_continuation;
+    using IConversationHistory::continuation_state;
 };
 
 struct HistoryState final : ConversationContinuation::BackendState {
@@ -78,6 +80,7 @@ struct HistoryState final : ConversationContinuation::BackendState {
     std::uint64_t frontier = 0;
     std::uint64_t entry = 0;
     std::uint64_t revision = 0;
+    bool is_current = false;
 };
 
 std::uint64_t revision_charge(const RevisionRow& row) {
@@ -368,7 +371,19 @@ struct MdbxConversationDurable::Impl final {
                 return decode_source_row(unwrap_value(profile, TableKind::Sources, view(key), view(raw)));
             });
             stored([&row] { validate_logical_source_key(view(row.key)); });
-            auto original = stored([&row] { return decode_witness(view(row.witness)); });
+            auto original = stored([&row, &profile] {
+                return decode_witness(view(row.witness), static_cast<std::size_t>(profile.descriptor.max_observation_bytes));
+            });
+            // Wire length and logical observation charge are different budgets.
+            // Validate retained input against its immutable profile after the
+            // physical parser, rather than treating the logical cap as a wire cap.
+            const auto original_preflight = detail::preflight_observation(original,
+                profile.descriptor.codec.fields, static_cast<std::size_t>(profile.descriptor.max_observation_bytes));
+            if(original_preflight.status != ConversationWriteStatus::Applied ||
+                detail::source_status(original.source, original.conversation, original.scope,
+                    profile.descriptor.codec.fields) != ConversationWriteStatus::Applied ||
+                detail::target_status(original, profile.descriptor.codec.fields) != ConversationWriteStatus::Applied ||
+                detail::observation_status(original) != ConversationWriteStatus::Applied) corrupt();
             if(row.ref.conversation != ref || row.ref.revision.value() != 1 || !row.generation ||
                 row.generation > profile.generation || original.conversation != ref ||
                 encode_logical_source_key(original.source) != row.key || digest(view(row.key)) != hashed) corrupt();
@@ -469,8 +484,88 @@ struct MdbxConversationDurable::Impl final {
         } catch(const ConversationCodecError&) { corrupt(); }
     }
 
+    struct MessageState final {
+        EntryRef root;
+        std::optional<EntryRef> content_ref;
+    };
+
+    std::optional<MessageState> message_state(MDBX_txn* txn, const Profile& profile,
+        const ConversationStoreAccess& access, const EntryRef& target, Work& work) const {
+        MessageState result;
+        auto current = target;
+        std::vector<EntryRef> visited;
+        const auto visit = [&](const EntryRef& ref) {
+            if(visited.size() == visited.capacity()) {
+                const auto next = visited.capacity() ? visited.capacity() * 2U : std::size_t{1};
+                work.prepare(static_cast<std::uint64_t>((next - visited.capacity()) * sizeof(EntryRef)));
+            }
+            visited.push_back(ref);
+        };
+        // Each target hop consumes physical read budgets. No recursion or
+        // persistent graph/index is needed to follow exact retained bindings.
+        for(;;) {
+            if(visited.size() >= kMaxStateTraversal || visited.size() >= profile.quotas.entries)
+                resource_limit();
+            if(!is_valid_entry_ref(current) || current.conversation != target.conversation ||
+                current.conversation.allocation_namespace != options.allocation_namespace) return std::nullopt;
+            if(std::find(visited.begin(), visited.end(), current) != visited.end()) resource_limit();
+            visit(current);
+            WorkPhase row_work(work);
+            const auto row = revision(txn, profile, current, access.scope, work);
+            if(!row) return std::nullopt;
+            const auto envelope = decode(profile, *row, current, access.scope);
+            const auto type = detail::conversation_payload_family(envelope);
+            if(type == 0 || type == 1) { result.root = current; break; }
+            const auto* payload = std::get_if<ConversationPayload>(&envelope.payload);
+            if(!payload) return std::nullopt;
+            if(const auto* value = std::get_if<ConversationEdited>(payload)) current = value->affected;
+            else if(const auto* value = std::get_if<ConversationTombstoned>(payload)) current = value->affected;
+            else if(const auto* value = std::get_if<ConversationRestored>(payload)) current = value->affected;
+            else return std::nullopt;
+        }
+        current = target;
+        visited.clear();
+        for(;;) {
+            if(visited.size() >= kMaxStateTraversal || visited.size() >= profile.quotas.entries)
+                resource_limit();
+            if(std::find(visited.begin(), visited.end(), current) != visited.end()) resource_limit();
+            visit(current);
+            WorkPhase row_work(work);
+            const auto row = revision(txn, profile, current, access.scope, work);
+            if(!row) return std::nullopt;
+            const auto envelope = decode(profile, *row, current, access.scope);
+            const auto type = detail::conversation_payload_family(envelope);
+            if(type == 0 || type == 1 || type == 2) { result.content_ref = current; break; }
+            if(type == 3) break;
+            const auto* payload = std::get_if<ConversationPayload>(&envelope.payload);
+            const auto* restore = payload ? std::get_if<ConversationRestored>(payload) : nullptr;
+            if(!restore || restore->retained_state.conversation != target.conversation) return std::nullopt;
+            current = restore->retained_state;
+        }
+        return result;
+    }
+
+    bool state_target_valid(MDBX_txn* txn, const Profile& profile,
+        const ConversationStoreAccess& access, const ConversationEnvelope& envelope, Work& work) const {
+        const auto* payload = std::get_if<ConversationPayload>(&envelope.payload);
+        if(!payload) return true;
+        const EntryRef* affected = nullptr;
+        if(const auto* value = std::get_if<ConversationEdited>(payload)) affected = &value->affected;
+        else if(const auto* value = std::get_if<ConversationTombstoned>(payload)) affected = &value->affected;
+        else if(const auto* value = std::get_if<ConversationRestored>(payload)) affected = &value->affected;
+        if(!affected) return true;
+        if(affected->conversation != envelope.metadata.ref.conversation) return false;
+        const auto prior = message_state(txn, profile, access, *affected, work);
+        if(!prior) return false;
+        if(const auto* restore = std::get_if<ConversationRestored>(payload)) {
+            const auto retained = message_state(txn, profile, access, restore->retained_state, work);
+            return retained && retained->root.entry == prior->root.entry && retained->content_ref.has_value();
+        }
+        return true;
+    }
+
     ConversationContinuation continuation(const ConversationStoreAccess& access, const ConversationRef& ref,
-        std::uint64_t frontier, std::uint64_t entry, std::uint64_t revision) const {
+        std::uint64_t frontier, std::uint64_t entry, std::uint64_t revision, bool is_current = false) const {
         auto state = std::make_shared<HistoryState>();
         state->instance = instance;
         state->incarnation = identity.incarnation;
@@ -480,12 +575,16 @@ struct MdbxConversationDurable::Impl final {
         state->frontier = frontier;
         state->entry = entry;
         state->revision = revision;
+        state->is_current = is_current;
         return ContinuationAccess::make_continuation(std::move(state));
     }
 
     ConversationReadResult history(const ConversationStoreAccess&, const ConversationRef&,
         const ConversationReadLimits&, const std::optional<ConversationContinuation>&,
         std::optional<std::uint64_t> explicit_frontier, std::uint64_t entry, std::uint64_t revision) const;
+    ConversationReadResult current(const ConversationStoreAccess&, const ConversationRef&,
+        const ConversationReadLimits&, const std::optional<ConversationContinuation>&,
+        std::optional<std::uint64_t> explicit_frontier, std::uint64_t seek_root) const;
 };
 
 MdbxConversationDurable::MdbxConversationDurable(DurableOptions options, QualificationHooks hooks)
@@ -580,7 +679,10 @@ ConversationWriteResult MdbxConversationDurable::import_observation(
             {
                 work.scratch(sum(2U * bucket.match->witness.size(), sum(object_reserve(profile.descriptor.codec),
                     4096U * sizeof(ArtifactBindingId))));
-                const auto original = stored([&bucket] { return decode_witness(view(bucket.match->witness)); });
+                const auto original = stored([&bucket, &profile] {
+                    return decode_witness(view(bucket.match->witness),
+                        static_cast<std::size_t>(profile.descriptor.max_observation_bytes));
+                });
                 if(!detail::same_witness(input, original)) return refused(ConversationWriteStatus::Conflict);
                 if(original.scope.value() != access.scope.value()) corrupt();
             }
@@ -589,10 +691,6 @@ ConversationWriteResult MdbxConversationDurable::import_observation(
             static_cast<void>(m_impl->decode(profile, *record, bucket.match->ref, access.scope));
             return {ConversationWriteStatus::NoChange, bucket.match->ref, bucket.match->generation};
         }
-        if(profile.generation == kMax || profile.revision_count == kMax || conversation->next_entry == kMax ||
-            !profile.quotas.revisions_per_entry ||
-            !fits(profile.entry_count, 1, profile.quotas.entries) || !fits(profile.mapping_count, 1, profile.quotas.mapping_rows))
-            return refused(ConversationWriteStatus::ResourceLimit);
         std::optional<ConversationLinkTarget> resolved;
         // The selected target survives the lookup phase; bucket and decoded
         // target-revision scratch do not survive into writer preparation.
@@ -616,7 +714,18 @@ ConversationWriteResult MdbxConversationDurable::import_observation(
                 if(!call || call->call_id != result->call_id) return refused(ConversationWriteStatus::InvalidRequest);
             }
         }
+        const auto state_ref = EntryRef{input.conversation, EntryId{conversation->next_entry}, EventRevision{std::uint64_t{1}}};
+        ConversationEnvelope state_probe;
+        state_probe.metadata.ref = state_ref;
+        state_probe.metadata.scope = input.scope;
+        state_probe.payload = detail::normalize_observation(input, state_ref, std::nullopt).payload;
+        if(!m_impl->state_target_valid(txn.handle(), profile, access, state_probe, work))
+            return refused(ConversationWriteStatus::InvalidRequest);
         }
+        if(profile.generation == kMax || profile.revision_count == kMax || conversation->next_entry == kMax ||
+            !profile.quotas.revisions_per_entry ||
+            !fits(profile.entry_count, 1, profile.quotas.entries) || !fits(profile.mapping_count, 1, profile.quotas.mapping_rows))
+            return refused(ConversationWriteStatus::ResourceLimit);
         // Twelve logical-input copies cover normalisation, AMCE validation/
         // encode scratch, witness, physical bodies and wrapped values. Four
         // independent object slabs cover non-wire container storage. This is a
@@ -625,7 +734,7 @@ ConversationWriteResult MdbxConversationDurable::import_observation(
         const EntryRef ref{input.conversation, EntryId{conversation->next_entry}, EventRevision{std::uint64_t{1}}};
         auto envelope = detail::normalize_observation(input, ref, std::move(resolved));
         auto frame = serialize_conversation_envelope(envelope, profile.descriptor.codec);
-        auto witness = encode_witness(input);
+        auto witness = encode_witness(input, static_cast<std::size_t>(profile.descriptor.max_observation_bytes));
         const auto logical = detail::source_key(input.source);
         const auto mapping_charge = sum(sum(preflight.bytes, logical.charge()), sum(32, input.conversation.allocation_namespace.size()));
         if(!fits(profile.canonical_charge, frame.size(), profile.quotas.canonical_bytes) ||
@@ -824,7 +933,7 @@ ConversationReadResult MdbxConversationDurable::Impl::history(const Conversation
         if(!state || state->instance != instance || state->incarnation != identity.incarnation ||
             state->conversation != ref || state->scope.value() != access.scope.value() ||
             state->policy_binding != access.policy_binding || !state->frontier ||
-            (!state->entry != !state->revision)) return refused(ConversationReadStatus::InvalidContinuation);
+            state->is_current || (!state->entry != !state->revision)) return refused(ConversationReadStatus::InvalidContinuation);
         frontier = state->frontier;
         seek_entry = state->entry;
         seek_revision = state->revision;
@@ -928,6 +1037,210 @@ ConversationReadResult MdbxConversationDurable::read_history_at(const Conversati
     const ConversationRef& ref, const ConversationReadLimits& limits, std::uint64_t frontier,
     std::uint64_t seek_entry, std::uint64_t seek_revision) const {
     return m_impl->history(access, ref, limits, std::nullopt, frontier, seek_entry, seek_revision);
+}
+
+ConversationReadResult MdbxConversationDurable::Impl::current(const ConversationStoreAccess& access,
+    const ConversationRef& ref, const ConversationReadLimits& limits,
+    const std::optional<ConversationContinuation>& token, std::optional<std::uint64_t> explicit_frontier,
+    std::uint64_t seek_root) const {
+    if(!valid_access(access)) return refused(ConversationReadStatus::Denied);
+    if(!is_valid_conversation_ref(ref) || ref.allocation_namespace != options.allocation_namespace ||
+        !valid_limits(limits) || (explicit_frontier && !*explicit_frontier))
+        return refused(ConversationReadStatus::InvalidRequest);
+    std::uint64_t frontier = explicit_frontier.value_or(0);
+    if(token) {
+        const auto* state = dynamic_cast<const HistoryState*>(ContinuationAccess::continuation_state(*token));
+        if(!state || state->instance != instance || state->incarnation != identity.incarnation ||
+            state->conversation != ref || state->scope.value() != access.scope.value() ||
+            state->policy_binding != access.policy_binding || !state->frontier ||
+            !state->is_current || state->revision) return refused(ConversationReadStatus::InvalidContinuation);
+        frontier = state->frontier;
+        seek_root = state->entry;
+    }
+    try {
+        Work work{options};
+        auto txn = options.context->connection()->transaction(mdbxc::TransactionMode::READ_ONLY);
+        const auto profile = load(txn.handle(), work, false);
+        const auto stream = conversation(txn.handle(), profile, ref, access, work);
+        if(!stream) return refused(ConversationReadStatus::NotFound);
+        if(!token && !explicit_frontier) frontier = profile.generation;
+        if(frontier < stream->created_generation || frontier > profile.generation || seek_root >= stream->next_entry)
+            return refused(token ? ConversationReadStatus::InvalidContinuation : ConversationReadStatus::InvalidRequest);
+        work.prepare(sum(access.scope.value().size(), sum(ref.allocation_namespace.size(),
+            sum(access.policy_binding.size(), 4096))));
+        auto result = refused(ConversationReadStatus::Complete);
+        result.commit_generation = frontier;
+        const auto stop = [&](ConversationReadStatus status) {
+            result.status = status;
+            result.continuation = continuation(access, ref, frontier, seek_root, 0, true);
+            return std::move(result);
+        };
+        struct State final {
+            std::uint64_t root = 0;
+            int type = -1;
+            std::optional<EntryRef> content_ref;
+        };
+        struct Fold final {
+            ConversationMessageView view;
+            std::size_t root_bytes = 0, state_bytes = 0, content_bytes = 0;
+        };
+        std::map<std::uint64_t, State> states;
+        std::map<std::uint64_t, Fold> folds;
+        const auto decode_input = [&](const RevisionRow& row, const EntryRef& exact) {
+            if(result.visited_records >= limits.max_visited_records ||
+                row.frame.size() > limits.max_decoded_bytes - result.decoded_bytes) resource_limit();
+            auto envelope = decode(profile, row, exact, access.scope);
+            ++result.visited_records;
+            result.decoded_bytes += row.frame.size();
+            return envelope;
+        };
+        try {
+            for(std::uint64_t entry = 1; entry < stream->next_entry; ++entry) {
+                WorkPhase row_work(work);
+                auto selected = latest(txn.handle(), profile, ref, EntryId{entry}, work);
+                if(!selected) corrupt();
+                std::optional<RevisionRow> row;
+                for(;;) {
+                    row = revision(txn.handle(), profile, *selected, access.scope, work);
+                    if(!row) corrupt();
+                    if(row->generation <= frontier) break;
+                    if(selected->revision.value() == 1) { row.reset(); break; }
+                    selected->revision = EventRevision{selected->revision.value() - 1};
+                }
+                if(!row) continue;
+                auto envelope = decode_input(*row, *selected);
+                const auto type = detail::conversation_payload_family(envelope);
+                if(type < 0) corrupt();
+                State state;
+                state.type = type;
+                auto* payload = std::get_if<ConversationPayload>(&envelope.payload);
+                const ConversationContent* content = nullptr;
+                const EntryRef* affected = nullptr;
+                if(payload) {
+                    if(const auto* value = std::get_if<ConversationMessageCreated>(payload)) content = &value->content;
+                    else if(const auto* value = std::get_if<ConversationSnapshotObserved>(payload)) content = &value->content;
+                    else if(const auto* value = std::get_if<ConversationEdited>(payload)) {
+                        content = &value->replacement; affected = &value->affected;
+                    } else if(const auto* value = std::get_if<ConversationTombstoned>(payload)) affected = &value->affected;
+                    else if(const auto* value = std::get_if<ConversationRestored>(payload)) affected = &value->affected;
+                }
+                if(type == 0 || type == 1) {
+                    if(!content) corrupt();
+                    state.root = entry;
+                    state.content_ref = *selected;
+                    Fold fold;
+                    fold.view.origin = *selected;
+                    fold.view.state = *selected;
+                    fold.view.origin_metadata = std::move(envelope.metadata);
+                    fold.view.content = *content;
+                    fold.view.content_ref = *selected;
+                    fold.view.is_snapshot_origin = type == 1;
+                    fold.root_bytes = fold.state_bytes = fold.content_bytes = row->frame.size();
+                    folds.emplace(entry, std::move(fold));
+                } else if(type >= 2 && type <= 4) {
+                    if(!affected || affected->conversation != ref || affected->entry.value() >= entry) corrupt();
+                    const auto prior = states.find(affected->entry.value());
+                    if(prior == states.end() || !prior->second.root) corrupt();
+                    state.root = prior->second.root;
+                    if(type == 2) state.content_ref = *selected;
+                    if(type == 4) {
+                        const auto& restore = std::get<ConversationRestored>(*payload);
+                        const auto retained = states.find(restore.retained_state.entry.value());
+                        if(restore.retained_state.conversation != ref || retained == states.end() ||
+                            retained->second.root != state.root) corrupt();
+                        if(retained->second.type == 0 || retained->second.type == 1 || retained->second.type == 2)
+                            state.content_ref = restore.retained_state;
+                        else state.content_ref = retained->second.content_ref;
+                        if(!state.content_ref) corrupt();
+                    }
+                    auto& fold = folds.at(state.root);
+                    if(fold.view.status != ConversationMessageState::Ambiguous) {
+                        if(affected->entry != fold.view.state.entry ||
+                            (type == 2 && fold.view.status == ConversationMessageState::Deleted)) {
+                            fold.view.status = ConversationMessageState::Ambiguous;
+                            fold.view.state = {};
+                            fold.view.content.reset();
+                            fold.view.content_ref.reset();
+                            fold.content_bytes = 0;
+                        } else {
+                            fold.view.state = *selected;
+                            fold.state_bytes = row->frame.size();
+                            fold.view.content.reset();
+                            fold.view.content_ref.reset();
+                            fold.content_bytes = 0;
+                            fold.view.status = type == 3 ? ConversationMessageState::Deleted : ConversationMessageState::Live;
+                            if(type == 2) {
+                                fold.view.content = *content;
+                                fold.view.content_ref = state.content_ref;
+                                fold.content_bytes = row->frame.size();
+                            } else if(type == 4) {
+                                WorkPhase retained_work(work);
+                                const auto retained = revision(txn.handle(), profile, *state.content_ref, access.scope, work);
+                                if(!retained || retained->generation > frontier) corrupt();
+                                const auto retained_envelope = decode_input(*retained, *state.content_ref);
+                                const auto* retained_payload = std::get_if<ConversationPayload>(&retained_envelope.payload);
+                                const ConversationContent* retained_content = nullptr;
+                                if(retained_payload) {
+                                    if(const auto* value = std::get_if<ConversationMessageCreated>(retained_payload)) retained_content = &value->content;
+                                    else if(const auto* value = std::get_if<ConversationSnapshotObserved>(retained_payload)) retained_content = &value->content;
+                                    else if(const auto* value = std::get_if<ConversationEdited>(retained_payload)) retained_content = &value->replacement;
+                                }
+                                if(!retained_content) corrupt();
+                                fold.view.content = *retained_content;
+                                fold.view.content_ref = state.content_ref;
+                                fold.content_bytes = retained->frame.size();
+                            }
+                        }
+                    }
+                }
+                const auto state_root = state.root;
+                states.emplace(entry, std::move(state));
+                // Keep conservative charges for owning fold state; row scratch
+                // is released. A restore may retain content from an older,
+                // much larger frame, so charge the retained content frame rather
+                // than only the small restore occurrence. This is a local
+                // live-byte policy, not an RSS claim.
+                std::uint64_t retained_content_bytes = 0;
+                const auto fold = folds.find(state_root);
+                if(fold != folds.end()) retained_content_bytes = fold->second.content_bytes;
+                row_work.retained = sum(row_work.retained, sum(512,
+                    sum(3U * row->frame.size(), sum(retained_content_bytes,
+                        3U * ref.allocation_namespace.size()))));
+                if(row_work.retained > options.max_live_bytes) resource_limit();
+            }
+        } catch(const CodecError& error) {
+            if(error.code() != CodecCode::ResourceLimit) throw;
+            // An incomplete input fold never exposes an unqualified Current prefix.
+            return stop(ConversationReadStatus::BudgetExhausted);
+        }
+        for(auto& item : folds) {
+            if(item.first <= seek_root) continue;
+            auto& fold = item.second;
+            const auto charge = sum(fold.root_bytes, sum(fold.state_bytes, fold.content_bytes));
+            if(result.messages.size() >= limits.max_items || charge > limits.max_output_bytes - result.output_bytes)
+                return stop(result.messages.empty() ? (limits.max_items ? ConversationReadStatus::OversizedItem :
+                    ConversationReadStatus::BudgetExhausted) : ConversationReadStatus::Partial);
+            result.messages.push_back(std::move(fold.view));
+            result.output_bytes += static_cast<std::size_t>(charge);
+            seek_root = item.first;
+        }
+        return result;
+    } catch(const CodecError& error) {
+        if(error.code() == CodecCode::ResourceLimit) return refused(ConversationReadStatus::BudgetExhausted);
+        throw;
+    }
+}
+
+ConversationReadResult MdbxConversationDurable::read_current(const ConversationStoreAccess& access,
+    const ConversationRef& ref, const ConversationReadLimits& limits,
+    const std::optional<ConversationContinuation>& token) const {
+    return m_impl->current(access, ref, limits, token, std::nullopt, 0);
+}
+
+ConversationReadResult MdbxConversationDurable::read_current_at(const ConversationStoreAccess& access,
+    const ConversationRef& ref, const ConversationReadLimits& limits, std::uint64_t frontier,
+    std::uint64_t seek_root) const {
+    return m_impl->current(access, ref, limits, std::nullopt, frontier, seek_root);
 }
 
 } // namespace agent_memory::detail::conversation_durable

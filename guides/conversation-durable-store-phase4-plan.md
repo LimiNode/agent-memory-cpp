@@ -30,7 +30,9 @@ post-main checks and source-PR disposition. P4-0's concrete
 defines three optional DBIs, bytewise keys, versioned values/witnesses,
 transactions, durability flags, frontier/token boundaries and test fixtures.
 Its [Current decision screen](experiments/2026-11-24-conversation-durable-current-plan.md)
-is predeclared, NOT RUN. The YAML delta allocates/deploys nothing.
+is predeclared; the bounded full-fold implementation is present in the P4-4
+Draft, while the durable screen itself remains NOT RUN. The YAML delta
+allocates/deploys nothing.
 
 The [Foundation Closure Gate](audits/2026-11-foundation-closure.md) now precedes
 P4-1 authorization. It separates profile-qualified compact physical keys from

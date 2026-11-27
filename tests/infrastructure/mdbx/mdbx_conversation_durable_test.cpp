@@ -202,6 +202,21 @@ void same_read(const am::ConversationReadResult& actual, const am::ConversationR
             "oracle canonical AMCE/generation parity");
     }
 }
+void same_current(const am::ConversationReadResult& actual, const am::ConversationReadResult& expected) {
+    expect(actual.status == expected.status && actual.commit_generation == expected.commit_generation &&
+        actual.messages.size() == expected.messages.size() && actual.output_bytes == expected.output_bytes &&
+        actual.visited_records == expected.visited_records && actual.decoded_bytes == expected.decoded_bytes,
+        "oracle Current status/frontier/count/budget parity");
+    for(std::size_t i = 0; i < actual.messages.size(); ++i) {
+        const auto& a = actual.messages[i];
+        const auto& b = expected.messages[i];
+        expect(a.origin == b.origin && a.state == b.state && a.content_ref == b.content_ref && a.status == b.status &&
+            a.is_snapshot_origin == b.is_snapshot_origin && a.content.has_value() == b.content.has_value(),
+            "oracle Current identity/state parity");
+        if(a.content) expect(a.content->text == b.content->text && a.content->attachments == b.content->attachments,
+            "oracle Current content parity");
+    }
+}
 am::ConversationWriteResult admit(cd::MdbxConversationDurable& store, const am::ConversationSourceObservation& input) {
     const auto result = store.import_observation(access(), input);
     expect(result.status == am::ConversationWriteStatus::Applied && result.ref.has_value(), "durable source admission");
@@ -227,6 +242,7 @@ void authored_source_parity() {
         const auto expected = oracle.import_observation(access(), input);
         same_write(actual, expected);
         if(actual.ref) same_read(store.read_exact(access(), *actual.ref), oracle.history().read_exact(access(), *expected.ref));
+        same_current(store.read_current(access(), conversation()), oracle.history().read_current(access(), conversation()));
         return actual;
     };
     const auto first = compare(message("message"));
@@ -593,6 +609,177 @@ void history_paging_and_frontier() {
         "qualification frontier excludes later admissions");
 }
 
+void state_payload_admission() {
+    Fixture fixture("state");
+    cd::MdbxConversationDurable store(fixture.options());
+    am::InMemoryConversationImportSink oracle(oracle_options());
+    same_write(store.create_conversation(access(), conversation()), oracle.create_conversation(access(), conversation()));
+    const auto compare = [&](const am::ConversationSourceObservation& input) {
+        const auto actual = store.import_observation(access(), input);
+        const auto expected = oracle.import_observation(access(), input);
+        same_write(actual, expected);
+        if(actual.ref) same_read(store.read_exact(access(), *actual.ref), oracle.history().read_exact(access(), *expected.ref));
+        same_current(store.read_current(access(), conversation()), oracle.history().read_current(access(), conversation()));
+        return actual;
+    };
+    const auto base = compare(message("state-base"));
+    auto edited = message("state-edit");
+    edited.payload = am::ConversationEdited{*base.ref, {std::string{"edited"}, {}}};
+    const auto edit = compare(edited);
+    auto tombstoned = message("state-tombstone");
+    tombstoned.payload = am::ConversationTombstoned{*edit.ref};
+    const auto tombstone = compare(tombstoned);
+    auto restored = message("state-restore");
+    restored.payload = am::ConversationRestored{*tombstone.ref, *base.ref};
+    const auto restore = compare(restored);
+    expect(std::get<am::ConversationRestored>(std::get<am::ConversationPayload>(
+        exact(store, *restore.ref).payload)).retained_state == *base.ref, "durable restore target retained");
+    auto missing = message("state-missing");
+    missing.payload = am::ConversationEdited{
+        am::EntryRef{conversation(), am::EntryId{std::uint64_t{99}}, am::EventRevision{std::uint64_t{1}}},
+        {std::string{"rejected"}, {}}};
+    const auto refusal = compare(missing);
+    expect(refusal.status == am::ConversationWriteStatus::InvalidRequest && !refusal.ref,
+        "durable missing state target refusal");
+    missing.source = source("state-missing-retry");
+    missing.payload = am::ConversationEdited{*base.ref, {std::string{"retry"}, {}}};
+    const auto retry = compare(missing);
+    expect(retry.ref && retry.ref->entry.value() == restore.ref->entry.value() + 1,
+        "durable state refusal leaves allocator unchanged");
+    {
+        Fixture ambiguous_fixture("state_after_tombstone");
+        cd::MdbxConversationDurable ambiguous_store(ambiguous_fixture.options());
+        am::InMemoryConversationImportSink ambiguous_oracle(oracle_options());
+        same_write(ambiguous_store.create_conversation(access(), conversation()),
+            ambiguous_oracle.create_conversation(access(), conversation()));
+        const auto compare_ambiguous = [&](const am::ConversationSourceObservation& input) {
+            const auto actual = ambiguous_store.import_observation(access(), input);
+            const auto expected = ambiguous_oracle.import_observation(access(), input);
+            same_write(actual, expected);
+            same_current(ambiguous_store.read_current(access(), conversation()),
+                ambiguous_oracle.history().read_current(access(), conversation()));
+            return actual;
+        };
+        const auto ambiguous_base = compare_ambiguous(message("state-ambiguous-base"));
+        auto ambiguous_tombstone = message("state-ambiguous-tombstone");
+        ambiguous_tombstone.payload = am::ConversationTombstoned{*ambiguous_base.ref};
+        const auto ambiguous_deleted = compare_ambiguous(ambiguous_tombstone);
+        auto edit_after_tombstone = message("state-edit-after-tombstone");
+        edit_after_tombstone.payload = am::ConversationEdited{
+            *ambiguous_deleted.ref, {std::string{"must-not-restore"}, {}}};
+        const auto ambiguous_edit = compare_ambiguous(edit_after_tombstone);
+        expect(ambiguous_edit.ref && ambiguous_store.read_current(access(), conversation()).messages.size() == 1 &&
+            ambiguous_store.read_current(access(), conversation()).messages.front().status ==
+                am::ConversationMessageState::Ambiguous,
+            "edit after tombstone is retained but leaves Current ambiguous");
+    }
+    am::ConversationReadLimits tiny;
+    tiny.max_visited_records = 1;
+    const auto limited = store.read_current(access(), conversation(), tiny);
+    expect(limited.status == am::ConversationReadStatus::BudgetExhausted && limited.messages.empty() &&
+        limited.continuation && limited.visited_records == 1, "incomplete Current fold exposes no prefix");
+    same_current(store.read_current(access(), conversation(), {}, limited.continuation),
+        oracle.history().read_current(access(), conversation()));
+}
+
+void current_state_frontier_parity() {
+    Fixture fixture("current_state");
+    auto store = std::make_unique<cd::MdbxConversationDurable>(fixture.options());
+    am::InMemoryConversationImportSink oracle(oracle_options());
+    same_write(store->create_conversation(access(), conversation()), oracle.create_conversation(access(), conversation()));
+    const auto compare = [&](const am::ConversationSourceObservation& input) {
+        const auto actual = store->import_observation(access(), input);
+        same_write(actual, oracle.import_observation(access(), input));
+        same_current(store->read_current(access(), conversation()), oracle.history().read_current(access(), conversation()));
+        return actual;
+    };
+    const auto root = compare(message("current-root"));
+    compare(message("independent-root"));
+    const auto current_call_input = call("current-tool-call");
+    compare(current_call_input);
+    compare(tool_result("current-tool-result", current_call_input));
+    const auto before = store->read_current(access(), conversation());
+    am::ConversationReadLimits one;
+    one.max_items = 1;
+    const auto page = store->read_current(access(), conversation(), one);
+    expect(page.status == am::ConversationReadStatus::Partial && page.messages.size() == 1 && page.continuation,
+        "Current output page pins frontier");
+    auto corrected = exact(*store, *root.ref);
+    corrected.metadata.ref.revision = am::EventRevision{std::uint64_t{2}};
+    corrected.payload = am::ConversationPayload{am::ConversationMessageCreated{{std::string{"root-corrected"}, {}}}};
+    same_write(store->correct(access(), corrected, root.ref->revision, "normalization"),
+        oracle.correct(access(), corrected, root.ref->revision, "normalization"));
+    same_current(store->read_current(access(), conversation()), oracle.history().read_current(access(), conversation()));
+    auto edited = message("current-edit");
+    edited.payload = am::ConversationEdited{*root.ref, {std::string{"linear"}, {}}};
+    const auto edit = compare(edited);
+    auto tombstoned = message("current-tombstone");
+    tombstoned.payload = am::ConversationTombstoned{*edit.ref};
+    const auto tombstone = compare(tombstoned);
+    auto restored = message("current-restore");
+    restored.payload = am::ConversationRestored{*tombstone.ref, *root.ref};
+    const auto restore = compare(restored);
+    auto tombstoned_again = message("current-tombstone-again");
+    tombstoned_again.payload = am::ConversationTombstoned{*restore.ref};
+    const auto deleted_again = compare(tombstoned_again);
+    auto restored_again = message("current-restore-again");
+    restored_again.payload = am::ConversationRestored{*deleted_again.ref, *restore.ref};
+    compare(restored_again);
+    auto current = store->read_current(access(), conversation());
+    expect(current.messages.front().content_ref == root.ref && current.messages.front().content->text == "source text",
+        "Restore-to-Restore preserves frozen original content");
+    auto bad_restore = message("bad-restore");
+    bad_restore.payload = am::ConversationRestored{*deleted_again.ref, *tombstone.ref};
+    const auto immutable = snapshot(fixture);
+    expect(compare(bad_restore).status == am::ConversationWriteStatus::InvalidRequest && snapshot(fixture) == immutable,
+        "tombstone is not retained content and refusal is atomic");
+    auto sibling = message("current-sibling");
+    sibling.payload = am::ConversationEdited{*root.ref, {std::string{"sibling"}, {}}};
+    compare(sibling);
+    expect(store->read_current(access(), conversation()).messages.front().status == am::ConversationMessageState::Ambiguous,
+        "sibling state does not choose a last writer");
+    same_current(store->read_current_at(access(), conversation(), {}, before.commit_generation), before);
+    const auto resumed = store->read_current(access(), conversation(), one, page.continuation);
+    expect(resumed.status == am::ConversationReadStatus::Complete && resumed.commit_generation == page.commit_generation &&
+        resumed.messages.size() == 1 && resumed.messages.front().origin == before.messages.back().origin,
+        "Current continuation excludes later corrections and admissions");
+    expect(store->read_history(access(), conversation(), {}, page.continuation).status == am::ConversationReadStatus::InvalidContinuation,
+        "Current continuation cannot resume History");
+    const auto history_page = store->read_history(access(), conversation(), one);
+    expect(store->read_current(access(), conversation(), {}, history_page.continuation).status ==
+        am::ConversationReadStatus::InvalidContinuation, "History continuation cannot resume Current");
+    am::ConversationReadLimits no_output;
+    no_output.max_output_bytes = 0;
+    const auto oversized = store->read_current(access(), conversation(), no_output);
+    expect(oversized.status == am::ConversationReadStatus::OversizedItem && oversized.messages.empty() && oversized.continuation,
+        "Current oversized first root is not skipped");
+    same_current(store->read_current(access(), conversation(), {}, oversized.continuation),
+        oracle.history().read_current(access(), conversation()));
+    store.reset(); fixture.reopen(); store = std::make_unique<cd::MdbxConversationDurable>(fixture.options(false));
+    same_current(store->read_current(access(), conversation()), oracle.history().read_current(access(), conversation()));
+    expect(store->read_current(access(), conversation(), {}, page.continuation).status ==
+        am::ConversationReadStatus::InvalidContinuation, "Current continuation is instance-bound after reopen");
+}
+
+void historical_profile_refusal() {
+    Fixture fixture("historical_profile");
+    { cd::MdbxConversationDurable store(fixture.options()); }
+    auto bytes = profile_bytes(fixture);
+    const std::string marker = cd::kSchemaMarker;
+    const auto found = std::search(bytes.begin(), bytes.end(), marker.begin(), marker.end());
+    expect(found != bytes.end(), "profile marker fixture");
+    const auto offset = static_cast<std::size_t>(found - bytes.begin());
+    bytes[offset + marker.find(".v2") + 2] = '1';
+    bytes[offset + marker.find("witness2") + 7] = '1';
+    put_raw(fixture, kTables[0], cd::encode_profile_key(), bytes);
+    const auto before = snapshot(fixture);
+    for(bool initialize : {false, true}) {
+        rejects_codec([&] { cd::MdbxConversationDurable rejected(fixture.options(initialize)); },
+            cd::CodecCode::UnsupportedSchema, "historical profile must be explicitly unsupported");
+        expect(snapshot(fixture) == before, "historical profile refusal is nonmutating");
+    }
+}
+
 int child_mode(const std::string& mode, const std::filesystem::path& path) {
     Fixture fixture(path);
     if(mode == "--seed") {
@@ -661,6 +848,9 @@ int main(int argc, char** argv) {
             catch(const std::exception& error) { throw std::runtime_error(std::string(name) + ": " + error.what()); }
         };
         run("authored_source_parity", authored_source_parity);
+        run("state_payload_admission", state_payload_admission);
+        run("current_state_frontier_parity", current_state_frontier_parity);
+        run("historical_profile_refusal", historical_profile_refusal);
         run("quotas_and_owning_outputs", quotas_and_owning_outputs);
         run("zero_quotas", zero_quotas_forbid_new_consumption);
         run("collision_bucket_admission", collision_bucket_admission);
@@ -672,7 +862,7 @@ int main(int argc, char** argv) {
         run("schema_initialization_rollback", schema_initialization_rolls_back_atomically);
         run("replay_memory", replay_memory_is_not_writer_preparation);
         fresh_process_reopen(std::filesystem::absolute(argv[0]));
-        std::cout << "internal durable Conversation qualification passed (no Current/correction/power-loss claim)\n";
+        std::cout << "internal durable Conversation qualification passed (bounded Current fixtures; no power-loss claim)\n";
         return 0;
     } catch(const std::exception& error) {
         std::cerr << "durable Conversation qualification: " << error.what() << '\n';

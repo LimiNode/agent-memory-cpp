@@ -106,9 +106,17 @@ struct ObservationPreflight final {
         return value(ref.allocation_namespace.size(), kMaxConversationNamespaceBytes);
     }
 
+    bool exact_ref(const EntryRef& ref) {
+        if(!is_valid_entry_ref(ref)) {
+            status = ConversationWriteStatus::InvalidRequest;
+            return false;
+        }
+        return add(24) && conversation(ref.conversation);
+    }
+
     bool target(const ConversationSourceCallTarget& item) {
         if(!add(32)) return false;
-        if(const auto* ref = std::get_if<EntryRef>(&item)) return conversation(ref->conversation);
+        if(const auto* ref = std::get_if<EntryRef>(&item)) return exact_ref(*ref);
         if(const auto* source_target = std::get_if<ConversationSourceTarget>(&item)) {
             return conversation(source_target->conversation) && value(source_target->scope.value().size()) &&
                 source(source_target->source);
@@ -149,6 +157,28 @@ struct ObservationPreflight final {
             if(!valid_origin(result->origin) || !valid_outcome(result->reported_outcome)) {
                 status = ConversationWriteStatus::InvalidRequest;
             }
+        } else if(const auto* edited = std::get_if<ConversationEdited>(&item.payload)) {
+            if(!exact_ref(edited->affected)) return false;
+            if(edited->affected.conversation != item.conversation) {
+                status = ConversationWriteStatus::InvalidRequest;
+            } else {
+                if(edited->replacement.attachments.size() > fields.max_attachments) {
+                    status = ConversationWriteStatus::ResourceLimit;
+                } else if(edited->replacement.text &&
+                    !value(edited->replacement.text->size(), fields.max_text_bytes)) return false;
+                for(const auto& attachment : edited->replacement.attachments) {
+                    if(!value(attachment.value().size(), fields.max_binding_bytes)) return false;
+                }
+            }
+        } else if(const auto* tombstoned = std::get_if<ConversationTombstoned>(&item.payload)) {
+            if(!exact_ref(tombstoned->affected)) return false;
+            if(tombstoned->affected.conversation != item.conversation)
+                status = ConversationWriteStatus::InvalidRequest;
+        } else if(const auto* restored = std::get_if<ConversationRestored>(&item.payload)) {
+            if(!exact_ref(restored->affected) || !exact_ref(restored->retained_state)) return false;
+            if(restored->affected.conversation != item.conversation ||
+                restored->retained_state.conversation != item.conversation)
+                status = ConversationWriteStatus::InvalidRequest;
         } else status = ConversationWriteStatus::InvalidRequest;
         return status == ConversationWriteStatus::Applied;
     }
@@ -230,12 +260,25 @@ bool same_witness(const ConversationSourceObservation& a, const ConversationSour
         return call->call_id == other.call_id && call->tool_name == other.tool_name &&
             call->original_request == other.original_request && call->effective_request == other.effective_request;
     }
-    const auto* result = std::get_if<ConversationSourceToolResult>(&a.payload);
-    if(!result) return false;
-    const auto& other = std::get<ConversationSourceToolResult>(b.payload);
-    return same_target(result->call, other.call) && result->call_id == other.call_id &&
-        result->origin == other.origin && result->reported_outcome == other.reported_outcome &&
-        result->result == other.result && result->is_error == other.is_error && result->exit_code == other.exit_code;
+    if(const auto* result = std::get_if<ConversationSourceToolResult>(&a.payload)) {
+        const auto& other = std::get<ConversationSourceToolResult>(b.payload);
+        return same_target(result->call, other.call) && result->call_id == other.call_id &&
+            result->origin == other.origin && result->reported_outcome == other.reported_outcome &&
+            result->result == other.result && result->is_error == other.is_error && result->exit_code == other.exit_code;
+    }
+    if(const auto* edited = std::get_if<ConversationEdited>(&a.payload)) {
+        const auto& other = std::get<ConversationEdited>(b.payload);
+        return edited->affected == other.affected && edited->replacement.text == other.replacement.text &&
+            edited->replacement.attachments == other.replacement.attachments;
+    }
+    if(const auto* tombstoned = std::get_if<ConversationTombstoned>(&a.payload)) {
+        return tombstoned->affected == std::get<ConversationTombstoned>(b.payload).affected;
+    }
+    if(const auto* restored = std::get_if<ConversationRestored>(&a.payload)) {
+        const auto& other = std::get<ConversationRestored>(b.payload);
+        return restored->affected == other.affected && restored->retained_state == other.retained_state;
+    }
+    return false;
 }
 
 bool SourceKey::operator<(const SourceKey& other) const {
@@ -269,10 +312,15 @@ ConversationSourceObservation copy_observation(const ConversationSourceObservati
         payload = ConversationSourcePayload{std::in_place_index<0>, *message};
     } else if(const auto* call = std::get_if<ConversationSourceToolCall>(&input.payload)) {
         payload = ConversationSourcePayload{std::in_place_index<1>, *call};
+    } else if(const auto* result = std::get_if<ConversationSourceToolResult>(&input.payload)) {
+        payload = ConversationSourceToolResult{copy_source_target(result->call), result->call_id,
+            result->origin, result->reported_outcome, result->result, result->is_error, result->exit_code};
+    } else if(const auto* edited = std::get_if<ConversationEdited>(&input.payload)) {
+        payload = *edited;
+    } else if(const auto* tombstoned = std::get_if<ConversationTombstoned>(&input.payload)) {
+        payload = *tombstoned;
     } else {
-        const auto& result = std::get<ConversationSourceToolResult>(input.payload);
-        payload = ConversationSourceToolResult{copy_source_target(result.call), result.call_id,
-            result.origin, result.reported_outcome, result.result, result.is_error, result.exit_code};
+        payload = std::get<ConversationRestored>(input.payload);
     }
     return {input.conversation, input.scope, copy_conversation_source_binding(input.source), input.producer,
         input.actor, input.observer, input.llm_role, input.source_unix_us, input.observed_unix_us, std::move(payload)};
@@ -291,6 +339,17 @@ ConversationWriteStatus observation_status(const ConversationSourceObservation& 
     if(const auto* message = std::get_if<ConversationSourceMessage>(&observation.payload)) {
         if(message->kind == ConversationSourceMessageKind::Created &&
             observation.source.identity == ConversationSourceIdentity::LocalObservation)
+            return ConversationWriteStatus::InvalidRequest;
+    }
+    if(const auto* edited = std::get_if<ConversationEdited>(&observation.payload)) {
+        if(edited->affected.conversation != observation.conversation)
+            return ConversationWriteStatus::InvalidRequest;
+    } else if(const auto* tombstoned = std::get_if<ConversationTombstoned>(&observation.payload)) {
+        if(tombstoned->affected.conversation != observation.conversation)
+            return ConversationWriteStatus::InvalidRequest;
+    } else if(const auto* restored = std::get_if<ConversationRestored>(&observation.payload)) {
+        if(restored->affected.conversation != observation.conversation ||
+            restored->retained_state.conversation != observation.conversation)
             return ConversationWriteStatus::InvalidRequest;
     }
     return ConversationWriteStatus::Applied;
@@ -335,13 +394,18 @@ ConversationEnvelope normalize_observation(const ConversationSourceObservation& 
         } else envelope.payload = ConversationPayload{ConversationSnapshotObserved{message->content}};
     } else if(const auto* call = std::get_if<ConversationSourceToolCall>(&input.payload)) {
         envelope.payload = ConversationToolCallObserved{call->call_id, call->tool_name, call->original_request};
-    } else {
-        const auto& result = std::get<ConversationSourceToolResult>(input.payload);
-        const auto outcome = result.origin == ConversationSourceResultOrigin::Reported ?
-            result.reported_outcome : ConversationToolOutcome::Unknown;
+    } else if(const auto* result = std::get_if<ConversationSourceToolResult>(&input.payload)) {
+        const auto outcome = result->origin == ConversationSourceResultOrigin::Reported ?
+            result->reported_outcome : ConversationToolOutcome::Unknown;
         envelope.payload = ConversationToolResultObserved{
-            resolved_target ? std::move(*resolved_target) : fallback_target(result.call),
-            result.call_id, outcome, result.result};
+            resolved_target ? std::move(*resolved_target) : fallback_target(result->call),
+            result->call_id, outcome, result->result};
+    } else if(const auto* edited = std::get_if<ConversationEdited>(&input.payload)) {
+        envelope.payload = *edited;
+    } else if(const auto* tombstoned = std::get_if<ConversationTombstoned>(&input.payload)) {
+        envelope.payload = *tombstoned;
+    } else {
+        envelope.payload = std::get<ConversationRestored>(input.payload);
     }
     return envelope;
 }

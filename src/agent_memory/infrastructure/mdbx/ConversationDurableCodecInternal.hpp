@@ -10,7 +10,7 @@
 
 namespace agent_memory::detail::conversation_durable {
 
-inline constexpr const char* kSchemaMarker = "conversation_durable.v1.be.keys.sha256.values.witness1";
+inline constexpr const char* kSchemaMarker = "conversation_durable.v2.be.keys.sha256.values.witness2";
 inline constexpr std::size_t kMaxPhysicalBytes = 256U * 1024U * 1024U;
 inline constexpr std::size_t kValueOverheadBytes = 2 + 4 + 32;
 inline constexpr std::size_t kMaxProfileBytes = 4096;

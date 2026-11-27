@@ -52,7 +52,8 @@ struct ConversationSourceToolResult final {
 };
 
 using ConversationSourcePayload = std::variant<ConversationSourceMessage,
-    ConversationSourceToolCall, ConversationSourceToolResult>;
+    ConversationSourceToolCall, ConversationSourceToolResult, ConversationEdited,
+    ConversationTombstoned, ConversationRestored>;
 
 /// \brief Owning source record DTO, borrowed only during import_observation().
 /// \note Host/adapter supplies exact retained source evidence and reviewed identity recipe.
@@ -95,7 +96,7 @@ public:
         const ConversationStoreAccess&, const ConversationEnvelope&, EventRevision expected_revision,
         const std::string& reason_code) = 0;
     /// \brief Borrowed read-only history. Lifetime is bounded by the sink; no mutable-store escape.
-    [[nodiscard]] virtual const IConversationStore& history() const noexcept = 0;
+    [[nodiscard]] virtual const IConversationHistory& history() const noexcept = 0;
 };
 
 /// \brief Deterministic reference adapter/coordinator over a privately owned reference store.
@@ -117,7 +118,7 @@ public:
     [[nodiscard]] ConversationWriteResult correct(
         const ConversationStoreAccess&, const ConversationEnvelope&, EventRevision,
         const std::string&) override;
-    [[nodiscard]] const IConversationStore& history() const noexcept override;
+    [[nodiscard]] const IConversationHistory& history() const noexcept override;
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

@@ -211,6 +211,80 @@ void eight_tool_cases_and_frozen_resolution() {
         "changed declared target conflicts even when it could now resolve");
 }
 
+void state_payloads_and_exact_targets() {
+    am::InMemoryConversationImportSink sink(options()); create(sink);
+    const auto base = import(sink, message("state-base"));
+
+    auto edited = message("state-edit");
+    edited.payload = am::ConversationEdited{*base.ref, {std::string{"edited"}, {}}};
+    const auto edit = import(sink, edited);
+    expect(std::get<am::ConversationEdited>(std::get<am::ConversationPayload>(exact(sink, *edit.ref).payload)).affected ==
+        *base.ref, "edit retains exact source target");
+
+    auto tombstoned = message("state-tombstone");
+    tombstoned.payload = am::ConversationTombstoned{*edit.ref};
+    const auto tombstone = import(sink, tombstoned);
+
+    auto restored = message("state-restore");
+    restored.payload = am::ConversationRestored{*tombstone.ref, *base.ref};
+    const auto restore = import(sink, restored);
+    const auto restored_payload = std::get<am::ConversationRestored>(
+        std::get<am::ConversationPayload>(exact(sink, *restore.ref).payload));
+    expect(restored_payload.affected == *tombstone.ref && restored_payload.retained_state == *base.ref,
+        "restore retains exact affected and content targets");
+
+    auto missing = message("state-missing");
+    missing.payload = am::ConversationEdited{
+        am::EntryRef{conversation(), am::EntryId{std::uint64_t{99}}, am::EventRevision{std::uint64_t{1}}},
+        am::ConversationContent{std::optional<std::string>{"rejected"}, {}}};
+    expect(sink.import_observation(access(), missing).status == am::ConversationWriteStatus::InvalidRequest,
+        "missing state target is rejected without allocation");
+    missing.source = source("state-missing-retry");
+    missing.payload = am::ConversationEdited{*base.ref, {std::string{"retry"}, {}}};
+    expect(import(sink, missing).ref->entry.value() == restore.ref->entry.value() + 1,
+        "state target refusal leaves allocator unchanged");
+
+    am::InMemoryConversationImportSink sibling_sink(options()); create(sibling_sink);
+    const auto sibling_base = import(sibling_sink, message("sibling-base"));
+    auto first = message("sibling-first");
+    first.payload = am::ConversationEdited{*sibling_base.ref, {std::string{"first"}, {}}};
+    import(sibling_sink, first);
+    auto second = message("sibling-second");
+    second.payload = am::ConversationEdited{*sibling_base.ref, {std::string{"second"}, {}}};
+    import(sibling_sink, second);
+    const auto current = sibling_sink.history().read_current(access(), conversation());
+    expect(current.status == am::ConversationReadStatus::Complete && current.messages.size() == 1 &&
+        current.messages.front().status == am::ConversationMessageState::Ambiguous,
+        "sibling exact target makes current ambiguous");
+}
+
+void state_ref_budgets() {
+    const auto fields = options().store.codec_limits.fields;
+    auto value = message("state-budget");
+    const am::EntryRef target{conversation(), am::EntryId{std::uint64_t{1}}, am::EventRevision{std::uint64_t{1}}};
+    for(const auto& payload : std::vector<am::ConversationSourcePayload>{
+        am::ConversationEdited{target, {std::string{"edit"}, {}}},
+        am::ConversationTombstoned{target}, am::ConversationRestored{target, target}}) {
+        value.payload = payload;
+        const auto measured = am::detail::preflight_observation(value, fields, options().max_observation_bytes);
+        expect(measured.status == am::ConversationWriteStatus::Applied && measured.bytes > 1,
+            "state reference budget preflight");
+        expect(am::detail::preflight_observation(value, fields, measured.bytes - 1).status ==
+            am::ConversationWriteStatus::ResourceLimit, "state ref exact budget boundary refuses");
+        auto limits = options(); limits.max_observation_bytes = measured.bytes - 1;
+        am::InMemoryConversationImportSink sink(limits); create(sink);
+        // The base has a shorter source key and is admitted under the same budget.
+        const auto base = import(sink, message("b"));
+        const auto before = sink.history().read_history(access(), conversation());
+        const auto refused = sink.import_observation(access(), value);
+        const auto after = sink.history().read_history(access(), conversation());
+        expect(refused.status == am::ConversationWriteStatus::ResourceLimit && !refused.ref &&
+            before.commit_generation == after.commit_generation && before.records.size() == after.records.size(),
+            "state budget refusal changes no history or generation");
+        expect(base.ref->entry.value() == 1, "state budget baseline allocator");
+    }
+}
+
 std::size_t minimum_budget(bool is_mapping) {
     // Discover the logical accounting boundary, without freezing a second size recipe in tests.
     std::size_t lower = 0, upper = 2U * 1024U * 1024U;
@@ -367,7 +441,8 @@ void concurrent_admission() {
 } // namespace
 int main() {
     try {
-        replay_and_identity(); eight_tool_cases_and_frozen_resolution(); refused_targets_and_budgets();
+        replay_and_identity(); eight_tool_cases_and_frozen_resolution(); state_payloads_and_exact_targets(); state_ref_budgets();
+        refused_targets_and_budgets();
         exact_budget_boundaries(); shared_admission_helpers(); concurrent_admission();
         std::cout << "PASS authored source-shaped reference adapter fixtures; no upstream SDK execution claim\n";
         return 0;

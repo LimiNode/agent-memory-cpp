@@ -1532,8 +1532,8 @@ follows:
 
 #### 5.5.1 DBI budget checkpoint
 
-Conversation Phase 4 P4-1 implements an **internal, NOT DEPLOYED** optional
-`conversation_durable_v1` delta to the YAML inventory: three dedicated bytewise
+Conversation Phase 4 P4-4 implements an **internal, NOT DEPLOYED** optional
+`conversation_durable_v2` delta to the YAML inventory: three dedicated bytewise
 KV DBIs with typed rows, no default activation. Its
 [physical contract](conversation-durable-physical-contract.md) owns
 keys, values, original replay witnesses and transactions. This does not

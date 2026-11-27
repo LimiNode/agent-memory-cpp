@@ -348,8 +348,29 @@ ConversationSourceCallTarget get_target(Reader& in) {
     }
 }
 
+void put_content(Writer& out, const ConversationContent& value) {
+    put_optional(out, value.text, [&out](const std::string& text) { out.text(text, kTextCap, true); });
+    if(value.attachments.size() > 4096) fail(CodecCode::ResourceLimit);
+    out.u32(static_cast<std::uint32_t>(value.attachments.size()));
+    for(const auto& attachment : value.attachments) out.text(attachment.value(), kBindingCap);
+}
+
+ConversationContent get_content(Reader& in) {
+    ConversationContent value;
+    if(in.presence()) value.text = in.text(kTextCap, true);
+    const auto count = in.u32();
+    if(count > 4096) fail(CodecCode::ResourceLimit);
+    if(count > in.remaining() / 4) fail();
+    if(in.owns()) value.attachments.reserve(count);
+    for(std::uint32_t i = 0; i < count; ++i) {
+        auto attachment = in.text(kBindingCap);
+        if(in.owns()) value.attachments.emplace_back(std::move(attachment));
+    }
+    return value;
+}
+
 void put_witness(Writer& out, const ConversationSourceObservation& value) {
-    out.u16(1); put_conversation(out, value.conversation); out.text(value.scope.value()); put_source(out, value.source);
+    out.u16(2); put_conversation(out, value.conversation); out.text(value.scope.value()); put_source(out, value.source);
     out.text(value.producer, 1024, true);
     put_optional(out, value.actor, [&out](const ActorRef& actor) { put_actor(out, actor); });
     put_optional(out, value.observer, [&out](const ActorRef& actor) { put_actor(out, actor); });
@@ -361,10 +382,7 @@ void put_witness(Writer& out, const ConversationSourceObservation& value) {
         if(message->kind == ConversationSourceMessageKind::Created) out.u8(1);
         else if(message->kind == ConversationSourceMessageKind::Snapshot) out.u8(2);
         else fail(CodecCode::InvalidValue);
-        put_optional(out, message->content.text, [&out](const std::string& text) { out.text(text, kTextCap, true); });
-        if(message->content.attachments.size() > 4096) fail(CodecCode::ResourceLimit);
-        out.u32(static_cast<std::uint32_t>(message->content.attachments.size()));
-        for(const auto& attachment : message->content.attachments) out.text(attachment.value(), kBindingCap);
+        put_content(out, message->content);
     } else if(const auto* call = std::get_if<ConversationSourceToolCall>(&value.payload)) {
         out.u8(2); out.blob(bytes(call->call_id), kBindingCap); out.text(call->tool_name, 4096, true);
         out.text(call->original_request.value(), kBindingCap);
@@ -375,11 +393,17 @@ void put_witness(Writer& out, const ConversationSourceObservation& value) {
         put_optional(out, result->result, [&out](const ArtifactBindingId& id) { out.text(id.value(), kBindingCap); });
         put_optional(out, result->is_error, [&out](bool value) { out.u8(value ? 1 : 0); });
         put_optional(out, result->exit_code, [&out](std::int64_t value) { out.u64(static_cast<std::uint64_t>(value)); });
+    } else if(const auto* edited = std::get_if<ConversationEdited>(&value.payload)) {
+        out.u8(4); put_ref(out, edited->affected); put_content(out, edited->replacement);
+    } else if(const auto* tombstoned = std::get_if<ConversationTombstoned>(&value.payload)) {
+        out.u8(5); put_ref(out, tombstoned->affected);
+    } else if(const auto* restored = std::get_if<ConversationRestored>(&value.payload)) {
+        out.u8(6); put_ref(out, restored->affected); put_ref(out, restored->retained_state);
     } else fail(CodecCode::InvalidValue);
 }
 
 ConversationSourceObservation get_witness(Reader& in) {
-    in.version();
+    if(in.u16() != 2) fail(CodecCode::UnsupportedSchema);
     ConversationSourceObservation value;
     value.conversation = get_conversation(in); value.scope = ScopeId{in.text()}; value.source = get_source(in);
     value.producer = in.text(1024, true);
@@ -396,15 +420,7 @@ ConversationSourceObservation get_witness(Reader& in) {
         case 2: message.kind = ConversationSourceMessageKind::Snapshot; break;
         default: fail(CodecCode::UnsupportedSchema);
         }
-        if(in.presence()) message.content.text = in.text(kTextCap, true);
-        const auto count = in.u32();
-        if(count > 4096) fail(CodecCode::ResourceLimit);
-        if(count > in.remaining() / 4) fail();
-        if(in.owns()) message.content.attachments.reserve(count);
-        for(std::uint32_t i = 0; i < count; ++i) {
-            auto attachment = in.text(kBindingCap);
-            if(in.owns()) message.content.attachments.emplace_back(std::move(attachment));
-        }
+        message.content = get_content(in);
         value.payload = std::move(message); break;
     }
     case 2: {
@@ -422,6 +438,21 @@ ConversationSourceObservation get_witness(Reader& in) {
         if(in.presence()) result.is_error = in.presence();
         if(in.presence()) result.exit_code = in.i64();
         value.payload = std::move(result); break;
+    }
+    case 4: {
+        ConversationEdited edited;
+        edited.affected = get_ref(in); edited.replacement = get_content(in);
+        value.payload = std::move(edited); break;
+    }
+    case 5: {
+        ConversationTombstoned tombstoned;
+        tombstoned.affected = get_ref(in);
+        value.payload = std::move(tombstoned); break;
+    }
+    case 6: {
+        ConversationRestored restored;
+        restored.affected = get_ref(in); restored.retained_state = get_ref(in);
+        value.payload = std::move(restored); break;
     }
     default: fail(CodecCode::UnsupportedSchema);
     }

@@ -24,7 +24,7 @@ under the [artifact owner](artifact-provenance-roadmap.md) before import.
 | `create_conversation(access, ref)` | Host selects the existing namespace-qualified Conversation identity; create sink/store state together |
 | `import_observation(access, source_record)` | One bounded atomic admission: validate source, compare replay witness, resolve declared target, allocate next Entry and append canonical AMCE |
 | `correct(access, envelope, expected_revision, reason)` | Explicit Phase 3A CAS representation correction; never another source occurrence |
-| `history()` | Borrowed const `IConversationStore&`, valid only during sink lifetime; owning bounded read results and opaque frontier continuations retain Phase 3A semantics |
+| `history()` | Borrowed const `IConversationHistory&`, valid only during sink lifetime; owning bounded read results and opaque frontier continuations retain Phase 3A semantics |
 
 The [C++17 example](../examples/conversation_import.cpp) is also compiled/run as
 an installed and relocated-package consumer. Binary call tokens use ByteBuffer;
