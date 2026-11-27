@@ -249,13 +249,13 @@ canonical:
     migration_peak: 1
 
 profile_deltas:
-  - name: conversation_durable_v1
+  - name: conversation_durable_v2
     dbis: 3
     migration_peak: 3
     default: false
     activation: internal_qualification_only
-    schema_status: internal_p4_1_not_deployed
-    schema_version: conversation_durable.v1.be.keys.sha256.values.witness1
+    schema_status: internal_p4_4_not_deployed
+    schema_version: conversation_durable.v2.be.keys.sha256.values.witness2
     default_table_prefix: agent_memory
     names_are_suffixes: true
     names: [conversation_meta_v1, conversation_events_v1, conversation_sources_v1]
@@ -277,7 +277,7 @@ profile_deltas:
         comparator: MDBX_BYTEWISE
         flags: []
         key_encoding: versioned_be_bytes
-        schema_version: conversation_durable.v1.be.keys.sha256.values.witness1
+        schema_version: conversation_durable.v2.be.keys.sha256.values.witness2
         migration_peak: 1
       - name: conversation_events_v1
         owner: conversation_storage
@@ -289,7 +289,7 @@ profile_deltas:
         comparator: MDBX_BYTEWISE
         flags: []
         key_encoding: versioned_be_bytes
-        schema_version: conversation_durable.v1.be.keys.sha256.values.witness1
+        schema_version: conversation_durable.v2.be.keys.sha256.values.witness2
         migration_peak: 1
       - name: conversation_sources_v1
         owner: conversation_ingestion
@@ -301,7 +301,7 @@ profile_deltas:
         comparator: MDBX_BYTEWISE
         flags: []
         key_encoding: versioned_be_bytes
-        schema_version: conversation_durable.v1.be.keys.sha256.values.witness1
+        schema_version: conversation_durable.v2.be.keys.sha256.values.witness2
         migration_peak: 1
   # Experimental numeric-storage profiles.  These DBIs are not opened by the
   # legacy store and are admitted only as an explicit, exclusive profile.

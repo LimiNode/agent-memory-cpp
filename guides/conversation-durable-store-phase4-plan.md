@@ -1,8 +1,10 @@
 # Conversation Core Phase 4 implementation brief
 
-- Status: P4-0 and INTERNAL P4-1 integrated through #701; P4-2 READY in unmerged
-  Draft #702; P4-3 corrections/frontiers in progress in a stacked Draft. No deployed schema/full Core
-  claim or authorization to merge P4-2/P4-3.
+- Status: P4-0 and INTERNAL P4-1/P4-2/P4-3 integrated through #703. P4-4 full
+  DTO/witness2/read-only contract is OWNER-APPROVED at `aa0bae40`;
+  implementation and semantic qualification remain OPEN;
+  P4-4 Current and P4-5 qualification remain OPEN. No deployed schema/full Core
+  claim or automatic merge authorization for new Drafts.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
 - Entry gate: qualified combined Phase 2/3A/3B tree and separate owner decision.
 - Contract owners: [events](conversation-event-contract.md),
@@ -28,7 +30,9 @@ post-main checks and source-PR disposition. P4-0's concrete
 defines three optional DBIs, bytewise keys, versioned values/witnesses,
 transactions, durability flags, frontier/token boundaries and test fixtures.
 Its [Current decision screen](experiments/2026-11-24-conversation-durable-current-plan.md)
-is predeclared, NOT RUN. The YAML delta allocates/deploys nothing.
+is predeclared; the bounded full-fold implementation is present in the P4-4
+Draft, while the durable screen itself remains NOT RUN. The YAML delta
+allocates/deploys nothing.
 
 The [Foundation Closure Gate](audits/2026-11-foundation-closure.md) now precedes
 P4-1 authorization. It separates profile-qualified compact physical keys from
@@ -44,8 +48,8 @@ Current/correct semantics are intentionally not exposed through a partial
 public interface. No store-wide history is hydrated at open or per import.
 
 The owner authorized guarded #701 integration followed by separately reviewed
-P4-2 and P4-3 Drafts. P4-3 starts only after the process/failure gate passes;
-neither new Draft is authorized for merge. The
+P4-2 and P4-3 Drafts, then authorized guarded integration of #702/#703 on
+2026-11-26. Both are now integrated; their private backend remains internal. The
 [P4-2 qualification note](experiments/2026-11-25-conversation-durable-p4-2.md)
 separates process termination, native failures, injected exceptions and unrun
 device/commit-internal failure cases.
@@ -54,7 +58,22 @@ The #702 exact-head gate passed at `b546791191bb15b89436b7b09e25de08035a234b`:
 CI 45850534246 (14 success, 16 conditional skips), Packaging 45850534204 (6/6),
 local platform/sanitizer/consumer tests and independent review READY. The
 [P4-3 qualification note](experiments/2026-11-26-conversation-durable-p4-3.md)
-tracks the next separate dependent Draft; neither new PR is merged.
+records the accepted corrections/frontiers slice. The
+[integration receipt](audits/2026-11-26-conversation-p4-2-p4-3-integration.md)
+records exact source, integration and main trees with separate post-main runs.
+Historical local results in the qualification notes are not new executions.
+
+The [P4-4 admission audit](audits/2026-11-26-conversation-p4-4-admission-gate.md)
+confirms that the current coordinated source DTO and persisted witness cannot
+express Edit/Tombstone/Restore. Correction is not a substitute, and raw append
+must not violate one mapping per occurrence. The owner has approved the
+[compact exact contract delta](conversation-durable-admission-v2-proposal.md).
+P4-4 implementation on fresh experimental environments is authorized with exact
+targets, fresh opt-in witness2, no dual-reader/migration and a read-only interface.
+Contract approval does not establish qualified implementation or permit activation
+against existing user data. The predeclared Current
+screen and P4-5 65,537-admission fixture remain NOT RUN; later slices stay separate
+Drafts with no automatic merge, release, migration or deployment authorization.
 
 ## Transaction and authority decisions
 

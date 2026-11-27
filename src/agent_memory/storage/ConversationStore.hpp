@@ -77,7 +77,7 @@ struct ConversationMessageView final {
     bool is_snapshot_origin = false;
 };
 
-class IConversationStore;
+class IConversationHistory;
 
 /// \brief Opaque instance-bound snapshot/seek handle; not a grant or persisted format.
 /// \note Copies retain the frontier. Store lifetime history is retained; a token
@@ -92,7 +92,7 @@ public:
     [[nodiscard]] bool empty() const noexcept { return !m_state; }
 private:
     std::shared_ptr<const BackendState> m_state;
-    friend class IConversationStore;
+    friend class IConversationHistory;
 };
 
 enum class ConversationReadStatus {
@@ -112,20 +112,12 @@ struct ConversationReadResult final {
     std::size_t output_bytes = 0;
 };
 
-/// \brief Canonical event history, separate from source importing and physical storage.
-/// \note Callers supply exact allocation-qualified IDs. Append requires the next
-/// EntryId/revision one; correction cannot change occurrence bindings/targets.
-class IConversationStore {
+/// \brief Read-only canonical event history shared by stores and import sinks.
+/// \note Every operation reauthorizes the supplied host access and returns owning
+/// values. Continuations retain no backend transaction or borrowed storage view.
+class IConversationHistory {
 public:
-    virtual ~IConversationStore();
-    [[nodiscard]] virtual ConversationWriteResult create_conversation(
-        const ConversationStoreAccess&, const ConversationRef&) = 0;
-    [[nodiscard]] virtual ConversationWriteResult append(
-        const ConversationStoreAccess&, const ConversationEnvelope&) = 0;
-    /// \brief CAS precedes no-op; next revision and bounded reason code are required.
-    [[nodiscard]] virtual ConversationWriteResult correct(
-        const ConversationStoreAccess&, const ConversationEnvelope&,
-        EventRevision expected_revision, const std::string& reason_code) = 0;
+    virtual ~IConversationHistory();
     [[nodiscard]] virtual ConversationReadResult read_exact(
         const ConversationStoreAccess&, const EntryRef&, const ConversationReadLimits& = {}) const = 0;
     /// \brief Lists all revisions in EntryId/revision order at a pinned commit generation.
@@ -143,6 +135,22 @@ protected:
         std::shared_ptr<const ConversationContinuation::BackendState> state);
     [[nodiscard]] static const ConversationContinuation::BackendState* continuation_state(
         const ConversationContinuation& continuation) noexcept;
+};
+
+/// \brief Canonical event history with coordinated write operations.
+/// \note Callers supply exact allocation-qualified IDs. Append requires the next
+/// EntryId/revision one; correction cannot change occurrence bindings/targets.
+class IConversationStore : public IConversationHistory {
+public:
+    ~IConversationStore() override;
+    [[nodiscard]] virtual ConversationWriteResult create_conversation(
+        const ConversationStoreAccess&, const ConversationRef&) = 0;
+    [[nodiscard]] virtual ConversationWriteResult append(
+        const ConversationStoreAccess&, const ConversationEnvelope&) = 0;
+    /// \brief CAS precedes no-op; next revision and bounded reason code are required.
+    [[nodiscard]] virtual ConversationWriteResult correct(
+        const ConversationStoreAccess&, const ConversationEnvelope&,
+        EventRevision expected_revision, const std::string& reason_code) = 0;
 };
 
 /// \brief Mutex-serialized reference backend with immutable canonical AMCE history.

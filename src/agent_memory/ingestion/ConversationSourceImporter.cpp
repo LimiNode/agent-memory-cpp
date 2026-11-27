@@ -170,7 +170,7 @@ ConversationWriteResult InMemoryConversationImportSink::correct(const Conversati
     return m_impl->store.correct(access, envelope, expected, reason_code);
 }
 
-const IConversationStore& InMemoryConversationImportSink::history() const noexcept {
+const IConversationHistory& InMemoryConversationImportSink::history() const noexcept {
     return m_impl->store;
 }
 

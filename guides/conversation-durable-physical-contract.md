@@ -1,6 +1,6 @@
 # Conversation Phase 4: approved MDBX physical contract (P4-0)
 
-- Status: **P4-1 INTERNAL IMPLEMENTATION INTEGRATED; NOT DEPLOYED**.
+- Status: **P4-1/P4-2/P4-3 INTERNAL IMPLEMENTATION INTEGRATED; NOT DEPLOYED**.
   No published durable API/deployed-schema freeze; full Phase 4 remains open.
 - Date: 2026-11-24. Owner: conversation storage/ingestion.
 - Base: integrated Phase 2/3 tree `00cbb85105cb57a5a455dbb0e380238edef74cfa`,
@@ -18,8 +18,16 @@ semantic owners. [YAML](dbi-manifest.yaml) is the sole DBI inventory/budget
 authority; the [physical guide](mdbx-containers-extension-tz.md) contains its
 checked review projection. P4-1 executable evidence and its unrun gates are
 tracked in the [qualification note](experiments/2026-11-25-conversation-durable-p4-1.md).
-P4-2 crash/race qualification is READY in unmerged Draft #702. Corrections,
-Current strategy and full scale remain later implementation/qualification gates.
+P4-2 crash/race qualification and P4-3 private corrections/frontiers are integrated
+through #702/#703. P4-4 adds coordinated state-event admission and bounded
+Current in a separate internal Draft; Current measurements and full scale remain
+later gates. Complete state-event admission follows the owner-approved
+[exact DTO/witness2/read-only delta](conversation-durable-admission-v2-proposal.md).
+The owner accepted exact proposal `aa0bae40` and authorized implementation on
+fresh experimental environments. The grammar below describes the integrated
+witness1 implementation; the active P4-4 implementation uses the approved
+witness2 grammar and profile. There is no authorization to activate the new
+profile against existing user data.
 The owner accepted P4-0
 on 2026-11-25 and authorized P4-1 in a separate Draft after qualified #700/#699
 integration. P4-0 deploys nothing; release, migration and automatic P4-1 merge
@@ -28,19 +36,25 @@ remain unauthorized. AMXR byte APIs are integrated through #700 at
 
 #699 was integrated at `4418a58c41d6c4e8f42d311708f849e00e40e59f`.
 #701 was integrated at `2c895c9812128dcfc3ccd07ae84a7175e5ff371c`, tree
-`86ec0e739dd382a45b0c6bd89302a276abbc8dfa`. The later owner assignment
-authorizes P4-2 and, after its gate passes, P4-3 in separate unmerged Drafts.
-P4-1 uses private physical codecs and a private optional MDBX vertical, not
-an incomplete `IConversationStore`/`IConversationImportSink`. Its three headers
-are excluded from install. No Current/correction method or public continuation
-is advertised. This is the internal alternative selected in section 8.
+`86ec0e739dd382a45b0c6bd89302a276abbc8dfa`. The owner's 2026-11-26 assignment
+then authorized guarded #702/#703 integration. New P4-4/P4-5 Drafts are not
+authorized for automatic merge. P4-1/P4-2/P4-3 use private physical codecs and
+a private optional MDBX vertical, not an incomplete installed
+`IConversationStore`/`IConversationImportSink`. P4-4 extends that internal
+vertical with coordinated admission, bounded Current and read-only continuations;
+its headers remain excluded from install and no public durable API is advertised.
 
-P4-2 passed at `b546791191bb15b89436b7b09e25de08035a234b` (Draft #702),
+P4-2 passed at `b546791191bb15b89436b7b09e25de08035a234b` (#702),
 CI 45850534246 / Packaging 45850534204, with source-bound local and independent
 review evidence in its [note](experiments/2026-11-25-conversation-durable-p4-2.md).
-P4-3 is a separate dependent private correction/history slice under qualification,
-tracked in the [P4-3 note](experiments/2026-11-26-conversation-durable-p4-3.md).
-Neither new Draft is merged; no Current or full public store is advertised.
+P4-3's accepted private correction/history slice is tracked in the
+[P4-3 note](experiments/2026-11-26-conversation-durable-p4-3.md). Both are merged;
+the [integration receipt](audits/2026-11-26-conversation-p4-2-p4-3-integration.md)
+records final main `8a092d515f99ed34e50ffbc7642cd2fb80e4ef8d`, unchanged accepted
+tree and post-main checks. No Current or full public store is advertised. This
+status update does not amend the physical grammar, schema marker, witness or
+DBI manifest; P4-4 contract approval is recorded above, separately from
+implementation qualification.
 
 ## 1. Reuse, ownership and smallest layout
 
@@ -60,8 +74,11 @@ would waste capacity. A single untyped mega-table would obscure the admission
 boundary and quotas. Three tables isolate metadata, immutable history and
 potentially large source witnesses without speculative graph/time indexes.
 
-The proposed profile is `conversation_durable_v1`, schema marker
-`conversation_durable.v1.be.keys.sha256.values.witness1`. YAML names are
+The original P4-0 profile proposal is `conversation_durable_v1`, schema marker
+`conversation_durable.v1.be.keys.sha256.values.witness1`; it remains a historical
+baseline for the integrated P4-1/P4-3 evidence. The active P4-4 implementation
+uses the owner-approved `conversation_durable.v2` profile and marker described
+in section 3. YAML names are
 suffixes, physically `<prefix>_<suffix>`; default prefix `agent_memory`.
 Proposed prefixes are exact ASCII `[a-z][a-z0-9_]*`, 1..64 bytes: reject invalid
 input rather than sanitize two spellings into one namespace. Check resolved
@@ -313,16 +330,16 @@ This counts neither MDBX pages nor source mapping/secondary rows.
 
 Persisting only normalized AMCE is **incorrect**: it loses producer, raw flags,
 effective request, declared source target and distinctions normalized to Unknown.
-The private witness is lossless over the admitted `ConversationSourceObservation`
-DTO, with schema 1, fixed field order, U32 lengths/counts, U8 explicit enum tags,
+The active private witness is lossless over the admitted `ConversationSourceObservation`
+DTO, with schema 2, fixed field order, U32 lengths/counts, U8 explicit enum tags,
 O-presence, exact nested AMXR and B for both text and opaque bytes. The binary
 framing does not redefine field validation. Source witness equality must match
 the existing `same_witness()` predicate exactly.
 
-Proposed witness grammar (`content` attachments retain order):
+Active witness2 grammar (`content` attachments retain order):
 
 ```text
-witness = U16(1) | C | B(scope bytes) | source_binding | B(producer)
+witness2 = U16(2) | C | B(scope bytes) | source_binding | B(producer)
           | O(actor) | O(observer) | O(llm_role)
           | O(i64(source_unix_us)) | O(i64(observed_unix_us)) | source_payload
 actor = U16(namespace length) | namespace bytes | U64(ActorId)
@@ -337,6 +354,9 @@ source_payload = U8(1 message) | U8(Created=1 | Snapshot=2) | content
                OR U8(3 result) | call_target | B(call_id bytes) | U8(origin)
                   | U8(reported_outcome) | O(B(result artifact))
                   | O(U8(is_error)) | O(i64(exit_code))
+              OR U8(4 edit) | R(affected) | content(replacement)
+              OR U8(5 tombstone) | R(affected)
+              OR U8(6 restore) | R(affected) | R(retained_state)
 call_target = U8(1 exact) | R
               OR U8(2 source) | C | B(scope bytes) | source_binding
               OR U8(3 unresolved) | O(B(AMXR external)) | evidence
@@ -357,6 +377,12 @@ validation of legacy opaque bindings. Original source-shaped target stays in
 the witness even if normalization resolved it; normalized frozen resolution
 stays in original AMCE. Correcting AMCE never rewrites this row or its original
 ref/generation. Exact original replay after correction still returns original@1.
+
+The former witness1 grammar is retained only as historical qualification
+evidence. The active marker is
+`conversation_durable.v2.be.keys.sha256.values.witness2`; an existing witness1
+profile is rejected before any marker, row, counter or DBI mutation, including
+when initialization is requested. There is no dual-reader or migration path.
 
 ## 4. Atomic publication and error boundary
 

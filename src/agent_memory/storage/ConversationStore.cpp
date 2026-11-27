@@ -71,14 +71,14 @@ struct ReferenceContinuationState final : ConversationContinuation::BackendState
 
 ConversationContinuation::BackendState::~BackendState() = default;
 
-ConversationContinuation IConversationStore::make_continuation(
+ConversationContinuation IConversationHistory::make_continuation(
     std::shared_ptr<const ConversationContinuation::BackendState> state) {
     ConversationContinuation result;
     result.m_state = std::move(state);
     return result;
 }
 
-const ConversationContinuation::BackendState* IConversationStore::continuation_state(
+const ConversationContinuation::BackendState* IConversationHistory::continuation_state(
     const ConversationContinuation& continuation) noexcept {
     return continuation.m_state.get();
 }
@@ -225,6 +225,7 @@ struct InMemoryConversationStore::Impl final {
     }
 };
 
+IConversationHistory::~IConversationHistory() = default;
 IConversationStore::~IConversationStore() = default;
 
 InMemoryConversationStore::InMemoryConversationStore(ConversationStoreOptions options) {

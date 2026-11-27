@@ -113,14 +113,17 @@ void round_trip_witness(const am::ConversationSourceObservation& value) {
 
 void witness_literals_and_presence() {
     auto value = observation();
-    const auto literal = unhex("000100016100000000000000010000000173030000000000017200000000016100000001650000000178"
+    const auto literal = unhex("000200016100000000000000010000000173030000000000017200000000016100000001650000000178"
         "0000000170000000000001010100000002686900000000");
-    expect(cd::encode_witness(value) == literal, "Independent original witness literal drift");
-    expect(am::detail::same_witness(value, cd::decode_witness(view(literal))), "Witness literal not decoded exactly");
+    expect(cd::encode_witness(value) == literal, "Independent witness v2 literal drift");
+    expect(am::detail::same_witness(value, cd::decode_witness(view(literal))), "Witness v2 literal not decoded exactly");
     for(std::size_t i = 0; i < literal.size(); ++i)
         rejected([&literal, i] { (void)cd::decode_witness({literal.data(), i}); });
     auto broken = literal; broken.push_back(0); rejected([&broken] { (void)cd::decode_witness(view(broken)); });
-    broken = literal; broken[1] = 2; rejected([&broken] { (void)cd::decode_witness(view(broken)); });
+    // Historical pre-release bytes remain reproducible, but are not an active reader contract.
+    const auto historical_v1 = unhex("000100016100000000000000010000000173030000000000017200000000016100000001650000000178"
+        "0000000170000000000001010100000002686900000000");
+    rejected([&historical_v1] { (void)cd::decode_witness(view(historical_v1)); });
     broken = literal; broken[2] = 255; broken[3] = 255;
     rejected([&broken] { (void)cd::decode_witness(view(broken)); });
     rejected([] { (void)cd::decode_witness({nullptr, 1}); });
@@ -181,8 +184,37 @@ void witness_literals_and_presence() {
     stored.exit_code = std::numeric_limits<std::int64_t>::max(); round_trip_witness(value);
     stored.origin = static_cast<am::ConversationSourceResultOrigin>(255);
     rejected([&value] { (void)cd::encode_witness(value); });
+    value = observation();
+    value.payload = am::ConversationEdited{ref(2, 1), {std::string{"edited"}, {am::ArtifactBindingId{"a"}}}};
+    round_trip_witness(value);
+    value.payload = am::ConversationTombstoned{ref(2, 1)};
+    round_trip_witness(value);
+    value.payload = am::ConversationRestored{ref(2, 1), ref(2, 1)};
+    round_trip_witness(value);
     value = observation(); std::get<am::ConversationSourceMessage>(value.payload).content.text = "\xc0\xaf";
     rejected([&value] { (void)cd::encode_witness(value); });
+}
+
+void state_witness_literals() {
+    // Independent field-by-field grammar literals, not bytes obtained from the encoder.
+    const std::string common = "000200016100000000000000010000000173030000000000017200000000016100000001650000000178"
+        "00000001700000000000";
+    const std::string target = "000161000000000000000100000000000000020000000000000001";
+    auto value = observation();
+    const std::vector<std::pair<am::ConversationSourcePayload, std::string>> cases{
+        {am::ConversationEdited{ref(), {std::string{"hi"}, {}}}, common + "04" + target + "0100000002686900000000"},
+        {am::ConversationTombstoned{ref()}, common + "05" + target},
+        {am::ConversationRestored{ref(), ref()}, common + "06" + target + target}};
+    for(const auto& item : cases) {
+        value.payload = item.first;
+        const auto literal = unhex(item.second);
+        expect(cd::encode_witness(value) == literal, "Independent state witness v2 literal drift");
+        expect(am::detail::same_witness(value, cd::decode_witness(view(literal))), "State literal decode drift");
+        for(std::size_t i = 0; i < literal.size(); ++i)
+            rejected([&literal, i] { (void)cd::decode_witness({literal.data(), i}); });
+    }
+    auto unknown = unhex(common + "07");
+    rejected([&unknown] { (void)cd::decode_witness(view(unknown)); });
 }
 
 void logical_keys() {
@@ -241,7 +273,10 @@ void rows_and_integrity() {
     auto value = cd::wrap_value(p, cd::TableKind::Metadata, view(conversation_key), view(row_body));
     // Independently SHA-256-qualified literal of the published digest preimage grammar.
     expect(value == unhex("000100000017000000037300ff0000000000000001ffffffffffffffff"
-        "2999521a7d9cf7db171945716315bdb38b18b3d900020ef1bd22197d25af8d24"), "Value/digest golden drift");
+        "44db31d70fa4092b25e452445f48b8450891054325c02217f9ed66a811b7a2fa"), "Value/digest golden drift");
+    const auto historical_v1 = unhex("000100000017000000037300ff0000000000000001ffffffffffffffff"
+        "2999521a7d9cf7db171945716315bdb38b18b3d900020ef1bd22197d25af8d24");
+    rejected([&] { (void)cd::unwrap_value(p, cd::TableKind::Metadata, view(conversation_key), view(historical_v1)); });
     const auto borrowed = cd::unwrap_value(p, cd::TableKind::Metadata, view(conversation_key), view(value));
     expect(borrowed.data == value.data() + 6 && borrowed.size == row_body.size(), "Value body must borrow without a copy");
     const auto row = cd::decode_conversation_row(borrowed);
@@ -314,7 +349,7 @@ void maximum_fields() {
 
 int main() {
     try {
-        key_literals(); witness_literals_and_presence(); logical_keys(); descriptor_profile_values();
+        key_literals(); witness_literals_and_presence(); state_witness_literals(); logical_keys(); descriptor_profile_values();
         rows_and_integrity(); maximum_fields();
         std::cout << "durable private keys/value integrity/profile/witness fixtures: PASS\n";
         return 0;

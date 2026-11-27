@@ -88,10 +88,17 @@ reported as a new screen, not silently retuned acceptance.
 
 ## Results, limitations and next check
 
-Actual durable measurements: **NOT RUN**. No durable adapter, checkpoints,
-Current DBI or benchmark implementation is introduced in P4-0. The thresholds
-are reviewable intent only. Limits include synthetic representativeness,
-hardware dependence, cache controls, mapped-file RSS attribution and profile
-capacity. First check after P4-1/P4-3 qualification: run the conformant fold on
-the frozen 2048-root/page-32 workload with counters; use that observation to
-decide whether separate projection/checkpoint prototypes are justified.
+P4-4 now contains an internal bounded full-fold `read_current` implementation
+over the existing three-DBI profile, with owning results and instance-bound
+continuations. The implementation receipt
+([P4-4 qualification](2026-11-27-conversation-durable-p4-4.md)) records exact
+target preflight, retained Restore-content accounting, tool-call/result rows,
+state-event and reference-oracle parity on the exercised fixtures, including
+bounded input/output refusal. The durable 2048-root/page-32 measurements,
+repeated latency/RSS counters, larger regimes, and projection/checkpoint
+comparison are **NOT RUN**. These thresholds remain reviewable intent, not
+product SLAs.
+Limits include synthetic representativeness, hardware dependence, cache
+controls, mapped-file RSS attribution and profile capacity. The next check is
+the frozen 2048-root/page-32 run with counters before any long-history serving
+claim or projection decision.

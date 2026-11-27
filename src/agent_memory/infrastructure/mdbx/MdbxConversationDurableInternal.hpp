@@ -48,10 +48,10 @@ struct QualificationHooks final {
     void (*after_commit)() noexcept = nullptr;
 };
 
-class MdbxConversationDurable final {
+class MdbxConversationDurable final : public IConversationImportSink, public IConversationHistory {
 public:
     explicit MdbxConversationDurable(DurableOptions, QualificationHooks = {});
-    ~MdbxConversationDurable();
+    ~MdbxConversationDurable() override;
     MdbxConversationDurable(const MdbxConversationDurable&) = delete;
     MdbxConversationDurable& operator=(const MdbxConversationDurable&) = delete;
     [[nodiscard]] ConversationWriteResult create_conversation(
@@ -68,12 +68,19 @@ public:
     [[nodiscard]] ConversationReadResult read_history(
         const ConversationStoreAccess&, const ConversationRef&, const ConversationReadLimits& = {},
         const std::optional<ConversationContinuation>& continuation = std::nullopt) const;
+    [[nodiscard]] ConversationReadResult read_current(
+        const ConversationStoreAccess&, const ConversationRef&, const ConversationReadLimits& = {},
+        const std::optional<ConversationContinuation>& continuation = std::nullopt) const override;
+    [[nodiscard]] const IConversationHistory& history() const noexcept override { return *this; }
     // Qualification-only explicit historical selector, not a portable public API.
     // Frontier is nonzero and not before creation or beyond the current commit.
     // The (entry, revision) pair is exclusive; only (0, 0) starts at the beginning.
     [[nodiscard]] ConversationReadResult read_history_at(const ConversationStoreAccess&,
         const ConversationRef&, const ConversationReadLimits&, std::uint64_t frontier,
         std::uint64_t seek_entry = 0, std::uint64_t seek_revision = 0) const;
+    [[nodiscard]] ConversationReadResult read_current_at(const ConversationStoreAccess&,
+        const ConversationRef&, const ConversationReadLimits&, std::uint64_t frontier,
+        std::uint64_t seek_root = 0) const;
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
