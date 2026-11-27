@@ -3,7 +3,7 @@
 - Date: 2026-11-27.
 - Status: **implementation tested; qualification OPEN**. This is an internal
   Draft result, not a deployment, release or merge receipt.
-- Source: `feat/conversation-durable-p4-4-implementation@182dd95e`.
+- Source: `feat/conversation-durable-p4-4-implementation@369e53a7`.
 - Base: integrated P4-3 tree `8a092d515f99ed34e50ffbc7642cd2fb80e4ef8d`.
 - Owner-approved contract: [admission v2 proposal](../conversation-durable-admission-v2-proposal.md),
   accepted at `aa0bae40` and integrated through #704.
